@@ -1,6 +1,12 @@
 import React, { useMemo, useState } from "react";
-import { ChevronDown, Utensils } from "lucide-react";
+import { ChevronDown, Utensils, Building2, Check } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import {
+  BUSINESS_TYPES,
+  BUSINESS_SUBTYPES,
+  getDefaultModules,
+  getAllModules,
+} from "../config/businessTypes";
 
 const countries = [
   { name: "India", code: "+91", flag: "🇮🇳" },
@@ -20,15 +26,28 @@ const getNowLog = (role, phone) => {
   };
 };
 
-export default function Login({ shopName, rolesList, staffList }) {
+export default function Login({
+  shopName,
+  rolesList,
+  staffList,
+  onSetBusinessType,
+  onSetBusinessSubtype,
+  onSetEnabledModules
+}) {
   const auth = useAuth();
 
-  const [authStep, setAuthStep] = useState("login"); // 'login' | 'otp'
+  const [authStep, setAuthStep] = useState("login"); // 'login' | 'otp' | 'setup'
   const [selectedRole, setSelectedRole] = useState("Staff");
   const [country, setCountry] = useState(countries[0]);
   const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
   const [phone, setPhone] = useState("");
   const [otpValue, setOtpValue] = useState("");
+
+  // Setup State
+  const [pendingUser, setPendingUser] = useState(null);
+  const [selectedType, setSelectedType] = useState(BUSINESS_TYPES.RESTAURANT);
+  // Default to first subtype of Restaurant
+  const [selectedSubtype, setSelectedSubtype] = useState(BUSINESS_SUBTYPES[BUSINESS_TYPES.RESTAURANT][0].id);
 
   const selectableRoles = useMemo(() => rolesList?.slice?.(0, 3) ?? [], [rolesList]);
 
@@ -51,13 +70,36 @@ export default function Login({ shopName, rolesList, staffList }) {
       permissions,
     };
 
-    auth.addAuthLog(getNowLog(selectedRole, phone));
-    auth.login(userObj);
+    setPendingUser(userObj);
+    setAuthStep("setup");
   };
+
+  const handleCompleteSetup = () => {
+    if (!pendingUser) return;
+
+    // 1. Configure App Context
+    if (onSetBusinessType) onSetBusinessType(selectedType);
+    if (onSetBusinessSubtype) onSetBusinessSubtype(selectedSubtype);
+
+    // Calculate and set enabled modules
+    const defaults = getDefaultModules(selectedType, selectedSubtype);
+    const normalizedModules = getAllModules().reduce((acc, key) => {
+      acc[key] = defaults[key] === true;
+      return acc;
+    }, {});
+
+    if (onSetEnabledModules) onSetEnabledModules(normalizedModules);
+
+    // 2. Complete Login
+    auth.addAuthLog(getNowLog(selectedRole, phone));
+    auth.login(pendingUser);
+  };
+
+  const availableSubtypes = BUSINESS_SUBTYPES[selectedType] || [];
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-indigo-900 p-4">
-      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-8 mx-auto">
+      <div className={`bg-white w-full ${authStep === 'setup' ? 'max-w-3xl' : 'max-w-md'} rounded-3xl shadow-2xl p-8 mx-auto transition-all duration-300`}>
         <div className="flex justify-center mb-6">
           <div className="bg-indigo-100 p-4 rounded-full">
             <Utensils size={40} className="text-indigo-600" />
@@ -65,7 +107,7 @@ export default function Login({ shopName, rolesList, staffList }) {
         </div>
         <h1 className="text-2xl font-bold text-center mb-6">{shopName}</h1>
 
-        {authStep === "login" ? (
+        {authStep === "login" && (
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">
@@ -77,11 +119,10 @@ export default function Login({ shopName, rolesList, staffList }) {
                     key={r.id}
                     type="button"
                     onClick={() => setSelectedRole(r.name)}
-                    className={`py-3 rounded-xl text-sm font-bold border transition-all ${
-                      selectedRole === r.name
+                    className={`py-3 rounded-xl text-sm font-bold border transition-all ${selectedRole === r.name
                         ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
                         : "bg-white border-gray-200 text-gray-500"
-                    }`}
+                      }`}
                   >
                     {r.name}
                   </button>
@@ -151,7 +192,9 @@ export default function Login({ shopName, rolesList, staffList }) {
               Get OTP
             </button>
           </form>
-        ) : (
+        )}
+
+        {authStep === "otp" && (
           <div className="space-y-6">
             <p className="text-center text-gray-500">
               Enter code sent for <b>{selectedRole}</b> to {country.code} {phone}
@@ -160,11 +203,10 @@ export default function Login({ shopName, rolesList, staffList }) {
               {[0, 1, 2, 3].map((i) => (
                 <div
                   key={i}
-                  className={`w-12 h-14 md:w-14 md:h-16 border-2 rounded-xl flex items-center justify-center text-xl md:text-2xl font-black ${
-                    otpValue.length === i
+                  className={`w-12 h-14 md:w-14 md:h-16 border-2 rounded-xl flex items-center justify-center text-xl md:text-2xl font-black ${otpValue.length === i
                       ? "border-indigo-600 bg-indigo-50"
                       : "border-gray-200 bg-gray-50"
-                  }`}
+                    }`}
                 >
                   {otpValue[i] || ""}
                 </div>
@@ -182,7 +224,71 @@ export default function Login({ shopName, rolesList, staffList }) {
               onClick={handleVerifyOtp}
               className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg"
             >
-              Verify & Login
+              Verify Code
+            </button>
+          </div>
+        )}
+
+        {authStep === "setup" && (
+          <div className="space-y-6">
+            <div className="text-center">
+              <h2 className="text-xl font-black text-gray-800">Setup Business Type</h2>
+              <p className="text-gray-500 text-sm">Select your business category to configure the app</p>
+            </div>
+
+            {/* Business Type Selection */}
+            <div>
+              <label className="text-xs font-black text-gray-400 uppercase block mb-3">Business Type</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {Object.entries(BUSINESS_TYPES).map(([key, value]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedType(value);
+                      const firstSubtype = BUSINESS_SUBTYPES[value]?.[0]?.id;
+                      if (firstSubtype) setSelectedSubtype(firstSubtype);
+                    }}
+                    className={`p-4 rounded-xl border-2 transition-all text-left ${selectedType === value
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700 shadow-md"
+                      : "border-gray-200 hover:border-gray-300"
+                      }`}
+                  >
+                    <Building2 className={`w-6 h-6 mb-2 ${selectedType === value ? "text-indigo-600" : "text-gray-400"}`} />
+                    <div className="font-bold capitalize text-sm">{value}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Business Subtype Selection */}
+            {availableSubtypes.length > 0 && (
+              <div>
+                <label className="text-xs font-black text-gray-400 uppercase block mb-3">Business Subtype</label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {availableSubtypes.map((subtype) => (
+                    <button
+                      key={subtype.id}
+                      type="button"
+                      onClick={() => setSelectedSubtype(subtype.id)}
+                      className={`p-3 rounded-xl border-2 transition-all text-left flex items-center justify-between ${selectedSubtype === subtype.id
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-700 shadow-md"
+                        : "border-gray-200 hover:border-gray-300"
+                        }`}
+                    >
+                      <span className="text-sm font-bold">{subtype.name}</span>
+                      {selectedSubtype === subtype.id && <Check size={16} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={handleCompleteSetup}
+              className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-indigo-700 transition-all transform active:scale-95 mt-6"
+            >
+              Enter Shop
             </button>
           </div>
         )}

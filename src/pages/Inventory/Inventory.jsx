@@ -1,96 +1,89 @@
-import React, { useState } from 'react';
-import { Package, Search, Plus, Edit3, Trash2, Globe, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Package, Search, Plus, Edit3, Trash2, Globe } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
+import ProductForm from '../../components/ProductForm';
+import { getVisibleFieldKeys } from '../../config/itemFields';
+import { ROUTE_ACCESS } from '../../config/permissionStructure';
 
 const Inventory = ({
     menu,
     setMenu,
     formatCurrency,
     settings,
-    hasPermission
+    hasPermissionFor,
 }) => {
     const [inventorySearch, setInventorySearch] = useState("");
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState(null);
-    const [selectedProductCategory, setSelectedProductCategory] = useState("Main Course");
-    const [newCategoryName, setNewCategoryName] = useState("");
-    const [prodSellingType, setProdSellingType] = useState("Standard");
-    const [prodVariants, setProdVariants] = useState([{ name: "", price: "" }]);
-    const [prodExtras, setProdExtras] = useState([]);
+    const [visibleFields, setVisibleFields] = useState([]);
+
+    // Load visible fields from local storage or default
+    const loadFields = () => {
+        const savedFields = localStorage.getItem('visibleInventoryFields');
+        if (savedFields) {
+            setVisibleFields(JSON.parse(savedFields));
+        } else {
+            setVisibleFields(getVisibleFieldKeys());
+        }
+    };
+
+    useEffect(() => {
+        loadFields();
+        // Listen for updates from settings
+        window.addEventListener('inventoryFieldsUpdated', loadFields);
+        return () => window.removeEventListener('inventoryFieldsUpdated', loadFields);
+    }, []);
 
     const filteredMenu = menu.filter((item) =>
-        item.name.toLowerCase().includes(inventorySearch.toLowerCase())
+        item.name?.toLowerCase().includes(inventorySearch.toLowerCase())
     );
 
-    const categories = ["Main Course", "Starters", "Breads", "Rice", "Desserts", "Drinks", "Sea Food", "Grills", "Biriyani"];
+    const inventoryAccess = ROUTE_ACCESS.INVENTORY;
+    const canView = hasPermissionFor?.(inventoryAccess.module, inventoryAccess.resource, inventoryAccess.action);
+    const canManage = hasPermissionFor?.(inventoryAccess.module, inventoryAccess.resource, "manage");
+
+    if (!canView) {
+        return (
+            <div className="h-full flex items-center justify-center bg-gray-50">
+                <div className="text-center p-12 bg-white rounded-[40px] shadow-xl border max-w-md">
+                    <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Package size={40} />
+                    </div>
+                    <h2 className="text-2xl font-black text-gray-800 mb-2">Access Restricted</h2>
+                    <p className="text-gray-500 font-medium">You don&apos;t have permission to view Inventory.</p>
+                </div>
+            </div>
+        );
+    }
 
     const handleOpenAddModal = () => {
         setEditingProduct(null);
-        setSelectedProductCategory("Main Course");
-        setNewCategoryName("");
-        setProdSellingType("Standard");
-        setProdVariants([{ name: "", price: "" }]);
-        setProdExtras([]);
         setIsProductModalOpen(true);
     };
 
     const handleEditItem = (item) => {
         setEditingProduct(item);
-        setSelectedProductCategory(item.category);
-        setNewCategoryName("");
-        setProdSellingType(item.sellingType || "Standard");
-        setProdVariants(item.variants ? [...item.variants] : [{ name: "", price: "" }]);
-        setProdExtras(item.availableExtras ? [...item.availableExtras] : []);
         setIsProductModalOpen(true);
     };
 
-    const handleSaveProduct = () => {
-        const name = document.getElementById("prod-name").value;
-        const taxPercent = document.getElementById("prod-tax").value;
+    const handleSaveProduct = (formData) => {
+        const newItem = {
+            id: editingProduct ? editingProduct.id : Date.now().toString(),
+            ...formData,
+            isAvailableOnline: editingProduct ? editingProduct.isAvailableOnline : true,
+            // Ensure numeric values are stored as numbers if needed, though form handles inputs as strings primarily
+            // The dynamic form returns values as per input type, so number inputs should be numbers/strings.
+            // Converting key price fields just in case
+            price: parseFloat(formData.price || 0),
+        };
 
-        let price = 0;
-        let pricePerUnit = 0;
-        let unitName = "";
-
-        if (prodSellingType === "Standard") {
-            price = parseFloat(document.getElementById("prod-price").value || 0);
-        } else if (prodSellingType === "Weight") {
-            pricePerUnit = parseFloat(document.getElementById("prod-price-unit").value || 0);
-            unitName = document.getElementById("prod-unit-name").value;
+        if (editingProduct) {
+            setMenu(menu.map((m) => (m.id === editingProduct.id ? newItem : m)));
+        } else {
+            setMenu([...menu, newItem]);
         }
-
-        let finalCategory = selectedProductCategory;
-        if (selectedProductCategory === "NEW_CATEGORY_TRIGGER") {
-            finalCategory = newCategoryName.trim() || "Uncategorized";
-        }
-
-        if (name) {
-            const newItem = {
-                id: editingProduct ? editingProduct.id : Date.now().toString(),
-                name,
-                category: finalCategory,
-                taxPercent: parseFloat(taxPercent) || settings.defaultTaxPercent,
-                sellingType: prodSellingType,
-                price,
-                pricePerUnit,
-                unitName,
-                variants: prodVariants
-                    .filter((v) => v.name && v.price)
-                    .map((v) => ({ ...v, price: parseFloat(v.price) })),
-                availableExtras: prodExtras
-                    .filter((e) => e.name && e.price)
-                    .map((e) => ({ ...e, price: parseFloat(e.price) })),
-                isAvailableOnline: editingProduct ? editingProduct.isAvailableOnline : true,
-            };
-
-            if (editingProduct) {
-                setMenu(menu.map((m) => (m.id === editingProduct.id ? newItem : m)));
-            } else {
-                setMenu([...menu, newItem]);
-            }
-            setIsProductModalOpen(false);
-            setEditingProduct(null);
-        }
+        setIsProductModalOpen(false);
+        setEditingProduct(null);
     };
 
     const columns = [
@@ -101,6 +94,7 @@ const Inventory = ({
                 <>
                     <div className="font-black text-gray-800 text-lg">{value}</div>
                     <div className="text-xs font-bold text-gray-400">ID: {item.id}</div>
+                    {item.sku && <div className="text-[10px] text-gray-400">SKU: {item.sku}</div>}
                 </>
             )
         },
@@ -109,33 +103,26 @@ const Inventory = ({
             key: "category",
             render: (value) => (
                 <span className="bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wide">
-                    {value}
+                    {value || "Uncategorized"}
                 </span>
             )
         },
         {
-            header: "Price Structure",
+            header: "Price",
             key: "price",
             headerClassName: "text-center",
             className: "text-center",
             render: (_, item) => (
-                <>
-                    {item.sellingType === "Standard" && (
-                        <div className="font-black text-gray-800">{formatCurrency(item.price)}</div>
-                    )}
-                    {item.sellingType === "Weight" && (
-                        <div className="flex flex-col items-center">
-                            <span className="font-black text-gray-800">{formatCurrency(item.pricePerUnit)}</span>
-                            <span className="text-[10px] font-bold text-gray-400 italic">per {item.unitName}</span>
-                        </div>
-                    )}
-                    {["Portion", "Volume"].includes(item.sellingType) && (
-                        <div className="flex flex-col items-center">
-                            <span className="font-black text-indigo-600">Variants</span>
-                            <span className="text-[10px] font-bold text-gray-400">{item.variants?.length} Sizes</span>
-                        </div>
-                    )}
-                </>
+                <div className="font-black text-gray-800">{formatCurrency(item.price || 0)}</div>
+            )
+        },
+        {
+            header: "Type",
+            key: "productType",
+            headerClassName: "text-center",
+            className: "text-center",
+            render: (value) => (
+                <span className="text-xs font-bold text-gray-500 uppercase">{value || "Simple"}</span>
             )
         },
         {
@@ -168,7 +155,7 @@ const Inventory = ({
         }
     ];
 
-    if (hasPermission("MANAGE_INVENTORY")) {
+    if (canManage) {
         columns.push({
             header: "Actions",
             key: "actions",
@@ -218,7 +205,7 @@ const Inventory = ({
                             className="w-full pl-12 pr-4 py-4 border-2 border-transparent bg-white rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium"
                         />
                     </div>
-                    {hasPermission("MANAGE_INVENTORY") && (
+                    {canManage && (
                         <button
                             onClick={handleOpenAddModal}
                             className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"
@@ -236,188 +223,16 @@ const Inventory = ({
 
             {/* Product Modal */}
             {isProductModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-lg z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white p-10 rounded-[50px] w-full max-w-2xl shadow-2xl h-[90vh] overflow-y-auto custom-scrollbar">
-                        <div className="flex justify-between items-center mb-8">
-                            <h3 className="text-3xl font-black text-gray-800">
-                                {editingProduct ? "Edit" : "Add New"} Item
-                            </h3>
-                            <button onClick={() => setIsProductModalOpen(false)} className="p-3 bg-gray-100 rounded-full hover:bg-gray-200 transition-all">
-                                <X size={24} />
-                            </button>
-                        </div>
-
-                        <div className="space-y-8">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-1">Item Name</label>
-                                    <input
-                                        id="prod-name"
-                                        defaultValue={editingProduct?.name || ""}
-                                        placeholder="e.g. Butter Chicken"
-                                        className="w-full p-4 border-2 border-gray-100 rounded-2xl outline-none focus:border-indigo-500 bg-gray-50/50 font-bold"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-1">Category</label>
-                                    <select
-                                        id="prod-category"
-                                        value={selectedProductCategory}
-                                        onChange={(e) => setSelectedProductCategory(e.target.value)}
-                                        className="w-full p-4 border-2 border-gray-100 rounded-2xl bg-gray-50/50 outline-none focus:border-indigo-500 font-bold"
-                                    >
-                                        {categories.map((c) => (
-                                            <option key={c} value={c}>{c}</option>
-                                        ))}
-                                        <option value="NEW_CATEGORY_TRIGGER">+ Add New Category...</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            {selectedProductCategory === "NEW_CATEGORY_TRIGGER" && (
-                                <div className="animate-in fade-in slide-in-from-top-2">
-                                    <input
-                                        autoFocus
-                                        value={newCategoryName}
-                                        onChange={(e) => setNewCategoryName(e.target.value)}
-                                        placeholder="Type new category name..."
-                                        className="w-full p-4 border-2 border-indigo-500 rounded-2xl outline-none shadow-indigo-100 shadow-inner font-bold"
-                                    />
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 block ml-1">Selling Type</label>
-                                <div className="grid grid-cols-4 gap-3">
-                                    {["Standard", "Portion", "Weight", "Volume"].map((type) => (
-                                        <button
-                                            key={type}
-                                            onClick={() => setProdSellingType(type)}
-                                            className={`py-4 rounded-2xl text-xs font-black border-2 transition-all ${prodSellingType === type
-                                                ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200"
-                                                : "bg-white border-gray-100 text-gray-500 hover:border-indigo-100"
-                                                }`}
-                                        >
-                                            {type}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="p-8 bg-gray-50 rounded-[32px] border-2 border-dashed border-gray-200">
-                                {prodSellingType === "Standard" && (
-                                    <div>
-                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-1">Standard Price (INR)</label>
-                                        <input
-                                            id="prod-price"
-                                            type="number"
-                                            defaultValue={editingProduct?.price || ""}
-                                            placeholder="0.00"
-                                            className="w-full p-4 border-2 border-gray-100 rounded-2xl outline-none bg-white font-black text-xl"
-                                        />
-                                    </div>
-                                )}
-
-                                {prodSellingType === "Weight" && (
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-1">Price Per Unit</label>
-                                            <input
-                                                id="prod-price-unit"
-                                                type="number"
-                                                defaultValue={editingProduct?.pricePerUnit || ""}
-                                                placeholder="e.g. 500"
-                                                className="w-full p-4 border-2 border-gray-100 rounded-2xl outline-none bg-white font-black"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-1">Unit Name</label>
-                                            <input
-                                                id="prod-unit-name"
-                                                defaultValue={editingProduct?.unitName || "kg"}
-                                                placeholder="e.g. kg"
-                                                className="w-full p-4 border-2 border-gray-100 rounded-2xl outline-none bg-white font-black"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {(prodSellingType === "Portion" || prodSellingType === "Volume") && (
-                                    <div className="space-y-4">
-                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block ml-1">{prodSellingType} Variants</label>
-                                        {prodVariants.map((v, i) => (
-                                            <div key={i} className="flex gap-3">
-                                                <input
-                                                    value={v.name}
-                                                    onChange={(e) => {
-                                                        const n = [...prodVariants];
-                                                        n[i].name = e.target.value;
-                                                        setProdVariants(n);
-                                                    }}
-                                                    placeholder={prodSellingType === "Portion" ? "Size (e.g. Half)" : "Volume (e.g. 500ml)"}
-                                                    className="flex-1 p-4 border-2 border-gray-100 rounded-2xl text-sm font-bold outline-none bg-white"
-                                                />
-                                                <input
-                                                    type="number"
-                                                    value={v.price}
-                                                    onChange={(e) => {
-                                                        const n = [...prodVariants];
-                                                        n[i].price = e.target.value;
-                                                        setProdVariants(n);
-                                                    }}
-                                                    placeholder="Price"
-                                                    className="w-32 p-4 border-2 border-gray-100 rounded-2xl text-sm font-black outline-none bg-white"
-                                                />
-                                                {prodVariants.length > 1 && (
-                                                    <button
-                                                        onClick={() => setProdVariants(prodVariants.filter((_, idx) => idx !== i))}
-                                                        className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                        <button
-                                            onClick={() => setProdVariants([...prodVariants, { name: "", price: "" }])}
-                                            className="text-indigo-600 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 mt-4 ml-1 hover:text-indigo-800 transition-colors"
-                                        >
-                                            <Plus size={16} /> Add Variant
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div>
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-1">Tax Rate (%)</label>
-                                <input
-                                    id="prod-tax"
-                                    type="number"
-                                    defaultValue={editingProduct ? editingProduct.taxPercent : settings.defaultTaxPercent}
-                                    className="w-full p-4 border-2 border-gray-100 rounded-2xl outline-none focus:border-indigo-500 bg-gray-50/50 font-bold"
-                                />
-                            </div>
-
-                            <div className="flex gap-4 pt-4">
-                                <button
-                                    onClick={() => {
-                                        setIsProductModalOpen(false);
-                                        setEditingProduct(null);
-                                    }}
-                                    className="flex-1 py-5 font-black text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                    Discard
-                                </button>
-                                <button
-                                    onClick={handleSaveProduct}
-                                    className="flex-2 py-5 bg-indigo-600 text-white rounded-[24px] font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all text-lg"
-                                >
-                                    Save Product
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <ProductForm
+                    initialValues={editingProduct || {}}
+                    visibleFields={visibleFields}
+                    onSave={handleSaveProduct}
+                    onCancel={() => {
+                        setIsProductModalOpen(false);
+                        setEditingProduct(null);
+                    }}
+                    title={editingProduct ? "Edit Item" : "Add New Item"}
+                />
             )}
         </div>
     );

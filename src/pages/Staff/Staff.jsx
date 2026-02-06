@@ -2,20 +2,23 @@ import React, { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
 import { PERMISSIONS } from "./StaffService";
+import { ROUTE_ACCESS } from "../../config/permissionStructure";
 
 const Staff = ({
     staffList,
     setStaffList,
     rolesList,
     setRolesList,
-    hasPermission,
+    hasPermissionFor,
 }) => {
     const [activeStaffTab, setActiveStaffTab] = useState("staff");
     const [newStaffName, setNewStaffName] = useState("");
     const [newStaffPhone, setNewStaffPhone] = useState("");
     const [newStaffRole, setNewStaffRole] = useState("Staff");
 
-    if (!hasPermission("MANAGE_STAFF")) {
+    const staffAccess = ROUTE_ACCESS.STAFF;
+    const canView = hasPermissionFor?.(staffAccess.module, staffAccess.resource, staffAccess.action);
+    if (!canView) {
         return (
             <div className="p-8 text-center text-gray-500 font-bold">
                 You do not have permission to access Staff Management.
@@ -178,35 +181,38 @@ const Staff = ({
                                     </span>
                                 )}
                             </div>
-                            <div className="space-y-2">
-                                {Object.entries(PERMISSIONS).map(([key, label]) => (
-                                    <label
-                                        key={key}
-                                        className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={role.permissions.includes(key)}
-                                            disabled={role.name === "Admin"}
-                                            onChange={(e) => {
-                                                const newPerms = e.target.checked
-                                                    ? [...role.permissions, key]
-                                                    : role.permissions.filter((p) => p !== key);
-                                                setRolesList(
-                                                    rolesList.map((r) =>
-                                                        r.id === role.id
-                                                            ? { ...r, permissions: newPerms }
-                                                            : r
-                                                    )
-                                                );
-                                            }}
-                                            className="w-5 h-5 accent-indigo-600 rounded"
-                                        />
-                                        <span className="text-sm font-medium text-gray-700">
-                                            {label}
-                                        </span>
-                                    </label>
-                                ))}
+                            <div className="space-y-4">
+                                {(() => {
+                                    const byModule = {};
+                                    Object.entries(PERMISSIONS).forEach(([key, label]) => {
+                                        const moduleName = key.split(".")[0];
+                                        if (!byModule[moduleName]) byModule[moduleName] = [];
+                                        byModule[moduleName].push({ key, label });
+                                    });
+                                    const moduleLabels = { pos: "POS", orders: "Orders", kds: "KDS", reservations: "Reservations", inventory: "Inventory", reports: "Reports", settings: "Settings", staff: "Staff", organization: "Organization" };
+                                    return Object.entries(byModule).map(([moduleKey, perms]) => (
+                                        <div key={moduleKey} className="border-b border-gray-100 pb-3 last:border-0">
+                                            <p className="text-xs font-black text-indigo-600 uppercase tracking-wider mb-2">{moduleLabels[moduleKey] || moduleKey}</p>
+                                            <div className="space-y-1">
+                                                {perms.map(({ key, label }) => (
+                                                    <label key={key} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={role.permissions.includes(key)}
+                                                            disabled={role.name === "Admin"}
+                                                            onChange={(e) => {
+                                                                const newPerms = e.target.checked ? [...role.permissions, key] : role.permissions.filter((p) => p !== key);
+                                                                setRolesList(rolesList.map((r) => r.id === role.id ? { ...r, permissions: newPerms } : r));
+                                                            }}
+                                                            className="w-5 h-5 accent-indigo-600 rounded"
+                                                        />
+                                                        <span className="text-sm font-medium text-gray-700">{label}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ));
+                                })()}
                             </div>
                         </div>
                     ))}

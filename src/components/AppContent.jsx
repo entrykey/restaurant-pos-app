@@ -8,7 +8,7 @@ import { useDining } from "../pages/DiningHall/DiningContext";
 import { useTakeaway } from "../pages/Takeaway/TakeawayContext";
 import { useOnlineOrders } from "../pages/OnlineOrders/OnlineOrderContext";
 import { useAuth } from "../context/AuthContext";
-import { hasPermission as checkPermission } from "../utils/permissions";
+import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from "../utils/permissions";
 import { formatCurrency } from "../utils/format";
 
 // Modals
@@ -28,7 +28,9 @@ const AppContent = () => {
     // Context Hooks
     const {
         currentTime, menu, setMenu, addExpense, settings, setSettings,
-        salesHistory, setSalesHistory, rolesList, staffList, setRolesList, setStaffList
+        salesHistory, setSalesHistory, rolesList, staffList, setRolesList, setStaffList,
+        organization, setOrganization, branches, setBranches,
+        businessType, setBusinessType, businessSubtype, setBusinessSubtype, enabledModules, setEnabledModules,
     } = useApp();
 
     const {
@@ -40,7 +42,7 @@ const AppContent = () => {
     const {
         tables, setTables, activeTableId, setActiveTableId,
         reservations, setReservations, getTableDuration,
-        handleCheckInReservation, handleCompleteKOT
+        handleCheckInReservation, handleCompleteKOT, joinTables
     } = useDining();
 
     const {
@@ -80,6 +82,11 @@ const AppContent = () => {
 
     const hasPermission = (permissionKey) => {
         return checkPermission(currentUser, permissionKey);
+    };
+
+    /** Check by module.resource.action (e.g. organization, branch, create) */
+    const hasPermissionFor = (module, resource, action) => {
+        return checkPermissionFor(currentUser, module, resource, action);
     };
 
     const handleLogout = () => {
@@ -308,11 +315,29 @@ const AppContent = () => {
                 resetTakeaway();
             } else {
                 setTables((prev) =>
-                    prev.map((t) =>
-                        t.id === activeTableId
-                            ? { ...t, status: "available", order: null, startTime: null }
-                            : t
-                    )
+                    prev.map((t) => {
+                        // Reset the active table (Master)
+                        if (t.id === activeTableId) {
+                            return {
+                                ...t,
+                                status: "available",
+                                order: null,
+                                startTime: null,
+                                isParent: false,
+                                childTables: []
+                            };
+                        }
+                        // Reset any children of the active table
+                        if (t.parentTableId === activeTableId) {
+                            return {
+                                ...t,
+                                status: "available",
+                                parentTableId: null,
+                                startTime: null
+                            };
+                        }
+                        return t;
+                    })
                 );
             }
             setIsPaymentModalOpen(false);
@@ -385,6 +410,9 @@ const AppContent = () => {
                     shopName={settings.shopName}
                     rolesList={rolesList}
                     staffList={staffList}
+                    onSetBusinessType={setBusinessType}
+                    onSetBusinessSubtype={setBusinessSubtype}
+                    onSetEnabledModules={setEnabledModules}
                 />
             ) : (
                 <Layout
@@ -392,7 +420,22 @@ const AppContent = () => {
                     setView={setView}
                     currentUser={currentUser}
                     hasPermission={hasPermission}
+                    hasPermissionFor={hasPermissionFor}
                     handleLogout={handleLogout}
+                    businessType={businessType}
+                    businessSubtype={businessSubtype}
+                    enabledModules={enabledModules}
+                    onBusinessTypeChange={(type, subtype, modules) => {
+                        setBusinessType(type);
+                        setBusinessSubtype(subtype);
+                        // Create a completely new object with all module keys explicitly set
+                        const newModules = {};
+                        Object.keys(modules).forEach(key => {
+                            newModules[key] = modules[key] === true;
+                        });
+                        // Force a new object reference
+                        setEnabledModules({ ...newModules });
+                    }}
                     isTakeaway={isTakeaway}
                     setIsTakeaway={setIsTakeaway}
                     setTakeawayOrder={setTakeawayOrder}
@@ -433,6 +476,7 @@ const AppContent = () => {
                         setView={setView}
                         settings={settings}
                         hasPermission={hasPermission}
+                        hasPermissionFor={hasPermissionFor}
                         setActiveTableId={setActiveTableId}
                         setReservations={setReservations}
                         handleCheckInReservation={handleCheckInReservation}
@@ -457,6 +501,11 @@ const AppContent = () => {
                         setStaffList={setStaffList}
                         setSettings={setSettings}
                         setTables={setTables}
+                        organization={organization}
+                        setOrganization={setOrganization}
+                        branches={branches}
+                        setBranches={setBranches}
+                        joinTables={joinTables}
                     />
                 </Layout>
             )}
@@ -494,6 +543,7 @@ const AppContent = () => {
                 settings={settings}
                 onFinalizePayment={handleFinalizePayment}
                 hasPermission={hasPermission}
+                hasPermissionFor={hasPermissionFor}
             />
 
             <ExpenseModal

@@ -11,7 +11,8 @@ const PaymentModal = ({
     orderItems,
     settings,
     onFinalizePayment,
-    hasPermission
+    hasPermission,
+    hasPermissionFor,
 }) => {
     const {
         billingStage,
@@ -91,7 +92,7 @@ const PaymentModal = ({
                             </div>
 
                             {/* Coupon Code Section */}
-                            {hasPermission && hasPermission("APPLY_DISCOUNTS") && (
+                            {(hasPermissionFor?.( "pos", "order", "apply_discount") || (hasPermission && hasPermission("APPLY_DISCOUNTS"))) && (
                                 <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100 space-y-3">
                                     <div className="flex justify-between items-center">
                                         <span className="font-bold text-orange-900 text-sm flex items-center gap-2">

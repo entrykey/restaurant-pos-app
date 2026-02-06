@@ -24,14 +24,20 @@ const TableCard = ({
         if (table.isMaintenance && !isAdmin) return;
         onSelect?.(table);
       }}
-      className={`h-32 md:h-40 p-4 md:p-6 rounded-3xl cursor-pointer transition-all hover:scale-105 shadow-lg flex flex-col justify-between relative ${
-        table.isMaintenance
+      className={`h-32 md:h-40 p-4 md:p-6 rounded-3xl cursor-pointer transition-all hover:scale-105 shadow-lg flex flex-col justify-between relative ${table.isMaintenance
           ? "bg-red-50 border-2 border-red-200 opacity-80"
           : table.status === "occupied"
             ? "bg-indigo-600 text-white"
             : "bg-white border-2 border-dashed border-gray-200 text-gray-400 hover:border-indigo-400 hover:bg-indigo-50"
-      }`}
+        } ${table.isSelected ? "ring-4 ring-indigo-400 ring-offset-2" : ""}`}
     >
+      {/* Selection Checkbox (Visual only, state controlled by parent) */}
+      {table.isSelectionMode && (
+        <div className={`absolute top-2 left-2 w-6 h-6 rounded-full border-2 flex items-center justify-center z-30 ${table.isSelected ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-300"}`}>
+          {table.isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
+        </div>
+      )}
+
       {/* Maintenance Badge */}
       {table.isMaintenance && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 backdrop-blur-[2px] rounded-3xl z-10">
@@ -49,23 +55,16 @@ const TableCard = ({
         </div>
       )}
 
-      <div className="flex justify-between items-start">
+      <div className="flex justify-between items-start pl-6">
         <div>
           <span className="font-black text-xl md:text-2xl">{table.name}</span>
           <div className="flex gap-2 mt-1 opacity-70">
             <span className="text-[10px] flex items-center gap-1">
               <Users size={10} /> {table.capacity}
             </span>
-            <span className="text-[10px] flex items-center gap-1">
-              {table.area === "AC" ? (
-                <Wind size={10} />
-              ) : table.area === "Outdoor" ? (
-                <Sun size={10} />
-              ) : (
-                <Armchair size={10} />
-              )}
-              {table.area}
-            </span>
+            {/* Parent/Child Indicator */}
+            {table.isParent && <span className="text-[10px] font-bold bg-white/20 px-1 rounded">Master</span>}
+            {table.parentTableId && <span className="text-[10px] font-bold bg-white/20 px-1 rounded">Joined</span>}
           </div>
         </div>
         {table.order?.isSentToKOT && (

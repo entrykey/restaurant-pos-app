@@ -106,6 +106,40 @@ export const DiningProvider = ({ children }) => {
         );
     };
 
+    const joinTables = (tableIds) => {
+        if (!tableIds || tableIds.length < 2) return;
+
+        // Correctly parse IDs to integers to match table IDs
+        const ids = tableIds.map(id => parseInt(id));
+        const primaryTableId = ids[0];
+        const primaryStartTime = Date.now();
+
+        setTables(prev => prev.map(t => {
+            // Is this the primary table?
+            if (t.id === primaryTableId) {
+                return {
+                    ...t,
+                    status: 'occupied',
+                    startTime: primaryStartTime,
+                    order: { items: [], isSentToKOT: false },
+                    isParent: true,
+                    childTables: ids.slice(1)
+                };
+            }
+            // Is this one of the child tables?
+            if (ids.includes(t.id)) {
+                return {
+                    ...t,
+                    status: 'occupied',
+                    startTime: primaryStartTime,
+                    parentTableId: primaryTableId,
+                    order: null // Children don't have orders
+                };
+            }
+            return t;
+        }));
+    };
+
     return (
         <DiningContext.Provider
             value={{
@@ -117,7 +151,9 @@ export const DiningProvider = ({ children }) => {
                 setReservations,
                 getTableDuration,
                 handleCheckInReservation,
-                handleCompleteKOT
+                handleCheckInReservation,
+                handleCompleteKOT,
+                joinTables
             }}
         >
             {children}

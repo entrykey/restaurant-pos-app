@@ -3,6 +3,8 @@ import { Globe, RefreshCw, ShoppingBag, Search, Filter, X, Phone, MapPin, Calend
 import OnlineOrderCard from '../../components/OnlineOrderCard';
 import { onlineOrdersService } from './OnlineOrdersService';
 
+import { ROUTE_ACCESS } from "../../config/permissionStructure";
+
 const OnlineOrders = ({
     onlineOrders,
     setOnlineOrders,
@@ -14,7 +16,7 @@ const OnlineOrders = ({
     handleRejectOnlineOrder,
     handleCompleteOnlineKOT,
     setPreviewOrder,
-    hasPermission
+    hasPermissionFor,
 }) => {
     const [selectedOrder, setSelectedOrder] = useState(null);
 
@@ -39,7 +41,9 @@ const OnlineOrders = ({
         return ["rejected", "completed", "cancelled"].includes(o.status);
     });
 
-    if (!hasPermission("MANAGE_ONLINE_ORDERS")) {
+    const ordersAccess = ROUTE_ACCESS.ONLINE_ORDERS;
+    const canView = hasPermissionFor?.(ordersAccess.module, ordersAccess.resource, ordersAccess.action);
+    if (!canView) {
         return (
             <div className="h-full flex items-center justify-center bg-gray-50">
                 <div className="text-center p-12 bg-white rounded-[40px] shadow-xl border max-w-md">

@@ -1,5 +1,6 @@
-import React from "react";
-import { UserCheck, Clock, Wifi, WifiOff, Menu } from "lucide-react";
+import React, { useState } from "react";
+import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2 } from "lucide-react";
+import BusinessTypeModal from "./BusinessTypeModal";
 
 const Navbar = ({
     currentUser,
@@ -8,7 +9,12 @@ const Navbar = ({
     setIsOnlineOrderingEnabled,
     shopName,
     onMobileSidebarOpen,
+    businessType,
+    businessSubtype,
+    enabledModules,
+    onBusinessTypeChange,
 }) => {
+    const [isBusinessTypeModalOpen, setIsBusinessTypeModalOpen] = useState(false);
     return (
         <div className="h-16 bg-white border-b px-4 md:px-8 flex items-center justify-between shrink-0 w-full">
             <div className="flex items-center gap-4 md:gap-6">
@@ -37,28 +43,50 @@ const Navbar = ({
 
             <div className="flex items-center gap-4">
                 {(currentUser.role === "Admin" || currentUser.role === "Manager") && (
-                    <div
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all ${isOnlineOrderingEnabled
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                            }`}
-                        onClick={() => setIsOnlineOrderingEnabled(!isOnlineOrderingEnabled)}
-                        title="Toggle Online Orders"
-                    >
-                        {isOnlineOrderingEnabled ? (
-                            <Wifi size={16} />
-                        ) : (
-                            <WifiOff size={16} />
-                        )}
-                        <span className="text-xs font-bold hidden sm:inline">
-                            {isOnlineOrderingEnabled ? "Online ON" : "Online OFF"}
-                        </span>
-                    </div>
+                    <>
+                        <button
+                            onClick={() => setIsBusinessTypeModalOpen(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all"
+                            title="Change Business Type"
+                        >
+                            <Building2 size={16} />
+                            <span className="text-xs font-bold hidden sm:inline capitalize">
+                                {businessType}
+                            </span>
+                        </button>
+                        <div
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all ${isOnlineOrderingEnabled
+                                ? "bg-green-100 text-green-700"
+                                : "bg-red-100 text-red-700"
+                                }`}
+                            onClick={() => setIsOnlineOrderingEnabled(!isOnlineOrderingEnabled)}
+                            title="Toggle Online Orders"
+                        >
+                            {isOnlineOrderingEnabled ? (
+                                <Wifi size={16} />
+                            ) : (
+                                <WifiOff size={16} />
+                            )}
+                            <span className="text-xs font-bold hidden sm:inline">
+                                {isOnlineOrderingEnabled ? "Online ON" : "Online OFF"}
+                            </span>
+                        </div>
+                    </>
                 )}
                 <div className="text-indigo-900 font-black tracking-tighter text-lg md:text-xl">
                     {shopName}
                 </div>
             </div>
+
+            {/* Business Type Modal */}
+            <BusinessTypeModal
+                isOpen={isBusinessTypeModalOpen}
+                onClose={() => setIsBusinessTypeModalOpen(false)}
+                businessType={businessType}
+                businessSubtype={businessSubtype}
+                enabledModules={enabledModules}
+                onSave={onBusinessTypeChange}
+            />
         </div>
     );
 };

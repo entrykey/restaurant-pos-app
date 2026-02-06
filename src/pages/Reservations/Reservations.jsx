@@ -3,11 +3,13 @@ import { CalendarCheck, Plus, Search, Filter, X, Phone, Users, Clock, Calendar, 
 import ReservationCard from '../../components/ReservationCard';
 import { reservationsService } from './ReservationsService';
 
+import { ROUTE_ACCESS } from "../../config/permissionStructure";
+
 const Reservations = ({
     reservations,
     setReservations,
     handleCheckInReservation,
-    hasPermission
+    hasPermissionFor,
 }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newRes, setNewRes] = useState({
@@ -40,7 +42,9 @@ const Reservations = ({
 
     const filteredReservations = reservations.filter(res => res.date === filterDate);
 
-    if (!hasPermission("MANAGE_RESERVATIONS")) {
+    const reservationsAccess = ROUTE_ACCESS.RESERVATIONS;
+    const canView = hasPermissionFor?.(reservationsAccess.module, reservationsAccess.resource, reservationsAccess.action);
+    if (!canView) {
         return (
             <div className="h-full flex items-center justify-center bg-gray-50">
                 <div className="text-center p-12 bg-white rounded-[40px] shadow-xl border max-w-md">

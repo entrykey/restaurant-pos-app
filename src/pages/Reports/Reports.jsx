@@ -17,18 +17,22 @@ import {
 import CommonTable from '../../components/CommonTable';
 import { formatCurrency } from '../../utils/format';
 
+import { ROUTE_ACCESS } from "../../config/permissionStructure";
+
 const Reports = ({
     salesHistory = [],
     staffList = [],
     tables = [],
     onlineOrders = [],
     settings = { defaultTaxPercent: 5 },
-    hasPermission
+    hasPermissionFor,
 }) => {
     const [reportCategory, setReportCategory] = useState("sales");
     const [filterDate, setFilterDate] = useState(new Date().toISOString().split("T")[0]);
 
-    if (!hasPermission("VIEW_REPORTS")) {
+    const reportsAccess = ROUTE_ACCESS.REPORTS;
+    const canView = hasPermissionFor?.(reportsAccess.module, reportsAccess.resource, reportsAccess.action);
+    if (!canView) {
         return <div className="p-8 text-center text-gray-500 font-bold">You don't have permission to view reports.</div>;
     }
 

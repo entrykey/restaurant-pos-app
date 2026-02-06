@@ -8,6 +8,7 @@ const Layout = ({
     setView,
     currentUser,
     hasPermission,
+    hasPermissionFor,
     handleLogout,
     isTakeaway,
     setIsTakeaway,
@@ -18,6 +19,10 @@ const Layout = ({
     isOnlineOrderingEnabled,
     setIsOnlineOrderingEnabled,
     shopName,
+    businessType,
+    businessSubtype,
+    enabledModules,
+    onBusinessTypeChange,
 }) => {
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -32,6 +37,10 @@ const Layout = ({
                     setIsOnlineOrderingEnabled={setIsOnlineOrderingEnabled}
                     shopName={shopName}
                     onMobileSidebarOpen={() => setIsMobileSidebarOpen(true)}
+                    businessType={businessType}
+                    businessSubtype={businessSubtype}
+                    enabledModules={enabledModules}
+                    onBusinessTypeChange={onBusinessTypeChange}
                 />
             </div>
 
@@ -39,9 +48,11 @@ const Layout = ({
             <div className="flex h-[calc(100vh-64px)] overflow-hidden">
                 {/* Sidebar */}
                 <Sidebar
+                    key={JSON.stringify(enabledModules)} // Force re-render when enabledModules changes
                     view={view}
                     setView={setView}
                     hasPermission={hasPermission}
+                    hasPermissionFor={hasPermissionFor}
                     handleLogout={handleLogout}
                     isTakeaway={isTakeaway}
                     setIsTakeaway={setIsTakeaway}
@@ -50,6 +61,9 @@ const Layout = ({
                     pendingOnlineOrdersCount={pendingOnlineOrdersCount}
                     mobileOpen={isMobileSidebarOpen}
                     onMobileClose={() => setIsMobileSidebarOpen(false)}
+                    enabledModules={enabledModules}
+                    businessType={businessType}
+                    businessSubtype={businessSubtype}
                 />
 
                 {/* Main Content */}

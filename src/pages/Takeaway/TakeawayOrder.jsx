@@ -39,10 +39,8 @@ const TakeawayOrder = ({
     setIsTakeaway,
     setView,
     settings,
-    hasPermission = () => {
-        console.warn("hasPermission prop is missing in TakeawayOrder");
-        return false;
-    },
+    hasPermission,
+    hasPermissionFor = () => false,
     currentUser
 }) => {
     const [menu, setMenu] = useState([]);
@@ -295,10 +293,10 @@ const TakeawayOrder = ({
                                     setIsPaymentModalOpen(true);
                                     setBillingStage("review");
                                 }}
-                                disabled={!hasPermission("PROCESS_PAYMENTS") || currentOrder.items.length === 0}
+                                disabled={!hasPermissionFor("pos", "order", "process_payment") || currentOrder.items.length === 0}
                                 className="py-3 md:py-4 rounded-xl font-bold bg-green-600 text-white shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-300 disabled:shadow-none"
                             >
-                                {hasPermission("PROCESS_PAYMENTS") ? "Checkout" : "Checkout (Restricted)"}
+                                {hasPermissionFor("pos", "order", "process_payment") ? "Checkout" : "Checkout (Restricted)"}
                             </button>
                         </div>
                     </div>

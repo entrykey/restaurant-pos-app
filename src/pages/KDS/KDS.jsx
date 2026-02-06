@@ -2,15 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { MonitorPlay, ChefHat, RefreshCw, Search, Filter } from 'lucide-react';
 import KDSCard from '../../components/KDSCard';
 
+import { ROUTE_ACCESS } from "../../config/permissionStructure";
+
 const KDS = ({
     tables,
     onlineOrders,
     handleCompleteKOT,
     handleCompleteOnlineKOT,
     currentTime,
-    hasPermission
+    hasPermissionFor,
 }) => {
-    if (!hasPermission("VIEW_KDS")) {
+    const kdsAccess = ROUTE_ACCESS.KDS;
+    const canView = hasPermissionFor?.(kdsAccess.module, kdsAccess.resource, kdsAccess.action);
+    if (!canView) {
         return (
             <div className="h-full flex items-center justify-center bg-gray-50">
                 <div className="text-center p-12 bg-white rounded-[40px] shadow-xl border max-w-md">

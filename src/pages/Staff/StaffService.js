@@ -1,53 +1,74 @@
-export const PERMISSIONS = {
-    POS_ACCESS: "Access POS System",
-    MANAGE_ORDERS: "Manage Orders (Edit/Delete)",
-    MANAGE_INVENTORY: "Manage Inventory",
-    VIEW_REPORTS: "View Reports",
-    ACCESS_SETTINGS: "Access Settings",
-    MANAGE_STAFF: "Manage Staff & Roles",
-    MANAGE_RESERVATIONS: "Manage Reservations",
-    MANAGE_ONLINE_ORDERS: "Manage Online Orders",
-    VIEW_KDS: "View Kitchen Display System (KDS)",
-};
+import {
+    PERMISSIONS_WITH_LABELS,
+    ALL_PERMISSION_KEYS_LIST,
+    buildPermissionKey,
+    MODULES,
+    DEFAULT_ACTIONS,
+    EXTRA_ACTIONS,
+} from "../../config/permissionStructure";
+
+/** Permission key -> label for role editor. Backend can send same keys. */
+export const PERMISSIONS = PERMISSIONS_WITH_LABELS;
+
+/** All permission keys (for Admin full access) */
+const ALL_KEYS = ALL_PERMISSION_KEYS_LIST;
 
 export const initialRoles = [
     {
         id: 1,
         name: "Admin",
-        permissions: Object.keys(PERMISSIONS),
+        permissions: [...ALL_KEYS],
     },
     {
         id: 2,
         name: "Manager",
         permissions: [
-            "POS_ACCESS",
-            "MANAGE_ORDERS",
-            "MANAGE_INVENTORY",
-            "VIEW_REPORTS",
-            "MANAGE_RESERVATIONS",
-            "MANAGE_ONLINE_ORDERS",
-            "VIEW_KDS",
+            buildPermissionKey(MODULES.POS, "dining", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.POS, "takeaway", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.POS, "order", EXTRA_ACTIONS.PROCESS_PAYMENT),
+            buildPermissionKey(MODULES.POS, "order", EXTRA_ACTIONS.APPLY_DISCOUNT),
+            buildPermissionKey(MODULES.ORDERS, "online_orders", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.ORDERS, "online_orders", "manage"),
+            buildPermissionKey(MODULES.KDS, "kds", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.RESERVATIONS, "reservation", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.RESERVATIONS, "reservation", "manage"),
+            buildPermissionKey(MODULES.INVENTORY, "inventory", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.INVENTORY, "inventory", "manage"),
+            buildPermissionKey(MODULES.REPORTS, "report", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.SETTINGS, "settings", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.SETTINGS, "settings", "manage"),
+            buildPermissionKey(MODULES.STAFF, "staff", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.STAFF, "staff", "manage"),
         ],
     },
     {
         id: 3,
         name: "Cashier",
         permissions: [
-            "POS_ACCESS",
-            "MANAGE_ORDERS",
-            "MANAGE_RESERVATIONS",
-            "MANAGE_ONLINE_ORDERS",
+            buildPermissionKey(MODULES.POS, "dining", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.POS, "takeaway", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.POS, "order", EXTRA_ACTIONS.PROCESS_PAYMENT),
+            buildPermissionKey(MODULES.POS, "order", EXTRA_ACTIONS.APPLY_DISCOUNT),
+            buildPermissionKey(MODULES.ORDERS, "online_orders", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.ORDERS, "online_orders", "manage"),
+            buildPermissionKey(MODULES.RESERVATIONS, "reservation", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.RESERVATIONS, "reservation", "manage"),
         ],
     },
     {
         id: 4,
         name: "Chef",
-        permissions: ["VIEW_KDS"],
+        permissions: [
+            buildPermissionKey(MODULES.KDS, "kds", DEFAULT_ACTIONS.VIEW),
+        ],
     },
     {
         id: 5,
         name: "Waiter",
-        permissions: ["POS_ACCESS"],
+        permissions: [
+            buildPermissionKey(MODULES.POS, "dining", DEFAULT_ACTIONS.VIEW),
+            buildPermissionKey(MODULES.POS, "takeaway", DEFAULT_ACTIONS.VIEW),
+        ],
     },
 ];
 

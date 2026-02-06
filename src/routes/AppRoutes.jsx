@@ -1,5 +1,11 @@
 import React, { useEffect } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import {
+  ORGANIZATION_PERMISSION_KEYS,
+  MODULES,
+  ACTIONS,
+  buildPermissionKey,
+} from "../config/permissionStructure";
 import DiningHall from "../pages/DiningHall/DiningHall";
 import TakeawayOrder from "../pages/Takeaway/TakeawayOrder";
 import OnlineOrders from "../pages/OnlineOrders/OnlineOrders";
@@ -9,6 +15,8 @@ import Inventory from "../pages/Inventory/Inventory";
 import Reports from "../pages/Reports/Reports";
 import Settings from "../pages/Settings/Settings";
 import Staff from "../pages/Staff/Staff";
+import Organization from "../pages/Organization/Organization";
+import Supplier from "../pages/Suppliers/Supplier";
 
 const TableOrderWrapper = ({ setActiveTableId, setView, setIsTakeaway, children }) => {
   const { tableId } = useParams();
@@ -31,6 +39,11 @@ const TakeawayOrderWrapper = ({ setView, setIsTakeaway, children }) => {
 
   return <div className="h-full">{children}</div>;
 };
+
+// ---------------------------------------------------------------------------
+// Permission keys for backend (use these exact strings when storing/returning permissions)
+// ---------------------------------------------------------------------------
+export { ORGANIZATION_PERMISSION_KEYS, MODULES, ACTIONS, buildPermissionKey };
 
 const AppRoutes = (props) => {
   const {
@@ -60,6 +73,7 @@ const AppRoutes = (props) => {
     setView,
     settings,
     hasPermission,
+    hasPermissionFor,
     setActiveTableId,
     reservations,
     getTableDuration,
@@ -82,6 +96,10 @@ const AppRoutes = (props) => {
     setMenu,
     salesHistory,
     staffList,
+    organization,
+    setOrganization,
+    branches,
+    setBranches,
   } = props;
 
   const orderProps = {
@@ -109,6 +127,7 @@ const AppRoutes = (props) => {
     setView,
     settings,
     hasPermission: hasPermission || props.hasPermission || (() => false),
+    hasPermissionFor: hasPermissionFor || props.hasPermissionFor || (() => false),
     currentUser: currentUser || props.currentUser,
   };
 
@@ -131,6 +150,7 @@ const AppRoutes = (props) => {
               setView={setView}
               setOrderSearch={setOrderSearch}
               setActiveTableId={setActiveTableId}
+              joinTables={props.joinTables}
             />
           }
         />
@@ -177,7 +197,7 @@ const AppRoutes = (props) => {
               handleRejectOnlineOrder={handleRejectOnlineOrder}
               handleCompleteOnlineKOT={handleCompleteOnlineKOT}
               setPreviewOrder={setPreviewOrder}
-              hasPermission={hasPermission || props.hasPermission}
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
             />
           }
         />
@@ -190,7 +210,7 @@ const AppRoutes = (props) => {
               reservations={reservations}
               setReservations={setReservations}
               handleCheckInReservation={handleCheckInReservation}
-              hasPermission={hasPermission || props.hasPermission}
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
             />
           }
         />
@@ -205,7 +225,7 @@ const AppRoutes = (props) => {
               handleCompleteKOT={handleCompleteKOT}
               handleCompleteOnlineKOT={handleCompleteOnlineKOT}
               currentTime={currentTime}
-              hasPermission={hasPermission || props.hasPermission}
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
             />
           }
         />
@@ -219,7 +239,7 @@ const AppRoutes = (props) => {
               setMenu={setMenu}
               formatCurrency={formatCurrency}
               settings={settings}
-              hasPermission={hasPermission || props.hasPermission}
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
             />
           }
         />
@@ -234,7 +254,7 @@ const AppRoutes = (props) => {
               tables={tables}
               onlineOrders={onlineOrders}
               settings={settings}
-              hasPermission={hasPermission || props.hasPermission}
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
             />
           }
         />
@@ -250,6 +270,21 @@ const AppRoutes = (props) => {
               setTables={props.setTables}
               authLogs={props.authLogs}
               hasPermission={hasPermission || props.hasPermission}
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
+            />
+          }
+        />
+
+        {/* Organization Route */}
+        <Route
+          path="/organization"
+          element={
+            <Organization
+              organization={organization}
+              setOrganization={setOrganization}
+              branches={branches}
+              setBranches={setBranches}
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
             />
           }
         />
@@ -264,6 +299,17 @@ const AppRoutes = (props) => {
               rolesList={props.rolesList}
               setRolesList={props.setRolesList}
               hasPermission={hasPermission || props.hasPermission}
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
+            />
+          }
+        />
+
+        {/* Suppliers Route */}
+        <Route
+          path="/suppliers"
+          element={
+            <Supplier
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
             />
           }
         />
@@ -297,7 +343,13 @@ const AppRoutes = (props) => {
               {view === "reports" && (
                 <Navigate to="/reports" replace />
               )}
-              {view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && props.children}
+              {view === "organization" && (
+                <Navigate to="/organization" replace />
+              )}
+              {view === "suppliers" && (
+                <Navigate to="/suppliers" replace />
+              )}
+              {view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && props.children}
             </>
           }
         />
