@@ -14,7 +14,8 @@ import {
     ShoppingBag,
     Building2,
     LayoutDashboard,
-    Truck
+    Truck,
+    Wrench
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ROUTE_ACCESS } from "../config/permissionStructure";
@@ -253,6 +254,23 @@ const Sidebar = ({
                 title="Suppliers"
             >
                 <Truck className="w-6 h-6 md:w-7 md:h-7" />
+            </button>
+        ),
+        SERVICE: (
+            <button
+                key="SERVICE"
+                onClick={() => {
+                    setView("service");
+                    navigate("/service");
+                    closeMobile();
+                }}
+                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "service"
+                    ? "bg-indigo-600 shadow-xl scale-110"
+                    : "hover:bg-indigo-800"
+                    }`}
+                title="Service & Repairs"
+            >
+                <Wrench className="w-6 h-6 md:w-7 md:h-7" />
             </button>
         ),
     };

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { initialMenu } from "../pages/Inventory/InventoryService";
+import { initialMenu, initialInventoryItems } from "../pages/Inventory/InventoryService";
 import { initialSettings } from "../pages/Settings/SettingsService";
 import { initialSalesHistory } from "../pages/Reports/ReportsService";
 import { initialRoles, initialStaff } from "../pages/Staff/StaffService";
@@ -21,6 +21,7 @@ export const AppProvider = ({ children }) => {
 
     // Menu State
     const [menu, setMenu] = useState(initialMenu);
+    const [inventoryItems, setInventoryItems] = useState(initialInventoryItems);
     const [activeMenuCategory, setActiveMenuCategory] = useState("All");
 
     // Expenses State
@@ -101,6 +102,8 @@ export const AppProvider = ({ children }) => {
                 setBusinessSubtype,
                 enabledModules,
                 setEnabledModules,
+                inventoryItems,
+                setInventoryItems,
             }}
         >
             {children}

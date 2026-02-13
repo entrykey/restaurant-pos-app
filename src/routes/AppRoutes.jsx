@@ -16,7 +16,11 @@ import Reports from "../pages/Reports/Reports";
 import Settings from "../pages/Settings/Settings";
 import Staff from "../pages/Staff/Staff";
 import Organization from "../pages/Organization/Organization";
+
 import Supplier from "../pages/Suppliers/Supplier";
+import ServiceList from "../pages/Service/ServiceList";
+import ServiceCreate from "../pages/Service/ServiceCreate";
+import ServiceDetails from "../pages/Service/ServiceDetails";
 
 const TableOrderWrapper = ({ setActiveTableId, setView, setIsTakeaway, children }) => {
   const { tableId } = useParams();
@@ -100,6 +104,8 @@ const AppRoutes = (props) => {
     setOrganization,
     branches,
     setBranches,
+    inventoryItems,
+    setInventoryItems,
   } = props;
 
   const orderProps = {
@@ -237,6 +243,8 @@ const AppRoutes = (props) => {
             <Inventory
               menu={menu}
               setMenu={setMenu}
+              inventoryItems={inventoryItems}
+              setInventoryItems={setInventoryItems}
               formatCurrency={formatCurrency}
               settings={settings}
               hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
@@ -314,6 +322,32 @@ const AppRoutes = (props) => {
           }
         />
 
+        {/* Service Routes */}
+        <Route
+          path="/service"
+          element={
+            <ServiceList
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
+            />
+          }
+        />
+        <Route
+          path="/service/new"
+          element={
+            <ServiceCreate
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
+            />
+          }
+        />
+        <Route
+          path="/service/:id"
+          element={
+            <ServiceDetails
+              hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
+            />
+          }
+        />
+
         {/* Maintain existing view-based logic for other pages for now */}
         <Route
           path="*"
@@ -349,7 +383,10 @@ const AppRoutes = (props) => {
               {view === "suppliers" && (
                 <Navigate to="/suppliers" replace />
               )}
-              {view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && props.children}
+              {view === "service" && (
+                <Navigate to="/service" replace />
+              )}
+              {view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "service" && props.children}
             </>
           }
         />

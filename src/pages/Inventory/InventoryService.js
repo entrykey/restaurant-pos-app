@@ -115,6 +115,59 @@ export const initialMenu = [
     }
 ];
 
+export const initialInventoryItems = [
+    {
+        id: "raw1",
+        name: "Chicken Breast",
+        category: "Meat",
+        unit: "kg", // Base unit for stock
+        costPerUnit: 220,
+        currentStock: 15.5,
+        minStockLevel: 5,
+        supplier: "Fresh Farms",
+    },
+    {
+        id: "raw2",
+        name: "Basmati Rice",
+        category: "Grains",
+        unit: "kg",
+        costPerUnit: 85,
+        currentStock: 50,
+        minStockLevel: 20,
+        supplier: "Grain World",
+    },
+    {
+        id: "raw3",
+        name: "Tomatoes",
+        category: "Vegetables",
+        unit: "kg",
+        costPerUnit: 30,
+        currentStock: 8,
+        minStockLevel: 5,
+        supplier: "Veggie King",
+    },
+    {
+        id: "raw4",
+        name: "Cooking Oil",
+        category: "Oil",
+        unit: "L",
+        costPerUnit: 110,
+        currentStock: 25,
+        minStockLevel: 10,
+        supplier: "Oil Baron",
+    },
+    {
+        id: "raw5",
+        name: "Milk",
+        category: "Dairy",
+        unit: "L",
+        costPerUnit: 55,
+        currentStock: 12,
+        minStockLevel: 5,
+        supplier: "Milky Way",
+    }
+];
+
 export const inventoryService = {
     getCategories: (menu) => {
         return ["All", ...new Set(menu.map((item) => item.category))];

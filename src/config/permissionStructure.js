@@ -31,6 +31,7 @@ export const MODULES = Object.freeze({
   REPORTS: "reports",
   SETTINGS: "settings",
   STAFF: "staff",
+  SERVICE: "service",
 });
 
 /**
@@ -46,6 +47,7 @@ export const MODULE_RESOURCES = Object.freeze({
   [MODULES.REPORTS]: ["report"],
   [MODULES.SETTINGS]: ["settings"],
   [MODULES.STAFF]: ["staff"],
+  [MODULES.SERVICE]: ["service", "jobcard"],
 });
 
 /**
@@ -87,6 +89,7 @@ export const ROUTE_ACCESS = Object.freeze({
   SETTINGS: { module: MODULES.SETTINGS, resource: "settings", action: "view" },
   STAFF: { module: MODULES.STAFF, resource: "staff", action: "view" },
   ORGANIZATION: { module: MODULES.ORGANIZATION, resource: "organization", action: "view" },
+  SERVICE: { module: MODULES.SERVICE, resource: "service", action: "view" },
 });
 
 /** Optional: page-level "manage" for sections that have edit/delete (e.g. staff.staff.manage) */
@@ -96,6 +99,7 @@ export const ROUTE_ACCESS_MANAGE = Object.freeze({
   INVENTORY: { module: MODULES.INVENTORY, resource: "inventory", action: "manage" },
   SETTINGS: { module: MODULES.SETTINGS, resource: "settings", action: "manage" },
   STAFF: { module: MODULES.STAFF, resource: "staff", action: "manage" },
+  SERVICE: { module: MODULES.SERVICE, resource: "service", action: "manage" },
 });
 
 /**
@@ -150,6 +154,7 @@ function buildPermissionsWithLabels() {
         SETTINGS: "View Settings",
         STAFF: "View Staff",
         ORGANIZATION: "View Organization",
+        SERVICE: "View Service",
       };
       return r(module, resource, action, labels[routeKey] || `${resource} ${action}`);
     }),
@@ -160,6 +165,7 @@ function buildPermissionsWithLabels() {
     r(MODULES.INVENTORY, "inventory", "manage", "Manage Inventory"),
     r(MODULES.SETTINGS, "settings", "manage", "Manage Settings"),
     r(MODULES.STAFF, "staff", "manage", "Manage Staff & Roles"),
+    r(MODULES.SERVICE, "service", "manage", "Manage Service"),
     ...ORGANIZATION_PERMISSION_KEYS_LIST.map((k) => {
       const [, resource, action] = k.split(".");
       const resLabel = resource === "branch" ? "Branch" : "Organization";

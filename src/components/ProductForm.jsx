@@ -1,16 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ALL_FIELDS } from '../config/itemFields';
-import { X } from 'lucide-react';
+import { X, Plus, Trash2 } from 'lucide-react';
 
 const ProductForm = ({
     initialValues = {},
     visibleFields = [],
     onSave,
     onCancel,
-    title = "Add Item"
+    title = "Add Item",
+    inventoryItems = [], // List of raw items for recipe
+    showRecipe = true
 }) => {
     const [formData, setFormData] = useState(initialValues);
     const [errors, setErrors] = useState({});
+
+    // Recipe / Ingredients State
+    const [ingredients, setIngredients] = useState(initialValues.ingredients || []);
+    const [selectedRawItem, setSelectedRawItem] = useState("");
+    const [ingredientQty, setIngredientQty] = useState("");
+    const [ingredientUnit, setIngredientUnit] = useState("unit");
 
     // Group fields by section for better UI
     const groupedFields = visibleFields.reduce((acc, fieldKey) => {
@@ -39,6 +47,29 @@ const ProductForm = ({
         }
     };
 
+    const handleAddIngredient = () => {
+        if (!selectedRawItem || !ingredientQty) return;
+
+        const rawItem = inventoryItems.find(i => i.id === selectedRawItem);
+        if (!rawItem) return;
+
+        const newIngredient = {
+            rawItemId: rawItem.id,
+            name: rawItem.name,
+            quantity: parseFloat(ingredientQty),
+            unit: ingredientUnit,
+            cost: (rawItem.costPerUnit / ((rawItem.weightUnit || rawItem.unit) === ingredientUnit ? 1 : 1)) * parseFloat(ingredientQty) // Simple cost calc
+        };
+
+        setIngredients([...ingredients, newIngredient]);
+        setSelectedRawItem("");
+        setIngredientQty("");
+    };
+
+    const handleRemoveIngredient = (index) => {
+        setIngredients(ingredients.filter((_, i) => i !== index));
+    };
+
     const validate = () => {
         const newErrors = {};
         visibleFields.forEach(fieldKey => {
@@ -56,7 +87,10 @@ const ProductForm = ({
 
     const handleSubmit = () => {
         if (validate()) {
-            onSave(formData);
+            onSave({
+                ...formData,
+                ingredients: ingredients // Include recipe
+            });
         }
     };
 
@@ -105,8 +139,8 @@ const ProductForm = ({
                                                 <button
                                                     onClick={() => handleChange(field.key, true)}
                                                     className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${formData[field.key] === true
-                                                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                                                            : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-indigo-200'
+                                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                                                        : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-indigo-200'
                                                         }`}
                                                 >
                                                     Yes
@@ -114,8 +148,8 @@ const ProductForm = ({
                                                 <button
                                                     onClick={() => handleChange(field.key, false)}
                                                     className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${formData[field.key] === false
-                                                            ? 'bg-red-500 text-white shadow-lg shadow-red-200'
-                                                            : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-red-200'
+                                                        ? 'bg-red-500 text-white shadow-lg shadow-red-200'
+                                                        : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-red-200'
                                                         }`}
                                                 >
                                                     No
@@ -139,6 +173,92 @@ const ProductForm = ({
                             </div>
                         </div>
                     ))}
+
+                    {/* NEW RECIPE SECTION */}
+                    {showRecipe && (
+                        <div className="bg-orange-50/50 p-6 rounded-3xl border border-orange-100">
+                            <h4 className="text-lg font-black text-orange-600 mb-4 border-b border-orange-200 pb-2">Recipe / Ingredients</h4>
+                            <p className="text-sm text-gray-500 mb-4">Define what raw items are used to make this product.</p>
+
+                            <div className="flex flex-col md:flex-row gap-3 mb-4 items-end">
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Raw Item</label>
+                                    <select
+                                        value={selectedRawItem}
+                                        onChange={(e) => {
+                                            setSelectedRawItem(e.target.value);
+                                            // Auto-set unit from raw item
+                                            const item = inventoryItems.find(i => i.id === e.target.value);
+                                            if (item) setIngredientUnit(item.weightUnit || item.unit);
+                                        }}
+                                        className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-orange-400"
+                                    >
+                                        <option value="">Select Ingredient</option>
+                                        {inventoryItems.map(item => (
+                                            <option key={item.id} value={item.id}>{item.name} ({item.weightUnit || item.unit})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="w-full md:w-32">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Qty</label>
+                                    <input
+                                        type="number"
+                                        value={ingredientQty}
+                                        onChange={(e) => setIngredientQty(e.target.value)}
+                                        placeholder="0"
+                                        className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-orange-400"
+                                    />
+                                </div>
+                                <div className="w-full md:w-24">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Unit</label>
+                                    <input
+                                        type="text"
+                                        value={ingredientUnit} // Read-only mostly or editable
+                                        onChange={(e) => setIngredientUnit(e.target.value)}
+                                        className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-orange-400 bg-gray-50"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleAddIngredient}
+                                    className="p-3 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-200 hover:bg-orange-600 active:scale-95 transition-all"
+                                >
+                                    <Plus size={24} />
+                                </button>
+                            </div>
+
+                            {ingredients.length > 0 && (
+                                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-gray-50 text-[10px] uppercase text-gray-400">
+                                            <tr>
+                                                <th className="p-3 font-black">Item</th>
+                                                <th className="p-3 font-black">Qty</th>
+                                                <th className="p-3 font-black">Unit</th>
+                                                <th className="p-3 font-black text-right">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="text-sm font-bold text-gray-700">
+                                            {ingredients.map((ing, idx) => (
+                                                <tr key={idx} className="border-t border-gray-50">
+                                                    <td className="p-3">{ing.name}</td>
+                                                    <td className="p-3">{ing.quantity}</td>
+                                                    <td className="p-3 text-gray-500">{ing.unit}</td>
+                                                    <td className="p-3 text-right">
+                                                        <button
+                                                            onClick={() => handleRemoveIngredient(idx)}
+                                                            className="text-red-400 hover:text-red-600 p-1"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex gap-4 pt-8 mt-4 border-t border-gray-100 sticky bottom-0 bg-white/95 backdrop-blur-sm pb-2">

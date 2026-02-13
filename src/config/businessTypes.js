@@ -60,6 +60,74 @@ export const MODULE_LABELS = {
   SETTINGS: "Settings",
   STAFF: "Staff & Roles",
   ORGANIZATION: "Organization",
+  SERVICE: "Service & Repairs",
+};
+
+/**
+ * Default Features Configuration per Business Type
+ * Mirrors backend schema: inventory, purchase, sales, dining, production, reservation, serialTracking, serviceManagement
+ */
+export const BUSINESS_FEATURES = {
+  [BUSINESS_TYPES.RESTAURANT]: {
+    inventory: true,
+    purchase: true,
+    sales: true,
+    dining: true,
+    production: true, // Kitchen
+    reservation: true,
+    serialTracking: false,
+    serviceManagement: false
+  },
+  [BUSINESS_TYPES.RETAIL]: {
+    inventory: true,
+    purchase: true,
+    sales: true,
+    dining: false,
+    production: false,
+    reservation: false,
+    serialTracking: true, // Electronics etc
+    serviceManagement: false // Unless electronics repair?
+  },
+  [BUSINESS_TYPES.SALON]: {
+    inventory: true, // Products
+    purchase: true,
+    sales: true,
+    dining: false,
+    production: false,
+    reservation: true, // Appointments
+    serialTracking: false,
+    serviceManagement: false
+  },
+  [BUSINESS_TYPES.CAFE]: {
+    inventory: true,
+    purchase: true,
+    sales: true,
+    dining: true,
+    production: true,
+    reservation: false,
+    serialTracking: false,
+    serviceManagement: false
+  },
+  [BUSINESS_TYPES.HOTEL]: {
+    inventory: true,
+    purchase: true,
+    sales: true,
+    dining: true,
+    production: true,
+    reservation: true,
+    serialTracking: false,
+    serviceManagement: false
+  },
+  [BUSINESS_TYPES.PHARMACY]: {
+    inventory: true,
+    purchase: true,
+    sales: true,
+    dining: false,
+    production: false,
+    reservation: false,
+    serialTracking: false, // Batch tracking is simpler, maybe not serial
+    serviceManagement: false
+  }
 };
 
 /**
@@ -84,6 +152,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "SETTINGS",
       "STAFF",
       "ORGANIZATION",
+      "SERVICE",
     ],
     casual: [
       "DINING",
@@ -156,6 +225,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "SETTINGS",
       "STAFF",
       "ORGANIZATION",
+      "SERVICE",
     ],
     general: [
       "ONLINE_ORDERS",
@@ -165,6 +235,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "SETTINGS",
       "STAFF",
       "ORGANIZATION",
+      "SERVICE",
     ],
   },
   [BUSINESS_TYPES.SALON]: {
