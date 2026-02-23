@@ -6,7 +6,7 @@ export const initialMenu = [
         category: "Main Course",
         taxPercent: 5,
         sellingType: "Standard",
-        productType: "simple",
+        itemType: "STOCK",
         price: 450.0,
         isAvailableOnline: true,
         availableExtras: [
@@ -24,7 +24,7 @@ export const initialMenu = [
         name: "Chicken Al Faham",
         category: "Grills",
         taxPercent: 5,
-        productType: "variant", // Treated as variant due to Portion type
+        itemType: "STOCK", // Treated as variant due to Portion type
         sellingType: "Portion",
         isAvailableOnline: true,
         variants: [
@@ -46,7 +46,7 @@ export const initialMenu = [
         category: "Sea Food",
         taxPercent: 5,
         sellingType: "Weight",
-        productType: "simple",
+        itemType: "STOCK",
         pricePerUnit: 1000, // per kg
         unitName: "kg",
         isAvailableOnline: false,
@@ -78,7 +78,7 @@ export const initialMenu = [
         id: "med1",
         name: "Dolo 650",
         category: "Medicine",
-        productType: "simple",
+        itemType: "STOCK",
         sellingType: "Standard",
         price: 30,
         mrp: 35,
@@ -98,7 +98,7 @@ export const initialMenu = [
         name: "Samsung Galaxy S24",
         category: "Smartphones",
         brand: "Samsung",
-        productType: "simple",
+        itemType: "STOCK",
         sellingType: "Standard",
         price: 75000,
         mrp: 79999,

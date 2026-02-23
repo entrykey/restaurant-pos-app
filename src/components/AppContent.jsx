@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Layout from "./Layout";
 import AppRoutes from "../routes/AppRoutes";
 import Login from "../pages/Login";
@@ -10,6 +10,7 @@ import { useOnlineOrders } from "../pages/OnlineOrders/OnlineOrderContext";
 import { useAuth } from "../context/AuthContext";
 import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from "../utils/permissions";
 import { formatCurrency } from "../utils/format";
+import { itemService } from "../services/api";
 
 // Modals
 import NoteModal from "./modals/NoteModal";
@@ -30,7 +31,7 @@ const AppContent = () => {
         currentTime, menu, setMenu, addExpense, settings, setSettings,
         salesHistory, setSalesHistory, rolesList, staffList, setRolesList, setStaffList,
         organization, setOrganization, branches, setBranches,
-        businessType, setBusinessType, businessSubtype, setBusinessSubtype, enabledModules, setEnabledModules,
+        businessType, setBusinessType, businessSubtype, setBusinessSubtype, enabledModules, setEnabledModules, setInventoryItems
     } = useApp();
 
     const {
@@ -56,6 +57,36 @@ const AppContent = () => {
         onlineOrderTab, setOnlineOrderTab, pendingOnlineOrdersCount,
         handleAcceptOnlineOrder, handleRejectOnlineOrder, handleCompleteOnlineKOT
     } = useOnlineOrders();
+
+    useEffect(() => {
+        const fetchItems = async () => {
+            if (isAuthenticated && currentUser?.shop_id) {
+                try {
+                    const response = await itemService.getItems({
+                        limit: 500, // Fetch a large chunk for initial POS load
+                        filters: { shopid: currentUser.shop_id }
+                    });
+                    const items = response.data || [];
+                    const menuData = items.filter(item => item.itemType === "MANUFACTURED");
+                    const rawData = items.filter(item => item.itemType === "STOCK" || item.itemType === "SERVICE" || item.itemType === "RAW");
+
+                    // Map backend ID to `id` for frontend consistency if needed
+                    // Inventory.jsx and AppContent.jsx use `.id`
+                    const mapItems = (arr) => arr.map(item => ({
+                        ...item,
+                        id: item._id,
+                        unitId: item.unitId // Ensure this is preserved for React State
+                    }));
+
+                    setMenu(mapItems(menuData));
+                    setInventoryItems(mapItems(rawData));
+                } catch (error) {
+                    console.error("Failed to fetch shop items:", error);
+                }
+            }
+        };
+        fetchItems();
+    }, [isAuthenticated, currentUser?.shop_id]);
 
     // Local UI State
     const [view, setView] = useState("tables");
@@ -419,8 +450,6 @@ const AppContent = () => {
                     view={view}
                     setView={setView}
                     currentUser={currentUser}
-                    hasPermission={hasPermission}
-                    hasPermissionFor={hasPermissionFor}
                     handleLogout={handleLogout}
                     businessType={businessType}
                     businessSubtype={businessSubtype}

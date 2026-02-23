@@ -32,6 +32,8 @@ export const MODULES = Object.freeze({
   SETTINGS: "settings",
   STAFF: "staff",
   SERVICE: "service",
+  SUPPLIER: "supplier",
+  PURCHASE: "purchase",
 });
 
 /**
@@ -43,11 +45,13 @@ export const MODULE_RESOURCES = Object.freeze({
   [MODULES.ORDERS]: ["online_orders"],
   [MODULES.KDS]: ["kds"],
   [MODULES.RESERVATIONS]: ["reservation"],
-  [MODULES.INVENTORY]: ["inventory"],
+  [MODULES.INVENTORY]: ["inventory", "menu"],
   [MODULES.REPORTS]: ["report"],
-  [MODULES.SETTINGS]: ["settings"],
+  [MODULES.SETTINGS]: ["settings", "inventory_settings"],
   [MODULES.STAFF]: ["staff"],
   [MODULES.SERVICE]: ["service", "jobcard"],
+  [MODULES.SUPPLIER]: ["supplier"],
+  [MODULES.PURCHASE]: ["purchase"],
 });
 
 /**
@@ -90,6 +94,8 @@ export const ROUTE_ACCESS = Object.freeze({
   STAFF: { module: MODULES.STAFF, resource: "staff", action: "view" },
   ORGANIZATION: { module: MODULES.ORGANIZATION, resource: "organization", action: "view" },
   SERVICE: { module: MODULES.SERVICE, resource: "service", action: "view" },
+  SUPPLIERS: { module: MODULES.SUPPLIER, resource: "supplier", action: "view" },
+  PURCHASES: { module: MODULES.PURCHASE, resource: "purchase", action: "view" },
 });
 
 /** Optional: page-level "manage" for sections that have edit/delete (e.g. staff.staff.manage) */
@@ -100,6 +106,7 @@ export const ROUTE_ACCESS_MANAGE = Object.freeze({
   SETTINGS: { module: MODULES.SETTINGS, resource: "settings", action: "manage" },
   STAFF: { module: MODULES.STAFF, resource: "staff", action: "manage" },
   SERVICE: { module: MODULES.SERVICE, resource: "service", action: "manage" },
+  PURCHASES: { module: MODULES.PURCHASE, resource: "purchase", action: "manage" },
 });
 
 /**
@@ -155,6 +162,7 @@ function buildPermissionsWithLabels() {
         STAFF: "View Staff",
         ORGANIZATION: "View Organization",
         SERVICE: "View Service",
+        PURCHASES: "View Purchases",
       };
       return r(module, resource, action, labels[routeKey] || `${resource} ${action}`);
     }),
@@ -166,6 +174,8 @@ function buildPermissionsWithLabels() {
     r(MODULES.SETTINGS, "settings", "manage", "Manage Settings"),
     r(MODULES.STAFF, "staff", "manage", "Manage Staff & Roles"),
     r(MODULES.SERVICE, "service", "manage", "Manage Service"),
+    r(MODULES.SUPPLIER, "supplier", "manage", "Manage Suppliers"),
+    r(MODULES.PURCHASE, "purchase", "manage", "Manage Purchases"),
     ...ORGANIZATION_PERMISSION_KEYS_LIST.map((k) => {
       const [, resource, action] = k.split(".");
       const resLabel = resource === "branch" ? "Branch" : "Organization";

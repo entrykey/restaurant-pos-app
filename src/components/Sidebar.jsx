@@ -6,32 +6,31 @@ import {
     CalendarCheck,
     Package,
     TrendingUp,
-    FileText,
     Settings,
     UserCog,
     LogOut,
     X,
     ShoppingBag,
     Building2,
-    LayoutDashboard,
     Truck,
-    Wrench
+    Wrench,
+    ShoppingCart
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { ROUTE_ACCESS } from "../config/permissionStructure";
+import { ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
 import { getModuleList } from "../config/businessTypes";
+import { usePermission } from "../auth/usePermission";
 
-const canAccess = (hasPermissionFor, routeKey) => {
-    if (!hasPermissionFor) return false;
+const canAccessRoute = (can, canModule, routeKey) => {
     const r = ROUTE_ACCESS[routeKey];
-    return r ? hasPermissionFor(r.module, r.resource, r.action) : false;
+    if (!r) return true; // No permission required (e.g. SUPPLIERS)
+    if (r.action != null && r.action !== undefined) return can(r.module, r.action);
+    return canModule(r.module);
 };
 
 const Sidebar = ({
     view,
     setView,
-    hasPermission,
-    hasPermissionFor,
     handleLogout,
     isTakeaway,
     setIsTakeaway,
@@ -45,16 +44,22 @@ const Sidebar = ({
     businessSubtype,
 }) => {
     const navigate = useNavigate();
+    const { can, canModule } = usePermission();
     const closeMobile = () => onMobileClose?.();
 
-    // Get the explicit list of modules for this type
+    // Modules to show: from business type intersected with user permissions; if no business list, use allowed-by-permission only
     const moduleList = useMemo(() => {
-        // Fallback to enabledModules keys if type not provided (legacy/safety)
+        const allowedByPermission = ROUTE_KEYS_ORDER.filter((key) => canAccessRoute(can, canModule, key));
+        let base = [];
         if (!businessType) {
-            return Object.keys(enabledModules).filter(k => enabledModules[k] === true);
+            base = Object.keys(enabledModules).filter((k) => enabledModules[k] === true);
+        } else {
+            base = getModuleList(businessType, businessSubtype);
         }
-        return getModuleList(businessType, businessSubtype);
-    }, [businessType, businessSubtype, enabledModules]);
+        // If business type gives no list (e.g. not loaded), show whatever user has permission for
+        if (base.length === 0) return allowedByPermission;
+        return base.filter((moduleKey) => allowedByPermission.includes(moduleKey));
+    }, [businessType, businessSubtype, enabledModules, can, canModule]);
 
     // Definition of all possible sidebar buttons
     // This map allows us to render buttons dynamically by key
@@ -166,7 +171,7 @@ const Sidebar = ({
                     ? "bg-indigo-600 shadow-xl scale-110"
                     : "hover:bg-indigo-800"
                     }`}
-                title="Inventory"
+                title="Items"
             >
                 <Package className="w-6 h-6 md:w-7 md:h-7" />
             </button>
@@ -273,6 +278,23 @@ const Sidebar = ({
                 <Wrench className="w-6 h-6 md:w-7 md:h-7" />
             </button>
         ),
+        PURCHASES: (
+            <button
+                key="PURCHASES"
+                onClick={() => {
+                    setView("purchases");
+                    navigate("/purchases");
+                    closeMobile();
+                }}
+                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "purchases"
+                    ? "bg-indigo-600 shadow-xl scale-110"
+                    : "hover:bg-indigo-800"
+                    }`}
+                title="Purchases"
+            >
+                <ShoppingCart className="w-6 h-6 md:w-7 md:h-7" />
+            </button>
+        ),
     };
 
 
@@ -322,14 +344,8 @@ const Sidebar = ({
                     D
                 </div>
 
-                {/* Sidebar Buttons - Dynamically Rendered */}
-                {moduleList.map(moduleKey => {
-                    // Check permissions (User Role Access)
-                    if (!canAccess(hasPermissionFor, moduleKey)) return null;
-
-                    // Render component from map
-                    return MODULE_BUTTONS[moduleKey] || null;
-                })}
+                {/* Sidebar Buttons - only modules user has permission for (already filtered in moduleList) */}
+                {moduleList.map(moduleKey => MODULE_BUTTONS[moduleKey] || null)}
 
                 <button
                     onClick={() => {

@@ -356,7 +356,9 @@ export function getDefaultModules(businessType, subtypeId) {
  * Get the ordered list of modules for a business type/subtype.
  */
 export function getModuleList(businessType, subtypeId) {
-  return BUSINESS_MODULE_STRUCTURE[businessType]?.[subtypeId] || [];
+  const typeKey = businessType?.toLowerCase();
+  const subKey = subtypeId?.toLowerCase();
+  return BUSINESS_MODULE_STRUCTURE[typeKey]?.[subKey] || [];
 }
 
 /**

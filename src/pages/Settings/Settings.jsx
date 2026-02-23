@@ -11,7 +11,9 @@ import {
     CreditCard
 } from "lucide-react";
 import { TABLE_AREAS } from "./SettingsService";
-import InventorySettings from "./InventorySettings";
+import AttributeSettings from "./AttributeSettings";
+import UnitSettings from "./UnitSettings";
+import CategorySettings from "./CategorySettings";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 
 const Settings = ({
@@ -22,7 +24,11 @@ const Settings = ({
     authLogs,
     hasPermissionFor,
 }) => {
-    const [activeTab, setActiveTab] = useState("general");
+    const canViewGeneral = hasPermissionFor?.(ROUTE_ACCESS.SETTINGS.module, ROUTE_ACCESS.SETTINGS.resource, ROUTE_ACCESS.SETTINGS.action);
+    const canViewAttributes = hasPermissionFor?.('settings', 'inventory_settings', 'manage');
+
+    // Need to initialize state properly since we can't use useState conditionally
+    const [activeTab, setActiveTab] = useState(canViewGeneral ? "general" : (canViewAttributes ? "attributes" : ""));
     const [newTableName, setNewTableName] = useState("");
     const [newTableCapacity, setNewTableCapacity] = useState(4);
     const [newTableArea, setNewTableArea] = useState("AC");
@@ -31,9 +37,7 @@ const Settings = ({
         new Date().toISOString().split("T")[0]
     );
 
-    const settingsAccess = ROUTE_ACCESS.SETTINGS;
-    const canView = hasPermissionFor?.(settingsAccess.module, settingsAccess.resource, settingsAccess.action);
-    if (!canView) {
+    if (!canViewGeneral && !canViewAttributes) {
         return (
             <div className="p-8 text-center text-gray-500 font-bold">
                 You don't have permission to access settings.
@@ -69,12 +73,13 @@ const Settings = ({
         return matchesSearch && matchesDate;
     });
 
-    const tabs = [
-        { id: "general", label: "General", icon: Store },
-        { id: "tables", label: "Tables", icon: LayoutDashboard },
-        { id: "inventory", label: "Inventory", icon: Package },
-        { id: "activity", label: "Activity", icon: History },
+    const allTabs = [
+        { id: "general", label: "General", icon: Store, show: canViewGeneral },
+        { id: "tables", label: "Tables", icon: LayoutDashboard, show: canViewGeneral },
+        { id: "attributes", label: "Inventory Settings", icon: Package, show: canViewAttributes },
+        { id: "activity", label: "Activity", icon: History, show: canViewGeneral },
     ];
+    const tabs = allTabs.filter(t => t.show !== false);
 
     const renderContent = () => {
         switch (activeTab) {
@@ -264,10 +269,12 @@ const Settings = ({
                     </div>
                 );
 
-            case "inventory":
+            case "attributes":
                 return (
-                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <InventorySettings />
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+                        <CategorySettings />
+                        <AttributeSettings />
+                        <UnitSettings />
                     </div>
                 );
 
@@ -308,8 +315,8 @@ const Settings = ({
                                 {
                                     header: "Role", key: "role", render: (value) => (
                                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${value === "Admin" ? "bg-purple-100 text-purple-600" :
-                                                value === "Manager" ? "bg-blue-100 text-blue-600" :
-                                                    "bg-green-100 text-green-600"
+                                            value === "Manager" ? "bg-blue-100 text-blue-600" :
+                                                "bg-green-100 text-green-600"
                                             }`}>{value}</span>
                                     )
                                 },

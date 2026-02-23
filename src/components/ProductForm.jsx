@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ALL_FIELDS } from '../config/itemFields';
+import { attributeService, unitService, shopService, categoryService, itemService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { useApp } from '../context/AppContext';
+import { SupplierService } from '../pages/Suppliers/SupplierService';
 import { X, Plus, Trash2 } from 'lucide-react';
 
 const ProductForm = ({
@@ -8,17 +12,100 @@ const ProductForm = ({
     onSave,
     onCancel,
     title = "Add Item",
-    inventoryItems = [], // List of raw items for recipe
-    showRecipe = true
+    inventoryItems = [],
+    showRecipe = true,
+    isEditing = false,
 }) => {
+    const { user } = useAuth();
+    const { activeBranchId } = useApp();
     const [formData, setFormData] = useState(initialValues);
     const [errors, setErrors] = useState({});
+
+    // Dynamic Attributes & Units
+    const [dynamicAttributes, setDynamicAttributes] = useState([]);
+    const [units, setUnits] = useState([]);
+    const [categories, setCategories] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
+    const [stockItems, setStockItems] = useState([]);
+    // itemAttributes format: { [attributeCode]: { value: "", unitId: "" } }
+    const [itemAttributes, setItemAttributes] = useState(initialValues.attributes || {});
+
+    // Sync form state whenever a different item is loaded for editing (or when initialValues.attributes is populated)
+    const itemId = String(initialValues._id || initialValues.id || '');
+    useEffect(() => {
+        setFormData(initialValues);
+        setItemAttributes(initialValues.attributes || {});
+        setIngredients(initialValues.ingredients || []);
+    }, [itemId, initialValues?.attributes, initialValues?.ingredients]);
+
+    useEffect(() => {
+        const fetchAttributesAndUnits = async () => {
+            try {
+                // Get shop data to fetch business type/subtype IDs
+                let businessTypeId = null;
+                let businessSubTypeId = null;
+
+                if (user?.shop_id) {
+                    try {
+                        const shop = await shopService.getShopById(user.shop_id);
+                        businessTypeId = shop?.businessType?._id || shop?.businessType;
+                        businessSubTypeId = shop?.subType?._id || shop?.subType;
+                    } catch (error) {
+                        console.error("Failed to fetch shop data:", error);
+                    }
+                }
+
+                // Fetch attributes filtered by business type/subtype
+                const params = {};
+                if (businessTypeId) params.businessTypeId = businessTypeId;
+                if (businessSubTypeId) params.businessSubTypeId = businessSubTypeId;
+
+                const [attrsRes, unitsRes, categoriesRes, suppliersRes] = await Promise.all([
+                    attributeService.getAttributes(params),
+                    unitService.getUnits(),
+                    categoryService.getCategories({ shopId: user?.shop_id }),
+                    SupplierService.getSuppliers(user?.shop_id)
+                ]);
+
+                // Filter active attributes that match the business type/subtype
+                setDynamicAttributes(attrsRes.filter(a => a.isActive !== false));
+                setUnits(unitsRes);
+                setCategories(categoriesRes.filter(c => c.isActive !== false));
+
+                const suppliersData = Array.isArray(suppliersRes) ? suppliersRes : (suppliersRes.data || []);
+                setSuppliers(suppliersData);
+            } catch (error) {
+                console.error("Failed to load attributes/units", error);
+            }
+        };
+
+        const fetchStockItems = async () => {
+            if (showRecipe && user?.shop_id) {
+                try {
+                    const response = await itemService.getItems({
+                        limit: 1000,
+                        filters: {
+                            shopid: user.shop_id,
+                            branchId: activeBranchId || undefined,
+                            itemType: "STOCK"
+                        }
+                    });
+                    setStockItems(response.data || response);
+                } catch (error) {
+                    console.error("Failed to fetch stock items for recipe:", error);
+                }
+            }
+        };
+
+        fetchAttributesAndUnits();
+        fetchStockItems();
+    }, [user?.shop_id, activeBranchId, showRecipe]);
 
     // Recipe / Ingredients State
     const [ingredients, setIngredients] = useState(initialValues.ingredients || []);
     const [selectedRawItem, setSelectedRawItem] = useState("");
     const [ingredientQty, setIngredientQty] = useState("");
-    const [ingredientUnit, setIngredientUnit] = useState("unit");
+    const [ingredientUnitId, setIngredientUnitId] = useState("");
 
     // Group fields by section for better UI
     const groupedFields = visibleFields.reduce((acc, fieldKey) => {
@@ -27,7 +114,19 @@ const ProductForm = ({
 
         const section = fieldDef.section || "Other";
         if (!acc[section]) acc[section] = [];
-        acc[section].push({ ...fieldDef, key: fieldKey }); // Ensure key is preserved
+
+        let options = fieldDef.options || [];
+        if (fieldKey === "category_id") {
+            // Inject dynamically fetched categories
+            options = categories.map(c => ({ label: c.name, value: c._id }));
+        } else if (fieldKey === "supplier_id") {
+            // Inject dynamically fetched suppliers
+            options = suppliers.map(s => ({ label: s.name, value: s._id }));
+        } else if (fieldKey === "unit_id") {
+            options = units.map(u => ({ label: u.name || u.code, value: u._id }));
+        }
+
+        acc[section].push({ ...fieldDef, originalKey: fieldKey, options }); // Keep field.key as mapped key
         return acc;
     }, {});
 
@@ -47,23 +146,38 @@ const ProductForm = ({
         }
     };
 
-    const handleAddIngredient = () => {
-        if (!selectedRawItem || !ingredientQty) return;
+    const handleAttributeChange = (attrCode, field, value) => {
+        setItemAttributes(prev => ({
+            ...prev,
+            [attrCode]: {
+                ...prev[attrCode],
+                [field]: value
+            }
+        }));
+    };
 
-        const rawItem = inventoryItems.find(i => i.id === selectedRawItem);
+    const handleAddIngredient = () => {
+        if (!selectedRawItem || !ingredientQty || !ingredientUnitId) return;
+
+        const rawItem = stockItems.find(i => i._id === selectedRawItem || i.id === selectedRawItem);
         if (!rawItem) return;
 
+        const selectedUnitObj = units.find(u => u._id === ingredientUnitId || u.id === ingredientUnitId);
+        const unitName = selectedUnitObj ? selectedUnitObj.name : 'Unknown';
+
         const newIngredient = {
-            rawItemId: rawItem.id,
+            rawItemId: rawItem.id, // Keep this for UI referencing if needed
+            itemId: rawItem.id, // For backend Recipe mapping
             name: rawItem.name,
             quantity: parseFloat(ingredientQty),
-            unit: ingredientUnit,
-            cost: (rawItem.costPerUnit / ((rawItem.weightUnit || rawItem.unit) === ingredientUnit ? 1 : 1)) * parseFloat(ingredientQty) // Simple cost calc
+            unitId: ingredientUnitId,
+            unitName: unitName, // For UI display
         };
 
         setIngredients([...ingredients, newIngredient]);
         setSelectedRawItem("");
         setIngredientQty("");
+        setIngredientUnitId("");
     };
 
     const handleRemoveIngredient = (index) => {
@@ -89,7 +203,8 @@ const ProductForm = ({
         if (validate()) {
             onSave({
                 ...formData,
-                ingredients: ingredients // Include recipe
+                ingredients: ingredients, // Include recipe
+                attributes: itemAttributes // Include dynamic attributes
             });
         }
     };
@@ -109,70 +224,167 @@ const ProductForm = ({
                         <div key={section} className="bg-gray-50/50 p-6 rounded-3xl border border-gray-100">
                             <h4 className="text-lg font-black text-indigo-600 mb-4 border-b pb-2">{section} Details</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {fields.map(field => (
-                                    <div key={field.key} className={field.type === 'textarea' ? 'md:col-span-3' : ''}>
-                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-1">
-                                            {field.label} {field.required && <span className="text-red-500">*</span>}
+                                {fields.map(field => {
+                                    // Special UI condition: If field is min_stock_alert, check if stock_applicable is true
+                                    if (field.originalKey === 'min_stock_alert') {
+                                        const isStockApplicable = formData['stockApplicable'] !== false; // defaults to true or uses boolean
+                                        if (!isStockApplicable) return null;
+                                    }
+
+                                    return (
+                                        <div key={field.originalKey} className={field.type === 'textarea' ? 'md:col-span-3' : ''}>
+                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-1">
+                                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                                            </label>
+
+                                            {field.type === 'select' ? (
+                                                <select
+                                                    value={formData[field.key] || field.defaultValue || ""}
+                                                    onChange={(e) => handleChange(field.originalKey, e.target.value)}
+                                                    className={`w-full p-4 border-2 rounded-2xl bg-white outline-none font-bold transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : 'border-gray-100 focus:border-indigo-500'
+                                                        }`}
+                                                >
+                                                    <option value="">Select...</option>
+                                                    {(field.options || []).map(opt => {
+                                                        // Handle both string options array or object {label, value} array dynamically
+                                                        const val = typeof opt === 'object' ? opt.value : opt;
+                                                        const lbl = typeof opt === 'object' ? opt.label : opt;
+                                                        return <option key={val} value={val}>{lbl}</option>;
+                                                    })}
+                                                </select>
+                                            ) : field.type === 'textarea' ? (
+                                                <textarea
+                                                    value={formData[field.key] || ""}
+                                                    onChange={(e) => handleChange(field.originalKey, e.target.value)}
+                                                    rows={3}
+                                                    className={`w-full p-4 border-2 rounded-2xl outline-none font-bold bg-white transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : 'border-gray-100 focus:border-indigo-500'
+                                                        }`}
+                                                />
+                                            ) : field.type === 'boolean' ? (
+                                                <div className="flex gap-4 mt-2">
+                                                    <button
+                                                        onClick={() => handleChange(field.originalKey, true)}
+                                                        className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${formData[field.key] === true
+                                                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+                                                            : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-indigo-200'
+                                                            }`}
+                                                    >
+                                                        Yes
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleChange(field.originalKey, false)}
+                                                        className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${formData[field.key] === false
+                                                            ? 'bg-red-500 text-white shadow-lg shadow-red-200'
+                                                            : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-red-200'
+                                                            }`}
+                                                    >
+                                                        No
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type={field.type}
+                                                    value={formData[field.key] !== undefined ? formData[field.key] : ""}
+                                                    onChange={(e) => handleChange(field.originalKey, e.target.value)}
+                                                    className={`w-full p-4 border-2 rounded-2xl outline-none font-bold bg-white transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : 'border-gray-100 focus:border-indigo-500'
+                                                        }`}
+                                                    placeholder={field.label}
+                                                />
+                                            )}
+                                            {errors[field.originalKey] && (
+                                                <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors[field.originalKey]}</p>
+                                            )}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* DYNAMIC ATTRIBUTES SECTION - Filtered by Business Type/Subtype and Category */}
+                    {dynamicAttributes.length > 0 && (
+                        <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100">
+                            <h4 className="text-lg font-black text-blue-600 mb-4 border-b border-blue-200 pb-2">Item Attributes</h4>
+                            <p className="text-sm text-gray-500 mb-4">
+                                Dynamic attributes based on your business type/subtype (e.g., Size, Color, Weight).
+                                These are configured in Settings → Attribute Settings.
+                            </p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {dynamicAttributes.filter(attr => {
+                                    // Filter by category dependency
+                                    if (!attr.categoryDependent) return true;
+                                    const selectedCategoryId = formData.categoryId; // The value is inside formData.categoryId, not formData.category_id!
+                                    const attrCategoryId = attr.categoryId?._id || attr.categoryId;
+                                    return selectedCategoryId === attrCategoryId;
+                                }).map(attr => (
+                                    <div key={attr.code} className="flex flex-col gap-2">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">
+                                            {attr.name} {attr.required && <span className="text-red-500">*</span>}
                                         </label>
 
-                                        {field.type === 'select' ? (
-                                            <select
-                                                value={formData[field.key] || field.defaultValue || ""}
-                                                onChange={(e) => handleChange(field.key, e.target.value)}
-                                                className={`w-full p-4 border-2 rounded-2xl bg-white outline-none font-bold transition-all ${errors[field.key] ? 'border-red-400 focus:border-red-500' : 'border-gray-100 focus:border-indigo-500'
-                                                    }`}
-                                            >
-                                                {field.options.map(opt => (
-                                                    <option key={opt} value={opt}>{opt}</option>
-                                                ))}
-                                            </select>
-                                        ) : field.type === 'textarea' ? (
-                                            <textarea
-                                                value={formData[field.key] || ""}
-                                                onChange={(e) => handleChange(field.key, e.target.value)}
-                                                rows={3}
-                                                className={`w-full p-4 border-2 rounded-2xl outline-none font-bold bg-white transition-all ${errors[field.key] ? 'border-red-400 focus:border-red-500' : 'border-gray-100 focus:border-indigo-500'
-                                                    }`}
-                                            />
-                                        ) : field.type === 'boolean' ? (
-                                            <div className="flex gap-4 mt-2">
-                                                <button
-                                                    onClick={() => handleChange(field.key, true)}
-                                                    className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${formData[field.key] === true
-                                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                                                        : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-indigo-200'
-                                                        }`}
+                                        <div className="flex gap-2">
+                                            {/* Attribute Value Input */}
+                                            {attr.dataType === 'SELECT' ? (
+                                                <select
+                                                    value={itemAttributes[attr.code]?.value || ""}
+                                                    onChange={(e) => handleAttributeChange(attr.code, 'value', e.target.value)}
+                                                    className="w-full p-4 border-2 border-gray-100 rounded-2xl bg-white outline-none font-bold transition-all focus:border-blue-400"
                                                 >
-                                                    Yes
-                                                </button>
-                                                <button
-                                                    onClick={() => handleChange(field.key, false)}
-                                                    className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${formData[field.key] === false
-                                                        ? 'bg-red-500 text-white shadow-lg shadow-red-200'
-                                                        : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-red-200'
-                                                        }`}
-                                                >
-                                                    No
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <input
-                                                type={field.type}
-                                                value={formData[field.key] !== undefined ? formData[field.key] : ""}
-                                                onChange={(e) => handleChange(field.key, e.target.value)}
-                                                className={`w-full p-4 border-2 rounded-2xl outline-none font-bold bg-white transition-all ${errors[field.key] ? 'border-red-400 focus:border-red-500' : 'border-gray-100 focus:border-indigo-500'
-                                                    }`}
-                                                placeholder={field.label}
-                                            />
-                                        )}
-                                        {errors[field.key] && (
-                                            <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors[field.key]}</p>
-                                        )}
+                                                    <option value="">Select...</option>
+                                                    {(attr.options || []).map(opt => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                    ))}
+                                                </select>
+                                            ) : attr.dataType === 'BOOLEAN' ? (
+                                                <div className="flex gap-2 w-full">
+                                                    <button
+                                                        onClick={(e) => { e.preventDefault(); handleAttributeChange(attr.code, 'value', true); }}
+                                                        className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${itemAttributes[attr.code]?.value === true
+                                                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+                                                            : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-blue-200'
+                                                            }`}
+                                                    >
+                                                        Yes
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.preventDefault(); handleAttributeChange(attr.code, 'value', false); }}
+                                                        className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${itemAttributes[attr.code]?.value === false
+                                                            ? 'bg-red-500 text-white shadow-lg shadow-red-200'
+                                                            : 'bg-white border-2 border-gray-100 text-gray-400 hover:border-red-200'
+                                                            }`}
+                                                    >
+                                                        No
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type={attr.dataType === 'NUMBER' ? 'number' : attr.dataType === 'DATE' ? 'date' : 'text'}
+                                                    value={itemAttributes[attr.code]?.value || ""}
+                                                    onChange={(e) => {
+                                                        handleAttributeChange(attr.code, 'value', e.target.value);
+                                                        // Automatically set the unitId in the item payload if the attribute requires a unit
+                                                        if (attr.requiresUnit && attr.unitId) {
+                                                            handleAttributeChange(attr.code, 'unitId', attr.unitId._id);
+                                                        }
+                                                    }}
+                                                    className={`w-full p-4 border-2 border-gray-100 rounded-l-2xl outline-none font-bold bg-white transition-all focus:border-blue-400 ${attr.requiresUnit ? 'rounded-r-none border-r-0' : 'rounded-r-2xl'}`}
+                                                    placeholder={attr.name}
+                                                />
+                                            )}
+
+                                            {/* Attribute Unit Selection (Fixed Label based on Attribute Definition) */}
+                                            {attr.dataType === 'NUMBER' && attr.requiresUnit && attr.unitId && (
+                                                <div className="flex items-center justify-center bg-gray-50 border-2 border-l-0 border-gray-100 rounded-r-2xl px-4 text-xs font-black text-gray-500 uppercase tracking-widest">
+                                                    {attr.unitId.code || attr.unitId.name}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                    ))}
+                    )}
 
                     {/* NEW RECIPE SECTION */}
                     {showRecipe && (
@@ -182,20 +394,22 @@ const ProductForm = ({
 
                             <div className="flex flex-col md:flex-row gap-3 mb-4 items-end">
                                 <div className="flex-1">
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Raw Item</label>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Stock Item</label>
                                     <select
                                         value={selectedRawItem}
                                         onChange={(e) => {
                                             setSelectedRawItem(e.target.value);
-                                            // Auto-set unit from raw item
-                                            const item = inventoryItems.find(i => i.id === e.target.value);
-                                            if (item) setIngredientUnit(item.weightUnit || item.unit);
+                                            // Auto-set unit from raw item if applicable
+                                            const item = stockItems.find(i => i._id === e.target.value || i.id === e.target.value);
+                                            if (item && item.unitId) {
+                                                setIngredientUnitId(item.unitId._id || item.unitId);
+                                            }
                                         }}
                                         className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-orange-400"
                                     >
-                                        <option value="">Select Ingredient</option>
-                                        {inventoryItems.map(item => (
-                                            <option key={item.id} value={item.id}>{item.name} ({item.weightUnit || item.unit})</option>
+                                        <option value="">Select Stock Item</option>
+                                        {stockItems.map(item => (
+                                            <option key={item._id || item.id} value={item._id || item.id}>{item.name} ({item.unitId?.name || "N/A"})</option>
                                         ))}
                                     </select>
                                 </div>
@@ -209,14 +423,18 @@ const ProductForm = ({
                                         className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-orange-400"
                                     />
                                 </div>
-                                <div className="w-full md:w-24">
+                                <div className="w-full md:w-40">
                                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Unit</label>
-                                    <input
-                                        type="text"
-                                        value={ingredientUnit} // Read-only mostly or editable
-                                        onChange={(e) => setIngredientUnit(e.target.value)}
-                                        className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-orange-400 bg-gray-50"
-                                    />
+                                    <select
+                                        value={ingredientUnitId}
+                                        onChange={(e) => setIngredientUnitId(e.target.value)}
+                                        className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-orange-400 bg-white"
+                                    >
+                                        <option value="">Select Unit</option>
+                                        {units.map(u => (
+                                            <option key={u._id} value={u._id}>{u.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <button
                                     onClick={handleAddIngredient}
@@ -242,7 +460,7 @@ const ProductForm = ({
                                                 <tr key={idx} className="border-t border-gray-50">
                                                     <td className="p-3">{ing.name}</td>
                                                     <td className="p-3">{ing.quantity}</td>
-                                                    <td className="p-3 text-gray-500">{ing.unit}</td>
+                                                    <td className="p-3 text-gray-500">{ing.unitName}</td>
                                                     <td className="p-3 text-right">
                                                         <button
                                                             onClick={() => handleRemoveIngredient(idx)}
@@ -272,7 +490,7 @@ const ProductForm = ({
                         onClick={handleSubmit}
                         className="flex-2 w-2/3 py-5 bg-indigo-600 text-white rounded-[24px] font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all text-lg"
                     >
-                        Save Product
+                        {isEditing ? "Update Product" : "Save Product"}
                     </button>
                 </div>
             </div>

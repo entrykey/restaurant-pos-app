@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Save, CheckSquare, Square, RotateCcw } from 'lucide-react';
-import { ALL_FIELDS, getVisibleFieldKeys } from '../../config/itemFields';
+import { ALL_FIELDS, getCommonFieldKeys } from '../../config/itemFields';
 
 const InventorySettings = () => {
     // Default to all fields if nothing saved
@@ -20,8 +20,8 @@ const InventorySettings = () => {
         if (saved) {
             setSelectedFields(JSON.parse(saved));
         } else {
-            // Default: select all
-            setSelectedFields(getVisibleFieldKeys());
+            // Default: select all common fields
+            setSelectedFields(getCommonFieldKeys());
         }
     }, []);
 
@@ -60,7 +60,7 @@ const InventorySettings = () => {
     };
 
     const handleReset = () => {
-        const allKeys = getVisibleFieldKeys();
+        const allKeys = getCommonFieldKeys();
         setSelectedFields(allKeys);
         setIsSaved(false);
     };

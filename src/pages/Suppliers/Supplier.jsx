@@ -4,12 +4,18 @@ import CommonTable from '../../components/CommonTable';
 import { SupplierService } from './SupplierService';
 import { ROUTE_ACCESS } from '../../config/permissionStructure';
 
+import { shopService } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
+
 const Supplier = ({ hasPermissionFor }) => {
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState(null);
+    const { user } = useAuth();
+    const [shopId, setShopId] = useState(null);
+
     const [formData, setFormData] = useState({
         name: "",
         contactPerson: "",
@@ -17,25 +23,48 @@ const Supplier = ({ hasPermissionFor }) => {
         email: "",
         address: "",
         taxId: "",
-        status: "Active"
+        status: "ACTIVE"
     });
 
     // Check permissions
     const supplierAccess = ROUTE_ACCESS.SUPPLIERS;
-    const canView = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "view");
-    const canCreate = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "create");
-    const canEdit = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "edit");
-    const canDelete = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "delete");
+    const canView = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "view") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
+    const canCreate = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "create") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
+    const canEdit = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "edit") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
+    const canDelete = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "delete") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
 
     useEffect(() => {
-        loadSuppliers();
-    }, []);
+        const fetchShopId = async () => {
+            if (user) {
+                try {
+                    const userId = user.id || user._id;
+                    const shopData = await shopService.getShopDataByUserId(userId);
+                    const id = shopData.shop?._id || shopData.organization?._id || shopData._id;
+                    setShopId(id);
+                } catch (error) {
+                    console.error("Error fetching shop ID:", error);
+                }
+            }
+        };
+        fetchShopId();
+    }, [user]);
+
+    useEffect(() => {
+        if (shopId) {
+            loadSuppliers();
+        }
+    }, [shopId]);
 
     const loadSuppliers = async () => {
         setLoading(true);
-        const data = await SupplierService.getSuppliers();
-        setSuppliers(data);
-        setLoading(false);
+        try {
+            const data = await SupplierService.getSuppliers(shopId);
+            setSuppliers(data);
+        } catch (error) {
+            console.error("Failed to load suppliers", error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleOpenModal = (supplier = null) => {
@@ -51,7 +80,7 @@ const Supplier = ({ hasPermissionFor }) => {
                 email: "",
                 address: "",
                 taxId: "",
-                status: "Active"
+                status: "ACTIVE"
             });
         }
         setIsModalOpen(true);
@@ -61,15 +90,19 @@ const Supplier = ({ hasPermissionFor }) => {
         e.preventDefault();
         setLoading(true);
 
-        if (editingSupplier) {
-            await SupplierService.updateSupplier(editingSupplier.id, formData);
-        } else {
-            await SupplierService.addSupplier(formData);
+        try {
+            if (editingSupplier) {
+                await SupplierService.updateSupplier(editingSupplier._id || editingSupplier.id, formData);
+            } else {
+                await SupplierService.addSupplier({ ...formData, shopId });
+            }
+            setIsModalOpen(false);
+            await loadSuppliers();
+        } catch (error) {
+            alert("Failed to save supplier: " + (error.message || "Unknown error"));
+        } finally {
+            setLoading(false);
         }
-
-        setIsModalOpen(false);
-        await loadSuppliers();
-        setLoading(false);
     };
 
     const handleDelete = async (id) => {
@@ -123,7 +156,7 @@ const Supplier = ({ hasPermissionFor }) => {
             header: "Status",
             key: "status",
             render: (value) => (
-                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${value === "Active" ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-500"
+                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${value === "ACTIVE" ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-500"
                     }`}>
                     {value}
                 </span>
@@ -277,8 +310,8 @@ const Supplier = ({ hasPermissionFor }) => {
                                         value={formData.status}
                                         onChange={e => setFormData({ ...formData, status: e.target.value })}
                                     >
-                                        <option value="Active">Active</option>
-                                        <option value="Inactive">Inactive</option>
+                                        <option value="ACTIVE">Active</option>
+                                        <option value="INACTIVE">Inactive</option>
                                     </select>
                                 </div>
                                 <div className="space-y-2">

@@ -8,8 +8,13 @@ import {
     CreditCard,
     Check,
     Sparkles,
+    Loader2,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import CommonTable from "../../components/CommonTable";
+import AlertDialog from "../../components/ui/AlertDialog";
+
 import Modal from "../../components/ui/Modal";
 import { ROUTE_ACCESS, MODULES } from "../../config/permissionStructure";
 import {
@@ -18,6 +23,12 @@ import {
     DEFAULT_COUNTRIES,
     CURRENCIES,
     SUBSCRIPTION_PLANS,
+    fetchOrganizationData,
+    startTrial,
+    saveBranch,
+    deleteBranch,
+    fetchLocationByPincode,
+    fetchCurrentLocation,
 } from "./OrganizationService";
 
 const emptyBranch = (organizationId) => ({
@@ -37,10 +48,6 @@ const emptyBranch = (organizationId) => ({
 });
 
 const Organization = ({
-    organization,
-    setOrganization,
-    branches,
-    setBranches,
     hasPermissionFor,
 }) => {
     const orgAccess = ROUTE_ACCESS.ORGANIZATION;
@@ -50,9 +57,243 @@ const Organization = ({
     const canEditBranch = hasPermissionFor?.(MODULES.ORGANIZATION, "branch", "edit");
     const canDeleteBranch = hasPermissionFor?.(MODULES.ORGANIZATION, "branch", "delete");
 
+    const [organization, setOrganization] = useState(null);
+    const [branches, setBranches] = useState([]);
+    const [plans, setPlans] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [trialLoading, setTrialLoading] = useState(null);
+    const [isLocationLoading, setIsLocationLoading] = useState(false);
+
     const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
     const [editingBranch, setEditingBranch] = useState(null);
-    const [branchForm, setBranchForm] = useState(emptyBranch(organization?.id));
+    const [branchForm, setBranchForm] = useState(emptyBranch(null));
+
+    const [alertConfig, setAlertConfig] = useState({ isOpen: false, type: "info", title: "", message: "" });
+    const closeAlert = () => setAlertConfig(prev => ({ ...prev, isOpen: false }));
+    const showAlert = (type, title, message) => setAlertConfig({ isOpen: true, type, title, message });
+    // ... existing ...
+
+    // ... loadData and useEffect ...
+
+    // ... handleStartTrial ...
+
+    const handlePincodeBlur = async () => {
+        const pincode = branchForm.address?.pincode;
+        if (pincode && pincode.length === 6) { // Assuming 6 digit pincode for India/UAE
+            setIsLocationLoading(true);
+            try {
+                // Defaulting to "in" for India if country is India, else try to detect or default
+                const countryCode = branchForm.address?.country?.toLowerCase() === 'india' ? 'in' : 'ae';
+                const locationData = await fetchLocationByPincode(countryCode, pincode);
+
+                if (locationData && locationData.places && locationData.places.length > 0) {
+                    const place = locationData.places[0];
+                    setBranchForm(prev => ({
+                        ...prev,
+                        address: {
+                            ...prev.address,
+                            city: place['place name'],
+                            state: place['state'],
+                            // country: locationData.country // API returns country name
+                        }
+                    }));
+                }
+            } catch (error) {
+                console.error("Failed to fetch location from pincode", error);
+            } finally {
+                setIsLocationLoading(false);
+            }
+        }
+    };
+
+    const handleUseCurrentLocation = () => {
+        if (navigator.geolocation) {
+            setIsLocationLoading(true);
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const { latitude, longitude } = position.coords;
+                try {
+                    const addressData = await fetchCurrentLocation(latitude, longitude);
+                    if (addressData && addressData.address) {
+                        const addr = addressData.address;
+                        setBranchForm(prev => ({
+                            ...prev,
+                            address: {
+                                ...prev.address,
+                                line1: [addr.road, addr.suburb, addr.neighbourhood].filter(Boolean).join(", "),
+                                city: addr.city || addr.town || addr.village || addr.county || "",
+                                state: addr.state || "",
+                                country: addr.country || "",
+                                pincode: addr.postcode || prev.address.pincode
+                            }
+                        }));
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch current location address", error);
+                    alert("Failed to fetch address from location.");
+                    showAlert("error", "Location Error", "Failed to fetch address from location.");
+                } finally {
+                    setIsLocationLoading(false);
+                }
+            }, (error) => {
+                console.error("Geolocation error:", error);
+                setIsLocationLoading(false);
+                showAlert("error", "Access Denied", "Location access denied or unavailable.");
+            });
+        } else {
+            showAlert("error", "Not Supported", "Geolocation is not supported by this browser.");
+        }
+    };
+
+    // Use auth context for logout and user data
+    const { user, logout } = useAuth();
+    const navigate = useNavigate();
+
+    const loadData = async () => {
+        try {
+            // Use user from context instead of localStorage to avoid race conditions
+            if (!user || (!user._id && !user.id)) {
+                console.log("No valid user in context, redirecting");
+                logout();
+                return;
+            }
+
+            const userId = user._id || user.id;
+            console.log("Fetching organization data for userId:", userId);
+
+            const data = await fetchOrganizationData(userId);
+
+            setOrganization(data.organization);
+            setBranches(data.branches);
+            setPlans(data.plans);
+            setLoading(false);
+
+        } catch (err) {
+            console.error("Error loading organization data:", err);
+            setError(err.message);
+            setLoading(false);
+        }
+    };
+
+    React.useEffect(() => {
+        loadData();
+    }, [user]);
+
+    const handleStartTrial = async (plan) => {
+        if (!organization?.id) return;
+        setTrialLoading(plan.id);
+        try {
+            await startTrial(organization.id, plan.id);
+            // Refresh data to show active subscription
+            await loadData();
+            await loadData();
+            showAlert("success", "Trial Started", `Successfully started ${plan.trialDurationDays} day trial for ${plan.name}!`);
+        } catch (error) {
+            console.error("Failed to start trial:", error);
+            showAlert("error", "Trial Failed", "Failed to start trial: " + (error.message || "Unknown error"));
+        } finally {
+            setTrialLoading(null);
+        }
+    };
+
+    const openAddBranch = () => {
+        setEditingBranch(null);
+        setBranchForm(emptyBranch(organization?.id));
+        setIsBranchModalOpen(true);
+    };
+
+    const openEditBranch = (branch) => {
+        setEditingBranch(branch);
+        setBranchForm({
+            ...branch,
+            address: { ...branch.address },
+            taxConfig: { ...branch.taxConfig },
+        });
+        setIsBranchModalOpen(true);
+    };
+
+    const handleSaveBranch = async (e) => {
+        e.preventDefault();
+        try {
+            await saveBranch(branchForm);
+            await loadData();
+            setIsBranchModalOpen(false);
+            setBranchForm(emptyBranch(organization?.id));
+            showAlert("success", "Branch Saved", "Branch saved successfully.");
+        } catch (error) {
+            console.error("Failed to save branch:", error);
+            // setError(error.message || "Failed to save branch"); // Optional: keep inline error or use alert? Alert is better for 403
+            const errMsg = error.response?.data?.message || error.message || "Failed to save branch";
+            showAlert("error", "Save Failed", errMsg);
+        }
+    };
+
+    const handleDisableBranch = async (branch) => {
+        const newStatus = branch.status === BRANCH_STATUS.ACTIVE ? BRANCH_STATUS.INACTIVE : BRANCH_STATUS.ACTIVE;
+        if (!window.confirm(`Are you sure you want to ${branch.status === BRANCH_STATUS.ACTIVE ? "disable" : "enable"} this branch?`)) return;
+
+        try {
+            const updatedBranch = { ...branch, status: newStatus };
+            await saveBranch(updatedBranch);
+            await loadData();
+        } catch (error) {
+            console.error("Failed to update branch status:", error);
+            setError(error.message);
+        }
+    };
+
+    const branchColumns = [
+        { header: "Branch Name", key: "name", render: (v) => <span className="font-bold text-gray-800">{v}</span> },
+        { header: "City", key: "address", render: (addr) => addr?.city || "—" },
+        { header: "State", key: "address", render: (addr) => addr?.state || "—" },
+        { header: "Country", key: "address", render: (addr) => addr?.country || "—" },
+        {
+            header: "Status",
+            key: "status",
+            render: (status) => (
+                <span
+                    className={`px-2 py-1 rounded-lg text-xs font-bold ${status === BRANCH_STATUS.ACTIVE ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"
+                        }`}
+                >
+                    {status}
+                </span>
+            ),
+        }
+    ];
+
+    if (canEditBranch || canDeleteBranch) {
+        branchColumns.push({
+            header: "Action",
+            key: "id",
+            headerClassName: "text-right",
+            className: "text-right",
+            render: (_, row) => (
+                <div className="flex justify-end gap-2">
+                    {canEditBranch && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); openEditBranch(row); }}
+                            className="p-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all"
+                            title="Edit"
+                        >
+                            <Edit3 size={16} />
+                        </button>
+                    )}
+                    {canDeleteBranch && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleDisableBranch(row); }}
+                            className="p-2 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white rounded-xl transition-all"
+                            title={row.status === BRANCH_STATUS.ACTIVE ? "Disable" : "Enable"}
+                        >
+                            {row.status === BRANCH_STATUS.ACTIVE ? "Disable" : "Enable"}
+                        </button>
+                    )}
+                </div>
+            ),
+        });
+    }
+
+    if (loading) return <div className="h-full flex items-center justify-center">Loading...</div>;
+    if (error) return <div className="h-full flex items-center justify-center text-red-500">Error: {error}</div>;
 
     if (!canView) {
         return (
@@ -67,98 +308,6 @@ const Organization = ({
             </div>
         );
     }
-
-    const openAddBranch = () => {
-        setEditingBranch(null);
-        setBranchForm(emptyBranch(organization.id));
-        setIsBranchModalOpen(true);
-    };
-
-    const openEditBranch = (branch) => {
-        setEditingBranch(branch);
-        setBranchForm({
-            ...branch,
-            address: { ...branch.address },
-            taxConfig: { ...branch.taxConfig },
-        });
-        setIsBranchModalOpen(true);
-    };
-
-    const handleSaveBranch = () => {
-        const now = new Date().toISOString();
-        if (editingBranch) {
-            setBranches(branches.map((b) =>
-                b.id === editingBranch.id
-                    ? { ...branchForm, updatedAt: now }
-                    : b
-            ));
-        } else {
-            const nextId = branches.length > 0 ? Math.max(...branches.map((b) => b.id)) + 1 : 1;
-            setBranches([
-                ...branches,
-                { ...branchForm, id: nextId, organizationId: organization.id, createdAt: now, updatedAt: now },
-            ]);
-        }
-        setIsBranchModalOpen(false);
-    };
-
-    const handleDisableBranch = (branch) => {
-        setBranches(branches.map((b) =>
-            b.id === branch.id
-                ? { ...b, status: b.status === BRANCH_STATUS.ACTIVE ? BRANCH_STATUS.DISABLED : BRANCH_STATUS.ACTIVE, updatedAt: new Date().toISOString() }
-                : b
-        ));
-    };
-
-    const branchColumns = [
-        { header: "Branch Name", key: "name", render: (v) => <span className="font-bold text-gray-800">{v}</span> },
-        { header: "City", key: "address", render: (addr) => addr?.city || "—" },
-        { header: "State", key: "address", render: (addr) => addr?.state || "—" },
-        { header: "Country", key: "address", render: (addr) => addr?.country || "—" },
-        {
-            header: "Status",
-            key: "status",
-            render: (status) => (
-                <span
-                    className={`px-2 py-1 rounded-lg text-xs font-bold ${
-                        status === BRANCH_STATUS.ACTIVE ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"
-                    }`}
-                >
-                    {status}
-                </span>
-            ),
-        },
-        ...(canEditBranch || canDeleteBranch
-            ? [{
-                header: "Action",
-                key: "id",
-                headerClassName: "text-right",
-                className: "text-right",
-                render: (_, row) => (
-                    <div className="flex justify-end gap-2">
-                        {canEditBranch && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); openEditBranch(row); }}
-                                className="p-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all"
-                                title="Edit"
-                            >
-                                <Edit3 size={16} />
-                            </button>
-                        )}
-                        {canDeleteBranch && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); handleDisableBranch(row); }}
-                                className="p-2 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white rounded-xl transition-all"
-                                title={row.status === BRANCH_STATUS.ACTIVE ? "Disable" : "Enable"}
-                            >
-                                {row.status === BRANCH_STATUS.ACTIVE ? "Disable" : "Enable"}
-                            </button>
-                        )}
-                    </div>
-                ),
-            }]
-            : []),
-    ];
 
     return (
         <div className="p-4 md:p-8 h-full overflow-y-auto bg-gray-50/30">
@@ -252,61 +401,64 @@ const Organization = ({
                     </div>
                 </div>
 
-                {/* Subscription & Upgrade */}
+                {/* Subscription & Plans */}
                 <div className="bg-white p-6 md:p-8 rounded-[40px] shadow-xl border">
                     <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
                         <CreditCard size={20} /> Subscription & Plans
                     </h3>
-                    <div className="mb-6 p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
-                        <p className="text-xs font-black text-indigo-600 uppercase tracking-wider mb-1">Current plan</p>
-                        <p className="text-lg font-bold text-gray-800">
-                            {SUBSCRIPTION_PLANS.find((p) => p.id === (organization?.subscriptionPlanId || "starter"))?.name ?? "Starter"}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                            {SUBSCRIPTION_PLANS.find((p) => p.id === (organization?.subscriptionPlanId || "starter"))?.priceLabel ?? "Free"}
-                        </p>
+
+                    <div className="bg-indigo-50 p-6 rounded-3xl mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div>
+                            <p className="text-xs font-black text-indigo-400 uppercase mb-1">Current Plan</p>
+                            <h4 className="text-2xl font-black text-indigo-900">{organization?.planName}</h4>
+                            <p className="text-gray-600 font-medium">{organization?.planPriceLabel}</p>
+                        </div>
+                        {/* 
+                           If no active plan, we don't show "Manage Subscription" typically, 
+                           unless we want to let them add payment method etc. 
+                           For now, keeping it simple.
+                        */}
                     </div>
-                    <p className="text-sm font-medium text-gray-600 mb-4">Upgrade your plan for more branches and features</p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {SUBSCRIPTION_PLANS.map((plan) => {
-                            const isCurrent = (organization?.subscriptionPlanId || "starter") === plan.id;
-                            const currentOrder = SUBSCRIPTION_PLANS.findIndex((p) => p.id === (organization?.subscriptionPlanId || "starter"));
-                            const planOrder = SUBSCRIPTION_PLANS.findIndex((p) => p.id === plan.id);
-                            const canUpgrade = planOrder > currentOrder;
+
+                    <p className="text-gray-500 font-medium mb-6">Upgrade your plan for more branches and features</p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {plans.map((plan) => {
+                            const isCurrent = organization?.subscriptionPlanId === plan.id;
+                            const isTrialLoading = trialLoading === plan.id;
+                            const showStartTrial = !organization?.subscriptionPlanId && plan.hasTrial;
+
                             return (
                                 <div
                                     key={plan.id}
-                                    className={`relative rounded-2xl border-2 p-5 transition-all ${
-                                        plan.highlighted
-                                            ? "border-indigo-500 bg-indigo-50/50 shadow-lg shadow-indigo-100"
-                                            : "border-gray-200 bg-gray-50/30 hover:border-gray-300"
-                                    } ${isCurrent ? "ring-2 ring-green-400 ring-offset-2" : ""}`}
+                                    className={`relative p-6 rounded-3xl border-2 transition-all ${plan.highlighted
+                                        ? "border-indigo-600 bg-indigo-50/50 shadow-lg scale-105 z-10"
+                                        : "border-gray-100 hover:border-indigo-200 hover:shadow-lg"
+                                        }`}
                                 >
-                                    {isCurrent && (
-                                        <span className="absolute top-3 right-3 px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-lg flex items-center gap-1">
-                                            <Check size={12} /> Current
-                                        </span>
+                                    {plan.highlighted && (
+                                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                                            Most Popular
+                                        </div>
                                     )}
-                                    {plan.highlighted && !isCurrent && (
-                                        <span className="absolute top-3 right-3 px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg flex items-center gap-1">
-                                            <Sparkles size={12} /> Popular
+                                    <h4 className="text-xl font-bold text-gray-800 mb-2">{plan.name}</h4>
+                                    <div className="flex items-baseline gap-1 mb-1">
+                                        <span className="text-3xl font-black text-indigo-600">
+                                            {plan.priceLabel.split(" ")[0]} {plan.price}
                                         </span>
-                                    )}
-                                    <div className="mb-3">
-                                        <h4 className="text-lg font-black text-gray-800">{plan.name}</h4>
-                                        <p className="text-2xl font-black text-indigo-600 mt-1">{plan.priceLabel}</p>
-                                        <p className="text-xs text-gray-500 mt-0.5">
-                                            {plan.branchesLimit === -1 ? plan.branchesLabel || "Unlimited" : `Up to ${plan.branchesLimit} branches`}
-                                        </p>
+                                        <span className="text-gray-400 font-medium">/mo</span>
                                     </div>
-                                    <ul className="space-y-2 mb-5">
-                                        {plan.features.map((f, i) => (
-                                            <li key={i} className="flex items-center gap-2 text-sm text-gray-700">
-                                                <Check size={14} className="text-green-500 shrink-0" />
-                                                {f}
+                                    <p className="text-xs text-gray-400 font-medium mb-6">Up to {plan.branchesLimit === -1 ? "Unlimited" : plan.branchesLimit} branches</p>
+
+                                    <ul className="space-y-3 mb-8">
+                                        {plan.features.map((feature, i) => (
+                                            <li key={i} className="flex items-start gap-2 text-sm text-gray-600 font-medium">
+                                                <Check size={16} className="text-green-500 shrink-0 mt-0.5" />
+                                                <span>{feature}</span>
                                             </li>
                                         ))}
                                     </ul>
+
                                     {isCurrent ? (
                                         <button
                                             disabled
@@ -314,24 +466,27 @@ const Organization = ({
                                         >
                                             Current plan
                                         </button>
-                                    ) : canUpgrade ? (
+                                    ) : showStartTrial ? (
                                         <button
-                                            onClick={() => canEditOrg && setOrganization({ ...organization, subscriptionPlanId: plan.id })}
-                                            disabled={!canEditOrg}
-                                            className={`w-full py-2.5 rounded-xl font-bold transition-all ${
-                                                plan.highlighted
-                                                    ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200"
-                                                    : "bg-gray-800 text-white hover:bg-gray-700"
-                                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                            onClick={() => canEditOrg && handleStartTrial(plan)}
+                                            disabled={!canEditOrg || isTrialLoading}
+                                            className={`w-full py-2.5 rounded-xl font-bold transition-all ${plan.highlighted
+                                                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200"
+                                                : "bg-gray-800 text-white hover:bg-gray-700"
+                                                } disabled:opacity-50 disabled:cursor-not-allowed`}
                                         >
-                                            Upgrade to {plan.name}
+                                            {isTrialLoading ? "Starting…" : `Start ${plan.trialDurationDays ?? 0} day trial`}
                                         </button>
                                     ) : (
                                         <button
-                                            disabled
-                                            className="w-full py-2.5 rounded-xl font-bold text-gray-400 bg-gray-100 cursor-default"
+                                            onClick={() => canEditOrg && setOrganization({ ...organization, subscriptionPlanId: plan.id })}
+                                            disabled={!canEditOrg}
+                                            className={`w-full py-2.5 rounded-xl font-bold transition-all ${plan.highlighted
+                                                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200"
+                                                : "bg-gray-800 text-white hover:bg-gray-700"
+                                                } disabled:opacity-50 disabled:cursor-not-allowed`}
                                         >
-                                            Downgrade
+                                            Upgrade
                                         </button>
                                     )}
                                 </div>
@@ -363,7 +518,7 @@ const Organization = ({
                 </div>
             </div>
 
-            {/* Add / Edit Branch Modal */}
+            {/* Modal Content */}
             <Modal
                 isOpen={isBranchModalOpen}
                 onClose={() => setIsBranchModalOpen(false)}
@@ -371,23 +526,50 @@ const Organization = ({
                 className="max-w-lg"
             >
                 <div className="space-y-4">
-                    <div>
+                    <div className="flex justify-between items-center">
                         <label className="text-xs font-black text-gray-400 uppercase block mb-1">Branch Name</label>
+                        <button
+                            type="button"
+                            onClick={handleUseCurrentLocation}
+                            disabled={isLocationLoading}
+                            className="text-xs font-bold text-indigo-600 flex items-center gap-1 hover:underline disabled:opacity-50"
+                        >
+                            {isLocationLoading ? <Loader2 size={12} className="animate-spin" /> : <MapPin size={12} />}
+                            Use Current Location
+                        </button>
+                    </div>
+                    <div>
                         <input
-                            className="w-full p-3 bg-gray-50 border rounded-xl"
+                            className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                             value={branchForm.name}
                             onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })}
                             placeholder="e.g. Food Plaza - Dubai"
                         />
                     </div>
-                    <div>
-                        <label className="text-xs font-black text-gray-400 uppercase block mb-1">Address Line 1</label>
-                        <input
-                            className="w-full p-3 bg-gray-50 border rounded-xl"
-                            value={branchForm.address?.line1 ?? ""}
-                            onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, line1: e.target.value } })}
-                            placeholder="Street / Area"
-                        />
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-xs font-black text-gray-400 uppercase block mb-1">Pincode</label>
+                            <div className="relative">
+                                <input
+                                    className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                    value={branchForm.address?.pincode ?? ""}
+                                    onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, pincode: e.target.value } })}
+                                    onBlur={handlePincodeBlur}
+                                    placeholder="Enter to autofill"
+                                />
+                                {isLocationLoading && <div className="absolute right-3 top-3"><Loader2 size={16} className="animate-spin text-indigo-500" /></div>}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-black text-gray-400 uppercase block mb-1">Address Line 1</label>
+                            <input
+                                className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                value={branchForm.address?.line1 ?? ""}
+                                onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, line1: e.target.value } })}
+                                placeholder="Street / Area"
+                            />
+                        </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -416,14 +598,6 @@ const Organization = ({
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, country: e.target.value } })}
                             />
                         </div>
-                        <div>
-                            <label className="text-xs font-black text-gray-400 uppercase block mb-1">Pincode</label>
-                            <input
-                                className="w-full p-3 bg-gray-50 border rounded-xl"
-                                value={branchForm.address?.pincode ?? ""}
-                                onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, pincode: e.target.value } })}
-                            />
-                        </div>
                     </div>
                     <div>
                         <label className="text-xs font-black text-gray-400 uppercase block mb-1">Currency</label>
@@ -449,7 +623,6 @@ const Organization = ({
                                     taxConfig: {
                                         ...branchForm.taxConfig,
                                         taxSystem: newSystem,
-                                        // When switching away from GST, clear GST-specific label; keep isGstRegistered as "is tax registered" for all systems
                                     },
                                 });
                             }}
@@ -532,6 +705,14 @@ const Organization = ({
                     </div>
                 </div>
             </Modal>
+
+            <AlertDialog
+                isOpen={alertConfig.isOpen}
+                onClose={closeAlert}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+            />
         </div>
     );
 };

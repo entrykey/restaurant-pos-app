@@ -7,8 +7,6 @@ const Layout = ({
     view,
     setView,
     currentUser,
-    hasPermission,
-    hasPermissionFor,
     handleLogout,
     isTakeaway,
     setIsTakeaway,
@@ -51,8 +49,6 @@ const Layout = ({
                     key={JSON.stringify(enabledModules)} // Force re-render when enabledModules changes
                     view={view}
                     setView={setView}
-                    hasPermission={hasPermission}
-                    hasPermissionFor={hasPermissionFor}
                     handleLogout={handleLogout}
                     isTakeaway={isTakeaway}
                     setIsTakeaway={setIsTakeaway}

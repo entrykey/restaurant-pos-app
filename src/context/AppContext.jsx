@@ -62,17 +62,25 @@ export const AppProvider = ({ children }) => {
         return localStorage.getItem("pos_businessSubtype") || "fine_dining";
     });
 
+    // Branch Selection State - Persisted
+    const [activeBranchId, setActiveBranchId] = useState(() => {
+        return localStorage.getItem("pos_activeBranchId") || null;
+    });
+
     const [enabledModules, setEnabledModules] = useState(() => {
-        const stored = localStorage.getItem("pos_enabledModules");
-        return stored ? JSON.parse(stored) : getDefaultModules(BUSINESS_TYPES.RESTAURANT, "fine_dining");
+        // const stored = localStorage.getItem("pos_enabledModules");
+        return getDefaultModules(BUSINESS_TYPES.RESTAURANT, "fine_dining");
     });
 
     // Persist changes to localStorage
     useEffect(() => {
         localStorage.setItem("pos_businessType", businessType);
         localStorage.setItem("pos_businessSubtype", businessSubtype);
-        localStorage.setItem("pos_enabledModules", JSON.stringify(enabledModules));
-    }, [businessType, businessSubtype, enabledModules]);
+        if (activeBranchId) {
+            localStorage.setItem("pos_activeBranchId", activeBranchId);
+        }
+        // localStorage.setItem("pos_enabledModules", JSON.stringify(enabledModules));
+    }, [businessType, businessSubtype, enabledModules, activeBranchId]);
 
     return (
         <AppContext.Provider
@@ -100,6 +108,8 @@ export const AppProvider = ({ children }) => {
                 setBusinessType,
                 businessSubtype,
                 setBusinessSubtype,
+                activeBranchId,
+                setActiveBranchId,
                 enabledModules,
                 setEnabledModules,
                 inventoryItems,
