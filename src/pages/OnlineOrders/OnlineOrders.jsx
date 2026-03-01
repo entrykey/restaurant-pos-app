@@ -3,7 +3,8 @@ import { Globe, RefreshCw, ShoppingBag, Search, Filter, X, Phone, MapPin, Calend
 import OnlineOrderCard from '../../components/OnlineOrderCard';
 import { onlineOrdersService } from './OnlineOrdersService';
 
-import { ROUTE_ACCESS } from "../../config/permissionStructure";
+import { usePermission } from "../../auth/usePermission";
+import { MODULES } from "../../constants/modules";
 
 const OnlineOrders = ({
     onlineOrders,
@@ -19,6 +20,7 @@ const OnlineOrders = ({
     hasPermissionFor,
 }) => {
     const [selectedOrder, setSelectedOrder] = useState(null);
+    const { can } = usePermission();
 
     useEffect(() => {
         // Fresh orders fetch logic could go here
@@ -41,8 +43,9 @@ const OnlineOrders = ({
         return ["rejected", "completed", "cancelled"].includes(o.status);
     });
 
-    const ordersAccess = ROUTE_ACCESS.ONLINE_ORDERS;
-    const canView = hasPermissionFor?.(ordersAccess.module, ordersAccess.resource, ordersAccess.action);
+    // Online Orders permission is stored under POS as "POS.ONLINEORDER"
+    // (route/sidebar gating uses the same: MODULES.POS + "pos.onlineorder")
+    const canView = can(MODULES.POS, "pos.onlineorder");
     if (!canView) {
         return (
             <div className="h-full flex items-center justify-center bg-gray-50">
@@ -51,7 +54,7 @@ const OnlineOrders = ({
                         <Globe size={40} />
                     </div>
                     <h2 className="text-2xl font-black text-gray-800 mb-2">Access Restricted</h2>
-                    <p className="text-gray-500 font-medium">You don't have permission to manage online orders. Contact your administrator for access.</p>
+                    <p className="text-gray-500 font-medium">You don't have permission to view online orders. Contact your administrator for access.</p>
                 </div>
             </div>
         );

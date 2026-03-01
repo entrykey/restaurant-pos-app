@@ -6,6 +6,8 @@ import { diningHallService } from "./DiningHallService";
 
 const DiningHall = ({
   tables: propsTables,
+  categories,
+  loading,
   reservations,
   currentUser,
   getTableDuration,
@@ -19,21 +21,21 @@ const DiningHall = ({
   joinTables,
 }) => {
   const navigate = useNavigate();
-  const [diningHalls, setDiningHalls] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
 
   useEffect(() => {
-    diningHallService.getDiningHalls().then((data) => {
-      setDiningHalls(data);
-      setLoading(false);
-    });
-  }, []);
+    if (categories.length > 0 && !selectedCategoryId) {
+      setSelectedCategoryId(categories[0]._id);
+    }
+  }, [categories, selectedCategoryId]);
 
   const today = new Date().toISOString().split("T")[0];
   const isAdmin = currentUser?.role === "Admin";
 
-  // Use propsTables for now as it contains the real state of tables
-  const tables = propsTables;
+  // Filter tables by selected category
+  const filteredTables = selectedCategoryId
+    ? propsTables.filter(t => t.diningCategoryId?._id === selectedCategoryId || t.diningCategoryId === selectedCategoryId)
+    : propsTables;
 
   // Join Table Logic
   const [isJoinMode, setIsJoinMode] = useState(false);
@@ -126,28 +128,38 @@ const DiningHall = ({
         </div>
       </div>
 
-      {/* Static data from service demonstration */}
-      <div className="mb-6 flex gap-4 overflow-x-auto pb-2">
+      {/* Dynamic Category Tabs */}
+      <div className="mb-6 flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
         {loading ? (
-          <div className="text-gray-500 animate-pulse">Loading areas...</div>
+          <div className="flex gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-gray-100 w-32 h-10 rounded-xl animate-pulse" />
+            ))}
+          </div>
         ) : (
-          diningHalls.map((hall) => (
-            <div
-              key={hall.id}
-              className="bg-white px-4 py-2 rounded-xl shadow-sm border border-indigo-50 text-indigo-900 font-medium whitespace-nowrap"
+          categories.map((cat) => (
+            <button
+              key={cat._id}
+              onClick={() => setSelectedCategoryId(cat._id)}
+              className={`px-6 py-2.5 rounded-xl font-bold whitespace-nowrap transition-all duration-200 shadow-sm border ${selectedCategoryId === cat._id
+                ? "bg-indigo-600 text-white border-indigo-600 shadow-indigo-200"
+                : "bg-white text-indigo-900 border-indigo-50 hover:border-indigo-200 hover:bg-indigo-50"
+                }`}
             >
-              {hall.name} ({hall.capacity})
-            </div>
+              {cat.name} ({propsTables.filter(t => t.diningCategoryId?._id === cat._id || t.diningCategoryId === cat._id).length})
+            </button>
           ))
         )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4 md:gap-8">
-        {tables.map((t) => {
+        {filteredTables.map((t) => {
           const duration = getTableDuration(t.startTime);
           const hasReservation = reservations.find(
             (r) =>
-              r.tableId === t.id && r.date === today && r.status === "Confirmed"
+              String(r.tableId) === String(t.id) &&
+              r.date === today &&
+              r.status === "CONFIRMED"
           );
 
           // Enhanced table object for UI

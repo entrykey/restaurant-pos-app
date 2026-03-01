@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
 import AlertDialog from "../../components/ui/AlertDialog";
 
@@ -30,6 +31,7 @@ import {
     fetchLocationByPincode,
     fetchCurrentLocation,
 } from "./OrganizationService";
+import { shopService } from "../../services/api";
 
 const emptyBranch = (organizationId) => ({
     id: null,
@@ -56,6 +58,7 @@ const Organization = ({
     const canCreateBranch = hasPermissionFor?.(MODULES.ORGANIZATION, "branch", "create");
     const canEditBranch = hasPermissionFor?.(MODULES.ORGANIZATION, "branch", "edit");
     const canDeleteBranch = hasPermissionFor?.(MODULES.ORGANIZATION, "branch", "delete");
+    const { theme, themeName } = useTheme();
 
     const [organization, setOrganization] = useState(null);
     const [branches, setBranches] = useState([]);
@@ -148,6 +151,8 @@ const Organization = ({
     // Use auth context for logout and user data
     const { user, logout } = useAuth();
     const navigate = useNavigate();
+
+    const [logoUploading, setLogoUploading] = useState(false);
 
     const loadData = async () => {
         try {
@@ -243,7 +248,7 @@ const Organization = ({
     };
 
     const branchColumns = [
-        { header: "Branch Name", key: "name", render: (v) => <span className="font-bold text-gray-800">{v}</span> },
+        { header: "Branch Name", key: "name", render: (v) => <span className="font-bold text-gray-800 dark:text-gray-200">{v}</span> },
         { header: "City", key: "address", render: (addr) => addr?.city || "—" },
         { header: "State", key: "address", render: (addr) => addr?.state || "—" },
         { header: "Country", key: "address", render: (addr) => addr?.country || "—" },
@@ -292,126 +297,216 @@ const Organization = ({
         });
     }
 
-    if (loading) return <div className="h-full flex items-center justify-center">Loading...</div>;
+    if (loading) return <div className="h-full flex items-center justify-center dark:text-white">Loading...</div>;
     if (error) return <div className="h-full flex items-center justify-center text-red-500">Error: {error}</div>;
 
     if (!canView) {
         return (
-            <div className="h-full flex items-center justify-center bg-gray-50">
-                <div className="text-center p-12 bg-white rounded-[40px] shadow-xl border max-w-md">
+            <div className={`h-full flex items-center justify-center ${theme.pageBg || 'bg-gray-50'}`}>
+                <div className={`text-center p-12 ${theme.surfaceBg || 'bg-white'} rounded-[40px] shadow-xl border ${theme.borderLight || 'border-gray-200'} max-w-md`}>
                     <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
                         <Building2 size={40} />
                     </div>
-                    <h2 className="text-2xl font-black text-gray-800 mb-2">Access Restricted</h2>
-                    <p className="text-gray-500 font-medium">You don&apos;t have permission to view Organization.</p>
+                    <h2 className={`text-2xl font-black ${theme.textHeading || 'text-gray-800'} mb-2`}>Access Restricted</h2>
+                    <p className={`font-medium ${theme.textSecondary || 'text-gray-500'}`}>You don&apos;t have permission to view Organization.</p>
                 </div>
             </div>
         );
     }
 
+    const handleLogoChange = async (e) => {
+        if (!canEditOrg || !organization?.id) return;
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setLogoUploading(true);
+        try {
+            const res = await shopService.uploadLogo(organization.id, file);
+            const logoUrl = res.logoUrl || res.shop?.logoUrl;
+            if (logoUrl) {
+                setOrganization(prev => ({ ...prev, logoUrl }));
+            }
+            showAlert("success", "Logo Updated", "Shop logo updated successfully.");
+        } catch (error) {
+            console.error("Failed to upload logo:", error);
+            const msg = error.message || error?.response?.data?.message || "Failed to upload logo";
+            showAlert("error", "Upload Failed", msg);
+        } finally {
+            setLogoUploading(false);
+        }
+    };
+
     return (
-        <div className="p-4 md:p-8 h-full overflow-y-auto bg-gray-50/30">
-            <div className="max-w-5xl mx-auto space-y-8">
+        <div className={`p-4 md:p-8 h-full overflow-y-auto ${theme.pageBg || 'bg-slate-50 dark:bg-slate-900'}`}>
+            <div className="w-full mx-auto space-y-8">
                 {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100">
-                            <Building2 size={28} />
+                <div className="relative overflow-hidden rounded-[32px] bg-gradient-to-r from-indigo-700 via-indigo-600 to-sky-500 p-[1px] shadow-sm">
+                    <div className={`relative flex flex-col md:flex-row justify-between items-start md:items-center gap-6 px-6 md:px-10 py-6 md:py-7 ${themeName === 'dark' ? 'bg-slate-900/90' : 'bg-slate-950/5'} backdrop-blur-sm rounded-[31px]`}>
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-white/10 text-white rounded-2xl shadow-lg shadow-black/10">
+                                <Building2 size={26} />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">Organization</h2>
+                                <p className="text-indigo-100/90 font-semibold text-xs md:text-sm">
+                                    Central control for your brand, branches & subscription.
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h2 className="text-2xl md:text-4xl font-black text-gray-800 tracking-tight">Organization</h2>
-                            <p className="text-gray-500 font-bold">Business details & branches</p>
+                        <div className="flex flex-wrap gap-3 md:gap-4 text-[10px] md:text-[11px] font-black">
+                            <div className="px-3 py-1.5 rounded-full bg-white/10 text-white flex items-center gap-2 backdrop-blur">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
+                                {organization?.businessName || "Unnamed Business"}
+                            </div>
+                            <div className="px-3 py-1.5 rounded-full bg-black/10 text-indigo-100 flex items-center gap-1.5 backdrop-blur">
+                                <Sparkles size={12} />
+                                <span>{organization?.planName || "No Active Plan"}</span>
+                            </div>
+                            <div className="px-3 py-1.5 rounded-full bg-black/10 text-indigo-100 flex items-center gap-1.5 backdrop-blur">
+                                <MapPin size={12} />
+                                <span>{branches.length} {branches.length === 1 ? "Branch" : "Branches"}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Organization Details */}
-                <div className="bg-white p-6 md:p-8 rounded-[40px] shadow-xl border">
-                    <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <Building2 size={20} /> Organization Details
+                <div className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight || 'border-slate-100 dark:border-slate-700'}`}>
+                    <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} mb-6 flex items-center gap-2`}>
+                        <Building2 size={20} className="text-indigo-500 dark:text-indigo-400" /> Organization Details
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                            <label className="text-xs font-black text-gray-400 uppercase">Business Name</label>
-                            <input
-                                className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                value={organization?.businessName ?? ""}
-                                onChange={(e) => canEditOrg && setOrganization({ ...organization, businessName: e.target.value })}
-                                readOnly={!canEditOrg}
-                            />
+                    <div className="flex flex-col lg:flex-row gap-8 items-start">
+                        {/* Left Side: Logo */}
+                        <div className="space-y-3 shrink-0">
+                            <label className={`text-xs font-black uppercase block ${theme.textSecondary || 'text-gray-400'}`}>Shop Logo</label>
+                            <div className="flex flex-col gap-2">
+                                <div className={`relative w-32 h-32 rounded-[24px] border-2 border-dashed flex items-center justify-center overflow-hidden group hover:border-indigo-400 transition-colors ${theme.borderLight} ${theme.inputBg}`}>
+                                    {logoUploading ? (
+                                        <div className="flex flex-col items-center gap-2 text-[11px] text-gray-500 font-bold">
+                                            <Loader2 size={24} className="animate-spin text-indigo-500" />
+                                            Uploading…
+                                        </div>
+                                    ) : organization?.logoUrl ? (
+                                        <>
+                                            <img
+                                                src={organization.logoUrl.startsWith("http") ? organization.logoUrl : `http://localhost:8000${organization.logoUrl}`}
+                                                alt="Shop Logo"
+                                                className="w-full h-full object-contain p-2"
+                                            />
+                                            <label className="absolute bottom-2 right-2 p-2 bg-indigo-600 text-white rounded-full shadow-lg cursor-pointer hover:bg-indigo-700 hover:scale-110 active:scale-95 transition-all opacity-90 group-hover:opacity-100 z-10">
+                                                <Edit3 size={14} />
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    onChange={handleLogoChange}
+                                                    disabled={!canEditOrg || logoUploading}
+                                                />
+                                            </label>
+                                        </>
+                                    ) : (
+                                        <label className={`flex flex-col items-center justify-center w-full h-full cursor-pointer transition-colors ${themeName === 'dark' ? 'hover:bg-slate-800/50' : 'hover:bg-gray-100/50'}`}>
+                                            <div className="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-2 group-hover:bg-indigo-100 transition-colors">
+                                                <Plus size={20} />
+                                            </div>
+                                            <span className={`text-[10px] font-bold text-center px-2 ${theme.textSecondary || 'text-gray-500'}`}>Upload Logo</span>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={handleLogoChange}
+                                                disabled={!canEditOrg || logoUploading}
+                                            />
+                                        </label>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-gray-400 font-medium">PNG/JPG up to 2MB.<br />Shown on barcodes & receipts.</p>
+                            </div>
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-black text-gray-400 uppercase">Owner Name</label>
-                            <input
-                                className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500"
-                                value={organization?.ownerName ?? ""}
-                                onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerName: e.target.value })}
-                                readOnly={!canEditOrg}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-black text-gray-400 uppercase">Owner Email</label>
-                            <input
-                                type="email"
-                                className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500"
-                                value={organization?.ownerEmail ?? ""}
-                                onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerEmail: e.target.value })}
-                                readOnly={!canEditOrg}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-black text-gray-400 uppercase">Default Country</label>
-                            <select
-                                className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500"
-                                value={organization?.defaultCountry ?? "IN"}
-                                onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCountry: e.target.value })}
-                                disabled={!canEditOrg}
-                            >
-                                {DEFAULT_COUNTRIES.map((c) => (
-                                    <option key={c.code} value={c.code}>{c.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-black text-gray-400 uppercase">Default Currency</label>
-                            <select
-                                className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500"
-                                value={organization?.defaultCurrency ?? "INR"}
-                                onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCurrency: e.target.value })}
-                                disabled={!canEditOrg}
-                            >
-                                {CURRENCIES.map((c) => (
-                                    <option key={c.code} value={c.code}>{c.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-black text-gray-400 uppercase">Default Tax System</label>
-                            <select
-                                className="w-full p-4 bg-gray-50 border rounded-2xl focus:ring-2 focus:ring-indigo-500"
-                                value={organization?.defaultTaxSystem ?? TAX_SYSTEMS.GST}
-                                onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultTaxSystem: e.target.value })}
-                                disabled={!canEditOrg}
-                            >
-                                {Object.values(TAX_SYSTEMS).map((t) => (
-                                    <option key={t} value={t}>{t}</option>
-                                ))}
-                            </select>
+
+                        {/* Right Side: 6 Inputs in a 3-column / 2-row grid */}
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Business Name</label>
+                                <input
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    value={organization?.businessName ?? ""}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, businessName: e.target.value })}
+                                    readOnly={!canEditOrg}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Owner Name</label>
+                                <input
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    value={organization?.ownerName ?? ""}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerName: e.target.value })}
+                                    readOnly={!canEditOrg}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Owner Email</label>
+                                <input
+                                    type="email"
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    value={organization?.ownerEmail ?? ""}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerEmail: e.target.value })}
+                                    readOnly={!canEditOrg}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Country</label>
+                                <select
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    value={organization?.defaultCountry ?? "IN"}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCountry: e.target.value })}
+                                    disabled={!canEditOrg}
+                                >
+                                    {DEFAULT_COUNTRIES.map((c) => (
+                                        <option key={c.code} value={c.code}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Currency</label>
+                                <select
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    value={organization?.defaultCurrency ?? "INR"}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCurrency: e.target.value })}
+                                    disabled={!canEditOrg}
+                                >
+                                    {CURRENCIES.map((c) => (
+                                        <option key={c.code} value={c.code}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Tax System</label>
+                                <select
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    value={organization?.defaultTaxSystem ?? TAX_SYSTEMS.GST}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultTaxSystem: e.target.value })}
+                                    disabled={!canEditOrg}
+                                >
+                                    {Object.values(TAX_SYSTEMS).map((t) => (
+                                        <option key={t} value={t}>{t}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Subscription & Plans */}
-                <div className="bg-white p-6 md:p-8 rounded-[40px] shadow-xl border">
-                    <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                        <CreditCard size={20} /> Subscription & Plans
+                <div className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight || 'border-slate-100 dark:border-slate-700'}`}>
+                    <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} mb-6 flex items-center gap-2`}>
+                        <CreditCard size={20} className="text-indigo-500 dark:text-indigo-400" /> Subscription & Plans
                     </h3>
 
-                    <div className="bg-indigo-50 p-6 rounded-3xl mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div className={`p-6 rounded-3xl mb-8 flex flex-col md:flex-row justify-between items-center gap-4 border ${themeName === 'dark' ? 'bg-slate-900/50 border-slate-700' : 'bg-indigo-50/80 border-indigo-100/70'}`}>
                         <div>
-                            <p className="text-xs font-black text-indigo-400 uppercase mb-1">Current Plan</p>
-                            <h4 className="text-2xl font-black text-indigo-900">{organization?.planName}</h4>
-                            <p className="text-gray-600 font-medium">{organization?.planPriceLabel}</p>
+                            <p className={`text-xs font-black uppercase mb-1 ${theme.primaryIconText}`}>Current Plan</p>
+                            <h4 className={`text-2xl font-black ${theme.textHeading}`}>{organization?.planName}</h4>
+                            <p className={`font-medium ${theme.textSecondary || 'text-gray-500'}`}>{organization?.planPriceLabel}</p>
                         </div>
                         {/* 
                            If no active plan, we don't show "Manage Subscription" typically, 
@@ -420,7 +515,7 @@ const Organization = ({
                         */}
                     </div>
 
-                    <p className="text-gray-500 font-medium mb-6">Upgrade your plan for more branches and features</p>
+                    <p className={`font-medium mb-6 ${theme.textSecondary || 'text-gray-500'}`}>Upgrade your plan for more branches and features</p>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {plans.map((plan) => {
@@ -432,8 +527,8 @@ const Organization = ({
                                 <div
                                     key={plan.id}
                                     className={`relative p-6 rounded-3xl border-2 transition-all ${plan.highlighted
-                                        ? "border-indigo-600 bg-indigo-50/50 shadow-lg scale-105 z-10"
-                                        : "border-gray-100 hover:border-indigo-200 hover:shadow-lg"
+                                        ? `border-indigo-600 shadow-lg scale-105 z-10 ${themeName === 'dark' ? 'bg-slate-900/80' : 'bg-indigo-50/50'}`
+                                        : `${theme.borderLight} hover:border-indigo-500 hover:shadow-lg ${themeName === 'dark' ? 'bg-slate-800/50' : 'hover:border-indigo-200'}`
                                         }`}
                                 >
                                     {plan.highlighted && (
@@ -441,18 +536,18 @@ const Organization = ({
                                             Most Popular
                                         </div>
                                     )}
-                                    <h4 className="text-xl font-bold text-gray-800 mb-2">{plan.name}</h4>
+                                    <h4 className={`text-xl font-bold mb-2 ${theme.textHeading}`}>{plan.name}</h4>
                                     <div className="flex items-baseline gap-1 mb-1">
-                                        <span className="text-3xl font-black text-indigo-600">
+                                        <span className={`text-3xl font-black ${theme.primaryIconText}`}>
                                             {plan.priceLabel.split(" ")[0]} {plan.price}
                                         </span>
-                                        <span className="text-gray-400 font-medium">/mo</span>
+                                        <span className={`font-medium ${theme.textSecondary || 'text-gray-400'}`}>/mo</span>
                                     </div>
-                                    <p className="text-xs text-gray-400 font-medium mb-6">Up to {plan.branchesLimit === -1 ? "Unlimited" : plan.branchesLimit} branches</p>
+                                    <p className={`text-xs font-medium mb-6 ${theme.textSecondary || 'text-gray-500'}`}>Up to {plan.branchesLimit === -1 ? "Unlimited" : plan.branchesLimit} branches</p>
 
                                     <ul className="space-y-3 mb-8">
                                         {plan.features.map((feature, i) => (
-                                            <li key={i} className="flex items-start gap-2 text-sm text-gray-600 font-medium">
+                                            <li key={i} className={`flex items-start gap-2 text-sm font-medium ${themeName === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
                                                 <Check size={16} className="text-green-500 shrink-0 mt-0.5" />
                                                 <span>{feature}</span>
                                             </li>
@@ -462,7 +557,7 @@ const Organization = ({
                                     {isCurrent ? (
                                         <button
                                             disabled
-                                            className="w-full py-2.5 rounded-xl font-bold text-gray-500 bg-gray-200 cursor-default"
+                                            className={`w-full py-2.5 rounded-xl font-bold cursor-default ${themeName === 'dark' ? 'bg-slate-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`}
                                         >
                                             Current plan
                                         </button>
@@ -470,10 +565,10 @@ const Organization = ({
                                         <button
                                             onClick={() => canEditOrg && handleStartTrial(plan)}
                                             disabled={!canEditOrg || isTrialLoading}
-                                            className={`w-full py-2.5 rounded-xl font-bold transition-all ${plan.highlighted
-                                                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200"
-                                                : "bg-gray-800 text-white hover:bg-gray-700"
-                                                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                            className={`w-full py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${plan.highlighted
+                                                ? `bg-indigo-600 text-white hover:bg-indigo-700 ${themeName === 'dark' ? '' : 'shadow-lg shadow-indigo-200'}`
+                                                : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
+                                                }`}
                                         >
                                             {isTrialLoading ? "Starting…" : `Start ${plan.trialDurationDays ?? 0} day trial`}
                                         </button>
@@ -481,10 +576,10 @@ const Organization = ({
                                         <button
                                             onClick={() => canEditOrg && setOrganization({ ...organization, subscriptionPlanId: plan.id })}
                                             disabled={!canEditOrg}
-                                            className={`w-full py-2.5 rounded-xl font-bold transition-all ${plan.highlighted
-                                                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200"
-                                                : "bg-gray-800 text-white hover:bg-gray-700"
-                                                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                            className={`w-full py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${plan.highlighted
+                                                ? `bg-indigo-600 text-white hover:bg-indigo-700 ${themeName === 'dark' ? '' : 'shadow-lg shadow-indigo-200'}`
+                                                : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
+                                                }`}
                                         >
                                             Upgrade
                                         </button>
@@ -496,10 +591,10 @@ const Organization = ({
                 </div>
 
                 {/* Branches */}
-                <div className="bg-white p-6 md:p-8 rounded-[40px] shadow-xl border">
+                <div className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight || 'border-slate-100 dark:border-slate-700'}`}>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                        <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                            <MapPin size={20} /> Branches
+                        <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} flex items-center gap-2`}>
+                            <MapPin size={20} className="text-indigo-500 dark:text-indigo-400" /> Branches
                         </h3>
                         {canCreateBranch && (
                             <button
@@ -523,16 +618,16 @@ const Organization = ({
                 isOpen={isBranchModalOpen}
                 onClose={() => setIsBranchModalOpen(false)}
                 title={editingBranch ? "Edit Branch" : "Add New Branch"}
-                className="max-w-lg"
+                className="max-w-lg dark:bg-slate-800 dark:border-slate-700"
             >
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                        <label className="text-xs font-black text-gray-400 uppercase block mb-1">Branch Name</label>
+                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Branch Name</label>
                         <button
                             type="button"
                             onClick={handleUseCurrentLocation}
                             disabled={isLocationLoading}
-                            className="text-xs font-bold text-indigo-600 flex items-center gap-1 hover:underline disabled:opacity-50"
+                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:underline disabled:opacity-50"
                         >
                             {isLocationLoading ? <Loader2 size={12} className="animate-spin" /> : <MapPin size={12} />}
                             Use Current Location
@@ -540,7 +635,7 @@ const Organization = ({
                     </div>
                     <div>
                         <input
-                            className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
                             value={branchForm.name}
                             onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })}
                             placeholder="e.g. Food Plaza - Dubai"
@@ -549,10 +644,10 @@ const Organization = ({
 
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs font-black text-gray-400 uppercase block mb-1">Pincode</label>
+                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Pincode</label>
                             <div className="relative">
                                 <input
-                                    className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                    className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
                                     value={branchForm.address?.pincode ?? ""}
                                     onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, pincode: e.target.value } })}
                                     onBlur={handlePincodeBlur}
@@ -562,9 +657,9 @@ const Organization = ({
                             </div>
                         </div>
                         <div>
-                            <label className="text-xs font-black text-gray-400 uppercase block mb-1">Address Line 1</label>
+                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Address Line 1</label>
                             <input
-                                className="w-full p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
                                 value={branchForm.address?.line1 ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, line1: e.target.value } })}
                                 placeholder="Street / Area"
@@ -573,17 +668,17 @@ const Organization = ({
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs font-black text-gray-400 uppercase block mb-1">City</label>
+                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">City</label>
                             <input
-                                className="w-full p-3 bg-gray-50 border rounded-xl"
+                                className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
                                 value={branchForm.address?.city ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, city: e.target.value } })}
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-black text-gray-400 uppercase block mb-1">State</label>
+                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">State</label>
                             <input
-                                className="w-full p-3 bg-gray-50 border rounded-xl"
+                                className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
                                 value={branchForm.address?.state ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, state: e.target.value } })}
                             />
@@ -591,18 +686,18 @@ const Organization = ({
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs font-black text-gray-400 uppercase block mb-1">Country</label>
+                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Country</label>
                             <input
-                                className="w-full p-3 bg-gray-50 border rounded-xl"
+                                className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
                                 value={branchForm.address?.country ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, country: e.target.value } })}
                             />
                         </div>
                     </div>
                     <div>
-                        <label className="text-xs font-black text-gray-400 uppercase block mb-1">Currency</label>
+                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Currency</label>
                         <select
-                            className="w-full p-3 bg-gray-50 border rounded-xl"
+                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
                             value={branchForm.currency}
                             onChange={(e) => setBranchForm({ ...branchForm, currency: e.target.value })}
                         >
@@ -612,9 +707,9 @@ const Organization = ({
                         </select>
                     </div>
                     <div>
-                        <label className="text-xs font-black text-gray-400 uppercase block mb-1">Tax System</label>
+                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Tax System</label>
                         <select
-                            className="w-full p-3 bg-gray-50 border rounded-xl"
+                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
                             value={branchForm.taxConfig?.taxSystem}
                             onChange={(e) => {
                                 const newSystem = e.target.value;
@@ -655,15 +750,15 @@ const Organization = ({
                                             ...branchForm,
                                             taxConfig: { ...branchForm.taxConfig, isGstRegistered: e.target.checked },
                                         })}
-                                        className="rounded accent-indigo-600"
+                                        className="rounded accent-indigo-600 dark:bg-slate-900 border-slate-700"
                                     />
-                                    <label htmlFor="taxRegistered" className="text-sm font-medium">{registeredLabel}</label>
+                                    <label htmlFor="taxRegistered" className="text-sm font-medium dark:text-white">{registeredLabel}</label>
                                 </div>
                                 {isRegistered && (
                                     <div>
-                                        <label className="text-xs font-black text-gray-400 uppercase block mb-1">{regNumberLabel}</label>
+                                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">{regNumberLabel}</label>
                                         <input
-                                            className="w-full p-3 bg-gray-50 border rounded-xl"
+                                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
                                             value={branchForm.taxConfig?.gstin ?? ""}
                                             onChange={(e) => setBranchForm({
                                                 ...branchForm,
@@ -682,15 +777,15 @@ const Organization = ({
                             id="mainBranch"
                             checked={branchForm.isMainBranch ?? false}
                             onChange={(e) => setBranchForm({ ...branchForm, isMainBranch: e.target.checked })}
-                            className="rounded accent-indigo-600"
+                            className="rounded accent-indigo-600 dark:bg-slate-900 border-slate-700"
                         />
-                        <label htmlFor="mainBranch" className="text-sm font-medium">Main Branch</label>
+                        <label htmlFor="mainBranch" className="text-sm font-medium dark:text-white">Main Branch</label>
                     </div>
-                    <div className="flex justify-end gap-3 pt-4">
+                    <div className="flex justify-end gap-3 pt-4 border-t dark:border-slate-700">
                         <button
                             type="button"
                             onClick={() => setIsBranchModalOpen(false)}
-                            className="px-4 py-2 rounded-xl font-bold text-gray-600 hover:bg-gray-100"
+                            className="px-4 py-2 rounded-xl font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
                         >
                             Cancel
                         </button>

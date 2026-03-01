@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Utensils, Loader2, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import { shopService } from "../services/api";
 import {
   getDefaultModules,
@@ -26,6 +27,7 @@ export default function Login({
   onSetEnabledModules
 }) {
   const auth = useAuth();
+  const { theme } = useTheme();
 
   const [authStep, setAuthStep] = useState("login"); // 'login' | 'register'
   const [identifier, setIdentifier] = useState("");
@@ -46,32 +48,55 @@ export default function Login({
     try {
       const data = await shopService.login({ identifier, password });
 
-      // 1. Store token and permissions (same shape as API: { moduleId: [permissionId, ...] })
-      // 1. Process and Store Token
+      // 1. Store token
       localStorage.setItem("accessToken", data.accessToken);
       const user = data.user;
 
-      // Extract permissions from roles if user.permissions is empty/missing
-      let finalPermissions = {};
-      if (user.roles && Array.isArray(user.roles)) {
-        user.roles.forEach(role => {
-          if (role.permissions && Array.isArray(role.permissions)) {
-            role.permissions.forEach(p => {
-              // p is { module: "moduleId", permissions: ["permId", ...] }
-              if (!finalPermissions[p.module]) {
-                finalPermissions[p.module] = [];
+      // 2. Normalize permissions:
+      //    Prefer backend-computed user.permissions (moduleKey -> [permissionKey, ...]).
+      //    If missing/empty, derive from roles (supports both old and new role shapes).
+      let finalPermissions =
+        user.permissions && typeof user.permissions === "object"
+          ? user.permissions
+          : {};
+
+      if (!finalPermissions || Object.keys(finalPermissions).length === 0) {
+        if (user.roles && Array.isArray(user.roles)) {
+          user.roles.forEach((role) => {
+            if (!Array.isArray(role.permissions)) return;
+            role.permissions.forEach((entry) => {
+              if (!entry || !entry.module) return;
+
+              // module can be a key string or a populated module object
+              const moduleKey =
+                typeof entry.module === "string"
+                  ? entry.module
+                  : entry.module.key || entry.module.name;
+              if (!moduleKey) return;
+
+              if (!finalPermissions[moduleKey]) {
+                finalPermissions[moduleKey] = [];
               }
-              // Merge and deduplicate
-              finalPermissions[p.module] = [...new Set([...finalPermissions[p.module], ...p.permissions])];
+
+              // permissions can be array of keys/ids or array of populated permission objects
+              const permKeys = (entry.permissions || []).map((perm) =>
+                typeof perm === "string"
+                  ? perm
+                  : perm.key || perm.name
+              );
+
+              finalPermissions[moduleKey] = [
+                ...new Set([
+                  ...finalPermissions[moduleKey],
+                  ...permKeys.filter(Boolean),
+                ]),
+              ];
             });
-          }
-        });
+          });
+        }
       }
 
-      // If user has direct permissions (override), merge them or use them? 
-      // Usually roles are additive. Let's start with roles as the base.
-      // If the backend returns empty user.permissions, we populate it now.
-      user.permissions = finalPermissions;
+      user.permissions = finalPermissions || {};
 
       if (user.permissions && typeof user.permissions === "object") {
         localStorage.setItem("permissions", JSON.stringify(user.permissions));
@@ -117,7 +142,7 @@ export default function Login({
 
   if (authStep === 'register') {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-indigo-900 p-4 overflow-y-auto">
+      <div className={`fixed inset-0 flex items-center justify-center p-4 overflow-y-auto ${theme.background}`}>
         <RegisterShop
           onBack={() => setAuthStep('login')}
           onRegisterSuccess={() => {
@@ -130,33 +155,33 @@ export default function Login({
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-indigo-900 p-4">
-      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-8 mx-auto transition-all duration-300">
+    <div className={`fixed inset-0 flex items-center justify-center p-4 ${theme.background}`}>
+      <div className={`w-full max-w-md rounded-3xl shadow-2xl p-8 mx-auto transition-all duration-300 ${theme.cardBg}`}>
         <div className="flex justify-center mb-6">
-          <div className="bg-indigo-100 p-4 rounded-full">
-            <Utensils size={40} className="text-indigo-600" />
+          <div className={`p-4 rounded-full ${theme.primaryIconBg}`}>
+            <Utensils size={40} className={theme.primaryIconText} />
           </div>
         </div>
-        <h1 className="text-2xl font-bold text-center mb-6">{shopName}</h1>
+        <h1 className={`text-2xl font-bold text-center mb-6 ${theme.textHeading}`}>{shopName}</h1>
 
         <div className="space-y-6">
           <form onSubmit={handleLogin} className="space-y-6">
 
             {error && (
-              <div className="p-3 bg-red-50 text-red-600 text-sm font-medium rounded-xl text-center">
+              <div className={`p-3 text-sm font-medium rounded-xl text-center ${theme.errorBg} ${theme.errorText}`}>
                 {error}
               </div>
             )}
 
             <div>
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">
+              <label className={`text-xs font-bold uppercase tracking-widest block mb-2 ${theme.textSecondary}`}>
                 Email or Phone
               </label>
               <input
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                className="w-full p-4 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
+                className={`w-full p-4 border rounded-xl outline-none font-medium ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                 placeholder="Enter Email or Phone"
                 required
                 autoFocus
@@ -164,7 +189,7 @@ export default function Login({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">
+              <label className={`text-xs font-bold uppercase tracking-widest block mb-2 ${theme.textSecondary}`}>
                 Password
               </label>
               <div className="relative">
@@ -172,14 +197,14 @@ export default function Login({
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full p-4 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
+                  className={`w-full p-4 border rounded-xl outline-none font-medium ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                   placeholder="Enter Password"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className={`absolute right-4 top-1/2 -translate-y-1/2 ${theme.textSecondary} hover:opacity-80`}
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
@@ -189,17 +214,17 @@ export default function Login({
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-indigo-700 transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center"
+              className={`w-full py-4 rounded-2xl font-bold shadow-xl transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg}`}
             >
               {loading ? <Loader2 className="animate-spin" /> : "Login"}
             </button>
           </form>
 
           <div className="text-center">
-            <span className="text-gray-400 text-sm font-medium">New here? </span>
+            <span className={`text-sm font-medium ${theme.textSecondary}`}>New here? </span>
             <button
               onClick={() => setAuthStep('register')}
-              className="text-indigo-600 font-bold hover:underline"
+              className={`font-bold hover:underline ${theme.linkText} ${theme.linkHover}`}
             >
               Register Shop
             </button>

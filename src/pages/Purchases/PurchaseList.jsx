@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
     Plus, Search, Eye, Edit3, Trash2, ShoppingCart, Calendar,
     CheckCircle, Clock, AlertCircle, X, Package, User, Building,
@@ -12,6 +13,7 @@ import { SupplierService } from "../Suppliers/SupplierService";
 import { itemService, shopService, branchService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
+import { useTheme } from "../../context/ThemeContext";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -30,445 +32,12 @@ const PAY_PILL = {
     UNPAID: "bg-gray-100   text-gray-500    border-gray-200",
 };
 
-// ── Empty Item Row ────────────────────────────────────────────────────────────
 
-const EMPTY_ITEM = () => ({
-    itemId: "", name: "", itemCode: "",
-    quantity: 1, purchasePrice: 0,
-    taxAmount: 0, discountAmount: 0,
-    batchNo: "", expiryDate: ""
-});
-
-const EMPTY_FORM = () => ({
-    supplierId: "",
-    branchId: "",
-    supplierInvoiceNumber: "",
-    invoiceDate: new Date().toISOString().split("T")[0],
-    dueDate: "",
-    notes: "",
-    items: [],
-    paidAmount: 0,
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// CREATE PURCHASE MODAL
-// ════════════════════════════════════════════════════════════════════════════
-
-const CreatePurchaseModal = ({ onClose, onSuccess, shopId, branches, suppliers, stockItems }) => {
-    const [form, setForm] = useState(EMPTY_FORM());
-    const [saving, setSaving] = useState(false);
-    const [itemQuery, setItemQuery] = useState("");
-    const [showItemDrop, setShowItemDrop] = useState(false);
-    const itemSearchRef = useRef(null);
-    const { user } = useAuth();
-
-    // Close dropdown on outside click
-    useEffect(() => {
-        const handler = (e) => {
-            if (itemSearchRef.current && !itemSearchRef.current.contains(e.target))
-                setShowItemDrop(false);
-        };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, []);
-
-    // set default branch
-    useEffect(() => {
-        if (branches.length && !form.branchId)
-            setForm(f => ({ ...f, branchId: branches[0]._id }));
-    }, [branches]);
-
-    const totals = useMemo(() => {
-        const sub = form.items.reduce((a, it) => a + it.quantity * it.purchasePrice, 0);
-        const tax = form.items.reduce((a, it) => a + (Number(it.taxAmount) || 0), 0);
-        const disc = form.items.reduce((a, it) => a + (Number(it.discountAmount) || 0), 0);
-        const grand = sub + tax - disc;
-        const bal = grand - (Number(form.paidAmount) || 0);
-        return { sub, tax, disc, grand, bal };
-    }, [form.items, form.paidAmount]);
-
-    const filteredItems = stockItems
-        .filter(it =>
-            it.name.toLowerCase().includes(itemQuery.toLowerCase()) ||
-            (it.itemCode || "").toLowerCase().includes(itemQuery.toLowerCase())
-        )
-        .slice(0, 6);
-
-    const addItem = (item) => {
-        if (form.items.some(i => i.itemId === item._id)) return;
-        setForm(f => ({
-            ...f,
-            items: [...f.items, {
-                ...EMPTY_ITEM(),
-                itemId: item._id,
-                name: item.name,
-                itemCode: item.itemCode || "",
-                purchasePrice: item.pricing?.purchasePrice || 0,
-            }]
-        }));
-        setItemQuery("");
-        setShowItemDrop(false);
-    };
-
-    const removeItem = (idx) =>
-        setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
-
-    const updateItem = (idx, field, val) =>
-        setForm(f => {
-            const items = [...f.items];
-            items[idx] = { ...items[idx], [field]: val };
-            return { ...f, items };
-        });
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!form.items.length) { alert("Add at least one item."); return; }
-        setSaving(true);
-        try {
-            const itemsWithTotal = form.items.map(it => ({
-                ...it,
-                totalAmount: (Number(it.quantity) * Number(it.purchasePrice))
-                    + (Number(it.taxAmount) || 0)
-                    - (Number(it.discountAmount) || 0),
-            }));
-            await PurchaseService.createPurchase({
-                ...form,
-                items: itemsWithTotal,
-                shopId,
-                subtotal: totals.sub,
-                taxTotal: totals.tax,
-                discountTotal: totals.disc,
-                grandTotal: totals.grand,
-                balanceAmount: totals.bal,
-            });
-            onSuccess();
-        } catch (err) {
-            alert(err?.response?.data?.message || err.message || "Failed to save.");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            {/* ── Panel ── */}
-            <div className="bg-white w-full max-w-5xl max-h-[95vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden">
-
-                {/* ── Header ── */}
-                <div className="flex items-center justify-between px-8 py-6 bg-gradient-to-r from-indigo-600 to-indigo-500 rounded-t-[32px]">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
-                            <ReceiptText className="text-white" size={24} />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-black text-white tracking-tight">New Purchase Invoice</h2>
-                            <p className="text-indigo-200 text-xs font-bold mt-0.5">Create draft · Items · Confirm later</p>
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-white"
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
-
-                {/* ── Body ── */}
-                <div className="overflow-y-auto flex-1 p-6 md:p-8 space-y-6 bg-gray-50/50">
-                    <form id="purchase-form" onSubmit={handleSubmit} className="space-y-6">
-
-                        {/* Row 1 – General Info */}
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                            {/* Supplier */}
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                    <Truck size={11} /> Supplier *
-                                </label>
-                                <div className="relative">
-                                    <select
-                                        required
-                                        className="w-full appearance-none p-4 bg-white border-2 border-gray-100 focus:border-indigo-500 rounded-2xl outline-none transition-all font-bold text-gray-700 shadow-sm pr-10"
-                                        value={form.supplierId}
-                                        onChange={e => setForm(f => ({ ...f, supplierId: e.target.value }))}
-                                    >
-                                        <option value="">Select...</option>
-                                        {suppliers.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
-                                    </select>
-                                    <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                </div>
-                            </div>
-
-                            {/* Branch */}
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                    <Building size={11} /> Branch *
-                                </label>
-                                <div className="relative">
-                                    <select
-                                        required
-                                        className="w-full appearance-none p-4 bg-white border-2 border-gray-100 focus:border-indigo-500 rounded-2xl outline-none transition-all font-bold text-gray-700 shadow-sm pr-10"
-                                        value={form.branchId}
-                                        onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-                                    >
-                                        {branches.map(b => <option key={b._id} value={b._id}>{b.name}</option>)}
-                                    </select>
-                                    <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                </div>
-                            </div>
-
-                            {/* Invoice No */}
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                    <FileText size={11} /> Supplier Invoice No *
-                                </label>
-                                <input
-                                    required
-                                    placeholder="e.g. INV-001"
-                                    className="w-full p-4 bg-white border-2 border-gray-100 focus:border-indigo-500 rounded-2xl outline-none transition-all font-bold text-gray-700 shadow-sm"
-                                    value={form.supplierInvoiceNumber}
-                                    onChange={e => setForm(f => ({ ...f, supplierInvoiceNumber: e.target.value }))}
-                                />
-                            </div>
-
-                            {/* Date */}
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                    <Calendar size={11} /> Invoice Date *
-                                </label>
-                                <input
-                                    type="date"
-                                    required
-                                    className="w-full p-4 bg-white border-2 border-gray-100 focus:border-indigo-500 rounded-2xl outline-none transition-all font-bold text-gray-700 shadow-sm"
-                                    value={form.invoiceDate}
-                                    onChange={e => setForm(f => ({ ...f, invoiceDate: e.target.value }))}
-                                />
-                            </div>
-                        </div>
-
-                        {/* ── Items Section ── */}
-                        <div className="bg-white border border-gray-100 rounded-[28px] shadow-sm overflow-hidden">
-                            {/* Item header & search */}
-                            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-6 border-b border-gray-100">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200">
-                                        <Package size={18} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-black text-gray-800 text-sm uppercase tracking-tight">Line Items</h3>
-                                        <p className="text-[10px] font-bold text-gray-400">{form.items.length} item{form.items.length !== 1 ? "s" : ""} added</p>
-                                    </div>
-                                </div>
-
-                                {/* Item search */}
-                                <div className="relative w-full md:w-80" ref={itemSearchRef}>
-                                    <div className="relative">
-                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                        <input
-                                            value={itemQuery}
-                                            onChange={e => { setItemQuery(e.target.value); setShowItemDrop(true); }}
-                                            onFocus={() => setShowItemDrop(true)}
-                                            placeholder="Search & add stock items..."
-                                            className="w-full pl-11 pr-4 py-3 bg-indigo-50 border-2 border-indigo-100 focus:border-indigo-500 rounded-xl outline-none font-bold text-gray-700 transition-all text-sm"
-                                        />
-                                    </div>
-                                    {showItemDrop && itemQuery && (
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden divide-y divide-gray-50">
-                                            {filteredItems.length ? filteredItems.map(item => (
-                                                <button
-                                                    key={item._id}
-                                                    type="button"
-                                                    onClick={() => addItem(item)}
-                                                    className="w-full px-5 py-3.5 text-left hover:bg-indigo-50 flex items-center justify-between group transition-colors"
-                                                >
-                                                    <div>
-                                                        <div className="font-black text-gray-800 text-sm">{item.name}</div>
-                                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{item.itemCode}</div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs font-black text-indigo-500">{fmt(item.pricing?.purchasePrice)}</span>
-                                                        <Plus size={14} className="text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                    </div>
-                                                </button>
-                                            )) : (
-                                                <div className="p-5 text-center text-gray-400 font-bold text-xs uppercase tracking-widest">No stock items found</div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Items table */}
-                            <div className="overflow-x-auto min-h-[180px]">
-                                <table className="w-full text-left">
-                                    <thead className="bg-gray-50/70">
-                                        <tr className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
-                                            <th className="py-4 px-5">#</th>
-                                            <th className="py-4 px-3">Item</th>
-                                            <th className="py-4 px-3 w-24 text-center">Qty</th>
-                                            <th className="py-4 px-3 w-32">Price (₹)</th>
-                                            <th className="py-4 px-3 w-28">Batch</th>
-                                            <th className="py-4 px-3 w-28">Expiry</th>
-                                            <th className="py-4 px-3 text-right">Total</th>
-                                            <th className="py-4 px-3 w-10"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-50">
-                                        {form.items.map((it, idx) => (
-                                            <tr key={it.itemId} className="hover:bg-indigo-50/20 transition-colors">
-                                                <td className="py-4 px-5 text-gray-300 font-black text-sm">{idx + 1}</td>
-                                                <td className="py-4 px-3">
-                                                    <div className="font-black text-gray-800 text-sm">{it.name}</div>
-                                                    <div className="text-[9px] font-bold text-gray-400 uppercase">{it.itemCode}</div>
-                                                </td>
-                                                <td className="py-4 px-3">
-                                                    <input
-                                                        type="number" min={0.01} step="any"
-                                                        value={it.quantity}
-                                                        onChange={e => updateItem(idx, "quantity", parseFloat(e.target.value) || 0)}
-                                                        className="w-full text-center p-2 rounded-xl bg-gray-50 border-2 border-transparent focus:border-indigo-400 outline-none font-black text-indigo-600 text-sm"
-                                                    />
-                                                </td>
-                                                <td className="py-4 px-3">
-                                                    <input
-                                                        type="number" min={0} step="any"
-                                                        value={it.purchasePrice}
-                                                        onChange={e => updateItem(idx, "purchasePrice", parseFloat(e.target.value) || 0)}
-                                                        className="w-full p-2 rounded-xl bg-gray-50 border-2 border-transparent focus:border-indigo-400 outline-none font-black text-gray-700 text-sm"
-                                                    />
-                                                </td>
-                                                <td className="py-4 px-3">
-                                                    <input
-                                                        placeholder="Batch#"
-                                                        value={it.batchNo}
-                                                        onChange={e => updateItem(idx, "batchNo", e.target.value)}
-                                                        className="w-full p-2 rounded-xl bg-gray-50 border-2 border-transparent focus:border-indigo-400 outline-none font-bold text-gray-600 text-xs uppercase"
-                                                    />
-                                                </td>
-                                                <td className="py-4 px-3">
-                                                    <input
-                                                        type="date"
-                                                        value={it.expiryDate}
-                                                        onChange={e => updateItem(idx, "expiryDate", e.target.value)}
-                                                        className="w-full p-2 rounded-xl bg-gray-50 border-2 border-transparent focus:border-indigo-400 outline-none font-bold text-gray-600 text-xs"
-                                                    />
-                                                </td>
-                                                <td className="py-4 px-3 text-right">
-                                                    <span className="font-black text-gray-800 text-sm">
-                                                        {fmt(it.quantity * it.purchasePrice)}
-                                                    </span>
-                                                </td>
-                                                <td className="py-4 px-3">
-                                                    <button
-                                                        type="button" onClick={() => removeItem(idx)}
-                                                        className="p-1.5 rounded-xl text-red-300 hover:text-red-500 hover:bg-red-50 transition-all"
-                                                    ><Trash2 size={14} /></button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {!form.items.length && (
-                                            <tr>
-                                                <td colSpan={8} className="py-12 text-center">
-                                                    <div className="flex flex-col items-center gap-3 text-gray-300">
-                                                        <Package size={36} strokeWidth={1.5} />
-                                                        <p className="font-black uppercase tracking-widest text-[10px]">Search and add items above</p>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* ── Footer: Notes + Totals ── */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                            {/* Notes */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Notes</label>
-                                <textarea
-                                    value={form.notes}
-                                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                                    placeholder="Add any notes or remarks..."
-                                    rows={5}
-                                    className="w-full p-4 bg-white border-2 border-gray-100 focus:border-indigo-500 rounded-2xl outline-none transition-all font-medium text-gray-700 resize-none shadow-sm text-sm"
-                                />
-                            </div>
-
-                            {/* Totals */}
-                            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-6 space-y-3">
-                                {[
-                                    ["Subtotal", fmt(totals.sub), "text-gray-800"],
-                                    ["Tax", fmt(totals.tax), "text-gray-800"],
-                                    ["Discount (−)", fmt(totals.disc), "text-emerald-600"],
-                                ].map(([label, val, cls]) => (
-                                    <div key={label} className="flex justify-between items-center text-sm">
-                                        <span className="font-bold text-gray-400">{label}</span>
-                                        <span className={`font-black ${cls}`}>{val}</span>
-                                    </div>
-                                ))}
-                                <div className="border-t border-gray-100 pt-3 flex justify-between items-center">
-                                    <span className="font-black text-gray-800 uppercase tracking-wide text-xs">Grand Total</span>
-                                    <span className="font-black text-2xl text-indigo-600">{fmt(totals.grand)}</span>
-                                </div>
-                                <div className="flex justify-between items-center bg-gray-50 rounded-xl p-3">
-                                    <label className="font-black text-gray-500 text-xs uppercase tracking-wide">Paid Now</label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-                                        <input
-                                            type="number" min={0}
-                                            value={form.paidAmount}
-                                            onChange={e => setForm(f => ({ ...f, paidAmount: parseFloat(e.target.value) || 0 }))}
-                                            className="pl-7 pr-3 py-2 font-black text-right bg-white border-2 border-gray-100 focus:border-indigo-400 rounded-xl outline-none w-32 text-sm"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="font-bold text-gray-400 text-xs uppercase">Balance Due</span>
-                                    <span className={`font-black text-sm ${totals.bal > 0 ? "text-red-500" : "text-emerald-600"}`}>
-                                        {fmt(totals.bal)}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-
-                {/* ── Footer Buttons ── */}
-                <div className="px-8 py-5 border-t border-gray-100 bg-white rounded-b-[32px] flex items-center justify-between gap-4">
-                    <button
-                        type="button" onClick={onClose}
-                        className="px-8 py-3.5 rounded-2xl font-black text-gray-500 bg-gray-100 hover:bg-gray-200 transition-all text-sm"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit" form="purchase-form" disabled={saving}
-                        className={`px-10 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center gap-3 shadow-2xl shadow-indigo-200 ${saving
-                            ? "bg-indigo-200 text-white cursor-not-allowed"
-                            : "bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95"
-                            }`}
-                    >
-                        {saving ? (
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        ) : (
-                            <Save size={18} />
-                        )}
-                        {saving ? "Saving..." : "Save Draft"}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// ════════════════════════════════════════════════════════════════════════════
-// PURCHASE DETAIL MODAL
-// ════════════════════════════════════════════════════════════════════════════
 
 const PurchaseDetailModal = ({ purchaseId, onClose }) => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const { theme } = useTheme();
 
     useEffect(() => {
         PurchaseService.getPurchaseById(purchaseId)
@@ -489,7 +58,7 @@ const PurchaseDetailModal = ({ purchaseId, onClose }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-gray-50 w-full max-w-4xl max-h-[95vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden">
+            <div className={`w-full max-w-4xl max-h-[95vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden ${theme.surfaceBg}`}>
 
                 {/* ── Header ─────────────────────────────────────── */}
                 <div className="flex items-center justify-between px-8 py-6 bg-gradient-to-r from-indigo-700 to-indigo-500 rounded-t-[32px] flex-shrink-0">
@@ -655,6 +224,7 @@ const PaymentModal = ({ purchase, onClose, onSuccess }) => {
     const [method, setMethod] = useState("CASH");
     const [ref, setRef] = useState("");
     const [saving, setSaving] = useState(false);
+    const { theme } = useTheme();
 
     const handlePay = async (e) => {
         e.preventDefault();
@@ -678,7 +248,7 @@ const PaymentModal = ({ purchase, onClose, onSuccess }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white w-full max-w-md rounded-[28px] shadow-2xl overflow-hidden">
+            <div className={`w-full max-w-md rounded-[28px] shadow-2xl overflow-hidden ${theme.surfaceBg}`}>
                 {/* Header */}
                 <div className="flex items-center justify-between px-7 py-5 bg-gradient-to-r from-emerald-600 to-emerald-500">
                     <div className="flex items-center gap-3">
@@ -762,10 +332,11 @@ const PaymentModal = ({ purchase, onClose, onSuccess }) => {
 
 const PurchaseList = ({ hasPermissionFor }) => {
     const { user } = useAuth();
+    const { theme } = useTheme();
+    const navigate = useNavigate();
     const [purchases, setPurchases] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
-    const [showCreate, setShowCreate] = useState(false);
     const [payTarget, setPayTarget] = useState(null); // purchase row for payment modal
     const [viewTarget, setViewTarget] = useState(null); // purchase id for detail modal
 
@@ -859,8 +430,8 @@ const PurchaseList = ({ hasPermissionFor }) => {
             key: "purchaseNumber",
             render: (val, row) => (
                 <div>
-                    <div className="font-black text-gray-800">{val}</div>
-                    <div className="flex items-center gap-1 text-[10px] font-bold text-gray-400 mt-0.5 uppercase">
+                    <div className={`font-black ${theme.textPrimary}`}>{val}</div>
+                    <div className={`flex items-center gap-1 text-[10px] font-bold ${theme.textSecondary} mt-0.5 uppercase`}>
                         <Calendar size={9} />
                         {row.invoiceDate ? new Date(row.invoiceDate).toLocaleDateString() : "—"}
                     </div>
@@ -870,7 +441,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
         {
             header: "Supplier",
             key: "supplierId",
-            render: val => <span className="font-bold text-gray-700">{val?.name || "—"}</span>,
+            render: val => <span className={`font-bold ${theme.textPrimary}`}>{val?.name || "—"}</span>,
         },
         {
             header: "Grand Total",
@@ -960,20 +531,20 @@ const PurchaseList = ({ hasPermissionFor }) => {
     // ── Access Denied
     if (!canView) {
         return (
-            <div className="h-full flex items-center justify-center bg-gray-50">
-                <div className="text-center p-12 bg-white rounded-[40px] shadow-xl border max-w-md">
+            <div className={`min-h-screen flex items-center justify-center ${theme.pageBg}`}>
+                <div className={`text-center p-12 rounded-[40px] shadow-xl border max-w-md ${theme.surfaceBg} ${theme.borderLight}`}>
                     <div className="w-20 h-20 bg-red-50 text-red-400 rounded-full flex items-center justify-center mx-auto mb-6">
                         <ShoppingCart size={40} />
                     </div>
-                    <h2 className="text-2xl font-black text-gray-800 mb-2">Access Restricted</h2>
-                    <p className="text-gray-400 font-medium">You don't have permission to view Purchases.</p>
+                    <h2 className={`text-2xl font-black mb-2 ${theme.textHeading}`}>Access Restricted</h2>
+                    <p className={`font-medium ${theme.textMuted}`}>You don't have permission to view Purchases.</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="p-4 md:p-8 h-full bg-gray-50/30 overflow-y-auto">
+        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
             <div className="max-w-[1600px] mx-auto space-y-8">
 
                 {/* ── Page Header ── */}
@@ -983,9 +554,9 @@ const PurchaseList = ({ hasPermissionFor }) => {
                             <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-100">
                                 <ShoppingCart size={26} />
                             </div>
-                            <h1 className="text-2xl md:text-3xl font-black text-gray-800 uppercase tracking-tight">Purchases</h1>
+                            <h1 className={`text-2xl md:text-3xl font-black uppercase tracking-tight ${theme.textHeading}`}>Purchases</h1>
                         </div>
-                        <p className="text-gray-400 font-bold ml-1 text-sm">Manage inventory procurement &amp; supplier invoices</p>
+                        <p className={`font-bold ml-1 text-sm ${theme.textMuted}`}>Manage inventory procurement &amp; supplier invoices</p>
                     </div>
 
                     <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
@@ -1002,7 +573,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         {/* ★ Button always visible; manages action permission internally */}
                         {canManage && (
                             <button
-                                onClick={() => setShowCreate(true)}
+                                onClick={() => navigate("/purchases/new")}
                                 className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-2xl shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3 group whitespace-nowrap"
                             >
                                 <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
@@ -1013,20 +584,21 @@ const PurchaseList = ({ hasPermissionFor }) => {
                 </div>
 
                 {/* ── Stats Row ── */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     {[
                         { label: "Total Invoices", value: purchases.length, icon: ReceiptText, color: "indigo" },
                         { label: "Draft", value: purchases.filter(p => p.status === "DRAFT").length, icon: Clock, color: "amber" },
                         { label: "Confirmed", value: purchases.filter(p => p.status === "CONFIRMED").length, icon: CheckCircle, color: "emerald" },
-                        { label: "Total Value", value: fmt(purchases.reduce((a, p) => a + (p.grandTotal || 0), 0)), icon: BadgeIndianRupee, color: "indigo", wide: true },
+                        { label: "Total Value", value: fmt(purchases.reduce((a, p) => a + (p.grandTotal || 0), 0)), icon: BadgeIndianRupee, color: "indigo" },
+                        { label: "Total Due", value: fmt(purchases.reduce((a, p) => a + (p.balanceAmount || 0), 0)), icon: BadgeIndianRupee, color: "red" },
                     ].map(({ label, value, icon: Icon, color, wide }) => (
-                        <div key={label} className={`bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex items-center gap-5 ${wide ? "col-span-2 md:col-span-1" : ""}`}>
+                        <div key={label} className={`${theme.surfaceBg} rounded-3xl shadow-sm border ${theme.borderLight} p-6 flex items-center gap-5 ${wide ? "col-span-2 md:col-span-1" : ""}`}>
                             <div className={`p-3 rounded-2xl bg-${color}-50 text-${color}-600`}>
                                 <Icon size={20} />
                             </div>
                             <div>
-                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</div>
-                                <div className="text-xl font-black text-gray-800 mt-0.5">{value}</div>
+                                <div className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>{label}</div>
+                                <div className={`text-xl font-black mt-0.5 ${theme.textHeading}`}>{value}</div>
                             </div>
                         </div>
                     ))}
@@ -1034,9 +606,9 @@ const PurchaseList = ({ hasPermissionFor }) => {
 
                 {/* ── Table ── */}
                 {loading ? (
-                    <div className="bg-white rounded-[40px] p-20 shadow-xl border border-gray-100 flex flex-col items-center gap-4">
+                    <div className={`${theme.surfaceBg} rounded-[40px] p-20 shadow-xl border ${theme.borderLight} flex flex-col items-center gap-4`}>
                         <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-                        <p className="text-gray-400 font-black uppercase tracking-widest text-[10px]">Loading Invoices…</p>
+                        <p className={`font-black uppercase tracking-widest text-[10px] ${theme.textMuted}`}>Loading Invoices…</p>
                     </div>
                 ) : (
                     <CommonTable columns={columns} data={filtered} />
@@ -1048,27 +620,6 @@ const PurchaseList = ({ hasPermissionFor }) => {
                 <PurchaseDetailModal
                     purchaseId={viewTarget}
                     onClose={() => setViewTarget(null)}
-                />
-            )}
-
-            {/* ── Create Modal ── */}
-            {/* ── Detail Modal ── */}
-            {viewTarget && (
-                <PurchaseDetailModal
-                    purchaseId={viewTarget}
-                    onClose={() => setViewTarget(null)}
-                />
-            )}
-
-            {/* ── Create Modal ── */}
-            {showCreate && (
-                <CreatePurchaseModal
-                    shopId={shopId}
-                    suppliers={suppliers}
-                    branches={branches}
-                    stockItems={stockItems}
-                    onClose={() => setShowCreate(false)}
-                    onSuccess={() => { setShowCreate(false); loadPurchases(); }}
                 />
             )}
 

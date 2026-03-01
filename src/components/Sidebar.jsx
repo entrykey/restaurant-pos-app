@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
     Utensils,
     Globe,
@@ -14,12 +14,19 @@ import {
     Building2,
     Truck,
     Wrench,
-    ShoppingCart
+    ShoppingCart,
+    Briefcase,
+    ChevronRight,
+    ChevronLeft,
+    Store,
+    CreditCard,
+    LayoutGrid
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
 import { getModuleList } from "../config/businessTypes";
 import { usePermission } from "../auth/usePermission";
+import { useTheme } from "../context/ThemeContext";
 
 const canAccessRoute = (can, canModule, routeKey) => {
     const r = ROUTE_ACCESS[routeKey];
@@ -33,6 +40,7 @@ const Sidebar = ({
     setView,
     handleLogout,
     isTakeaway,
+    takeawayOrder,
     setIsTakeaway,
     setTakeawayOrder,
     setOrderSearch,
@@ -42,9 +50,12 @@ const Sidebar = ({
     enabledModules = {},
     businessType,
     businessSubtype,
+    isExpanded,
+    setIsExpanded,
 }) => {
     const navigate = useNavigate();
     const { can, canModule } = usePermission();
+    const { theme } = useTheme();
     const closeMobile = () => onMobileClose?.();
 
     // Modules to show: from business type intersected with user permissions; if no business list, use allowed-by-permission only
@@ -57,244 +68,147 @@ const Sidebar = ({
             base = getModuleList(businessType, businessSubtype);
         }
         // If business type gives no list (e.g. not loaded), show whatever user has permission for
-        if (base.length === 0) return allowedByPermission;
-        return base.filter((moduleKey) => allowedByPermission.includes(moduleKey));
+        let result = base.length === 0 ? allowedByPermission : base.filter((moduleKey) => allowedByPermission.includes(moduleKey));
+
+        // Consolidate TAKEAWAY and DIRECT_SALE: if both allowed, only show TAKEAWAY
+        if (result.includes('TAKEAWAY') && result.includes('DIRECT_SALE')) {
+            result = result.filter(k => k !== 'DIRECT_SALE');
+        }
+        return result;
     }, [businessType, businessSubtype, enabledModules, can, canModule]);
 
-    // Definition of all possible sidebar buttons
-    // This map allows us to render buttons dynamically by key
-    const MODULE_BUTTONS = {
-        DINING: (
-            <button
-                key="DINING"
-                onClick={() => {
-                    setView("tables");
-                    setIsTakeaway(false);
-                    navigate("/dininghall");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "tables" || (view === "order" && !isTakeaway)
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Dining Hall"
-            >
-                <Utensils className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        TAKEAWAY: (
-            <button
-                key="TAKEAWAY"
-                onClick={() => {
-                    setView("order");
-                    setIsTakeaway(true);
-                    setTakeawayOrder({ items: [], isSentToKOT: false });
-                    setOrderSearch("");
-                    navigate("/takeaway");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "order" && isTakeaway
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Takeaway"
-            >
-                <ShoppingBag className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        ONLINE_ORDERS: (
-            <div key="ONLINE_ORDERS" className="relative">
+    const MODULE_CONFIG = {
+        DINING: {
+            icon: Utensils, label: "Dining Hall",
+            onClick: () => { setView("tables"); setIsTakeaway(false); navigate("/dininghall"); closeMobile(); },
+            isActive: view === "tables" || (view === "order" && !isTakeaway)
+        },
+        TAKEAWAY: {
+            icon: ShoppingBag, label: "Takeaway",
+            onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'TAKEAWAY' }); setOrderSearch(""); navigate("/takeaway"); closeMobile(); },
+            isActive: view === "order" && isTakeaway && takeawayOrder?.orderType === 'TAKEAWAY'
+        },
+        DIRECT_SALE: {
+            icon: ShoppingCart, label: "Direct Sale",
+            onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'DIRECT_SALE' }); setOrderSearch(""); navigate("/takeaway"); closeMobile(); },
+            isActive: view === "order" && isTakeaway && takeawayOrder?.orderType === 'DIRECT_SALE'
+        },
+        WHOLESALE: {
+            icon: Store, label: "Wholesale",
+            onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'WHOLESALE' }); setOrderSearch(""); navigate("/wholesale"); closeMobile(); },
+            isActive: view === "order" && isTakeaway && takeawayOrder?.orderType === 'WHOLESALE'
+        },
+        ONLINE_ORDERS: {
+            icon: Globe, label: "Online Orders",
+            onClick: () => { setView("online-orders"); navigate("/online-orders"); closeMobile(); },
+            isActive: view === "online-orders",
+            badge: pendingOnlineOrdersCount
+        },
+        KDS: {
+            icon: MonitorPlay, label: "Kitchen Display (KDS)",
+            onClick: () => { setView("kds"); navigate("/kds"); closeMobile(); },
+            isActive: view === "kds"
+        },
+        RESERVATIONS: {
+            icon: CalendarCheck, label: "Reservations",
+            onClick: () => { setView("reservations"); navigate("/reservations"); closeMobile(); },
+            isActive: view === "reservations"
+        },
+        INVENTORY: {
+            icon: Package, label: "Items",
+            onClick: () => { setView("inventory"); navigate("/inventory"); closeMobile(); },
+            isActive: view === "inventory"
+        },
+        REPORTS: {
+            icon: TrendingUp, label: "Reports",
+            onClick: () => { setView("reports"); navigate("/reports"); closeMobile(); },
+            isActive: view === "reports"
+        },
+        SETTINGS: {
+            icon: Settings, label: "Settings",
+            onClick: () => { setView("settings"); navigate("/settings"); closeMobile(); },
+            isActive: view === "settings"
+        },
+        STAFF: {
+            icon: UserCog, label: "Staff",
+            onClick: () => { setView("staff"); navigate("/staff"); closeMobile(); },
+            isActive: view === "staff"
+        },
+        ORGANIZATION: {
+            icon: Building2, label: "Organization",
+            onClick: () => { setView("organization"); navigate("/organization"); closeMobile(); },
+            isActive: view === "organization"
+        },
+        SUPPLIERS: {
+            icon: Truck, label: "Suppliers",
+            onClick: () => { setView("suppliers"); navigate("/suppliers"); closeMobile(); },
+            isActive: view === "suppliers"
+        },
+        SERVICE: {
+            icon: Wrench, label: "Service & Repairs",
+            onClick: () => { setView("service"); navigate("/service"); closeMobile(); },
+            isActive: view === "service"
+        },
+        PURCHASES: {
+            icon: ShoppingCart, label: "Purchases",
+            onClick: () => { setView("purchases"); navigate("/purchases"); closeMobile(); },
+            isActive: view === "purchases"
+        },
+        BUSINESS_TYPES: {
+            icon: Briefcase, label: "Business Types",
+            onClick: () => { setView("business-types"); navigate("/business-types"); closeMobile(); },
+            isActive: view === "business-types"
+        },
+        SHOP_MANAGEMENT: {
+            icon: Store, label: "Shop Management",
+            onClick: () => { setView("shop-management"); navigate("/shop-management"); closeMobile(); },
+            isActive: view === "shop-management"
+        },
+        PLAN_MANAGEMENT: {
+            icon: Briefcase, label: "Plan Management",
+            onClick: () => { setView("plan-management"); navigate("/plan-management"); closeMobile(); },
+            isActive: view === "plan-management"
+        },
+        SUBSCRIPTION_MANAGEMENT: {
+            icon: CreditCard, label: "Subscriptions",
+            onClick: () => { setView("subscription-management"); navigate("/subscription-management"); closeMobile(); },
+            isActive: view === "subscription-management"
+        },
+        TABLE_MANAGEMENT: {
+            icon: LayoutGrid, label: "Table Management",
+            onClick: () => { setView("table-management"); navigate("/table-management"); closeMobile(); },
+            isActive: view === "table-management"
+        },
+    };
+
+    const renderNavButton = (config, key) => {
+        if (!config) return null;
+        const { icon: Icon, label, onClick, isActive, badge } = config;
+        return (
+            <div key={key} className={`relative flex w-full mb-2 ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:justify-center'}`}>
                 <button
-                    onClick={() => {
-                        setView("online-orders");
-                        navigate("/online-orders");
-                        closeMobile();
-                    }}
-                    className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "online-orders"
-                        ? "bg-indigo-600 shadow-xl scale-110"
-                        : "hover:bg-indigo-800"
+                    onClick={onClick}
+                    className={`p-3 md:p-4 transition-all flex items-center w-full ${isExpanded
+                        ? 'gap-4 justify-start rounded-xl md:rounded-2xl'
+                        : 'justify-start md:justify-center gap-4 md:gap-0 rounded-2xl md:rounded-[24px]'
+                        } ${isActive
+                            ? `${theme.sidebarItemActiveBg} shadow-xl md:scale-105`
+                            : `${theme.sidebarItemHoverBg} hover:scale-105`
                         }`}
-                    title="Online Orders"
+                    title={!isExpanded ? label : undefined}
                 >
-                    <Globe className="w-6 h-6 md:w-7 md:h-7" />
+                    <Icon className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
+                    <span className={`font-bold text-sm whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-0 md:opacity-0'}`}>
+                        {label}
+                    </span>
                 </button>
-                {pendingOnlineOrdersCount > 0 && (
-                    <span className="absolute top-2 right-2 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center border-2 border-indigo-900">
-                        {pendingOnlineOrdersCount}
+                {badge > 0 && (
+                    <span className={`absolute ${isExpanded ? 'top-3 right-6' : 'top-2 right-6 md:top-1 md:right-1 md:-translate-x-1 md:-translate-y-1'} w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold shadow-md border-2 ${theme.sidebarBg.replace('bg-', 'border-')}`}>
+                        {badge}
                     </span>
                 )}
             </div>
-        ),
-        KDS: (
-            <button
-                key="KDS"
-                onClick={() => {
-                    setView("kds");
-                    navigate("/kds");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "kds"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Kitchen Display (KDS)"
-            >
-                <MonitorPlay className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        RESERVATIONS: (
-            <button
-                key="RESERVATIONS"
-                onClick={() => {
-                    setView("reservations");
-                    navigate("/reservations");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "reservations"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Reservations"
-            >
-                <CalendarCheck className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        INVENTORY: (
-            <button
-                key="INVENTORY"
-                onClick={() => {
-                    setView("inventory");
-                    navigate("/inventory");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "inventory"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Items"
-            >
-                <Package className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        REPORTS: (
-            <button
-                key="REPORTS"
-                onClick={() => {
-                    setView("reports");
-                    navigate("/reports");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "reports"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Reports"
-            >
-                <TrendingUp className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        SETTINGS: (
-            <button
-                key="SETTINGS"
-                onClick={() => {
-                    setView("settings");
-                    navigate("/settings");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "settings"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Settings"
-            >
-                <Settings className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        STAFF: (
-            <button
-                key="STAFF"
-                onClick={() => {
-                    setView("staff");
-                    navigate("/staff");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "staff"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Staff"
-            >
-                <UserCog className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        ORGANIZATION: (
-            <button
-                key="ORGANIZATION"
-                onClick={() => {
-                    setView("organization");
-                    navigate("/organization");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "organization"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Organization"
-            >
-                <Building2 className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        SUPPLIERS: (
-            <button
-                key="SUPPLIERS"
-                onClick={() => {
-                    setView("suppliers");
-                    navigate("/suppliers");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "suppliers"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Suppliers"
-            >
-                <Truck className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        SERVICE: (
-            <button
-                key="SERVICE"
-                onClick={() => {
-                    setView("service");
-                    navigate("/service");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "service"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Service & Repairs"
-            >
-                <Wrench className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
-        PURCHASES: (
-            <button
-                key="PURCHASES"
-                onClick={() => {
-                    setView("purchases");
-                    navigate("/purchases");
-                    closeMobile();
-                }}
-                className={`p-3 md:p-4 rounded-xl md:rounded-2xl transition-all ${view === "purchases"
-                    ? "bg-indigo-600 shadow-xl scale-110"
-                    : "hover:bg-indigo-800"
-                    }`}
-                title="Purchases"
-            >
-                <ShoppingCart className="w-6 h-6 md:w-7 md:h-7" />
-            </button>
-        ),
+        );
     };
 
 
@@ -311,27 +225,34 @@ const Sidebar = ({
                 className={`
                     fixed top-0 left-0
                     h-screen
-                    w-64 md:w-24
-                    bg-indigo-900 text-white
+                    w-64
+                    ${theme.sidebarBg} ${theme.sidebarText}
                     flex flex-col
-                    items-center
                     py-4
                     shadow-2xl
                     z-50
-                    transition-transform
+                    transition-all duration-300
                     ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
                     md:translate-x-0
-                    md:w-24
+                    ${isExpanded ? 'md:w-64 md:items-stretch' : 'md:w-24 md:items-center'}
                 `}
             >
+                {/* Desktop Toggle Button */}
+                <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className={`hidden md:flex absolute -right-3 top-8 ${theme.sidebarLogoBg} ${theme.sidebarLogoText} rounded-full p-1 shadow-md z-50 hover:opacity-80 transition-colors border-2 border-white dark:border-gray-900`}
+                >
+                    {isExpanded ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+                </button>
+
                 {/* Mobile header (close + logo) */}
                 <div className="md:hidden w-full px-4 flex items-center justify-between mb-6">
-                    <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-indigo-900 font-black text-2xl">
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-2xl ${theme.sidebarLogoBg} ${theme.sidebarLogoText}`}>
                         D
                     </div>
                     <button
                         type="button"
-                        className="inline-flex items-center justify-center w-10 h-10 rounded-xl hover:bg-indigo-800 active:bg-indigo-700"
+                        className={`inline-flex items-center justify-center w-10 h-10 rounded-xl ${theme.sidebarItemHoverBg}`}
                         onClick={closeMobile}
                         aria-label="Close menu"
                     >
@@ -340,23 +261,37 @@ const Sidebar = ({
                 </div>
 
                 {/* Desktop logo */}
-                <div className="hidden md:flex w-12 h-12 bg-white rounded-2xl items-center justify-center text-indigo-900 font-black text-2xl mb-8">
-                    D
+                <div className={`hidden md:flex items-center ${isExpanded ? 'justify-start px-8 gap-4' : 'justify-center'} w-full mb-8`}>
+                    <div className={`shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-2xl ${theme.sidebarLogoBg} ${theme.sidebarLogoText}`}>
+                        D
+                    </div>
+                    <span className={`font-black tracking-tight text-xl overflow-hidden transition-all duration-300 whitespace-nowrap ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-0 opacity-0'}`}>
+                        Dine POS
+                    </span>
                 </div>
 
-                {/* Sidebar Buttons - only modules user has permission for (already filtered in moduleList) */}
-                {moduleList.map(moduleKey => MODULE_BUTTONS[moduleKey] || null)}
+                {/* Sidebar Buttons container */}
+                <div className="flex-1 w-full overflow-y-auto overflow-x-hidden no-scrollbar flex flex-col items-center">
+                    {moduleList.map(moduleKey => renderNavButton(MODULE_CONFIG[moduleKey], moduleKey))}
+                </div>
 
-                <button
-                    onClick={() => {
-                        handleLogout();
-                        closeMobile();
-                    }}
-                    className="mt-0 md:mt-auto p-3 md:p-4 text-red-300 hover:bg-red-900/30 rounded-xl md:rounded-2xl"
-                    title="Logout"
-                >
-                    <LogOut className="w-6 h-6 md:w-7 md:h-7" />
-                </button>
+                {/* Footer (Logout) */}
+                <div className={`mt-auto w-full flex flex-col pt-4 ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:items-center'}`}>
+                    <button
+                        onClick={() => {
+                            handleLogout();
+                            closeMobile();
+                        }}
+                        className={`w-full p-3 md:p-4 rounded-xl md:rounded-2xl transition-all flex items-center ${isExpanded ? 'gap-4 justify-start' : 'justify-start md:justify-center gap-4 md:gap-0'
+                            } ${theme.sidebarLogoutText} ${theme.sidebarLogoutHoverBg} hover:scale-105 md:hover:scale-110`}
+                        title={!isExpanded ? "Logout" : undefined}
+                    >
+                        <LogOut className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
+                        <span className={`font-bold text-sm whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-0 md:opacity-0'}`}>
+                            Logout
+                        </span>
+                    </button>
+                </div>
             </div>
         </>
     );

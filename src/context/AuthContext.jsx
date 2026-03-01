@@ -20,6 +20,12 @@ export const AuthProvider = ({ children }) => {
     return saved?.user || null;
   });
 
+  const [customTexts, setCustomTexts] = useState(() => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const saved = safeJsonParse(raw);
+    return saved?.customTexts || {};
+  });
+
   const [sessionInfo, setSessionInfo] = useState(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     const saved = safeJsonParse(raw);
@@ -41,33 +47,55 @@ export const AuthProvider = ({ children }) => {
 
     let finalPermissions = {};
     user.roles.forEach((role) => {
-      if (role.permissions && Array.isArray(role.permissions)) {
-        role.permissions.forEach((p) => {
-          if (!p.module) return;
-          if (!finalPermissions[p.module]) finalPermissions[p.module] = [];
-          finalPermissions[p.module] = [...new Set([...finalPermissions[p.module], ...(p.permissions || [])])];
-        });
-      }
+      if (!Array.isArray(role.permissions)) return;
+      role.permissions.forEach((entry) => {
+        if (!entry || !entry.module) return;
+
+        // module can be a key string or a populated module object
+        const moduleKey =
+          typeof entry.module === "string"
+            ? entry.module
+            : entry.module.key || entry.module.name;
+        if (!moduleKey) return;
+
+        if (!finalPermissions[moduleKey]) finalPermissions[moduleKey] = [];
+
+        // permissions can be array of keys/ids or array of populated permission objects
+        const permKeys = (entry.permissions || []).map((perm) =>
+          typeof perm === "string" ? perm : perm.key || perm.name
+        );
+
+        finalPermissions[moduleKey] = [
+          ...new Set([
+            ...finalPermissions[moduleKey],
+            ...permKeys.filter(Boolean),
+          ]),
+        ];
+      });
     });
     setUser((prev) => (prev ? { ...prev, permissions: finalPermissions } : null));
   }, [user?.id, user?.roles?.length]);
 
   // Persist changes to localStorage
   useEffect(() => {
-    const payload = { user, sessionInfo, authLogs };
+    const payload = { user, sessionInfo, authLogs, customTexts };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [user, sessionInfo, authLogs]);
+  }, [user, sessionInfo, authLogs, customTexts]);
 
   const isAuthenticated = Boolean(user);
 
   const login = (nextUser) => {
     setUser(nextUser);
+    if (nextUser.customTexts) {
+      setCustomTexts(nextUser.customTexts);
+    }
     setSessionInfo({ loginTime: new Date().toLocaleTimeString(), logoutTime: null });
   };
 
   const logout = () => {
     setSessionInfo((prev) => ({ ...prev, logoutTime: new Date().toLocaleTimeString() }));
     setUser(null);
+    setCustomTexts({});
     localStorage.removeItem("accessToken");
     localStorage.removeItem("permissions");
   };
@@ -82,12 +110,13 @@ export const AuthProvider = ({ children }) => {
       isAuthenticated,
       sessionInfo,
       authLogs,
+      customTexts,
       login,
       logout,
       addAuthLog,
       setAuthLogs, // intentionally exposed for admin tooling (e.g., clear logs)
     }),
-    [user, isAuthenticated, sessionInfo, authLogs]
+    [user, isAuthenticated, sessionInfo, authLogs, customTexts]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

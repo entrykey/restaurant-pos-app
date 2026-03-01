@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { MonitorPlay, ChefHat, RefreshCw, Search, Filter } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { MonitorPlay, ChefHat, RefreshCw } from 'lucide-react';
 import KDSCard from '../../components/KDSCard';
-
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
+import { kdsService } from './KDSService';
+import { useAuth } from "../../context/AuthContext";
+import EstimatedTimeModal from '../../components/modals/EstimatedTimeModal';
 
 const KDS = ({
     tables,
@@ -13,7 +15,37 @@ const KDS = ({
     hasPermissionFor,
 }) => {
     const kdsAccess = ROUTE_ACCESS.KDS;
+    const { user } = useAuth();
+    const [liveKOTs, setLiveKOTs] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Modal State
+    const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
+    const [selectedKotId, setSelectedKotId] = useState(null);
+
+    const fetchKOTs = useCallback(async (isPolling = false) => {
+        const branchId = user?.branch_id || user?.branchId || (user?.branchIds && user.branchIds[0]);
+        if (!branchId) return;
+
+        if (!isPolling) setIsLoading(true);
+        try {
+            const kots = await kdsService.getKOTs(branchId);
+            setLiveKOTs(kots);
+        } catch (error) {
+            console.error("Failed to fetch KOTs:", error);
+        } finally {
+            if (!isPolling) setIsLoading(false);
+        }
+    }, [user]);
+
+    useEffect(() => {
+        fetchKOTs();
+        const interval = setInterval(() => fetchKOTs(true), 10000);
+        return () => clearInterval(interval);
+    }, [fetchKOTs]);
+
     const canView = hasPermissionFor?.(kdsAccess.module, kdsAccess.resource, kdsAccess.action);
+
     if (!canView) {
         return (
             <div className="h-full flex items-center justify-center bg-gray-50">
@@ -28,15 +60,26 @@ const KDS = ({
         );
     }
 
-    const tableKOTs = tables.filter(
-        (t) => t.order && t.order.isSentToKOT && t.order.kotStatus !== "ready"
-    );
+    const tableKOTs = liveKOTs.filter(k => k.tableId);
+    const onlineKOTs = liveKOTs.filter(k => !k.tableId);
+    const totalOrders = liveKOTs.length;
+    const canManage = hasPermissionFor?.(kdsAccess.module, kdsAccess.resource, "manage");
+    const canServe = hasPermissionFor?.(kdsAccess.module, kdsAccess.resource, "serve");
 
-    const onlineKOTs = onlineOrders.filter(
-        (o) => o.status === "accepted" && o.kotStatus !== "ready"
-    );
+    const handleStartPrep = (kotId) => {
+        setSelectedKotId(kotId);
+        setIsTimeModalOpen(true);
+    };
 
-    const totalOrders = tableKOTs.length + onlineKOTs.length;
+    const handleUpdateStatus = async (kotId, status, estimatedTime = 0) => {
+        try {
+            await kdsService.updateKOTStatus(kotId, status, estimatedTime);
+            fetchKOTs(true);
+        } catch (error) {
+            console.error("Failed to update KOT status:", error);
+            alert("Failed to update status. Please try again.");
+        }
+    };
 
     return (
         <div className="p-4 md:p-8 h-full flex flex-col bg-gray-100/50">
@@ -63,8 +106,11 @@ const KDS = ({
                             <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Active KOTs</div>
                         </div>
                     </div>
-                    <button className="bg-white p-4 rounded-2xl border shadow-sm text-gray-600 hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-95">
-                        <RefreshCw size={20} />
+                    <button
+                        onClick={() => fetchKOTs(true)}
+                        className="bg-white p-4 rounded-2xl border shadow-sm text-gray-600 hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-95"
+                    >
+                        <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
                     </button>
                 </div>
             </div>
@@ -74,29 +120,35 @@ const KDS = ({
                 {totalOrders > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-12">
                         {/* Table Orders First */}
-                        {tableKOTs.map((t) => (
+                        {tableKOTs.map((k) => (
                             <KDSCard
-                                key={`table-${t.id}`}
-                                order={t}
+                                key={k._id}
+                                order={k}
                                 type="table"
-                                onMarkReady={handleCompleteKOT}
+                                onUpdateStatus={handleUpdateStatus}
+                                onStartPrep={handleStartPrep}
                                 currentTime={currentTime}
+                                canManage={canManage}
+                                canServe={canServe}
                             />
                         ))}
                         {/* Online Orders Next */}
                         {onlineKOTs.map((o) => (
                             <KDSCard
-                                key={`online-${o.id}`}
+                                key={o._id}
                                 order={o}
                                 type="online"
-                                onMarkReady={handleCompleteOnlineKOT}
+                                onUpdateStatus={handleUpdateStatus}
+                                onStartPrep={handleStartPrep}
                                 currentTime={currentTime}
+                                canManage={canManage}
+                                canServe={canServe}
                             />
                         ))}
                     </div>
                 ) : (
                     <div className="h-[60vh] flex flex-col items-center justify-center text-center">
-                        <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-6 shadow-xl border-4 border-gray-50">
+                        <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-6 shadow-xl border-4 border-gray-100">
                             <ChefHat size={48} className="text-gray-200" />
                         </div>
                         <h3 className="text-2xl font-black text-gray-800 mb-2">Everything's Ready!</h3>
@@ -106,6 +158,13 @@ const KDS = ({
                     </div>
                 )}
             </div>
+
+            {/* Modals */}
+            <EstimatedTimeModal
+                isOpen={isTimeModalOpen}
+                onClose={() => setIsTimeModalOpen(false)}
+                onConfirm={(time) => handleUpdateStatus(selectedKotId, 'PREPARING', time)}
+            />
         </div>
     );
 };

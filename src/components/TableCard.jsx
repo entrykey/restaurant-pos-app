@@ -8,6 +8,7 @@ import {
   Timer,
   Users,
   Wind,
+  Check
 } from "lucide-react";
 
 const TableCard = ({
@@ -24,67 +25,100 @@ const TableCard = ({
         if (table.isMaintenance && !isAdmin) return;
         onSelect?.(table);
       }}
-      className={`h-32 md:h-40 p-4 md:p-6 rounded-3xl cursor-pointer transition-all hover:scale-105 shadow-lg flex flex-col justify-between relative ${table.isMaintenance
-          ? "bg-red-50 border-2 border-red-200 opacity-80"
-          : table.status === "occupied"
-            ? "bg-indigo-600 text-white"
-            : "bg-white border-2 border-dashed border-gray-200 text-gray-400 hover:border-indigo-400 hover:bg-indigo-50"
-        } ${table.isSelected ? "ring-4 ring-indigo-400 ring-offset-2" : ""}`}
+      className={`min-h-[140px] md:min-h-[160px] p-5 rounded-[32px] cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg flex flex-col relative group ${table.isMaintenance
+        ? "bg-red-50 border-2 border-red-200 opacity-80"
+        : table.status === "occupied"
+          ? "bg-indigo-600 text-white"
+          : "bg-white border-2 border-dashed border-gray-200 text-gray-400 hover:border-indigo-400 hover:bg-indigo-50"
+        } ${table.isSelected ? "ring-4 ring-indigo-400 ring-offset-4" : ""}`}
     >
-      {/* Selection Checkbox (Visual only, state controlled by parent) */}
+      {/* Selection Checkbox */}
       {table.isSelectionMode && (
-        <div className={`absolute top-2 left-2 w-6 h-6 rounded-full border-2 flex items-center justify-center z-30 ${table.isSelected ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-300"}`}>
-          {table.isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
+        <div className={`absolute top-4 left-4 w-6 h-6 rounded-full border-2 flex items-center justify-center z-30 transition-all ${table.isSelected ? "bg-white border-white" : "bg-white/10 border-white/30"
+          }`}>
+          {table.isSelected && <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full" />}
         </div>
       )}
 
-      {/* Maintenance Badge */}
+      {/* Maintenance Overlay */}
       {table.isMaintenance && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 backdrop-blur-[2px] rounded-3xl z-10">
-          <Construction size={24} className="text-red-500 mb-1" />
-          <span className="text-xs font-black text-red-600 uppercase">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 backdrop-blur-[2px] rounded-[32px] z-10">
+          <Construction size={28} className="text-red-500 mb-2" />
+          <span className="text-xs font-black text-red-600 uppercase tracking-widest">
             Maintenance
           </span>
         </div>
       )}
 
-      {/* Reservation Badge */}
-      {hasReservation && !table.isMaintenance && (
-        <div className="absolute -top-2 -right-2 bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-[10px] font-bold border border-yellow-200 shadow-sm flex items-center gap-1 z-20">
-          <CalendarCheck size={10} /> Reserved
-        </div>
-      )}
-
-      <div className="flex justify-between items-start pl-6">
-        <div>
-          <span className="font-black text-xl md:text-2xl">{table.name}</span>
-          <div className="flex gap-2 mt-1 opacity-70">
-            <span className="text-[10px] flex items-center gap-1">
-              <Users size={10} /> {table.capacity}
+      {/* Header: Name and Capacity */}
+      <div className="flex justify-between items-start mb-2">
+        <div className="flex flex-col">
+          <span className="font-black text-2xl md:text-3xl leading-tight tracking-tight">
+            {table.name}
+          </span>
+          <div className="flex items-center gap-2 mt-1 opacity-80">
+            <span className="text-[10px] md:text-xs font-bold flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full">
+              <Users size={12} /> {table.capacity}
             </span>
-            {/* Parent/Child Indicator */}
-            {table.isParent && <span className="text-[10px] font-bold bg-white/20 px-1 rounded">Master</span>}
-            {table.parentTableId && <span className="text-[10px] font-bold bg-white/20 px-1 rounded">Joined</span>}
+            {table.isParent && <span className="text-[10px] font-black uppercase bg-white/30 px-2 py-0.5 rounded-full">Master</span>}
+            {table.parentTableId && <span className="text-[10px] font-black uppercase bg-white/30 px-2 py-0.5 rounded-full">Joined</span>}
           </div>
         </div>
-        {table.order?.isSentToKOT && (
-          <div className="bg-white/20 p-1 rounded-lg">
-            <Printer size={14} />
+
+        {table.status === "occupied" && (
+          <div className="bg-white/20 p-2 rounded-2xl backdrop-blur-sm">
+            <Printer size={18} className="opacity-90" />
           </div>
         )}
       </div>
 
-      {duration && (
-        <div
-          className={`self-start px-2 py-1 rounded-lg flex items-center gap-1 text-[10px] md:text-xs font-bold ${duration.colorClass}`}
-        >
-          <Timer size={10} /> {duration.label}
-        </div>
-      )}
+      {/* Middle: Status Badges */}
+      <div className="flex-1 flex flex-col gap-2 mt-2">
+        {hasReservation && !table.isMaintenance && (
+          <div className="bg-yellow-400 text-yellow-900 self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm border border-yellow-500/20">
+            <CalendarCheck size={12} /> Reserved
+          </div>
+        )}
 
-      {totalLabel && (
-        <p className="text-lg md:text-xl font-black text-right">{totalLabel}</p>
-      )}
+        {table.order?.kotStatus === 'preparing' && (
+          <div className="bg-orange-400 text-white self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-orange-500/20 animate-pulse border border-orange-500/20">
+            <div className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
+            Preparing...
+          </div>
+        )}
+
+        {table.order?.kotStatus === 'ready' && (
+          <div className="bg-green-400 text-white self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-green-500/20 animate-bounce border border-green-500/20">
+            <div className="w-1.5 h-1.5 bg-white rounded-full" />
+            Ready to Serve
+          </div>
+        )}
+
+        {table.order?.kotStatus === 'served' && (
+          <div className="bg-blue-500 text-white self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-blue-500/20 border border-blue-600/20">
+            <Check size={12} />
+            Food Served
+          </div>
+        )}
+      </div>
+
+      {/* Footer: Time and Total */}
+      <div className="flex justify-between items-end mt-4">
+        <div>
+          {duration && (
+            <div className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-[10px] md:text-xs font-black uppercase tracking-tight ${duration.colorClass.replace('bg-', 'bg-patch-').includes('text-white') ? duration.colorClass : 'bg-white/20 text-white'}`}>
+              <Timer size={14} /> {duration.label}
+            </div>
+          )}
+        </div>
+
+        {totalLabel && (
+          <div className="text-right flex flex-col">
+            <span className="text-[10px] font-bold uppercase opacity-60 leading-none mb-1">Total</span>
+            <span className="text-xl md:text-3xl font-black tracking-tighter leading-none">{totalLabel}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

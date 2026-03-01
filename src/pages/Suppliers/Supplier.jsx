@@ -6,6 +6,7 @@ import { ROUTE_ACCESS } from '../../config/permissionStructure';
 
 import { shopService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 const Supplier = ({ hasPermissionFor }) => {
     const [suppliers, setSuppliers] = useState([]);
@@ -14,6 +15,7 @@ const Supplier = ({ hasPermissionFor }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState(null);
     const { user } = useAuth();
+    const { theme } = useTheme();
     const [shopId, setShopId] = useState(null);
 
     const [formData, setFormData] = useState({
@@ -126,26 +128,26 @@ const Supplier = ({ hasPermissionFor }) => {
             key: "name",
             render: (value, item) => (
                 <div>
-                    <div className="font-bold text-gray-800">{value}</div>
-                    <div className="text-xs text-gray-500">{item.taxId}</div>
+                    <div className={`font-bold ${theme.textHeading}`}>{value}</div>
+                    <div className={`text-xs ${theme.textMuted}`}>{item.taxId}</div>
                 </div>
             )
         },
         {
             header: "Contact Person",
             key: "contactPerson",
-            className: "text-sm text-gray-600 font-medium"
+            className: `text-sm font-medium ${theme.textSecondary}`
         },
         {
             header: "Contact Info",
             key: "phone",
             render: (_, item) => (
                 <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-xs font-bold text-gray-600">
+                    <div className={`flex items-center gap-2 text-xs font-bold ${theme.textSecondary}`}>
                         <Phone size={12} /> {item.phone}
                     </div>
                     {item.email && (
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <div className={`flex items-center gap-2 text-xs ${theme.textMuted}`}>
                             <Mail size={12} /> {item.email}
                         </div>
                     )}
@@ -175,7 +177,7 @@ const Supplier = ({ hasPermissionFor }) => {
                     {canEdit && (
                         <button
                             onClick={() => handleOpenModal(item)}
-                            className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"
+                            className={`p-2 transition-colors rounded-xl ${theme.inputBg} ${theme.primaryIconText} hover:bg-indigo-600 hover:text-white`}
                         >
                             <Edit3 size={16} />
                         </button>
@@ -183,7 +185,7 @@ const Supplier = ({ hasPermissionFor }) => {
                     {canDelete && (
                         <button
                             onClick={() => handleDelete(item.id)}
-                            className="p-2 text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
+                            className={`p-2 transition-colors rounded-xl ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white`}
                         >
                             <Trash2 size={16} />
                         </button>
@@ -195,48 +197,48 @@ const Supplier = ({ hasPermissionFor }) => {
 
     if (!canView) {
         return (
-            <div className="h-full flex items-center justify-center bg-gray-50">
-                <div className="text-center p-12 bg-white rounded-[40px] shadow-xl border max-w-md">
+            <div className={`min-h-screen flex items-center justify-center ${theme.pageBg}`}>
+                <div className={`text-center p-12 rounded-[40px] shadow-xl border max-w-md ${theme.surfaceBg} ${theme.borderLight}`}>
                     <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
                         <Truck size={40} />
                     </div>
-                    <h2 className="text-2xl font-black text-gray-800 mb-2">Access Restricted</h2>
-                    <p className="text-gray-500 font-medium">You don&apos;t have permission to view Suppliers.</p>
+                    <h2 className={`text-2xl font-black mb-2 ${theme.textHeading}`}>Access Restricted</h2>
+                    <p className={`font-medium ${theme.textMuted}`}>You don&apos;t have permission to view Suppliers.</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="p-4 md:p-8 h-full overflow-y-auto bg-gray-50/30">
+        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
-                        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100">
+                        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 dark:shadow-indigo-900/20">
                             <Truck size={28} />
                         </div>
-                        <h2 className="text-2xl md:text-4xl font-black text-gray-800 tracking-tight">
+                        <h2 className={`text-2xl md:text-4xl font-black tracking-tight ${theme.textHeading}`}>
                             Suppliers
                         </h2>
                     </div>
-                    <p className="text-gray-500 font-bold ml-1">Manage your supply chain partners</p>
+                    <p className={`font-bold ml-1 ${theme.textMuted}`}>Manage your supply chain partners</p>
                 </div>
 
                 <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
                     <div className="relative flex-1 md:w-72">
-                        <Search className="absolute left-4 top-4 text-gray-400" size={20} />
+                        <Search className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                         <input
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             placeholder="Search suppliers..."
-                            className="w-full pl-12 pr-4 py-4 border-2 border-transparent bg-white rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium"
+                            className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
                         />
                     </div>
                     {canCreate && (
                         <button
                             onClick={() => handleOpenModal()}
-                            className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                            className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"
                         >
                             <Plus size={20} /> Add Supplier
                         </button>
@@ -258,55 +260,55 @@ const Supplier = ({ hasPermissionFor }) => {
             {/* Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <div className="p-6 md:p-8 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
-                            <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
+                    <div className={`${theme.surfaceBg} rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto`}>
+                        <div className={`p-6 md:p-8 border-b sticky top-0 z-10 flex justify-between items-center ${theme.surfaceBg} ${theme.borderLight}`}>
+                            <h3 className={`text-2xl font-black flex items-center gap-3 ${theme.textHeading}`}>
                                 {editingSupplier ? <Edit3 className="text-indigo-600" /> : <Plus className="text-indigo-600" />}
                                 {editingSupplier ? "Edit Supplier" : "Add New Supplier"}
                             </h3>
                             <button
                                 onClick={() => setIsModalOpen(false)}
-                                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                                className={`p-2 rounded-full transition-colors ${theme.textSecondary} hover:bg-gray-100 dark:hover:bg-gray-800`}
                             >
-                                <X size={24} className="text-gray-400" />
+                                <X size={24} />
                             </button>
                         </div>
 
                         <form onSubmit={handleSave} className="p-6 md:p-8 space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Supplier Name *</label>
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Supplier Name *</label>
                                     <input
                                         required
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={formData.name}
                                         onChange={e => setFormData({ ...formData, name: e.target.value })}
                                         placeholder="Company Name"
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Tax ID / GSTIN</label>
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Tax ID / GSTIN</label>
                                     <input
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={formData.taxId}
                                         onChange={e => setFormData({ ...formData, taxId: e.target.value })}
                                         placeholder="Optional"
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Contact Person *</label>
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Contact Person *</label>
                                     <input
                                         required
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={formData.contactPerson}
                                         onChange={e => setFormData({ ...formData, contactPerson: e.target.value })}
                                         placeholder="Full Name"
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Status</label>
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Status</label>
                                     <select
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={formData.status}
                                         onChange={e => setFormData({ ...formData, status: e.target.value })}
                                     >
@@ -315,12 +317,12 @@ const Supplier = ({ hasPermissionFor }) => {
                                     </select>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Phone Number *</label>
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Phone Number *</label>
                                     <div className="relative">
-                                        <Phone className="absolute left-4 top-4 text-gray-400" size={20} />
+                                        <Phone className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                                         <input
                                             required
-                                            className="w-full pl-12 pr-4 py-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                             value={formData.phone}
                                             onChange={e => setFormData({ ...formData, phone: e.target.value })}
                                             placeholder="+91..."
@@ -328,12 +330,12 @@ const Supplier = ({ hasPermissionFor }) => {
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Email Address</label>
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Email Address</label>
                                     <div className="relative">
-                                        <Mail className="absolute left-4 top-4 text-gray-400" size={20} />
+                                        <Mail className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                                         <input
                                             type="email"
-                                            className="w-full pl-12 pr-4 py-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                             value={formData.email}
                                             onChange={e => setFormData({ ...formData, email: e.target.value })}
                                             placeholder="supplier@example.com"
@@ -343,11 +345,11 @@ const Supplier = ({ hasPermissionFor }) => {
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-xs font-black text-gray-400 uppercase">Address</label>
+                                <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Address</label>
                                 <div className="relative">
-                                    <MapPin className="absolute left-4 top-4 text-gray-400" size={20} />
+                                    <MapPin className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                                     <textarea
-                                        className="w-full pl-12 pr-4 py-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold min-h-[100px]"
+                                        className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold min-h-[100px] ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={formData.address}
                                         onChange={e => setFormData({ ...formData, address: e.target.value })}
                                         placeholder="Full business address..."
@@ -359,7 +361,7 @@ const Supplier = ({ hasPermissionFor }) => {
                                 <button
                                     type="button"
                                     onClick={() => setIsModalOpen(false)}
-                                    className="flex-1 py-4 rounded-2xl font-bold bg-gray-100 text-gray-500 hover:bg-gray-200 transition-all"
+                                    className={`flex-1 py-4 rounded-2xl font-bold transition-all ${theme.textSecondary} ${theme.inputBg} hover:opacity-80`}
                                 >
                                     Cancel
                                 </button>

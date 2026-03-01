@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Save, CheckSquare, Square, RotateCcw } from 'lucide-react';
 import { ALL_FIELDS, getCommonFieldKeys } from '../../config/itemFields';
+import { useTheme } from "../../context/ThemeContext";
 
 const InventorySettings = () => {
+    const { theme } = useTheme();
     // Default to all fields if nothing saved
     const [selectedFields, setSelectedFields] = useState([]);
     const [isSaved, setIsSaved] = useState(false);
@@ -66,20 +68,20 @@ const InventorySettings = () => {
     };
 
     return (
-        <div className="bg-white p-6 md:p-8 rounded-[40px] shadow-xl border space-y-8">
-            <div className="flex justify-between items-center border-b pb-6">
+        <div className={`${theme.cardBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight} space-y-8`}>
+            <div className={`flex justify-between items-center border-b ${theme.borderLight} pb-6`}>
                 <div>
-                    <h3 className="text-xl font-bold flex items-center gap-2">
+                    <h3 className={`text-xl font-bold flex items-center gap-2 ${theme.textHeading}`}>
                         Inventory Form Configurations
                     </h3>
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className={`text-sm ${theme.textSecondary} mt-1`}>
                         Select which fields to display in the "Add Item" form.
                     </p>
                 </div>
                 <div className="flex gap-3">
                     <button
                         onClick={handleReset}
-                        className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                        className={`p-3 ${theme.textSecondary} hover:${theme.primaryIconText} hover:${theme.inputBg.replace('bg-', '')} rounded-xl transition-all`}
                         title="Reset to Default"
                     >
                         <RotateCcw size={20} />
@@ -87,8 +89,8 @@ const InventorySettings = () => {
                     <button
                         onClick={handleSave}
                         className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${isSaved
-                                ? "bg-green-100 text-green-700"
-                                : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200"
+                            ? `${theme.successBg} ${theme.successText}`
+                            : `${theme.buttonBg} ${theme.buttonText} hover:${theme.buttonHoverBg.replace('hover:', '')} shadow-lg shadow-indigo-200`
                             }`}
                     >
                         {isSaved ? "Saved!" : <><Save size={18} /> Save Settings</>}
@@ -101,12 +103,12 @@ const InventorySettings = () => {
                     const allSectionSelected = fields.every(f => selectedFields.includes(f.key));
 
                     return (
-                        <div key={section} className="bg-gray-50/50 p-6 rounded-3xl border border-gray-100">
+                        <div key={section} className={`${theme.inputBg} p-6 rounded-3xl border ${theme.borderLight}`}>
                             <div className="flex items-center justify-between mb-4">
-                                <h4 className="text-lg font-black text-indigo-900">{section}</h4>
+                                <h4 className={`text-lg font-black ${theme.textHeading}`}>{section}</h4>
                                 <button
                                     onClick={() => toggleSection(fields)}
-                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider"
+                                    className={`text-xs font-bold ${theme.primaryIconText} hover:text-indigo-800 uppercase tracking-wider`}
                                 >
                                     {allSectionSelected ? "Deselect Section" : "Select Section"}
                                 </button>
@@ -123,18 +125,18 @@ const InventorySettings = () => {
                                             onClick={() => !isRequired && toggleField(field.key)}
                                             className={`
                                                 flex items-center gap-3 p-4 rounded-2xl border-2 transition-all cursor-pointer select-none
-                                                ${isRequired ? 'opacity-50 cursor-not-allowed bg-gray-100 border-gray-100' : ''}
-                                                ${isSelected && !isRequired ? 'bg-white border-indigo-600 shadow-sm' : 'bg-white border-transparent hover:border-gray-200'}
+                                                ${isRequired ? `opacity-50 cursor-not-allowed ${theme.inputBorder} ${theme.surfaceBg}` : ''}
+                                                ${isSelected && !isRequired ? `${theme.surfaceBg} border-indigo-600 shadow-sm` : `${theme.surfaceBg} border-transparent hover:border-gray-200`}
                                             `}
                                         >
                                             <div className={`
                                                 w-6 h-6 rounded-lg flex items-center justify-center transition-colors
-                                                ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-transparent'}
+                                                ${isSelected ? `${theme.buttonBg} ${theme.buttonText}` : `${theme.inputBorder} text-transparent`}
                                             `}>
                                                 <CheckSquare size={14} />
                                             </div>
                                             <div>
-                                                <p className={`font-bold text-sm ${isSelected ? 'text-gray-800' : 'text-gray-400'}`}>
+                                                <p className={`font-bold text-sm ${isSelected ? theme.textPrimary : theme.textSecondary}`}>
                                                     {field.label}
                                                 </p>
                                                 {isRequired && <span className="text-[10px] text-red-400 font-bold uppercase">Required</span>}

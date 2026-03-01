@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Building2, User, MapPin, FileText, Check, ChevronRight, Loader2 } from 'lucide-react';
 import { shopService } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
 
 
 const STEPS = [
@@ -11,6 +12,7 @@ const STEPS = [
 ];
 
 const RegisterShop = ({ onBack, onRegisterSuccess }) => {
+    const { theme } = useTheme();
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [businessTypes, setBusinessTypes] = useState([]);
@@ -195,18 +197,18 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                 return (
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Shop Name</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Shop Name</label>
                             <input
                                 type="text"
                                 value={formData.name}
                                 onChange={(e) => handleInputChange('name', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 placeholder="Ex. Tasty Bites"
                             />
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Business Type</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Business Type</label>
                             <div className="grid grid-cols-2 gap-3">
                                 {businessTypes.map((type) => (
                                     <button
@@ -214,8 +216,8 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                                         type="button"
                                         onClick={() => handleBusinessTypeChange(type._id)}
                                         className={`p-3 rounded-xl border text-left text-sm font-medium transition-all ${formData.businessType === type._id
-                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                                            : 'border-gray-200 hover:border-gray-300'
+                                            ? `border-indigo-500 ${theme.primaryIconBg} ${theme.primaryIconText}`
+                                            : `${theme.inputBorder} ${theme.textPrimary} hover:opacity-80`
                                             }`}
                                     >
                                         {type.displayString}
@@ -226,7 +228,7 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
 
                         {formData.businessType && availableSubTypes.length > 0 && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Subtype</label>
+                                <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Subtype</label>
                                 <div className="grid grid-cols-2 gap-3">
                                     {availableSubTypes.map((sub) => (
                                         <button
@@ -234,8 +236,8 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                                             type="button"
                                             onClick={() => handleInputChange('subType', sub._id)}
                                             className={`p-3 rounded-xl border text-left text-sm font-medium transition-all ${formData.subType === sub._id
-                                                ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                                                : 'border-gray-200 hover:border-gray-300'
+                                                ? `border-indigo-500 ${theme.primaryIconBg} ${theme.primaryIconText}`
+                                                : `${theme.inputBorder} ${theme.textPrimary} hover:opacity-80`
                                                 }`}
                                         >
                                             {sub.displayString}
@@ -250,42 +252,42 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                 return (
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Owner Name</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Owner Name</label>
                             <input
                                 type="text"
                                 value={formData.ownerName}
                                 onChange={(e) => handleInputChange('ownerName', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 placeholder="John Doe"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Email</label>
                             <input
                                 type="email"
                                 value={formData.ownerEmail}
                                 onChange={(e) => handleInputChange('ownerEmail', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 placeholder="john@example.com"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Phone</label>
                             <input
                                 type="tel"
                                 value={formData.ownerPhone}
                                 onChange={(e) => handleInputChange('ownerPhone', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 placeholder="+91 98765 43210"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Password</label>
                             <input
                                 type="password"
                                 value={formData.password}
                                 onChange={(e) => handleInputChange('password', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 placeholder="Secure Password"
                             />
                         </div>
@@ -296,12 +298,12 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                     <div className="space-y-4">
                         <div className="flex justify-between items-end gap-2">
                             <div className="flex-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Pincode</label>
+                                <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Pincode</label>
                                 <input
                                     type="text"
                                     value={formData.address.pincode}
                                     onChange={(e) => handlePincodeLookup(e.target.value)}
-                                    className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                     placeholder="Enter Pincode"
                                     maxLength={6}
                                 />
@@ -309,7 +311,7 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                             <button
                                 type="button"
                                 onClick={handleCurrentLocation}
-                                className="p-3 bg-indigo-100 text-indigo-700 rounded-xl font-bold hover:bg-indigo-200 transition-colors flex items-center mb-[2px]"
+                                className={`p-3 rounded-xl font-bold transition-colors flex items-center mb-[2px] ${theme.primaryIconBg} ${theme.primaryIconText} hover:opacity-80`}
                                 title="Use Current Location"
                             >
                                 <MapPin size={20} />
@@ -317,53 +319,53 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Address Line 1</label>
                             <input
                                 type="text"
                                 value={formData.address.line1}
                                 onChange={(e) => handleAddressChange('line1', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 placeholder="Shop No, Street"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Address Line 2</label>
                             <input
                                 type="text"
                                 value={formData.address.line2}
                                 onChange={(e) => handleAddressChange('line2', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 placeholder="Landmark (Optional)"
                             />
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                                <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>City</label>
                                 <input
                                     type="text"
                                     value={formData.address.city}
                                     onChange={(e) => handleAddressChange('city', e.target.value)}
-                                    className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                                <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>State</label>
                                 <input
                                     type="text"
                                     value={formData.address.state.name}
                                     readOnly
-                                    className="w-full p-3 border rounded-xl bg-gray-100 cursor-not-allowed outline-none"
+                                    className={`w-full p-3 border rounded-xl cursor-not-allowed outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.textSecondary}`}
                                 />
                             </div>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Country</label>
                             <input
                                 type="text"
                                 value={formData.address.country.name}
                                 readOnly
-                                className="w-full p-3 border rounded-xl bg-gray-100 cursor-not-allowed outline-none"
+                                className={`w-full p-3 border rounded-xl cursor-not-allowed outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.textSecondary}`}
                             />
                         </div>
                     </div>
@@ -372,11 +374,11 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                 return (
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Tax System</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Tax System</label>
                             <select
                                 value={formData.taxProfile.taxSystem}
                                 onChange={(e) => handleTaxChange('taxSystem', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                             >
                                 <option value="GST">GST</option>
                                 <option value="VAT">VAT</option>
@@ -386,34 +388,34 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Registration Number</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Registration Number</label>
                             <input
                                 type="text"
                                 value={formData.taxProfile.registrationNumber}
                                 onChange={(e) => handleTaxChange('registrationNumber', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 placeholder="Ex. 27ABCDE1234F1Z5"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Legal Name</label>
+                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Legal Name</label>
                             <input
                                 type="text"
                                 value={formData.taxProfile.legalName}
                                 onChange={(e) => handleTaxChange('legalName', e.target.value)}
-                                className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                                 placeholder="Legal Business Name"
                             />
                         </div>
 
-                        <div className="flex items-center space-x-3 p-3 border rounded-xl bg-gray-50">
+                        <div className={`flex items-center space-x-3 p-3 border rounded-xl ${theme.inputBg} ${theme.inputBorder}`}>
                             <input
                                 type="checkbox"
                                 checked={formData.taxProfile.isInterStateAllowed}
                                 onChange={(e) => handleTaxChange('isInterStateAllowed', e.target.checked)}
-                                className="w-5 h-5 text-indigo-600 rounded"
+                                className={`w-5 h-5 rounded ${theme.primaryIconText}`}
                             />
-                            <span className="text-sm font-medium text-gray-700">Allow Inter-State Transactions</span>
+                            <span className={`text-sm font-medium ${theme.textPrimary}`}>Allow Inter-State Transactions</span>
                         </div>
                     </div>
                 );
@@ -423,34 +425,34 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
     };
 
     return (
-        <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl p-8 mx-auto transition-all duration-300">
+        <div className={`w-full max-w-2xl rounded-3xl shadow-2xl p-8 mx-auto transition-all duration-300 ${theme.cardBg}`}>
 
             {/* Header */}
-            <div className="flex items-center mb-6">
-                <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-lg mr-4 text-gray-500">
+            <div className={`flex items-center mb-6 ${theme.textHeading}`}>
+                <button onClick={onBack} className={`p-2 rounded-lg mr-4 ${theme.textSecondary} hover:opacity-80`}>
                     <ArrowLeft size={20} />
                 </button>
                 <h1 className="text-2xl font-bold flex-1">Register New Shop</h1>
-                <div className="text-sm font-medium text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
+                <div className={`text-sm font-medium px-3 py-1 rounded-full ${theme.primaryIconBg} ${theme.primaryIconText}`}>
                     Step {currentStep} of {STEPS.length}
                 </div>
             </div>
 
             {/* Steps Indicator */}
             <div className="flex justify-between mb-8 relative">
-                <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-100 -z-10 -translate-y-1/2 rounded-full" />
+                <div className={`absolute top-1/2 left-0 w-full h-1 -z-10 -translate-y-1/2 rounded-full ${theme.inputBg}`} />
                 {STEPS.map((step) => {
                     const Icon = step.icon;
                     const isActive = currentStep >= step.id;
                     return (
-                        <div key={step.id} className="flex flex-col items-center bg-white px-2">
+                        <div key={step.id} className={`flex flex-col items-center px-2 ${theme.cardBg}`}>
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${isActive
-                                ? 'bg-indigo-600 border-indigo-600 text-white'
-                                : 'bg-white border-gray-200 text-gray-400'
+                                ? `${theme.buttonBg} border-transparent ${theme.buttonText}`
+                                : `${theme.cardBg} ${theme.inputBorder} ${theme.textSecondary}`
                                 }`}>
                                 <Icon size={18} />
                             </div>
-                            <span className={`text-[10px] uppercase font-bold mt-2 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
+                            <span className={`text-[10px] uppercase font-bold mt-2 ${isActive ? theme.primaryIconText : theme.textSecondary}`}>
                                 {step.title}
                             </span>
                         </div>
@@ -464,13 +466,13 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
             </div>
 
             {/* Footer Actions */}
-            <div className="flex justify-between mt-8 pt-6 border-t">
+            <div className={`flex justify-between mt-8 pt-6 border-t ${theme.inputBorder}`}>
                 <button
                     onClick={() => setCurrentStep(prev => prev - 1)}
                     disabled={currentStep === 1}
                     className={`px-6 py-3 rounded-xl font-bold transition-all ${currentStep === 1
                         ? 'opacity-0 pointer-events-none'
-                        : 'text-gray-500 hover:bg-gray-100'
+                        : `${theme.textSecondary} hover:opacity-80`
                         }`}
                 >
                     Back
@@ -486,8 +488,8 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                     }}
                     disabled={!isStepValid() || loading}
                     className={`px-8 py-3 rounded-xl font-bold shadow-lg flex items-center space-x-2 transition-all ${!isStepValid() || loading
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+                        ? 'opacity-50 cursor-not-allowed'
+                        : `${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} active:scale-95`
                         }`}
                 >
                     {loading ? (

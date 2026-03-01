@@ -132,6 +132,19 @@ export const shopService = {
             throw error.response ? error.response.data : error;
         }
     },
+    uploadLogo: async (shopId, file) => {
+        try {
+            const formData = new FormData();
+            formData.append('logo', file);
+            const response = await api.post(`/shops/${shopId}/logo`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Error uploading shop logo:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
 
     getBusinessTypes: async () => {
         try {
@@ -215,6 +228,15 @@ export const branchService = {
             return response.data;
         } catch (error) {
             console.error("Error fetching branches by shop ID:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getBranchTaxData: async (id) => {
+        try {
+            const response = await api.get(`/branches/${id}/tax`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching branch tax data:", error);
             throw error.response ? error.response.data : error;
         }
     }
@@ -454,6 +476,15 @@ export const itemService = {
             console.error("Error deleting item:", error);
             throw error.response ? error.response.data : error;
         }
+    },
+    getItemBarcodes: async (id) => {
+        try {
+            const response = await api.get(`/items/${id}/barcodes`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching item barcodes:", error);
+            throw error.response ? error.response.data : error;
+        }
     }
 };
 
@@ -464,6 +495,162 @@ export const inventoryService = {
             return response.data;
         } catch (error) {
             console.error("Error fetching inventory levels:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
+export const tableService = {
+    getTables: async (params = {}) => {
+        try {
+            const response = await api.get('/dining/tables', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching tables:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getTablesByCategory: async (categoryId, params = {}) => {
+        try {
+            const response = await api.get(`/dining/tables/by-category/${categoryId}`, { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching tables by category:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    createTable: async (payload) => {
+        try {
+            const response = await api.post('/dining/tables', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating table:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateTable: async (id, payload) => {
+        try {
+            const response = await api.put(`/dining/tables/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating table:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteTable: async (id) => {
+        try {
+            const response = await api.delete(`/dining/tables/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting table:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
+export const orderService = {
+    createOrder: async (payload) => {
+        try {
+            const response = await api.post('/orders', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating order:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    addPayment: async (orderId, payload) => {
+        try {
+            const response = await api.post(`/orders/${orderId}/pay`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error adding order payment:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getOrders: async (params = {}) => {
+        try {
+            const response = await api.get('/orders', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching orders:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getOrderById: async (id) => {
+        try {
+            const response = await api.get(`/orders/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching order:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateStatus: async (id, payload) => {
+        try {
+            const response = await api.put(`/orders/${id}/status`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating order status:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
+export const tableMergeService = {
+    mergeTables: async (payload) => {
+        try {
+            const response = await api.post('/dining/tables/merge', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error merging tables:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    unmergeTables: async (payload) => {
+        try {
+            const response = await api.post('/dining/tables/unmerge', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error unmerging tables:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
+export const diningCategoryService = {
+    getCategories: async (params = {}) => {
+        try {
+            const response = await api.get('/dining/categories', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching dining categories:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    createCategory: async (payload) => {
+        try {
+            const response = await api.post('/dining/categories', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating dining category:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateCategory: async (id, payload) => {
+        try {
+            const response = await api.put(`/dining/categories/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating dining category:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteCategory: async (id) => {
+        try {
+            const response = await api.delete(`/dining/categories/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting dining category:", error);
             throw error.response ? error.response.data : error;
         }
     }

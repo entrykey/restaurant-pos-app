@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Search, Plus, Edit3, Trash2, Globe, Layers, Wheat } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
-import ProductForm from '../../components/ProductForm';
 import { getCommonFieldKeys } from '../../config/itemFields';
 import { ROUTE_ACCESS } from '../../config/permissionStructure';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
+import { useTheme } from '../../context/ThemeContext';
+import { useText } from '../../context/TextContext';
 import { itemService, inventoryService } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
 
 const Inventory = ({
     menu,
@@ -19,6 +21,8 @@ const Inventory = ({
 }) => {
     const { user } = useAuth();
     const { activeBranchId } = useApp();
+    const { theme } = useTheme();
+    const { t } = useText();
     const isAdmin = user?.role === 'Admin';
 
     const canViewItems = hasPermissionFor?.("inventory", "inventory", "view");
@@ -31,10 +35,9 @@ const Inventory = ({
     const [activeTab, setActiveTab] = useState(canViewMenu ? "menu" : (canViewItems ? "raw" : "menu"));
 
     const [inventorySearch, setInventorySearch] = useState("");
-    const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-    const [editingProduct, setEditingProduct] = useState(null);
     const [loadingItemId, setLoadingItemId] = useState(null); // while fetching item by id for edit
     const [visibleFields, setVisibleFields] = useState([]);
+    const navigate = useNavigate();
 
     // --- Pagination & Data State ---
     const [localItems, setLocalItems] = useState([]);
@@ -151,158 +154,29 @@ const Inventory = ({
 
     if (!canView) {
         return (
-            <div className="h-full flex items-center justify-center bg-gray-50">
-                <div className="text-center p-12 bg-white rounded-[40px] shadow-xl border max-w-md">
+            <div className={`h-full flex items-center justify-center ${theme.pageBg}`}>
+                <div className={`text-center p-12 rounded-[40px] shadow-xl border max-w-md ${theme.surfaceBg} ${theme.borderLight}`}>
                     <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
                         <Package size={40} />
                     </div>
-                    <h2 className="text-2xl font-black text-gray-800 mb-2">Access Restricted</h2>
-                    <p className="text-gray-500 font-medium">You don&apos;t have permission to view Inventory.</p>
+                    <h2 className={`text-2xl font-black mb-2 ${theme.textHeading}`}>Access Restricted</h2>
+                    <p className={`font-medium ${theme.textMuted}`}>You don&apos;t have permission to view Inventory.</p>
                 </div>
             </div>
         );
     }
 
     const handleOpenAddModal = () => {
-        setEditingProduct(null);
-        setIsProductModalOpen(true);
+        navigate(`/inventory/new?tab=${activeTab}`);
     };
 
     const handleEditItem = async (item) => {
-        // Be very defensive about where the ID might live on the row object
         const itemId = item._id || item.id || item.itemId;
         if (!itemId) {
-            console.error("Edit clicked for row without a valid id – cannot call getItemById", item);
+            console.error("Edit clicked for row without a valid id");
             return;
         }
-        setLoadingItemId(itemId);
-        try {
-            // Fetch full item data so form is pre-filled with all fields (including attributes)
-            const full = await itemService.getItemById(itemId);
-            if (!full) {
-                setEditingProduct({ ...item, id: itemId });
-                setIsProductModalOpen(true);
-                return;
-            }
-            // Normalize attributes: backend may return unitId as object or string — form expects { value, unitId: string }
-            const normalizedAttributes = full.attributes
-                ? Object.fromEntries(
-                    Object.entries(full.attributes).map(([code, v]) => [
-                        code,
-                        {
-                            value: v?.value ?? '',
-                            unitId: v?.unitId?._id ?? v?.unitId ?? '',
-                        },
-                    ])
-                )
-                : {};
-            // Flatten nested backend structure to match ProductForm field names
-            const flat = {
-                ...full,
-                id: String(full._id),
-                _id: String(full._id),
-                // IDs (extract from populated objects if needed)
-                categoryId: full.categoryId?._id || full.categoryId,
-                unitId: full.unitId?._id || full.unitId,
-                supplierId: full.supplierId?._id || full.supplierId,
-                brandId: full.brandId?._id || full.brandId,
-                // Flatten pricing
-                purchasePrice: full.pricing?.purchasePrice ?? full.purchasePrice ?? 0,
-                sellingPrice: full.pricing?.sellingPrice ?? full.sellingPrice ?? 0,
-                mrp: full.pricing?.mrp ?? full.mrp ?? 0,
-                // Flatten stockSettings
-                stockApplicable: full.stockSettings?.stockApplicable ?? full.stockApplicable ?? true,
-                minStockAlert: full.stockSettings?.minStockAlert ?? full.minStockAlert ?? 0,
-                // Other flat fields
-                itemCode: full.itemCode,
-                name: full.name,
-                description: full.description,
-                status: full.status || 'ACTIVE',
-                weightBased: full.weightBased || false,
-                hsnSacCode: full.hsnSacCode || '',
-                ingredients: full.ingredients || [],
-                attributes: normalizedAttributes,
-            };
-            setEditingProduct(flat);
-            setIsProductModalOpen(true);
-        } catch (err) {
-            console.error('Failed to load item for editing:', err);
-            // Fallback — open with partial data from list row (no attributes from API)
-            setEditingProduct({ ...item, id: itemId, attributes: item.attributes || {} });
-            setIsProductModalOpen(true);
-        } finally {
-            setLoadingItemId(null);
-        }
-    };
-
-    const handleSaveProduct = async (formData) => {
-        try {
-            const isEditing = !!editingProduct;
-
-            // Map frontend form data to backend payload (supplier is per purchase, not per item)
-            const payload = {
-                ...formData,
-                shopid: user?.shop_id,
-                branchId: activeBranchId || (user?.branchIds && user.branchIds.length > 0 ? user.branchIds[0] : formData.branchId), // Use activeBranchId from context
-                itemType: activeTab === "menu" ? "MANUFACTURED" : "STOCK",
-                itemCode: formData.itemCode,
-                categoryId: formData.categoryId,
-                unitId: formData.unitId,
-                taxId: formData.taxId,
-                pricing: {
-                    purchasePrice: parseFloat(formData.purchasePrice || 0),
-                    sellingPrice: parseFloat(formData.sellingPrice || 0),
-                    mrp: parseFloat(formData.mrp || 0)
-                },
-                stockSettings: {
-                    stockApplicable: formData.stockApplicable ?? true,
-                    minStockAlert: parseFloat(formData.minStockAlert || 0),
-                    allowNegativeStock: false
-                },
-                weightBased: formData.weightBased || false,
-                status: formData.status || "ACTIVE",
-                name: formData.name,
-                description: formData.description,
-                ingredients: formData.ingredients,
-                attributes: formData.attributes || {} // { [attributeCode]: { value, unitId } } — persisted in ItemAttributeValue
-            };
-
-            let savedItem;
-            if (isEditing) {
-                savedItem = await itemService.updateItem(editingProduct.id, payload);
-            } else {
-                savedItem = await itemService.createItem(payload);
-            }
-
-            // Standardize ID
-            const newItem = { ...savedItem, id: savedItem._id || savedItem.id };
-            // Refresh current items after creating/editing
-            // Ideally we'd just refetch the page to maintain sync and pagination flow
-            // For now, updating state directly or forcing a refetch. 
-            // We'll mutate the local list directly if on the same page, or just reload page 1
-            if (!isEditing) {
-                setCurrentPage(1); // Go back to start to see new item
-                setInventorySearch(""); // Clear search to see new item
-            } else {
-                setLocalItems(prev => prev.map(m => m.id === editingProduct.id ? newItem : m));
-            }
-
-            // Also update global Context state so POS and other parts see the menu immediately
-            if (activeTab === "menu") {
-                if (isEditing) {
-                    setMenu(prev => prev.map((m) => (m.id === editingProduct.id ? newItem : m)));
-                } else {
-                    setMenu(prev => [newItem, ...prev]);
-                }
-            }
-
-            setRefreshTrigger(prev => prev + 1);
-            setIsProductModalOpen(false);
-            setEditingProduct(null);
-        } catch (error) {
-            console.error("Failed to save product:", error);
-            alert("Failed to save product. Please check console for details.");
-        }
+        navigate(`/inventory/edit/${itemId}?tab=${activeTab}`);
     };
 
     // --- Columns Definition ---
@@ -314,8 +188,8 @@ const Inventory = ({
             key: "name",
             render: (value, item) => (
                 <>
-                    <div className="font-black text-gray-800 text-lg">{value}</div>
-                    <div className="text-xs font-bold text-gray-400">Code: {item.itemCode || item.id}</div>
+                    <div className={`font-black text-lg ${theme.textHeading}`}>{value}</div>
+                    <div className={`text-xs font-bold ${theme.textSecondary}`}>Code: {item.itemCode || item.id}</div>
                     {item.ingredients && item.ingredients.length > 0 && (
                         <div className="flex gap-1 mt-1 flex-wrap">
                             {item.ingredients.map((ing, i) => (
@@ -343,7 +217,7 @@ const Inventory = ({
             headerClassName: "text-center",
             className: "text-center",
             render: (_, item) => (
-                <div className="font-black text-gray-800">{formatCurrency(item.sellingPrice || item.pricing?.sellingPrice || 0)}</div>
+                <div className={`font-black ${theme.textHeading}`}>{formatCurrency(item.sellingPrice || item.pricing?.sellingPrice || 0)}</div>
             )
         },
         {
@@ -383,8 +257,8 @@ const Inventory = ({
             key: "name",
             render: (value, item) => (
                 <>
-                    <div className="font-black text-gray-800 text-lg">{value}</div>
-                    <div className="text-xs font-bold text-gray-400">Code: {item.itemCode || item.id}</div>
+                    <div className={`font-black text-lg ${theme.textHeading}`}>{value}</div>
+                    <div className={`text-xs font-bold ${theme.textSecondary}`}>Code: {item.itemCode || item.id}</div>
                 </>
             )
         },
@@ -427,7 +301,7 @@ const Inventory = ({
             headerClassName: "text-right",
             className: "text-right",
             render: (_, item) => (
-                <div className="font-medium text-gray-600">{formatCurrency(item.pricing?.purchasePrice || item.costPerUnit || 0)}</div>
+                <div className={`font-medium ${theme.textPrimary}`}>{formatCurrency(item.pricing?.purchasePrice || item.costPerUnit || 0)}</div>
             )
         }
     ];
@@ -445,7 +319,7 @@ const Inventory = ({
                     <button
                         onClick={(e) => { e.stopPropagation(); handleEditItem(item); }}
                         disabled={loadingItemId === (item._id || item.id)}
-                        className="p-3 bg-gray-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95 disabled:opacity-60 disabled:cursor-wait"
+                        className={`p-3 ${theme.inputBg} ${theme.primaryIconText} hover:bg-indigo-600 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95 disabled:opacity-60 disabled:cursor-wait`}
                     >
                         {loadingItemId === (item._id || item.id) ? (
                             <span className="inline-block w-[18px] h-[18px] border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
@@ -462,7 +336,7 @@ const Inventory = ({
                                 setInventoryItems(inventoryItems.filter((i) => i.id !== item.id));
                             }
                         }}
-                        className="p-3 bg-gray-50 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95"
+                        className={`p-3 ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95`}
                     >
                         <Trash2 size={18} />
                     </button>
@@ -472,41 +346,41 @@ const Inventory = ({
     }
 
     return (
-        <div className="p-4 md:p-8 h-full overflow-y-auto bg-gray-50/30">
+        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto ${theme.pageBg}`}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
                 <div>
                     {/* Header with Icon */}
                     <div className="flex items-center gap-3 mb-2">
-                        <div className={`p-3 text-white rounded-2xl shadow-lg ${activeTab === "menu" ? "bg-indigo-600 shadow-indigo-100" : "bg-orange-500 shadow-orange-100"}`}>
+                        <div className={`p-3 text-white rounded-2xl shadow-lg ${activeTab === "menu" ? "bg-indigo-600 shadow-indigo-100 dark:shadow-indigo-900/20" : "bg-orange-500 shadow-orange-100 dark:shadow-orange-900/20"}`}>
                             {activeTab === "menu" ? <Package size={28} /> : <Wheat size={28} />}
                         </div>
-                        <h2 className="text-2xl md:text-4xl font-black text-gray-800 tracking-tight">
-                            {activeTab === "menu" ? "Menu Items" : "Items"}
+                        <h2 className={`text-2xl md:text-4xl font-black tracking-tight ${theme.textHeading}`}>
+                            {activeTab === "menu" ? t('INVENTORY', 'menu_heading', 'Menu Items') : t('INVENTORY', 'items_heading', 'Items')}
                         </h2>
                     </div>
-                    <p className="text-gray-500 font-bold ml-1">
+                    <p className={`font-bold ml-1 ${theme.textMuted}`}>
                         {activeTab === "menu" ? "Manage sales items & recipes" : "Manage inventory items & stock"}
                     </p>
                 </div>
 
                 <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
                     <div className="relative flex-1 md:w-72">
-                        <Search className="absolute left-4 top-4 text-gray-400" size={20} />
+                        <Search className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                         <input
                             value={inventorySearch}
                             onChange={(e) => setInventorySearch(e.target.value)}
                             placeholder={activeTab === "menu" ? "Search menu..." : "Search items..."}
-                            className="w-full pl-12 pr-4 py-4 border-2 border-transparent bg-white rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium"
+                            className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
                         />
                     </div>
                     {canManage && (
                         <button
                             onClick={handleOpenAddModal}
                             className={`px-8 py-4 rounded-2xl font-black shadow-xl text-white transition-all flex items-center justify-center gap-2
-                                ${activeTab === "menu" ? "bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700" : "bg-orange-500 shadow-orange-200 hover:bg-orange-600"}
+                                ${activeTab === "menu" ? "bg-indigo-600 shadow-indigo-200 dark:shadow-indigo-900/20 hover:bg-indigo-700" : "bg-orange-500 shadow-orange-200 dark:shadow-orange-900/20 hover:bg-orange-600"}
                             `}
                         >
-                            <Plus size={20} /> Add {activeTab === "menu" ? "Menu Item" : "Item"}
+                            <Plus size={20} /> Add {activeTab === "menu" ? t('INVENTORY', 'add_menu_btn', 'Menu Item') : t('INVENTORY', 'add_item_btn', 'Item')}
                         </button>
                     )}
                 </div>
@@ -514,24 +388,24 @@ const Inventory = ({
 
             {/* Tabs - Only show if user has access to BOTH */}
             {canViewMenu && canViewItems && (
-                <div className="flex gap-4 mb-8 bg-white p-2 rounded-2xl shadow-sm w-fit">
+                <div className={`flex gap-4 mb-8 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
                     <button
                         onClick={() => setActiveTab("menu")}
                         className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "menu"
-                            ? "bg-indigo-100 text-indigo-700"
-                            : "text-gray-400 hover:bg-gray-50"
+                            ? `${theme.primaryIconBg} ${theme.primaryIconText}`
+                            : `${theme.textSecondary} hover:opacity-80`
                             }`}
                     >
-                        <Layers size={18} /> Menu Items
+                        <Layers size={18} /> {t('INVENTORY', 'menu_items_tab', 'Menu Items')}
                     </button>
                     <button
                         onClick={() => setActiveTab("raw")}
                         className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "raw"
-                            ? "bg-orange-100 text-orange-700"
-                            : "text-gray-400 hover:bg-gray-50"
+                            ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
+                            : `${theme.textSecondary} hover:opacity-80`
                             }`}
                     >
-                        <Wheat size={18} /> Items
+                        <Wheat size={18} /> {t('INVENTORY', 'items_tab', 'Items')}
                     </button>
                 </div>
             )}
@@ -543,22 +417,22 @@ const Inventory = ({
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-6 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                    <span className="text-sm font-bold text-gray-500">
+                <div className={`flex items-center justify-between mt-6 p-4 rounded-2xl shadow-sm border ${theme.surfaceBg} ${theme.borderLight}`}>
+                    <span className={`text-sm font-bold ${theme.textMuted}`}>
                         Page {currentPage} of {totalPages}
                     </span>
                     <div className="flex gap-2">
                         <button
                             disabled={currentPage === 1 || loadingItems}
                             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                            className="px-4 py-2 font-bold text-sm text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl disabled:opacity-50 transition-all"
+                            className={`px-4 py-2 font-bold text-sm rounded-xl disabled:opacity-50 transition-all ${theme.textPrimary} ${theme.inputBg} hover:opacity-80`}
                         >
                             Previous
                         </button>
                         <button
                             disabled={currentPage === totalPages || loadingItems}
                             onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                            className="px-4 py-2 font-bold text-sm text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl disabled:opacity-50 transition-all"
+                            className={`px-4 py-2 font-bold text-sm rounded-xl disabled:opacity-50 transition-all ${theme.textPrimary} ${theme.inputBg} hover:opacity-80`}
                         >
                             Next
                         </button>
@@ -566,22 +440,6 @@ const Inventory = ({
                 </div>
             )}
 
-            {/* Product Modal */}
-            {isProductModalOpen && (
-                <ProductForm
-                    initialValues={editingProduct || {}}
-                    visibleFields={visibleFields}
-                    onSave={handleSaveProduct}
-                    onCancel={() => {
-                        setIsProductModalOpen(false);
-                        setEditingProduct(null);
-                    }}
-                    title={editingProduct ? `Edit ${activeTab === 'menu' ? 'Menu Item' : 'Item'}` : `Add New ${activeTab === 'menu' ? 'Menu Item' : 'Item'}`}
-                    isEditing={!!editingProduct}
-                    inventoryItems={inventoryItems}
-                    showRecipe={activeTab === 'menu'}
-                />
-            )}
         </div>
     );
 };

@@ -83,6 +83,7 @@ export const fetchOrganizationData = async (userId) => {
       businessName: data.shop.name,
       ownerName: data.shop.ownerName,
       ownerEmail: data.shop.ownerEmail || "",
+      logoUrl: data.shop.logoUrl || null,
       defaultCountry: data.branches.find(b => b.isMainBranch)?.address?.country?.code || "IN",
       defaultCurrency: data.branches.find(b => b.isMainBranch)?.currency || "INR",
       defaultTaxSystem: data.branches.find(b => b.isMainBranch)?.taxProfile?.taxSystem || TAX_SYSTEMS.GST,

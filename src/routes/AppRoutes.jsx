@@ -11,8 +11,10 @@ import DiningHall from "../pages/DiningHall/DiningHall";
 import TakeawayOrder from "../pages/Takeaway/TakeawayOrder";
 import OnlineOrders from "../pages/OnlineOrders/OnlineOrders";
 import Reservations from "../pages/Reservations/Reservations";
+import ReservationForm from "../pages/Reservations/ReservationForm";
 import KDS from "../pages/KDS/KDS";
 import Inventory from "../pages/Inventory/Inventory";
+import ProductPage from "../pages/Inventory/ProductPage";
 import Reports from "../pages/Reports/Reports";
 import Settings from "../pages/Settings/Settings";
 import Staff from "../pages/Staff/Staff";
@@ -24,13 +26,18 @@ import ServiceCreate from "../pages/Service/ServiceCreate";
 import ServiceDetails from "../pages/Service/ServiceDetails";
 
 import PurchaseList from "../pages/Purchases/PurchaseList";
-import PurchaseForm from "../pages/Purchases/PurchaseForm";
+import PurchasePage from "../pages/Purchases/PurchasePage";
+import BusinessTypesPage from "../pages/BusinessTypes/BusinessTypes";
+import ShopManagementPage from "../pages/ShopManagement";
+import PlanManagementPage from "../pages/PlanManagement";
+import SubscriptionManagementPage from "../pages/SubscriptionManagement/SubscriptionManagement";
+import TableManagement from "../pages/TableManagement/TableManagement";
 
 const TableOrderWrapper = ({ setActiveTableId, setView, setIsTakeaway, children }) => {
   const { tableId } = useParams();
   useEffect(() => {
     if (tableId) {
-      setActiveTableId(Number(tableId));
+      setActiveTableId(tableId);
       setView("order");
       setIsTakeaway(false);
     }
@@ -44,6 +51,16 @@ const TakeawayOrderWrapper = ({ setView, setIsTakeaway, children }) => {
     setView("order");
     setIsTakeaway(true);
   }, [setView, setIsTakeaway]);
+
+  return <div className="h-full">{children}</div>;
+};
+
+const WholesaleOrderWrapper = ({ setView, setIsTakeaway, setTakeawayOrder, children }) => {
+  useEffect(() => {
+    setView("order");
+    setIsTakeaway(true);
+    setTakeawayOrder((prev) => ({ ...prev, orderType: "WHOLESALE", items: prev?.items || [] }));
+  }, [setView, setIsTakeaway, setTakeawayOrder]);
 
   return <div className="h-full">{children}</div>;
 };
@@ -112,6 +129,10 @@ const AppRoutes = (props) => {
     setInventoryItems,
   } = props;
 
+  const isWholesale = takeawayOrder?.orderType === "WHOLESALE";
+  const isDirectSale = takeawayOrder?.orderType === "DIRECT_SALE";
+  const stockMenu = (inventoryItems || []).filter((i) => i.itemType === "STOCK");
+
   const orderProps = {
     isTakeaway,
     activeTableId,
@@ -139,10 +160,12 @@ const AppRoutes = (props) => {
     hasPermission: hasPermission || props.hasPermission || (() => false),
     hasPermissionFor: hasPermissionFor || props.hasPermissionFor || (() => false),
     currentUser: currentUser || props.currentUser,
+    menu: isWholesale ? stockMenu : (isDirectSale ? [...(props.menu || []), ...stockMenu] : (props.menu || [])),
+    setMenu: props.setMenu,
   };
 
   return (
-    <div className="flex-1 overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       <Routes>
         {/* New specific route for dining hall */}
         <Route
@@ -150,17 +173,19 @@ const AppRoutes = (props) => {
           element={
             <ProtectedRoute routeKey="DINING">
               <DiningHall
-                tables={tables}
-                reservations={reservations}
+                tables={props.tables}
+                categories={props.categories}
+                loading={props.diningLoading}
+                reservations={props.reservations}
                 currentUser={props.currentUser}
-                getTableDuration={getTableDuration}
-                formatCurrency={formatCurrency}
-                calculateTotal={calculateTotal}
-                setIsTakeaway={setIsTakeaway}
-                setTakeawayOrder={setTakeawayOrder}
-                setView={setView}
-                setOrderSearch={setOrderSearch}
-                setActiveTableId={setActiveTableId}
+                getTableDuration={props.getTableDuration}
+                formatCurrency={props.formatCurrency}
+                calculateTotal={props.calculateTotal}
+                setIsTakeaway={props.setIsTakeaway}
+                setTakeawayOrder={props.setTakeawayOrder}
+                setView={props.setView}
+                setOrderSearch={props.setOrderSearch}
+                setActiveTableId={props.setActiveTableId}
                 joinTables={props.joinTables}
               />
             </ProtectedRoute>
@@ -183,11 +208,11 @@ const AppRoutes = (props) => {
           }
         />
 
-        {/* Route for takeaway order */}
+        {/* Route for takeaway / direct sale (same screen; heading by orderType) */}
         <Route
           path="/takeaway"
           element={
-            <ProtectedRoute routeKey="TAKEAWAY">
+            <ProtectedRoute routeKeys={["TAKEAWAY", "DIRECT_SALE"]}>
               <TakeawayOrderWrapper
                 setView={setView}
                 setIsTakeaway={setIsTakeaway}
@@ -197,6 +222,23 @@ const AppRoutes = (props) => {
             </ProtectedRoute>
           }
         />
+
+        {/* Wholesale: same TakeawayOrder UI with stock items only (when shop has pos.wholesale) */}
+        <Route
+          path="/wholesale"
+          element={
+            <ProtectedRoute routeKey="WHOLESALE">
+              <WholesaleOrderWrapper
+                setView={setView}
+                setIsTakeaway={setIsTakeaway}
+                setTakeawayOrder={props.setTakeawayOrder}
+              >
+                <TakeawayOrder {...orderProps} />
+              </WholesaleOrderWrapper>
+            </ProtectedRoute>
+          }
+        />
+
 
         {/* Online Orders Route */}
         <Route
@@ -226,11 +268,24 @@ const AppRoutes = (props) => {
           element={
             <ProtectedRoute routeKey="RESERVATIONS">
               <Reservations
-                reservations={reservations}
-                setReservations={setReservations}
-                handleCheckInReservation={handleCheckInReservation}
                 hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
               />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reservations/new"
+          element={
+            <ProtectedRoute routeKey="RESERVATIONS">
+              <ReservationForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reservations/edit/:id"
+          element={
+            <ProtectedRoute routeKey="RESERVATIONS">
+              <ReservationForm />
             </ProtectedRoute>
           }
         />
@@ -265,6 +320,33 @@ const AppRoutes = (props) => {
                 formatCurrency={formatCurrency}
                 settings={settings}
                 hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/inventory/new"
+          element={
+            <ProtectedRoute routeKey="INVENTORY">
+              <ProductPage
+                menu={menu}
+                setMenu={setMenu}
+                inventoryItems={inventoryItems}
+                setInventoryItems={setInventoryItems}
+              />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/edit/:id"
+          element={
+            <ProtectedRoute routeKey="INVENTORY">
+              <ProductPage
+                menu={menu}
+                setMenu={setMenu}
+                inventoryItems={inventoryItems}
+                setInventoryItems={setInventoryItems}
               />
             </ProtectedRoute>
           }
@@ -397,7 +479,7 @@ const AppRoutes = (props) => {
           path="/purchases/new"
           element={
             <ProtectedRoute routeKey="PURCHASES">
-              <PurchaseForm />
+              <PurchasePage />
             </ProtectedRoute>
           }
         />
@@ -405,7 +487,7 @@ const AppRoutes = (props) => {
           path="/purchases/edit/:id"
           element={
             <ProtectedRoute routeKey="PURCHASES">
-              <PurchaseForm />
+              <PurchasePage />
             </ProtectedRoute>
           }
         />
@@ -413,7 +495,57 @@ const AppRoutes = (props) => {
           path="/purchases/:id"
           element={
             <ProtectedRoute routeKey="PURCHASES">
-              <PurchaseForm />
+              <PurchasePage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Business Types (SuperAdmin Only) */}
+        <Route
+          path="/business-types"
+          element={
+            <ProtectedRoute routeKey="BUSINESS_TYPES">
+              <BusinessTypesPage hasPermissionFor={hasPermissionFor || props.hasPermissionFor} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Shop Management (SuperAdmin Only) */}
+        <Route
+          path="/shop-management"
+          element={
+            <ProtectedRoute routeKey="SHOP_MANAGEMENT">
+              <ShopManagementPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Plan Management (SuperAdmin Only) */}
+        <Route
+          path="/plan-management"
+          element={
+            <ProtectedRoute routeKey="PLAN_MANAGEMENT">
+              <PlanManagementPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Subscription Management (SuperAdmin Only) */}
+        <Route
+          path="/subscription-management"
+          element={
+            <ProtectedRoute routeKey="SUBSCRIPTION_MANAGEMENT">
+              <SubscriptionManagementPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Table Management Route */}
+        <Route
+          path="/table-management"
+          element={
+            <ProtectedRoute routeKey="TABLE_MANAGEMENT">
+              <TableManagement hasPermissionFor={hasPermissionFor || props.hasPermissionFor} />
             </ProtectedRoute>
           }
         />
@@ -427,7 +559,7 @@ const AppRoutes = (props) => {
                 <Navigate to="/dininghall" replace />
               )}
               {view === "order" && isTakeaway && (
-                <Navigate to="/takeaway" replace />
+                <Navigate to={takeawayOrder?.orderType === "WHOLESALE" ? "/wholesale" : "/takeaway"} replace />
               )}
               {view === "order" && !isTakeaway && (
                 <Navigate to={`/dininghall/table/${activeTableId}`} replace />
@@ -459,7 +591,19 @@ const AppRoutes = (props) => {
               {view === "purchases" && (
                 <Navigate to="/purchases" replace />
               )}
-              {view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "service" && view !== "purchases" && props.children}
+              {view === "business-types" && (
+                <Navigate to="/business-types" replace />
+              )}
+              {view === "shop-management" && (
+                <Navigate to="/shop-management" replace />
+              )}
+              {view === "plan-management" && (
+                <Navigate to="/plan-management" replace />
+              )}
+              {view === "table-management" && (
+                <Navigate to="/table-management" replace />
+              )}
+              {view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "service" && view !== "purchases" && view !== "business-types" && view !== "shop-management" && view !== "plan-management" && view !== "table-management" && props.children}
             </>
           }
         />

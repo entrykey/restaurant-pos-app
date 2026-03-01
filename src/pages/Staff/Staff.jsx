@@ -5,6 +5,7 @@ import { PERMISSIONS } from "./StaffService";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useAuth } from "../../context/AuthContext";
 import { roleService, shopService, branchService, subscriptionService, employeeService } from "../../services/api";
+import { useTheme } from "../../context/ThemeContext";
 
 const Staff = ({
     staffList, // Legacy prop, can be ignored or removed later
@@ -13,6 +14,7 @@ const Staff = ({
     setRolesList,
     hasPermissionFor,
 }) => {
+    const { theme } = useTheme();
     const [activeStaffTab, setActiveStaffTab] = useState("staff");
 
     // Employee State
@@ -346,56 +348,66 @@ const Staff = ({
     }
 
     return (
-        <div className="p-4 md:p-8 h-full overflow-y-auto relative">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                <h2 className="text-2xl md:text-4xl font-black text-gray-800 flex items-center">
-                    <ShieldCheck className="mr-3 text-indigo-600" /> Staff & Roles
+        <div className={`p-4 md:p-8 min-h-[calc(100vh-64px)] flex flex-col relative ${theme.pageBg}`}>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 shrink-0">
+                <h2 className={`text-2xl md:text-4xl font-black flex items-center ${theme.textHeading}`}>
+                    <ShieldCheck className={`mr-3 ${theme.primaryIconText}`} /> Staff & Roles
                 </h2>
-                <div className="flex bg-white p-1 rounded-xl shadow-sm border w-full md:w-auto">
-                    <button
-                        onClick={() => setActiveStaffTab("staff")}
-                        className={`flex-1 md:flex-none px-6 py-2 rounded-lg font-bold transition-all ${activeStaffTab === "staff" ? "bg-indigo-600 text-white shadow" : "text-gray-500"}`}
-                    >
-                        Staff Members
-                    </button>
-                    <button
-                        onClick={() => setActiveStaffTab("roles")}
-                        className={`flex-1 md:flex-none px-6 py-2 rounded-lg font-bold transition-all ${activeStaffTab === "roles" ? "bg-indigo-600 text-white shadow" : "text-gray-500"}`}
-                    >
-                        Roles
-                    </button>
+                <div className="flex gap-3">
+                    {activeStaffTab === "staff" ? (
+                        <button
+                            onClick={() => setIsCreateEmployeeOpen(true)}
+                            className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
+                        >
+                            <Plus size={20} /> Add Employee
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => setIsCreateRoleOpen(true)}
+                            className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
+                        >
+                            <Plus size={20} /> Add Role
+                        </button>
+                    )}
                 </div>
             </div>
 
+            <div className={`flex gap-4 mb-8 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
+                <button
+                    onClick={() => setActiveStaffTab("staff")}
+                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeStaffTab === "staff" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                >
+                    <ShieldCheck size={18} /> Staff Members
+                </button>
+                <button
+                    onClick={() => setActiveStaffTab("roles")}
+                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeStaffTab === "roles" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                >
+                    <ShieldCheck size={18} /> Roles
+                </button>
+            </div>
+
             {activeStaffTab === "staff" ? (
-                <div className="bg-white rounded-3xl shadow-lg border overflow-hidden p-4">
-                    <div className="flex justify-end mb-4">
-                        <button
-                            onClick={() => setIsCreateEmployeeOpen(true)}
-                            className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2"
-                        >
-                            <Plus size={18} /> Add Employee
-                        </button>
-                    </div>
+                <>
 
                     {isEmployeesLoading ? (
                         <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>
                     ) : (
                         <CommonTable
                             columns={[
-                                { header: "Emp Code", key: "employeeCode", className: "font-mono text-xs text-gray-500" },
+                                { header: "Emp Code", key: "employeeCode", className: `font-mono text-xs ${theme.textSecondary}` },
                                 {
                                     header: "Name",
                                     key: "userId.name",
-                                    className: "font-bold",
+                                    className: `font-bold ${theme.textPrimary}`,
                                     render: (_, item) => item.userId?.name || "N/A"
                                 },
-                                { header: "Designation", key: "designation", className: "text-gray-600" },
+                                { header: "Designation", key: "designation", className: theme.textSecondary },
                                 {
                                     header: "Role",
                                     key: "roleId.name",
                                     render: (val, item) => (
-                                        <span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold uppercase">
+                                        <span className={`${theme.buttonBg} ${theme.buttonText} px-3 py-1 rounded-full text-xs font-bold uppercase`}>
                                             {item.roleId?.name || val}
                                         </span>
                                     )
@@ -403,20 +415,20 @@ const Staff = ({
                                 {
                                     header: "Phone",
                                     key: "userId.phone",
-                                    className: "text-gray-500",
+                                    className: theme.textSecondary,
                                     render: (_, item) => item.userId?.phone || "N/A"
                                 },
                                 {
                                     header: "Email",
                                     key: "userId.email",
-                                    className: "text-gray-500 text-sm",
+                                    className: `${theme.textSecondary} text-sm`,
                                     render: (_, item) => item.userId?.email || "N/A"
                                 },
                                 {
                                     header: "Status",
                                     key: "status",
                                     render: (value) => (
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${value === 'ACTIVE' ? "text-green-600 bg-green-100" : "text-red-600 bg-red-100"}`}>
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${value === 'ACTIVE' ? "text-green-600 bg-green-100 dark:bg-green-900/40 dark:text-green-400" : "text-red-600 bg-red-100 dark:bg-red-900/40 dark:text-red-400"}`}>
                                             {value}
                                         </span>
                                     ),
@@ -425,29 +437,21 @@ const Staff = ({
                             data={employees}
                         />
                     )}
-                </div>
+                </>
             ) : (
-                <div className="bg-white rounded-3xl shadow-lg border overflow-hidden p-4">
-                    <div className="flex justify-end mb-4">
-                        <button
-                            onClick={() => setIsCreateRoleOpen(true)}
-                            className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2"
-                        >
-                            <Plus size={18} /> Create Role
-                        </button>
-                    </div>
+                <>
 
                     {isRolesLoading ? (
                         <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>
                     ) : (
                         <CommonTable
                             columns={[
-                                { header: "Role Name", key: "name", className: "font-bold" },
+                                { header: "Role Name", key: "name", className: `font-bold ${theme.textPrimary}` },
                                 {
                                     header: "Type",
                                     key: "isSystemRole",
                                     render: (isSystem) => (
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${isSystem ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"}`}>
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${isSystem ? "bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400" : "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400"}`}>
                                             {isSystem ? "SYSTEM" : "CUSTOM"}
                                         </span>
                                     )
@@ -456,7 +460,7 @@ const Staff = ({
                                     header: "Permissions",
                                     key: "permissions",
                                     render: (perms) => (
-                                        <span className="text-gray-600 font-medium">
+                                        <span className={`${theme.textSecondary} font-medium`}>
                                             {perms?.length || 0} Access Points
                                         </span>
                                     )
@@ -468,7 +472,7 @@ const Staff = ({
                                     render: (_, role) => (
                                         <button
                                             type="button"
-                                            className={`font-bold text-sm hover:underline ${role?.isSystemRole ? "text-gray-300 cursor-not-allowed" : "text-indigo-600"}`}
+                                            className={`font-bold text-sm hover:underline ${role?.isSystemRole ? "text-gray-300 dark:text-gray-600 cursor-not-allowed" : theme.primaryIconText.replace('text-', 'text-')}`}
                                             onClick={() => {
                                                 if (role?.isSystemRole) return;
                                                 openEditRole(role);
@@ -484,44 +488,44 @@ const Staff = ({
                             data={roles}
                         />
                     )}
-                </div>
+                </>
             )}
 
             {/* Edit Role Modal */}
             {isEditRoleOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-                        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                            <h3 className="text-xl font-bold text-gray-800">Edit Role</h3>
-                            <button onClick={() => { setIsEditRoleOpen(false); setEditingRole(null); }} className="text-gray-500 hover:text-red-500">
+                    <div className={`${theme.surfaceBg} rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border ${theme.borderLight}`}>
+                        <div className={`p-4 border-b ${theme.borderLight} flex justify-between items-center ${theme.inputBg}`}>
+                            <h3 className={`text-xl font-bold ${theme.textHeading}`}>Edit Role</h3>
+                            <button onClick={() => { setIsEditRoleOpen(false); setEditingRole(null); }} className={`${theme.textSecondary} hover:text-red-500`}>
                                 <X size={24} />
                             </button>
                         </div>
                         <div className="p-6 overflow-y-auto flex-1 space-y-6">
                             {isLoadingData ? (
-                                <div className="flex justify-center p-10"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>
+                                <div className="flex justify-center p-10"><Loader2 className={`animate-spin ${theme.primaryIconText}`} size={32} /></div>
                             ) : (
                                 <>
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Role Name</label>
+                                        <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role Name</label>
                                         <input
                                             value={editRoleName}
                                             onChange={(e) => setEditRoleName(e.target.value)}
-                                            className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                            className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                             placeholder="e.g. Senior Shift Manager"
                                         />
                                     </div>
-                                    <div className="flex items-start gap-3 bg-gray-50 p-3 rounded-xl border">
+                                    <div className={`flex items-start gap-3 ${theme.inputBg} p-3 rounded-xl border ${theme.inputBorder}`}>
                                         <input
                                             type="checkbox"
                                             id="editBranchUser"
                                             checked={editIsBranchUser}
                                             onChange={(e) => setEditIsBranchUser(e.target.checked)}
-                                            className="w-5 h-5 mt-0.5 text-indigo-600 rounded focus:ring-indigo-500"
+                                            className={`w-5 h-5 mt-0.5 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
                                         />
                                         <div>
-                                            <label htmlFor="editBranchUser" className="block text-sm font-bold text-gray-700 cursor-pointer">Restrict to Specific Branches</label>
-                                            <p className="text-xs text-gray-500 mt-1">If checked, this role will only be available in selected branches. Uncheck to make it available in all branches.</p>
+                                            <label htmlFor="editBranchUser" className={`block text-sm font-bold ${theme.textPrimary} cursor-pointer`}>Restrict to Specific Branches</label>
+                                            <p className={`text-xs ${theme.textSecondary} mt-1`}>If checked, this role will only be available in selected branches. Uncheck to make it available in all branches.</p>
                                         </div>
                                     </div>
                                     {editIsBranchUser && (
@@ -598,9 +602,9 @@ const Staff = ({
                                 </>
                             )}
                         </div>
-                        <div className="p-4 border-t flex justify-end gap-3 bg-gray-50">
-                            <button onClick={() => { setIsEditRoleOpen(false); setEditingRole(null); }} className="px-4 py-2 rounded-lg font-bold text-gray-600 hover:bg-gray-200">Cancel</button>
-                            <button onClick={handleUpdateRole} disabled={isLoadingData} className="px-6 py-2 rounded-lg font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow disabled:opacity-50">{isLoadingData ? "Loading..." : "Update Role"}</button>
+                        <div className={`p-4 border-t ${theme.borderLight} flex justify-end gap-3 ${theme.inputBg}`}>
+                            <button onClick={() => { setIsEditRoleOpen(false); setEditingRole(null); }} className={`px-4 py-2 rounded-lg font-bold ${theme.textSecondary} hover:${theme.textPrimary} hover:${theme.inputBorder.replace('border-', 'bg-')}`}>Cancel</button>
+                            <button onClick={handleUpdateRole} disabled={isLoadingData} className={`px-6 py-2 rounded-lg font-bold ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} shadow disabled:opacity-50`}>{isLoadingData ? "Loading..." : "Update Role"}</button>
                         </div>
                     </div>
                 </div>
@@ -609,38 +613,38 @@ const Staff = ({
             {/* Create Role Modal */}
             {isCreateRoleOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-                        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                            <h3 className="text-xl font-bold text-gray-800">Create New Role</h3>
-                            <button onClick={() => setIsCreateRoleOpen(false)} className="text-gray-500 hover:text-red-500">
+                    <div className={`${theme.surfaceBg} rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border ${theme.borderLight}`}>
+                        <div className={`p-4 border-b ${theme.borderLight} flex justify-between items-center ${theme.inputBg}`}>
+                            <h3 className={`text-xl font-bold ${theme.textHeading}`}>Create New Role</h3>
+                            <button onClick={() => setIsCreateRoleOpen(false)} className={`${theme.textSecondary} hover:text-red-500`}>
                                 <X size={24} />
                             </button>
                         </div>
                         <div className="p-6 overflow-y-auto flex-1 space-y-6">
                             {isLoadingData ? (
-                                <div className="flex justify-center p-10"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>
+                                <div className="flex justify-center p-10"><Loader2 className={`animate-spin ${theme.primaryIconText}`} size={32} /></div>
                             ) : (
                                 <>
                                     <div>
-                                        <label className="block text-sm font-bold text-gray-700 mb-1">Role Name</label>
+                                        <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role Name</label>
                                         <input
                                             value={newRoleName}
                                             onChange={(e) => setNewRoleName(e.target.value)}
-                                            className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                            className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                             placeholder="e.g. Senior Shift Manager"
                                         />
                                     </div>
-                                    <div className="flex items-start gap-3 bg-gray-50 p-3 rounded-xl border">
+                                    <div className={`flex items-start gap-3 ${theme.inputBg} p-3 rounded-xl border ${theme.inputBorder}`}>
                                         <input
                                             type="checkbox"
                                             id="branchUser"
                                             checked={isBranchUser}
                                             onChange={(e) => setIsBranchUser(e.target.checked)}
-                                            className="w-5 h-5 mt-0.5 text-indigo-600 rounded focus:ring-indigo-500"
+                                            className={`w-5 h-5 mt-0.5 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
                                         />
                                         <div>
-                                            <label htmlFor="branchUser" className="block text-sm font-bold text-gray-700 cursor-pointer">Restrict to Specific Branches</label>
-                                            <p className="text-xs text-gray-500 mt-1">If checked, this role will only be available in selected branches. Uncheck to make it available in all branches.</p>
+                                            <label htmlFor="branchUser" className={`block text-sm font-bold ${theme.textPrimary} cursor-pointer`}>Restrict to Specific Branches</label>
+                                            <p className={`text-xs ${theme.textSecondary} mt-1`}>If checked, this role will only be available in selected branches. Uncheck to make it available in all branches.</p>
                                         </div>
                                     </div>
                                     {isBranchUser && (
@@ -717,9 +721,9 @@ const Staff = ({
                                 </>
                             )}
                         </div>
-                        <div className="p-4 border-t flex justify-end gap-3 bg-gray-50">
-                            <button onClick={() => setIsCreateRoleOpen(false)} className="px-4 py-2 rounded-lg font-bold text-gray-600 hover:bg-gray-200">Cancel</button>
-                            <button onClick={handleCreateRole} disabled={isLoadingData} className="px-6 py-2 rounded-lg font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow disabled:opacity-50">{isLoadingData ? "Loading..." : "Create Role"}</button>
+                        <div className={`p-4 border-t ${theme.borderLight} flex justify-end gap-3 ${theme.inputBg}`}>
+                            <button onClick={() => setIsCreateRoleOpen(false)} className={`px-4 py-2 rounded-lg font-bold ${theme.textSecondary} hover:${theme.textPrimary} hover:${theme.inputBorder.replace('border-', 'bg-')}`}>Cancel</button>
+                            <button onClick={handleCreateRole} disabled={isLoadingData} className={`px-6 py-2 rounded-lg font-bold ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} shadow disabled:opacity-50`}>{isLoadingData ? "Loading..." : "Create Role"}</button>
                         </div>
                     </div>
                 </div>
@@ -728,57 +732,57 @@ const Staff = ({
             {/* Create Employee Modal */}
             {isCreateEmployeeOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-                        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                            <h3 className="text-xl font-bold text-gray-800">Add New Employee</h3>
-                            <button onClick={() => setIsCreateEmployeeOpen(false)} className="text-gray-500 hover:text-red-500">
+                    <div className={`${theme.surfaceBg} rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border ${theme.borderLight}`}>
+                        <div className={`p-4 border-b ${theme.borderLight} flex justify-between items-center ${theme.inputBg}`}>
+                            <h3 className={`text-xl font-bold ${theme.textHeading}`}>Add New Employee</h3>
+                            <button onClick={() => setIsCreateEmployeeOpen(false)} className={`${theme.textSecondary} hover:text-red-500`}>
                                 <X size={24} />
                             </button>
                         </div>
                         <div className="p-6 overflow-y-auto flex-1 space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Full Name *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Full Name *</label>
                                     <input
                                         value={newEmpData.name}
                                         onChange={(e) => handleEmpDataChange("name", e.target.value)}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="John Doe"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Mobile Number *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Mobile Number *</label>
                                     <input
                                         value={newEmpData.phone}
                                         onChange={(e) => handleEmpDataChange("phone", e.target.value)}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="9876543210"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Email Address *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Email Address *</label>
                                     <input
                                         value={newEmpData.email}
                                         onChange={(e) => handleEmpDataChange("email", e.target.value)}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="john@example.com"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Designation</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Designation</label>
                                     <input
                                         value={newEmpData.designation}
                                         onChange={(e) => handleEmpDataChange("designation", e.target.value)}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="e.g. Cashier"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Role *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role *</label>
                                     <select
                                         value={newEmpData.roleId}
                                         onChange={(e) => handleEmpDataChange("roleId", e.target.value)}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                     >
                                         <option value="">Select Role</option>
                                         {roles.map(r => (
@@ -787,64 +791,64 @@ const Staff = ({
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1">Password</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Password</label>
                                     <input
                                         type="password"
                                         value={newEmpData.password}
                                         onChange={(e) => handleEmpDataChange("password", e.target.value)}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="Default: 123456"
                                     />
                                 </div>
                             </div>
 
                             {selectedRoleIsBranchUser && (
-                                <div className="space-y-2 animate-fadeIn bg-orange-50 p-4 rounded-xl border border-orange-200">
-                                    <label className="block text-sm font-bold text-gray-800">Select Allowed Branches (Required)</label>
-                                    <p className="text-xs text-orange-600 mb-2">This role is restricted to specific branches. Please select which branches this employee can access.</p>
-                                    <div className="border rounded-xl p-3 max-h-40 overflow-y-auto space-y-2 bg-white">
+                                <div className={`space-y-2 animate-fadeIn ${theme.warningBg} p-4 rounded-xl border ${theme.warningBorder}`}>
+                                    <label className={`block text-sm font-bold ${theme.textPrimary}`}>Select Allowed Branches (Required)</label>
+                                    <p className={`text-xs ${theme.warningText} mb-2`}>This role is restricted to specific branches. Please select which branches this employee can access.</p>
+                                    <div className={`border ${theme.inputBorder} rounded-xl p-3 max-h-40 overflow-y-auto space-y-2 ${theme.surfaceBg}`}>
                                         {branches.length > 0 ? branches.map(branch => (
                                             <div key={branch._id} className="flex items-center gap-2">
                                                 <input
                                                     type="checkbox"
                                                     checked={userSelectedBranches.includes(branch._id)}
                                                     onChange={() => handleUserBranchSelection(branch._id)}
-                                                    className="w-4 h-4 text-indigo-600 rounded"
+                                                    className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
                                                 />
-                                                <span className="text-sm text-gray-700">{branch.name}</span>
+                                                <span className={`text-sm ${theme.textPrimary}`}>{branch.name}</span>
                                             </div>
-                                        )) : <p className="text-sm text-gray-500">No branches found.</p>}
+                                        )) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
                                     </div>
                                 </div>
                             )}
 
                             <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Address</label>
+                                <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Address</label>
                                 <input
                                     value={newEmpData.address.line1}
                                     onChange={(e) => setNewEmpData(prev => ({ ...prev, address: { ...prev.address, line1: e.target.value } }))}
-                                    className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                    className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                     placeholder="Address Line 1"
                                 />
                                 <div className="grid grid-cols-2 gap-4 mt-2">
                                     <input
                                         value={newEmpData.address.city}
                                         onChange={(e) => setNewEmpData(prev => ({ ...prev, address: { ...prev.address, city: e.target.value } }))}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="City"
                                     />
                                     <input
                                         value={newEmpData.address.state}
                                         onChange={(e) => setNewEmpData(prev => ({ ...prev, address: { ...prev.address, state: e.target.value } }))}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="State"
                                     />
                                 </div>
                             </div>
                         </div>
-                        <div className="p-4 border-t flex justify-end gap-3 bg-gray-50">
-                            <button onClick={() => setIsCreateEmployeeOpen(false)} className="px-4 py-2 rounded-lg font-bold text-gray-600 hover:bg-gray-200">Cancel</button>
-                            <button onClick={handleCreateEmployee} className="px-6 py-2 rounded-lg font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow">Create Employee</button>
+                        <div className={`p-4 border-t ${theme.borderLight} flex justify-end gap-3 ${theme.inputBg}`}>
+                            <button onClick={() => setIsCreateEmployeeOpen(false)} className={`px-4 py-2 rounded-lg font-bold ${theme.textSecondary} hover:${theme.textPrimary} hover:${theme.inputBorder.replace('border-', 'bg-')}`}>Cancel</button>
+                            <button onClick={handleCreateEmployee} className={`px-6 py-2 rounded-lg font-bold ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} shadow`}>Create Employee</button>
                         </div>
                     </div>
                 </div>

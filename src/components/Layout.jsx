@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
+import { useTheme } from "../context/ThemeContext";
 
 const Layout = ({
     children,
@@ -10,6 +11,7 @@ const Layout = ({
     handleLogout,
     isTakeaway,
     setIsTakeaway,
+    takeawayOrder,
     setTakeawayOrder,
     setOrderSearch,
     pendingOnlineOrdersCount,
@@ -23,9 +25,11 @@ const Layout = ({
     onBusinessTypeChange,
 }) => {
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+    const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+    const { theme } = useTheme();
 
     return (
-        <div className="h-screen w-screen overflow-hidden bg-gray-50 font-sans">
+        <div className={`h-screen w-screen overflow-hidden ${theme.pageBg} font-sans`}>
             {/* ✅ Full width navbar */}
             <div className=" w-full">
                 <Navbar
@@ -51,6 +55,7 @@ const Layout = ({
                     setView={setView}
                     handleLogout={handleLogout}
                     isTakeaway={isTakeaway}
+                    takeawayOrder={takeawayOrder}
                     setIsTakeaway={setIsTakeaway}
                     setTakeawayOrder={setTakeawayOrder}
                     setOrderSearch={setOrderSearch}
@@ -60,10 +65,12 @@ const Layout = ({
                     enabledModules={enabledModules}
                     businessType={businessType}
                     businessSubtype={businessSubtype}
+                    isExpanded={isSidebarExpanded}
+                    setIsExpanded={setIsSidebarExpanded}
                 />
 
                 {/* Main Content */}
-                <div className="flex-1 ml-0 md:ml-20 h-[calc(100vh-64px)] overflow-auto relative">
+                <div className={`flex-1 ml-0 transition-all duration-300 ${isSidebarExpanded ? 'md:ml-64' : 'md:ml-24'} h-[calc(100vh-64px)] overflow-hidden flex flex-col relative`}>
                     {children}
                 </div>
             </div>

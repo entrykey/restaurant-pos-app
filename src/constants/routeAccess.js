@@ -6,11 +6,13 @@ import { MODULES } from "./modules";
 import { ACTIONS } from "./actions";
 
 export const ROUTE_ACCESS = Object.freeze({
-  DINING: { module: MODULES.POS },
-  TAKEAWAY: { module: MODULES.POS },
-  ONLINE_ORDERS: { module: MODULES.ORDERS },
+  DINING: { module: MODULES.POS, action: 'pos.dining' },
+  TAKEAWAY: { module: MODULES.POS, action: 'pos.takeaway' },
+  DIRECT_SALE: { module: MODULES.POS, action: 'pos.direct_sale' },
+  WHOLESALE: { module: MODULES.POS, action: 'pos.wholesale' },
+  ONLINE_ORDERS: { module: MODULES.POS, action: 'pos.onlineorder' },
   KDS: { module: MODULES.KDS },
-  RESERVATIONS: { module: MODULES.RESERVATIONS },
+  RESERVATIONS: { module: MODULES.RESERVATIONS, action: ACTIONS.RESERVATION_VIEWING },
   INVENTORY: { module: MODULES.INVENTORY },
   REPORTS: { module: MODULES.REPORTS },
   SETTINGS: { module: MODULES.SETTINGS },
@@ -19,18 +21,43 @@ export const ROUTE_ACCESS = Object.freeze({
   SUPPLIERS: { module: MODULES.SUPPLIER, action: ACTIONS.SUPPLIER_VIEW },
   SERVICE: { module: MODULES.SERVICE },
   PURCHASES: { module: MODULES.PURCHASE, action: ACTIONS.PURCHASE_VIEW },
+  BUSINESS_TYPES: { module: MODULES.BUSINESS_TYPES },
+  SHOP_MANAGEMENT: { module: MODULES.SHOP_MANAGEMENT },
+  PLAN_MANAGEMENT: { module: MODULES.PLAN_MANAGEMENT },
+  SUBSCRIPTION_MANAGEMENT: { module: MODULES.SUBSCRIPTION_MANAGEMENT },
+  TABLE_MANAGEMENT: { module: MODULES.TABLE_MANAGEMENT, action: ACTIONS.TABLE_VIEWING },
 });
 
-/** Order of route keys for "first allowed" redirect when access is denied */
+// Define order in sidebar
 export const ROUTE_KEYS_ORDER = [
-  "DINING", "TAKEAWAY", "ONLINE_ORDERS", "KDS", "RESERVATIONS", "INVENTORY",
-  "REPORTS", "SETTINGS", "STAFF", "ORGANIZATION", "SUPPLIERS", "SERVICE", "PURCHASES",
+  'DINING',
+  'TAKEAWAY',
+  'DIRECT_SALE',
+  'WHOLESALE',
+  'ONLINE_ORDERS',
+  'KDS',
+  'RESERVATIONS',
+  'INVENTORY',
+  'PURCHASES',
+  'SERVICE',
+  'STAFF',
+  'ORGANIZATION',
+  'SUPPLIERS',
+  'REPORTS',
+  'SETTINGS',
+  'BUSINESS_TYPES',
+  'SHOP_MANAGEMENT',
+  'PLAN_MANAGEMENT',
+  'SUBSCRIPTION_MANAGEMENT',
+  'TABLE_MANAGEMENT'
 ];
 
 /** Map route key to path for redirects */
 export const ROUTE_KEY_TO_PATH = Object.freeze({
   DINING: "/dininghall",
   TAKEAWAY: "/takeaway",
+  DIRECT_SALE: "/takeaway",
+  WHOLESALE: "/wholesale",
   ONLINE_ORDERS: "/online-orders",
   KDS: "/kds",
   RESERVATIONS: "/reservations",
@@ -42,6 +69,11 @@ export const ROUTE_KEY_TO_PATH = Object.freeze({
   SUPPLIERS: "/suppliers",
   SERVICE: "/service",
   PURCHASES: "/purchases",
+  BUSINESS_TYPES: "/business-types",
+  SHOP_MANAGEMENT: "/shop-management",
+  PLAN_MANAGEMENT: "/plan-management",
+  SUBSCRIPTION_MANAGEMENT: "/subscription-management",
+  TABLE_MANAGEMENT: "/table-management",
 });
 
 /** Resolve first path the user is allowed to access (for redirect when denying a route) */

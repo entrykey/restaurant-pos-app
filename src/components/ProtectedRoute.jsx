@@ -5,16 +5,24 @@ import { ROUTE_ACCESS, getFirstAllowedPath } from "../constants/routeAccess";
 
 /**
  * Prohibits access if user lacks permission for this route.
- * Use either routeKey or (module + optional action).
+ * Use routeKey, routeKeys (any one allows), or (module + optional action).
  * - routeKey: e.g. "STAFF", "ORGANIZATION" → resolves module/action from ROUTE_ACCESS
+ * - routeKeys: e.g. ["TAKEAWAY", "DIRECT_SALE"] → allowed if user has any of these
  * - module + action: direct IDs (action optional → any permission in module)
  * Redirects to redirectPath, or first allowed route, when access is denied.
  */
-const ProtectedRoute = ({ routeKey, module: moduleId, action: actionId, redirectPath, children }) => {
+const ProtectedRoute = ({ routeKey, routeKeys, module: moduleId, action: actionId, redirectPath, children }) => {
     const { can, canModule } = usePermission();
 
     let allowed = true;
-    if (routeKey != null) {
+    if (routeKeys != null && Array.isArray(routeKeys)) {
+        allowed = routeKeys.some((key) => {
+            const r = ROUTE_ACCESS[key];
+            if (!r) return false;
+            if (r.action != null && r.action !== undefined) return can(r.module, r.action);
+            return canModule(r.module);
+        });
+    } else if (routeKey != null) {
         const r = ROUTE_ACCESS[routeKey];
         if (r) {
             if (r.action != null && r.action !== undefined) allowed = can(r.module, r.action);

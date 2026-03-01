@@ -3,6 +3,7 @@ import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin } from "lucide
 import BusinessTypeModal from "./BusinessTypeModal";
 import { branchService } from "../services/api";
 import { useApp } from "../context/AppContext";
+import { useTheme } from "../context/ThemeContext";
 
 const Navbar = ({
     currentUser,
@@ -17,6 +18,7 @@ const Navbar = ({
     onBusinessTypeChange,
 }) => {
     const { activeBranchId, setActiveBranchId } = useApp();
+    const { theme } = useTheme();
     const [isBusinessTypeModalOpen, setIsBusinessTypeModalOpen] = useState(false);
     const [userBranches, setUserBranches] = useState([]);
 
@@ -47,32 +49,32 @@ const Navbar = ({
         fetchBranches();
     }, [currentUser, activeBranchId, setActiveBranchId]);
     return (
-        <div className="h-16 bg-white border-b px-4 md:px-8 flex items-center justify-between shrink-0 w-full">
+        <div className={`h-16 ${theme.cardBg} border-b ${theme.borderLight} px-4 md:px-8 flex items-center justify-between shrink-0 w-full`}>
             <div className="flex items-center gap-4 md:gap-6">
                 {/* Mobile sidebar toggle */}
                 <button
                     type="button"
-                    className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl hover:bg-gray-100 active:bg-gray-200 text-indigo-900"
+                    className={`md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl hover:${theme.inputBg.replace('bg-', '')} active:opacity-70 ${theme.textHeading}`}
                     onClick={onMobileSidebarOpen}
                     aria-label="Open menu"
                 >
                     <Menu size={20} />
                 </button>
                 <div className="flex items-center gap-2 md:ml-20">
-                    <UserCheck size={18} className="text-indigo-600" />
-                    <span className="text-xs md:text-sm font-bold text-gray-700">
+                    <UserCheck size={18} className={theme.primaryIconText} />
+                    <span className={`text-xs md:text-sm font-bold ${theme.textPrimary}`}>
                         {currentUser?.role}: {currentUser?.phone}
                     </span>
                 </div>
 
                 {/* Branch Selector (Only if multiple branches) */}
                 {userBranches.length > 1 && (
-                    <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-xl border border-gray-200">
-                        <MapPin size={16} className="text-gray-500" />
+                    <div className={`flex items-center gap-2 ${theme.inputBg} px-3 py-1.5 rounded-xl border ${theme.inputBorder}`}>
+                        <MapPin size={16} className={theme.textSecondary} />
                         <select
                             value={activeBranchId || ""}
                             onChange={(e) => setActiveBranchId(e.target.value)}
-                            className="bg-transparent text-xs font-bold text-gray-700 outline-none cursor-pointer"
+                            className={`bg-transparent text-xs font-bold ${theme.textPrimary} outline-none cursor-pointer`}
                         >
                             {userBranches.map(branch => (
                                 <option key={branch._id} value={branch._id}>
@@ -83,7 +85,7 @@ const Navbar = ({
                     </div>
                 )}
 
-                <div className="hidden md:flex items-center gap-2 text-gray-400">
+                <div className={`hidden md:flex items-center gap-2 ${theme.textSecondary}`}>
                     <Clock size={16} />
                     <span className="text-xs font-medium uppercase tracking-wider">
                         Login: {sessionInfo.loginTime}
@@ -96,7 +98,7 @@ const Navbar = ({
                     <>
                         <button
                             onClick={() => setIsBusinessTypeModalOpen(true)}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all"
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${theme.primaryIconBg} ${theme.primaryIconText} hover:opacity-80 transition-all`}
                             title="Change Business Type"
                         >
                             <Building2 size={16} />
@@ -106,7 +108,7 @@ const Navbar = ({
                         </button>
                         <div
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all ${isOnlineOrderingEnabled
-                                ? "bg-green-100 text-green-700"
+                                ? `${theme.successBg} ${theme.successText}`
                                 : "bg-red-100 text-red-700"
                                 }`}
                             onClick={() => setIsOnlineOrderingEnabled(!isOnlineOrderingEnabled)}
@@ -123,7 +125,7 @@ const Navbar = ({
                         </div>
                     </>
                 )}
-                <div className="text-indigo-900 font-black tracking-tighter text-lg md:text-xl">
+                <div className={`${theme.textHeading} font-black tracking-tighter text-lg md:text-xl`}>
                     {shopName}
                 </div>
             </div>

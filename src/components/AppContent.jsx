@@ -10,7 +10,8 @@ import { useOnlineOrders } from "../pages/OnlineOrders/OnlineOrderContext";
 import { useAuth } from "../context/AuthContext";
 import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from "../utils/permissions";
 import { formatCurrency } from "../utils/format";
-import { itemService } from "../services/api";
+import api, { itemService, orderService } from "../services/api";
+import { TextProvider } from "../context/TextContext";
 
 // Modals
 import NoteModal from "./modals/NoteModal";
@@ -31,7 +32,10 @@ const AppContent = () => {
         currentTime, menu, setMenu, addExpense, settings, setSettings,
         salesHistory, setSalesHistory, rolesList, staffList, setRolesList, setStaffList,
         organization, setOrganization, branches, setBranches,
-        businessType, setBusinessType, businessSubtype, setBusinessSubtype, enabledModules, setEnabledModules, setInventoryItems
+        businessType, setBusinessType, businessSubtype, setBusinessSubtype,
+        activeBranchId,
+        enabledModules, setEnabledModules, setInventoryItems,
+        inventoryItems
     } = useApp();
 
     const {
@@ -41,7 +45,8 @@ const AppContent = () => {
     } = useOrder();
 
     const {
-        tables, setTables, activeTableId, setActiveTableId,
+        tables, setTables, categories, loading: diningLoading,
+        activeTableId, setActiveTableId,
         reservations, setReservations, getTableDuration,
         handleCheckInReservation, handleCompleteKOT, joinTables
     } = useDining();
@@ -70,11 +75,16 @@ const AppContent = () => {
                     const menuData = items.filter(item => item.itemType === "MANUFACTURED");
                     const rawData = items.filter(item => item.itemType === "STOCK" || item.itemType === "SERVICE" || item.itemType === "RAW");
 
-                    // Map backend ID to `id` for frontend consistency if needed
-                    // Inventory.jsx and AppContent.jsx use `.id`
+                    // Map backend ID to `id` for frontend consistency and normalize fields for POS logic
                     const mapItems = (arr) => arr.map(item => ({
                         ...item,
                         id: item._id,
+                        price: item.pricing?.sellingPrice || 0,
+                        pricePerUnit: item.pricing?.sellingPrice || 0,
+                        sellingPrice: item.pricing?.sellingPrice || 0,
+                        category: item.categoryId?.name || "Uncategorized",
+                        unitName: item.unitId?.name || "Unit",
+                        sellingType: item.weightBased ? "Weight" : "Standard",
                         unitId: item.unitId // Ensure this is preserved for React State
                     }));
 
@@ -135,6 +145,10 @@ const AppContent = () => {
         ? takeawayOrder.items
         : tables.find((t) => t.id === activeTableId)?.order?.items || [];
 
+    const activeOrderType = isTakeaway
+        ? (takeawayOrder.orderType || "DIRECT_SALE")
+        : "DINE_IN";
+
     const activeTable = tables.find(t => t.id === activeTableId);
 
     const addToCart = (item, quantity, variant, extras, enteredUnit = null) => {
@@ -174,7 +188,12 @@ const AppContent = () => {
             }
         };
 
-        if (isTakeaway) {
+        if (isTakeaway || !activeTableId) {
+            // Fallback to takeaway if no table is selected in dining mode
+            if (!isTakeaway && !activeTableId) {
+                console.warn("No table selected in dining mode. Falling back to takeaway.");
+                setIsTakeaway(true);
+            }
             setTakeawayOrder((prev) => ({
                 ...prev,
                 items: updateOrderItems(prev.items),
@@ -183,7 +202,8 @@ const AppContent = () => {
         } else {
             setTables((prev) =>
                 prev.map((t) => {
-                    if (t.id === activeTableId) {
+                    const tableIdMatch = String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId);
+                    if (tableIdMatch) {
                         const currentOrder = t.order || { items: [], isSentToKOT: false };
                         return {
                             ...t,
@@ -285,41 +305,118 @@ const AppContent = () => {
         }
     };
 
-    const handleSendToKOT = () => {
-        if (isTakeaway) {
-            setTakeawayOrder({
-                ...takeawayOrder,
-                isSentToKOT: true,
-                kotSentAt: Date.now(),
-                kotStatus: "preparing",
-            });
-        } else {
-            setTables((prev) =>
-                prev.map((t) => {
-                    if (t.id === activeTableId) {
-                        return {
-                            ...t,
-                            startTime: t.startTime ? t.startTime : Date.now(),
-                            order: {
-                                ...t.order,
-                                isSentToKOT: true,
-                                kotSentAt: Date.now(),
-                                kotStatus: "preparing",
-                            },
-                        };
-                    }
-                    return t;
-                })
-            );
+    const getResolvedBranchId = () => {
+        return (
+            activeBranchId ||
+            currentUser?.branch_id ||
+            currentUser?.branchId ||
+            (currentUser?.branchIds && currentUser.branchIds[0]) ||
+            (branches[0]?._id) ||
+            null
+        );
+    };
+
+    const handleSendToKOT = async () => {
+        const nowTs = Date.now();
+        const table = !isTakeaway
+            ? tables.find((t) => t.id === activeTableId)
+            : null;
+        const currentOrder = isTakeaway
+            ? takeawayOrder
+            : table?.order || { items: [] };
+        const orderItems = currentOrder.items || [];
+
+        if (orderItems.length === 0) return;
+
+        try {
+            // 1) Create or reuse backend Order
+            let existingOrderId = currentOrder.orderId;
+            if (!existingOrderId) {
+                const orderPayload = {
+                    shopId: currentUser.shop_id,
+                    branchId: getResolvedBranchId(),
+                    businessType: businessType || "RESTAURANT",
+                    orderType: activeOrderType,
+                    customerId: null,
+                    tableId: !isTakeaway ? table?._id || table?.id : null,
+                    items: orderItems.map(item => ({
+                        itemId: item.id || item._id,
+                        itemName: item.name,
+                        price: item.price,
+                        quantity: item.quantity,
+                        totalAmount: calculateItemTotal(item),
+                        variantId: item.selectedVariant ? item.selectedVariant._id : null,
+                        notes: item.suggestion
+                    })),
+                    subtotal: calculateTotal(currentOrder) / (1 + (settings?.defaultTaxPercent || 0) / 100),
+                    discountTotal: 0,
+                    taxTotal: calculateTotal(currentOrder) - (calculateTotal(currentOrder) / (1 + (settings?.defaultTaxPercent || 0) / 100)),
+                    grandTotal: calculateTotal(currentOrder),
+                    createdBy: currentUser._id
+                };
+                const order = await orderService.createOrder(orderPayload);
+                existingOrderId = order._id;
+            }
+
+            // 2) Create KOT only for manufactured items (items that go to kitchen)
+            const kitchenItems = orderItems
+                .filter(item => item.itemType === "MANUFACTURED")
+                .map(item => ({
+                    itemId: item.id || item._id,
+                    quantity: item.quantity,
+                    notes: item.suggestion || ""
+                }));
+
+            if (kitchenItems.length > 0) {
+                await api.post('/kitchen/kots', {
+                    shopId: currentUser.shop_id,
+                    branchId: getResolvedBranchId(),
+                    orderId: existingOrderId,
+                    tableId: !isTakeaway ? table?._id || table?.id : null,
+                    items: kitchenItems
+                });
+            }
+
+            // 3) Update local state to reflect KOT sent + store orderId
+            if (isTakeaway) {
+                setTakeawayOrder({
+                    ...takeawayOrder,
+                    orderId: existingOrderId,
+                    isSentToKOT: kitchenItems.length > 0,
+                    kotSentAt: kitchenItems.length > 0 ? nowTs : null,
+                    kotStatus: kitchenItems.length > 0 ? "preparing" : undefined,
+                });
+            } else {
+                setTables((prev) =>
+                    prev.map((t) => {
+                        if (t.id === activeTableId) {
+                            return {
+                                ...t,
+                                startTime: t.startTime ? t.startTime : nowTs,
+                                order: {
+                                    ...(t.order || {}),
+                                    orderId: existingOrderId,
+                                    isSentToKOT: kitchenItems.length > 0,
+                                    kotSentAt: kitchenItems.length > 0 ? nowTs : null,
+                                    kotStatus: kitchenItems.length > 0 ? "preparing" : undefined,
+                                    items: orderItems,
+                                },
+                            };
+                        }
+                        return t;
+                    })
+                );
+            }
+        } catch (error) {
+            console.error("Failed to send KOT / create order:", error);
+            alert("Failed to send KOT. Please try again.");
         }
     };
 
-    const handleFinalizePayment = (method, billDetails) => {
-        const table = tables.find((t) => t.id === activeTableId);
-        const orderItems = isTakeaway ? takeawayOrder.items : table.order.items;
-
-        const type = isTakeaway ? "Takeaway" : "Dine-in";
+    const handleFinalizePayment = async (method, billDetails) => {
         const now = Date.now();
+        const table = !isTakeaway ? tables.find(t => String(t.id) === String(activeTableId)) : null;
+        const orderItems = isTakeaway ? takeawayOrder.items : table?.order?.items || [];
 
         const saleRecord = {
             id: now,
@@ -327,27 +424,73 @@ const AppContent = () => {
             ...billDetails,
             couponUsed: billDiscount.type !== "flat" || billDiscount.value > 0 ? "COUPON" : null,
             date: new Date().toISOString().split("T")[0],
-            type,
+            type: activeOrderType,
             method,
             timestamp: now,
-            tableId: !isTakeaway ? table.id : null,
-            tableName: !isTakeaway ? table.name : "Takeaway",
+            tableId: !isTakeaway ? table?.id : null,
+            tableName: !isTakeaway ? table?.name : "Takeaway",
             waiterName: currentUser?.name || "Staff",
-            startTime: !isTakeaway ? table.startTime : now,
+            startTime: !isTakeaway ? table?.startTime : now,
             endTime: now,
-            durationMinutes: !isTakeaway && table.startTime ? Math.floor((now - table.startTime) / 60000) : 0,
+            durationMinutes: !isTakeaway && table?.startTime ? Math.floor((now - table.startTime) / 60000) : 0,
             itemCount: orderItems.length,
             items: JSON.parse(JSON.stringify(orderItems)),
         };
 
-        setTimeout(() => {
+        try {
+            const currentOrder = isTakeaway
+                ? takeawayOrder
+                : table?.order || { items: [] };
+
+            // If we already have an orderId (KOT flow), just add payment and mark as completed.
+            if (currentOrder.orderId) {
+                await orderService.addPayment(currentOrder.orderId, {
+                    paymentMethod: method.toUpperCase(),
+                    amount: billDetails.finalTotal,
+                    referenceNumber: null
+                });
+                await orderService.updateStatus(currentOrder.orderId, { status: 'COMPLETED' });
+            } else {
+                // No KOT / ready-made products: create a completed, paid order directly.
+                const orderPayload = {
+                    shopId: currentUser.shop_id,
+                    branchId: getResolvedBranchId(),
+                    businessType: businessType || "RESTAURANT",
+                    orderType: activeOrderType,
+                    customerId: null,
+                    tableId: !isTakeaway ? table?._id || table?.id : null,
+                    items: orderItems.map(item => ({
+                        itemId: item.id || item._id,
+                        itemName: item.name,
+                        price: item.price,
+                        quantity: item.quantity,
+                        totalAmount: calculateItemTotal(item),
+                        variantId: item.selectedVariant ? item.selectedVariant._id : null,
+                        notes: item.suggestion
+                    })),
+                    subtotal: billDetails.subtotal,
+                    discountTotal: billDetails.discountAmount,
+                    taxTotal: billDetails.taxAmount,
+                    grandTotal: billDetails.finalTotal,
+                    paymentStatus: 'PAID',
+                    orderStatus: 'COMPLETED',
+                    createdBy: currentUser._id
+                };
+                await orderService.createOrder(orderPayload);
+            }
+
+            // Backend: Mark table as Available after checkout
+            if (!isTakeaway && table) {
+                await tableService.updateTable(table.id, { status: "AVAILABLE" });
+            }
+
+            // Local sales history + table reset stay as before
             setSalesHistory((prev) => [...prev, saleRecord]);
             if (isTakeaway) {
                 resetTakeaway();
             } else {
                 setTables((prev) =>
                     prev.map((t) => {
-                        // Reset the active table (Master)
                         if (t.id === activeTableId) {
                             return {
                                 ...t,
@@ -358,7 +501,6 @@ const AppContent = () => {
                                 childTables: []
                             };
                         }
-                        // Reset any children of the active table
                         if (t.parentTableId === activeTableId) {
                             return {
                                 ...t,
@@ -375,7 +517,11 @@ const AppContent = () => {
             resetBillingState();
             setOrderSearch("");
             setView("tables");
-        }, 1500);
+        } catch (err) {
+            console.error("Failed to finalize order / payment:", err);
+            // Fallback to local save if backend fails (depending on requirement)
+            setSalesHistory((prev) => [...prev, saleRecord]);
+        }
     };
 
     const openNoteModal = (index, currentText) => {
@@ -446,97 +592,103 @@ const AppContent = () => {
                     onSetEnabledModules={setEnabledModules}
                 />
             ) : (
-                <Layout
-                    view={view}
-                    setView={setView}
-                    currentUser={currentUser}
-                    handleLogout={handleLogout}
-                    businessType={businessType}
-                    businessSubtype={businessSubtype}
-                    enabledModules={enabledModules}
-                    onBusinessTypeChange={(type, subtype, modules) => {
-                        setBusinessType(type);
-                        setBusinessSubtype(subtype);
-                        // Create a completely new object with all module keys explicitly set
-                        const newModules = {};
-                        Object.keys(modules).forEach(key => {
-                            newModules[key] = modules[key] === true;
-                        });
-                        // Force a new object reference
-                        setEnabledModules({ ...newModules });
-                    }}
-                    isTakeaway={isTakeaway}
-                    setIsTakeaway={setIsTakeaway}
-                    setTakeawayOrder={setTakeawayOrder}
-                    setOrderSearch={setOrderSearch}
-                    pendingOnlineOrdersCount={pendingOnlineOrdersCount}
-                    sessionInfo={sessionInfo}
-                    isOnlineOrderingEnabled={isOnlineOrderingEnabled}
-                    setIsOnlineOrderingEnabled={setIsOnlineOrderingEnabled}
-                    shopName={settings.shopName}
-                >
-                    <AppRoutes
+                <TextProvider>
+                    <Layout
                         view={view}
-                        isTakeaway={isTakeaway}
-                        activeTableId={activeTableId}
-                        tables={tables}
-                        takeawayOrder={takeawayOrder}
-                        reservations={reservations}
+                        setView={setView}
                         currentUser={currentUser}
-                        getTableDuration={getTableDuration}
-                        formatCurrency={formatCurrency}
-                        calculateTotal={calculateTotal}
-                        calculateItemTotal={calculateItemTotal}
-                        handlePrintReceipt={handlePrintReceipt}
-                        handleSendToKOT={handleSendToKOT}
-                        setIsPaymentModalOpen={setIsPaymentModalOpen}
-                        setBillingStage={setBillingStage}
-                        initiateAddItem={initiateAddItem}
-                        updateItemQuantity={updateItemQuantity}
-                        openNoteModal={openNoteModal}
-                        takeawayCustName={takeawayCustName}
-                        setTakeawayCustName={setTakeawayCustName}
-                        takeawayCustPhone={takeawayCustPhone}
-                        setTakeawayCustPhone={setTakeawayCustPhone}
-                        orderSearch={orderSearch}
-                        setOrderSearch={setOrderSearch}
+                        handleLogout={handleLogout}
+                        businessType={businessType}
+                        businessSubtype={businessSubtype}
+                        enabledModules={enabledModules}
+                        onBusinessTypeChange={(type, subtype, modules) => {
+                            setBusinessType(type);
+                            setBusinessSubtype(subtype);
+                            // Create a completely new object with all module keys explicitly set
+                            const newModules = {};
+                            Object.keys(modules).forEach(key => {
+                                newModules[key] = modules[key] === true;
+                            });
+                            // Force a new object reference
+                            setEnabledModules({ ...newModules });
+                        }}
+                        isTakeaway={isTakeaway}
+                        takeawayOrder={takeawayOrder}
                         setIsTakeaway={setIsTakeaway}
                         setTakeawayOrder={setTakeawayOrder}
-                        setView={setView}
-                        settings={settings}
-                        hasPermission={hasPermission}
-                        hasPermissionFor={hasPermissionFor}
-                        setActiveTableId={setActiveTableId}
-                        setReservations={setReservations}
-                        handleCheckInReservation={handleCheckInReservation}
-                        onlineOrders={onlineOrders}
-                        setOnlineOrders={setOnlineOrders}
-                        onlineOrderTab={onlineOrderTab}
-                        setOnlineOrderTab={setOnlineOrderTab}
+                        setOrderSearch={setOrderSearch}
                         pendingOnlineOrdersCount={pendingOnlineOrdersCount}
-                        handleAcceptOnlineOrder={handleAcceptOnlineOrder}
-                        handleRejectOnlineOrder={handleRejectOnlineOrder}
-                        handleCompleteOnlineKOT={handleCompleteOnlineKOT}
-                        setPreviewOrder={setPreviewOrder}
-                        handleCompleteKOT={handleCompleteKOT}
-                        currentTime={currentTime}
-                        menu={menu}
-                        setMenu={setMenu}
-                        salesHistory={salesHistory}
-                        staffList={staffList}
-                        authLogs={authLogs}
-                        rolesList={rolesList}
-                        setRolesList={setRolesList}
-                        setStaffList={setStaffList}
-                        setSettings={setSettings}
-                        setTables={setTables}
-                        organization={organization}
-                        setOrganization={setOrganization}
-                        branches={branches}
-                        setBranches={setBranches}
-                        joinTables={joinTables}
-                    />
-                </Layout>
+                        sessionInfo={sessionInfo}
+                        isOnlineOrderingEnabled={isOnlineOrderingEnabled}
+                        setIsOnlineOrderingEnabled={setIsOnlineOrderingEnabled}
+                        shopName={settings.shopName}
+                    >
+                        <AppRoutes
+                            view={view}
+                            isTakeaway={isTakeaway}
+                            activeTableId={activeTableId}
+                            tables={tables}
+                            categories={categories}
+                            diningLoading={diningLoading}
+                            takeawayOrder={takeawayOrder}
+                            reservations={reservations}
+                            currentUser={currentUser}
+                            getTableDuration={getTableDuration}
+                            formatCurrency={formatCurrency}
+                            calculateTotal={calculateTotal}
+                            calculateItemTotal={calculateItemTotal}
+                            handlePrintReceipt={handlePrintReceipt}
+                            handleSendToKOT={handleSendToKOT}
+                            setIsPaymentModalOpen={setIsPaymentModalOpen}
+                            setBillingStage={setBillingStage}
+                            initiateAddItem={initiateAddItem}
+                            updateItemQuantity={updateItemQuantity}
+                            openNoteModal={openNoteModal}
+                            takeawayCustName={takeawayCustName}
+                            setTakeawayCustName={setTakeawayCustName}
+                            takeawayCustPhone={takeawayCustPhone}
+                            setTakeawayCustPhone={setTakeawayCustPhone}
+                            orderSearch={orderSearch}
+                            setOrderSearch={setOrderSearch}
+                            setIsTakeaway={setIsTakeaway}
+                            setTakeawayOrder={setTakeawayOrder}
+                            setView={setView}
+                            settings={settings}
+                            hasPermission={hasPermission}
+                            hasPermissionFor={hasPermissionFor}
+                            setActiveTableId={setActiveTableId}
+                            setReservations={setReservations}
+                            handleCheckInReservation={handleCheckInReservation}
+                            onlineOrders={onlineOrders}
+                            setOnlineOrders={setOnlineOrders}
+                            onlineOrderTab={onlineOrderTab}
+                            setOnlineOrderTab={setOnlineOrderTab}
+                            pendingOnlineOrdersCount={pendingOnlineOrdersCount}
+                            handleAcceptOnlineOrder={handleAcceptOnlineOrder}
+                            handleRejectOnlineOrder={handleRejectOnlineOrder}
+                            handleCompleteOnlineKOT={handleCompleteOnlineKOT}
+                            setPreviewOrder={setPreviewOrder}
+                            handleCompleteKOT={handleCompleteKOT}
+                            currentTime={currentTime}
+                            menu={menu}
+                            setMenu={setMenu}
+                            inventoryItems={inventoryItems}
+                            salesHistory={salesHistory}
+                            staffList={staffList}
+                            authLogs={authLogs}
+                            rolesList={rolesList}
+                            setRolesList={setRolesList}
+                            setStaffList={setStaffList}
+                            setSettings={setSettings}
+                            setTables={setTables}
+                            organization={organization}
+                            setOrganization={setOrganization}
+                            branches={branches}
+                            setBranches={setBranches}
+                            joinTables={joinTables}
+                        />
+                    </Layout>
+                </TextProvider>
             )}
 
             {/* Modals */}

@@ -61,6 +61,7 @@ export const MODULE_LABELS = {
   STAFF: "Staff & Roles",
   ORGANIZATION: "Organization",
   SERVICE: "Service & Repairs",
+  TABLE_MANAGEMENT: "Table Management",
 };
 
 /**
@@ -146,6 +147,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "ONLINE_ORDERS",
       "KDS",
       "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -159,6 +161,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "TAKEAWAY",
       "ONLINE_ORDERS",
       "KDS",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -170,6 +174,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "TAKEAWAY",
       "KDS",
       "ONLINE_ORDERS",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -180,6 +186,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
     cafe: [
       "DINING",
       "TAKEAWAY",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -190,6 +198,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
     bar: [
       "DINING",
       "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -201,6 +210,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
   [BUSINESS_TYPES.RETAIL]: {
     grocery: [
       "ONLINE_ORDERS",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -210,6 +221,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
     ],
     clothing: [
       "ONLINE_ORDERS",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -219,6 +232,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
     ],
     electronics: [
       "ONLINE_ORDERS",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -229,6 +244,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
     ],
     general: [
       "ONLINE_ORDERS",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -242,6 +259,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
     hair: [
       "RESERVATIONS",
       "ONLINE_ORDERS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -252,6 +270,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
     spa: [
       "RESERVATIONS",
       "ONLINE_ORDERS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -262,6 +281,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
     beauty: [
       "RESERVATIONS",
       "ONLINE_ORDERS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -274,6 +294,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
     coffee: [
       "DINING",
       "TAKEAWAY",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -285,6 +307,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "DINING",
       "TAKEAWAY",
       "ONLINE_ORDERS",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -298,6 +322,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "RESERVATIONS",
       "DINING",
       "KDS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -309,6 +334,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "RESERVATIONS",
       "DINING",
       "KDS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -320,6 +346,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
   [BUSINESS_TYPES.PHARMACY]: {
     pharmacy: [
       "ONLINE_ORDERS",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",
@@ -329,6 +357,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
     ],
     medical: [
       "ONLINE_ORDERS",
+      "RESERVATIONS",
+      "TABLE_MANAGEMENT",
       "INVENTORY",
       "SUPPLIERS",
       "REPORTS",

@@ -41,24 +41,31 @@ const TakeawayOrder = ({
     settings,
     hasPermission,
     hasPermissionFor = () => false,
-    currentUser
+    currentUser,
+    menu,
+    setMenu
 }) => {
-    const [menu, setMenu] = useState([]);
-    const [categories, setCategories] = useState(["All"]);
+    const orderTypeLabels = {
+        'DINE_IN': 'Dine-in Order',
+        'TAKEAWAY': 'Takeaway Order',
+        'ONLINE_ORDER': 'Online Order',
+        'DIRECT_SALE': 'Direct Sale',
+        'WHOLESALE': 'Wholesale Order',
+    };
+
     const [activeMenuCategory, setActiveMenuCategory] = useState("All");
     const [mobileOrderTab, setMobileOrderTab] = useState("menu");
 
-    useEffect(() => {
-        takeawayService.getMenu().then((data) => {
-            setMenu(data);
-            const cats = ["All", ...new Set(data.map((item) => item.category))];
-            setCategories(cats);
-        });
-    }, []);
+    // Derive categories dynamically from the menu prop (already normalized in AppContent)
+    const categories = ["All", ...new Set(menu.map((item) => item.category || "Uncategorized"))];
 
     const currentOrder = isTakeaway
         ? takeawayOrder
         : tables.find((t) => t.id === activeTableId)?.order || { items: [] };
+
+    const displayTitle = !isTakeaway && activeTableId
+        ? `Table ${activeTableId}`
+        : orderTypeLabels[currentOrder.orderType] || "POS Order";
 
     const isSentToKOT = currentOrder.isSentToKOT;
 
@@ -95,14 +102,14 @@ const TakeawayOrder = ({
                 >
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-xl md:text-2xl font-black text-indigo-900">
-                            {isTakeaway ? "Takeaway Order" : `Table ${activeTableId}`}
+                            {displayTitle}
                         </h2>
                         <button
                             onClick={() => {
                                 setIsTakeaway(false);
                                 setView("tables");
                             }}
-                            className="p-2 bg-white rounded-full"
+                            className="p-2 bg-white rounded-full shadow-sm"
                         >
                             <X />
                         </button>
@@ -185,8 +192,9 @@ const TakeawayOrder = ({
                                 <Printer size={20} />
                             </button>
                             {isSentToKOT && (
-                                <span className="flex items-center gap-1 text-green-600 text-xs font-bold uppercase">
-                                    <Check size={14} /> KOT Sent
+                                <span className={`flex items-center gap-1 text-xs font-bold uppercase ${currentOrder.kotStatus === 'preparing' ? 'text-orange-500 animate-pulse' : 'text-green-600'}`}>
+                                    {currentOrder.kotStatus === 'preparing' ? <Utensils size={14} /> : <Check size={14} />}
+                                    {currentOrder.kotStatus === 'preparing' ? "Preparing..." : "KOT Ready"}
                                 </span>
                             )}
                         </div>
@@ -281,22 +289,32 @@ const TakeawayOrder = ({
                             <span>{formatCurrency(calculateTotal(currentOrder))}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-3 pt-2">
-                            <button
-                                onClick={handleSendToKOT}
-                                disabled={currentOrder.items.length === 0 || isSentToKOT}
-                                className="py-3 md:py-4 rounded-xl font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
-                            >
-                                <Printer size={18} /> KOT
-                            </button>
+                            {(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) && (
+                                <button
+                                    onClick={handleSendToKOT}
+                                    disabled={currentOrder.items.length === 0 || isSentToKOT}
+                                    className="py-3 md:py-4 rounded-xl font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+                                >
+                                    <Printer size={18} /> KOT
+                                </button>
+                            )}
                             <button
                                 onClick={() => {
                                     setIsPaymentModalOpen(true);
                                     setBillingStage("review");
                                 }}
-                                disabled={!hasPermissionFor("pos", "order", "process_payment") || currentOrder.items.length === 0}
-                                className="py-3 md:py-4 rounded-xl font-bold bg-green-600 text-white shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-300 disabled:shadow-none"
+                                disabled={(
+                                    !hasPermissionFor("pos", "order", "process_payment") &&
+                                    !hasPermission("orders.ORDERS.PROCESSPAYMENT") &&
+                                    !hasPermission("orders.processpayment")
+                                ) || currentOrder.items.length === 0}
+                                className={`py-3 md:py-4 rounded-xl font-bold bg-green-600 text-white shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-300 disabled:shadow-none ${(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) ? "" : "col-span-2"}`}
                             >
-                                {hasPermissionFor("pos", "order", "process_payment") ? "Checkout" : "Checkout (Restricted)"}
+                                {(
+                                    hasPermissionFor("pos", "order", "process_payment") ||
+                                    hasPermission("orders.ORDERS.PROCESSPAYMENT") ||
+                                    hasPermission("orders.processpayment")
+                                ) ? "Checkout" : "Checkout (Restricted)"}
                             </button>
                         </div>
                     </div>

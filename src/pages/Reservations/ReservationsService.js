@@ -1,38 +1,66 @@
-// Mock service for Reservations
+import api from '../../services/api';
+
 export const reservationsService = {
-    getReservations: async () => {
-        // In a real app, this would be an API call
-        return [
-            {
-                id: 1,
-                customerName: "Amit Sharma",
-                phone: "9876543210",
-                date: new Date().toISOString().split("T")[0],
-                time: "19:30",
-                guests: 4,
-                tableId: 2,
-                status: "Confirmed",
-            },
-            {
-                id: 2,
-                customerName: "Priya Singh",
-                phone: "9988776655",
-                date: new Date().toISOString().split("T")[0],
-                time: "20:00",
-                guests: 2,
-                tableId: null,
-                status: "Pending",
-            },
-        ];
+    getReservations: async (params = {}) => {
+        try {
+            const response = await api.get('/reservations', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching reservations:", error);
+            throw error;
+        }
     },
 
-    addReservation: async (reservation) => {
-        console.log("Adding reservation:", reservation);
-        return { ...reservation, id: Date.now(), status: "Confirmed" };
+    getReservationById: async (id) => {
+        try {
+            const response = await api.get(`/reservations/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error(`Error fetching reservation ${id}:`, error);
+            throw error;
+        }
+    },
+
+    createReservation: async (reservationData) => {
+        try {
+            const response = await api.post('/reservations', reservationData);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating reservation:", error);
+            if (error.response?.data?.message) {
+                throw new Error(error.response.data.message);
+            }
+            throw error;
+        }
     },
 
     updateReservationStatus: async (id, status) => {
-        console.log(`Updating reservation ${id} to ${status}`);
-        return true;
+        try {
+            const response = await api.put(`/reservations/${id}/status`, { status });
+            return response.data;
+        } catch (error) {
+            console.error(`Error updating reservation ${id} status:`, error);
+            throw error;
+        }
+    },
+
+    updateReservation: async (id, reservationData) => {
+        try {
+            const response = await api.put(`/reservations/${id}`, reservationData);
+            return response.data;
+        } catch (error) {
+            console.error(`Error updating reservation ${id}:`, error);
+            throw error;
+        }
+    },
+
+    deleteReservation: async (id) => {
+        try {
+            const response = await api.delete(`/reservations/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error(`Error deleting reservation ${id}:`, error);
+            throw error;
+        }
     }
 };

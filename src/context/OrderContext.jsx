@@ -28,11 +28,11 @@ export const OrderProvider = ({ children }) => {
 
     // Helpers
     const calculateItemTotal = (item) => {
-        let basePrice = item.price;
+        let basePrice = item.sellingPrice || item.price || 0;
         if (item.selectedVariant) {
             basePrice = item.selectedVariant.price;
         } else if (item.sellingType === "Weight") {
-            basePrice = item.pricePerUnit;
+            basePrice = item.pricePerUnit || item.sellingPrice || item.price || 0;
         }
         const itemBaseCost = basePrice * item.quantity;
         const extrasCost = (item.selectedExtras || []).reduce(

@@ -3,8 +3,10 @@ import { Plus, Edit2, Trash2 } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
 import { unitService } from "../../services/api";
 import { toast } from "react-hot-toast";
+import { useTheme } from "../../context/ThemeContext";
 
 const UnitSettings = () => {
+    const { theme } = useTheme();
     const [units, setUnits] = useState([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingUnit, setEditingUnit] = useState(null);
@@ -88,23 +90,23 @@ const UnitSettings = () => {
     };
 
     const columns = [
-        { header: "Name", key: "name", className: "font-bold text-gray-800" },
-        { header: "Code", key: "code", className: "text-gray-500 font-mono text-sm" },
+        { header: "Name", key: "name", className: `font-bold ${theme.textPrimary}` },
+        { header: "Code", key: "code", className: `${theme.textSecondary} font-mono text-sm` },
         {
             header: "Category", key: "category", render: (value) => (
-                <span className="px-3 py-1 bg-green-50 text-green-700 rounded-lg text-[10px] uppercase font-black tracking-widest">{value}</span>
+                <span className={`px-3 py-1 ${theme.successBg} ${theme.successText} rounded-lg text-[10px] uppercase font-black tracking-widest`}>{value}</span>
             )
         },
         {
             header: "Decimals", key: "decimalAllowed", render: (value) => (
-                <span className={`px-2 py-1 rounded-lg text-xs font-bold ${value ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                <span className={`px-2 py-1 rounded-lg text-xs font-bold ${value ? `${theme.infoBg} ${theme.infoText}` : `${theme.inputBg} ${theme.textMuted}`}`}>
                     {value ? 'Allowed' : 'Not Allowed'}
                 </span>
             )
         },
         {
             header: "System", key: "isSystemUnit", render: (value) => (
-                value ? <span className="text-xs text-gray-400 font-medium italic">Yes</span> : "-"
+                value ? <span className={`text-xs ${theme.textMuted} font-medium italic`}>Yes</span> : "-"
             )
         },
         {
@@ -112,7 +114,7 @@ const UnitSettings = () => {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => handleOpenDialog(row)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                        className={`p-2 ${theme.textSecondary} hover:${theme.primaryIconBg.replace('bg-', '')} hover:${theme.primaryIconText} rounded-xl transition-colors`}
                         disabled={row.isSystemUnit}
                         title={row.isSystemUnit ? "System units cannot be edited" : "Edit"}
                     >
@@ -120,7 +122,7 @@ const UnitSettings = () => {
                     </button>
                     <button
                         onClick={() => handleDelete(row._id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                        className={`p-2 ${theme.textSecondary} hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors`}
                         disabled={row.isSystemUnit}
                         title={row.isSystemUnit ? "System units cannot be deleted" : "Delete"}
                     >
@@ -133,30 +135,30 @@ const UnitSettings = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center bg-white p-6 rounded-[24px] shadow-sm border border-gray-100">
+            <div className={`flex justify-between items-center ${theme.surfaceBg} p-6 rounded-[24px] shadow-sm border ${theme.borderLight}`}>
                 <div>
-                    <h3 className="text-xl font-bold flex items-center gap-2 text-gray-800">
+                    <h3 className={`text-xl font-bold flex items-center gap-2 ${theme.textHeading}`}>
                         Units of Measurement
                     </h3>
-                    <p className="text-sm font-medium text-gray-500 mt-1">Manage physical units (e.g., Kilograms, Liters) across items</p>
+                    <p className={`text-sm font-medium ${theme.textSecondary} mt-1`}>Manage physical units (e.g., Kilograms, Liters) across items</p>
                 </div>
                 <button
                     onClick={() => handleOpenDialog()}
-                    className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200"
+                    className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-xl font-bold ${theme.buttonHoverBg} transition-all flex items-center gap-2 shadow-lg shadow-indigo-200`}
                 >
                     <Plus size={20} /> Add Unit
                 </button>
             </div>
 
-            <div className="bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
+            <div className={`${theme.surfaceBg} rounded-[24px] shadow-sm border ${theme.borderLight} overflow-hidden`}>
                 <CommonTable columns={columns} data={units} />
             </div>
 
             {isDialogOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm transition-all duration-300">
-                    <div className="w-full max-w-lg bg-white rounded-[32px] shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+                    <div className={`w-full max-w-lg ${theme.surfaceBg} rounded-[32px] shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto`}>
                         <div className="mb-4">
-                            <h2 className="text-2xl font-black text-gray-800">
+                            <h2 className={`text-2xl font-black ${theme.textHeading}`}>
                                 {editingUnit ? "Edit Unit" : "Create Unit"}
                             </h2>
                         </div>
@@ -164,30 +166,30 @@ const UnitSettings = () => {
                         <form onSubmit={handleSubmit} className="space-y-6 mt-4">
                             <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Unit Name</label>
+                                    <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Unit Name</label>
                                     <input
                                         required
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                         value={formData.name}
                                         placeholder="e.g. Kilograms"
                                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Code (Short Name)</label>
+                                    <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Code (Short Name)</label>
                                     <input
                                         required
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                         value={formData.code}
                                         placeholder="e.g. kg"
                                         onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Category</label>
+                                    <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Category</label>
                                     <select
                                         required
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                         value={formData.category}
                                         onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                                     >
@@ -197,32 +199,32 @@ const UnitSettings = () => {
                                     </select>
                                 </div>
 
-                                <label className="flex items-center gap-3 cursor-pointer p-4 bg-gray-50 border border-gray-100 rounded-2xl hover:border-indigo-200 transition-colors">
+                                <label className={`flex items-center gap-3 cursor-pointer p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl hover:border-indigo-200 transition-colors`}>
                                     <input
                                         type="checkbox"
                                         checked={formData.decimalAllowed}
                                         onChange={(e) => setFormData({ ...formData, decimalAllowed: e.target.checked })}
-                                        className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                        className={`w-5 h-5 rounded ${theme.inputBorder} text-indigo-600 focus:ring-indigo-500`}
                                     />
                                     <div>
-                                        <div className="font-bold text-gray-800">Allow Decimals</div>
-                                        <div className="text-xs text-gray-500 font-medium">Used if values like "1.5 kg" should be permitted</div>
+                                        <div className={`font-bold ${theme.textPrimary}`}>Allow Decimals</div>
+                                        <div className={`text-xs ${theme.textSecondary} font-medium`}>Used if values like "1.5 kg" should be permitted</div>
                                     </div>
                                 </label>
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
+                            <div className={`flex justify-end gap-3 pt-6 border-t ${theme.borderLight}`}>
                                 <button
                                     type="button"
                                     onClick={() => setIsDialogOpen(false)}
-                                    className="px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
+                                    className={`px-6 py-3 rounded-xl font-bold ${theme.textSecondary} hover:${theme.inputBg.replace('bg-', '')} transition-colors`}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isLoading}
-                                    className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-indigo-200"
+                                    className={`${theme.buttonBg} ${theme.buttonText} px-8 py-3 rounded-xl font-bold ${theme.buttonHoverBg} transition-colors disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-indigo-200`}
                                 >
                                     {isLoading ? "Saving..." : "Save Unit"}
                                 </button>

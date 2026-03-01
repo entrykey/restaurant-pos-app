@@ -9,12 +9,13 @@ export const TakeawayProvider = ({ children }) => {
     const [takeawayOrder, setTakeawayOrder] = useState({
         items: [],
         isSentToKOT: false,
+        orderType: 'TAKEAWAY',
     });
     const [takeawayCustName, setTakeawayCustName] = useState("");
     const [takeawayCustPhone, setTakeawayCustPhone] = useState("");
 
     const resetTakeaway = () => {
-        setTakeawayOrder({ items: [], isSentToKOT: false });
+        setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'TAKEAWAY' });
         setTakeawayCustName("");
         setTakeawayCustPhone("");
         setIsTakeaway(false);

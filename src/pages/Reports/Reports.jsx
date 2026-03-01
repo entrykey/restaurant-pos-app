@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
 import { formatCurrency } from '../../utils/format';
+import DatePicker from "../../components/ui/DatePicker";
 
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 
@@ -55,11 +56,10 @@ const Reports = ({
                     <FileText className="mr-3 text-indigo-600" /> Reports & Analytics
                 </h2>
                 <div className="flex gap-3 items-center">
-                    <input
-                        type="date"
+                    <DatePicker
                         value={filterDate}
-                        onChange={(e) => setFilterDate(e.target.value)}
-                        className="bg-white p-3 rounded-xl border-2 shadow-sm"
+                        onChange={val => setFilterDate(val)}
+                        className="w-48"
                     />
                     <button className="p-3 bg-white border-2 rounded-xl shadow-sm text-gray-600 hover:text-indigo-600">
                         <Download size={20} />

@@ -4,8 +4,10 @@ import CommonTable from "../../components/CommonTable";
 
 import { attributeService, shopService, unitService, categoryService } from "../../services/api";
 import { toast } from "react-hot-toast";
+import { useTheme } from "../../context/ThemeContext";
 
 const AttributeSettings = () => {
+    const { theme } = useTheme();
     const [attributes, setAttributes] = useState([]);
     const [businessTypes, setBusinessTypes] = useState([]);
     const [businessSubTypes, setBusinessSubTypes] = useState({});
@@ -184,20 +186,20 @@ const AttributeSettings = () => {
     };
 
     const columns = [
-        { header: "Name", key: "name", className: "font-bold text-gray-800" },
-        { header: "Code", key: "code", className: "text-gray-500 font-mono text-sm" },
+        { header: "Name", key: "name", className: `font-bold ${theme.textPrimary}` },
+        { header: "Code", key: "code", className: `${theme.textSecondary} font-mono text-sm` },
         {
             header: "Type", key: "dataType", render: (value) => (
-                <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold">{value}</span>
+                <span className={`px-2 py-1 ${theme.inputBg} ${theme.textSecondary} rounded-lg text-xs font-bold`}>{value}</span>
             )
         },
         {
             header: "Unit", key: "unitId", render: (value, row) =>
-                row.requiresUnit && value ? <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] uppercase font-black tracking-widest">{value.code || value.name}</span> : "-"
+                row.requiresUnit && value ? <span className={`px-2 py-1 ${theme.infoBg} ${theme.infoText} rounded-lg text-[10px] uppercase font-black tracking-widest`}>{value.code || value.name}</span> : "-"
         },
         {
             header: "Category", key: "categoryId", render: (value, row) =>
-                row.categoryDependent && value ? <span className="px-2 py-1 bg-purple-50 text-purple-600 rounded-lg text-xs font-bold">{value.name}</span> : "-"
+                row.categoryDependent && value ? <span className={`px-2 py-1 ${theme.primaryIconBg} ${theme.primaryIconText} rounded-lg text-xs font-bold`}>{value.name}</span> : "-"
         },
         {
             header: "Options", key: "options", render: (value) =>
@@ -212,13 +214,13 @@ const AttributeSettings = () => {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => handleOpenDialog(row)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                        className={`p-2 ${theme.textSecondary} hover:${theme.primaryIconText} hover:${theme.primaryIconBg.replace('bg-', '')} rounded-xl transition-colors`}
                     >
                         <Edit2 size={16} />
                     </button>
                     <button
                         onClick={() => handleDelete(row._id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                        className={`p-2 ${theme.textSecondary} hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors`}
                     >
                         <Trash2 size={16} />
                     </button>
@@ -229,30 +231,30 @@ const AttributeSettings = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center bg-white p-6 rounded-[24px] shadow-sm border border-gray-100">
+            <div className={`flex justify-between items-center ${theme.surfaceBg} p-6 rounded-[24px] shadow-sm border ${theme.borderLight}`}>
                 <div>
-                    <h3 className="text-xl font-bold flex items-center gap-2 text-gray-800">
+                    <h3 className={`text-xl font-bold flex items-center gap-2 ${theme.textHeading}`}>
                         Attributes
                     </h3>
-                    <p className="text-sm font-medium text-gray-500 mt-1">Manage global item attributes (e.g., Size, Color)</p>
+                    <p className={`text-sm font-medium ${theme.textSecondary} mt-1`}>Manage global item attributes (e.g., Size, Color)</p>
                 </div>
                 <button
                     onClick={() => handleOpenDialog()}
-                    className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200"
+                    className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-xl font-bold ${theme.buttonHoverBg} transition-all flex items-center gap-2 shadow-lg shadow-indigo-200`}
                 >
                     <Plus size={20} /> Add Attribute
                 </button>
             </div>
 
-            <div className="bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
+            <div className={`${theme.surfaceBg} rounded-[24px] shadow-sm border ${theme.borderLight} overflow-hidden`}>
                 <CommonTable columns={columns} data={attributes} />
             </div>
 
             {isDialogOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm transition-all duration-300">
-                    <div className="w-full max-w-2xl sm:max-w-3xl bg-white rounded-[32px] shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+                    <div className={`w-full max-w-2xl sm:max-w-3xl ${theme.surfaceBg} rounded-[32px] shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto`}>
                         <div className="mb-4">
-                            <h2 className="text-2xl font-black text-gray-800">
+                            <h2 className={`text-2xl font-black ${theme.textHeading}`}>
                                 {editingAttribute ? "Edit Attribute" : "Create Attribute"}
                             </h2>
                         </div>
@@ -260,20 +262,20 @@ const AttributeSettings = () => {
                         <form onSubmit={handleSubmit} className="space-y-6 mt-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Attribute Name</label>
+                                    <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Attribute Name</label>
                                     <input
                                         required
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                         value={formData.name}
                                         placeholder="e.g. Color"
                                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Code (Unique)</label>
+                                    <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Code (Unique)</label>
                                     <input
                                         required
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                         value={formData.code}
                                         placeholder="e.g. color"
                                         disabled={!!editingAttribute}
@@ -281,10 +283,10 @@ const AttributeSettings = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-400 uppercase">Data Type</label>
+                                    <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Data Type</label>
                                     <select
                                         required
-                                        className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                         value={formData.dataType}
                                         onChange={(e) => setFormData({ ...formData, dataType: e.target.value })}
                                     >
@@ -295,10 +297,10 @@ const AttributeSettings = () => {
                                 </div>
                                 {formData.dataType === "SELECT" && (
                                     <div className="space-y-2 md:col-span-2">
-                                        <label className="text-xs font-black text-gray-400 uppercase">Options (Comma separated)</label>
+                                        <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Options (Comma separated)</label>
                                         <input
                                             required
-                                            className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                            className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                             value={formData.options}
                                             placeholder="Red, Blue, Green"
                                             onChange={(e) => setFormData({ ...formData, options: e.target.value })}
@@ -307,26 +309,26 @@ const AttributeSettings = () => {
                                 )}
 
                                 {formData.dataType === "NUMBER" && (
-                                    <div className="space-y-4 md:col-span-2 p-4 bg-gray-50 border border-gray-100 rounded-2xl">
-                                        <label className="flex items-center gap-3 cursor-pointer hover:text-indigo-600 transition-colors">
+                                    <div className={`space-y-4 md:col-span-2 p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl`}>
+                                        <label className={`flex items-center gap-3 cursor-pointer hover:${theme.primaryIconText} transition-colors`}>
                                             <input
                                                 type="checkbox"
                                                 checked={formData.requiresUnit}
                                                 onChange={(e) => setFormData({ ...formData, requiresUnit: e.target.checked, unitId: e.target.checked ? formData.unitId : "" })}
-                                                className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                className={`w-5 h-5 rounded ${theme.inputBorder} text-indigo-600 focus:ring-indigo-500`}
                                             />
                                             <div>
-                                                <div className="font-bold text-gray-800">Requires Unit</div>
-                                                <div className="text-xs text-gray-500 font-medium">Link a specific measurement unit to this attribute</div>
+                                                <div className={`font-bold ${theme.textPrimary}`}>Requires Unit</div>
+                                                <div className={`text-xs ${theme.textSecondary} font-medium`}>Link a specific measurement unit to this attribute</div>
                                             </div>
                                         </label>
 
                                         {formData.requiresUnit && (
-                                            <div className="mt-4 pt-4 border-t border-gray-200">
-                                                <label className="text-xs font-black text-gray-400 uppercase mb-2 block">Select Default Unit</label>
+                                            <div className={`mt-4 pt-4 border-t ${theme.borderLight}`}>
+                                                <label className={`text-xs font-black ${theme.textSecondary} uppercase mb-2 block`}>Select Default Unit</label>
                                                 <select
                                                     required={formData.requiresUnit}
-                                                    className="w-full p-4 bg-white border border-gray-200 rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                                    className={`w-full p-4 ${theme.surfaceBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                                     value={formData.unitId}
                                                     onChange={(e) => setFormData({ ...formData, unitId: e.target.value })}
                                                 >
@@ -340,26 +342,26 @@ const AttributeSettings = () => {
                                     </div>
                                 )}
 
-                                <div className="space-y-4 md:col-span-2 p-4 bg-gray-50 border border-gray-100 rounded-2xl">
-                                    <label className="flex items-center gap-3 cursor-pointer hover:text-indigo-600 transition-colors">
+                                <div className={`space-y-4 md:col-span-2 p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl`}>
+                                    <label className={`flex items-center gap-3 cursor-pointer hover:${theme.primaryIconText} transition-colors`}>
                                         <input
                                             type="checkbox"
                                             checked={formData.categoryDependent}
                                             onChange={(e) => setFormData({ ...formData, categoryDependent: e.target.checked, categoryId: e.target.checked ? formData.categoryId : "" })}
-                                            className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                            className={`w-5 h-5 rounded ${theme.inputBorder} text-indigo-600 focus:ring-indigo-500`}
                                         />
                                         <div>
-                                            <div className="font-bold text-gray-800">Category Dependent</div>
-                                            <div className="text-xs text-gray-500 font-medium">Link this attribute rigidly to a specific item category</div>
+                                            <div className={`font-bold ${theme.textPrimary}`}>Category Dependent</div>
+                                            <div className={`text-xs ${theme.textSecondary} font-medium`}>Link this attribute rigidly to a specific item category</div>
                                         </div>
                                     </label>
 
                                     {formData.categoryDependent && (
-                                        <div className="mt-4 pt-4 border-t border-gray-200">
-                                            <label className="text-xs font-black text-gray-400 uppercase mb-2 block">Select Category</label>
+                                        <div className={`mt-4 pt-4 border-t ${theme.borderLight}`}>
+                                            <label className={`text-xs font-black ${theme.textSecondary} uppercase mb-2 block`}>Select Category</label>
                                             <select
                                                 required={formData.categoryDependent}
-                                                className="w-full p-4 bg-white border border-gray-200 rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold"
+                                                className={`w-full p-4 ${theme.surfaceBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                                 value={formData.categoryId}
                                                 onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
                                             >
@@ -373,22 +375,22 @@ const AttributeSettings = () => {
                                 </div>
                             </div>
 
-                            <div className="space-y-4 pt-4 border-t border-gray-100">
-                                <h4 className="text-lg font-bold">Applies to Business Types</h4>
+                            <div className={`space-y-4 pt-4 border-t ${theme.borderLight}`}>
+                                <h4 className={`text-lg font-bold ${theme.textHeading}`}>Applies to Business Types</h4>
                                 <div className="space-y-4">
                                     {businessTypes.map(bt => (
-                                        <div key={bt._id} className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                        <div key={bt._id} className={`${theme.inputBg} p-4 rounded-2xl border ${theme.inputBorder}`}>
                                             <label
                                                 className="flex items-center gap-3 cursor-pointer mb-2"
                                                 onClick={() => handleBusinessTypeChange(bt._id)}
                                             >
                                                 <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${formData.businessTypes.includes(bt._id)
-                                                    ? "bg-indigo-600 border-indigo-600 text-white"
-                                                    : "border-gray-300 hover:border-indigo-400 bg-white"
+                                                    ? `${theme.buttonBg} border-transparent ${theme.buttonText}`
+                                                    : `${theme.inputBorder} hover:border-indigo-400 ${theme.surfaceBg}`
                                                     }`}>
                                                     {formData.businessTypes.includes(bt._id) && <Check size={14} strokeWidth={4} />}
                                                 </div>
-                                                <span className="font-bold text-gray-800 text-lg">{bt.displayString}</span>
+                                                <span className={`font-bold ${theme.textPrimary} text-lg`}>{bt.displayString}</span>
                                             </label>
 
                                             {/* Show subtypes if business type is selected */}
@@ -397,19 +399,19 @@ const AttributeSettings = () => {
                                                     {businessSubTypes[bt._id].map(bst => (
                                                         <label
                                                             key={bst._id}
-                                                            className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-xl border border-gray-100 hover:border-gray-200 transition-colors"
+                                                            className={`flex items-center gap-3 cursor-pointer p-3 ${theme.surfaceBg} rounded-xl border ${theme.inputBorder} hover:border-indigo-300 transition-colors`}
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 handleSubtypeChange(bst._id);
                                                             }}
                                                         >
                                                             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${formData.businessSubTypes.includes(bst._id)
-                                                                ? "bg-indigo-500 border-indigo-500 text-white"
-                                                                : "border-gray-300 hover:border-indigo-400 bg-white"
+                                                                ? `${theme.buttonBg} border-transparent ${theme.buttonText}`
+                                                                : `${theme.inputBorder} hover:border-indigo-400 ${theme.surfaceBg}`
                                                                 }`}>
                                                                 {formData.businessSubTypes.includes(bst._id) && <Check size={12} strokeWidth={4} />}
                                                             </div>
-                                                            <span className="font-semibold text-gray-600 text-sm">{bst.displayString}</span>
+                                                            <span className={`font-semibold ${theme.textSecondary} text-sm`}>{bst.displayString}</span>
                                                         </label>
                                                     ))}
                                                 </div>
@@ -419,18 +421,18 @@ const AttributeSettings = () => {
                                 </div>
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
+                            <div className={`flex justify-end gap-3 pt-6 border-t ${theme.borderLight}`}>
                                 <button
                                     type="button"
                                     onClick={() => setIsDialogOpen(false)}
-                                    className="px-6 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
+                                    className={`px-6 py-3 rounded-xl font-bold ${theme.textSecondary} hover:${theme.inputBg.replace('bg-', '')} transition-colors`}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isLoading || formData.businessTypes.length === 0}
-                                    className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-indigo-200"
+                                    className={`${theme.buttonBg} ${theme.buttonText} px-8 py-3 rounded-xl font-bold ${theme.buttonHoverBg} transition-colors disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-indigo-200`}
                                 >
                                     {isLoading ? "Saving..." : "Save Attribute"}
                                 </button>

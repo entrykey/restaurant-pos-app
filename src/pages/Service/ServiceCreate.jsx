@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Save, Smartphone, User, FileText, ShieldCheck } from "lucide-react";
+import DatePicker from "../../components/ui/DatePicker";
 
 const ServiceCreate = ({ hasPermissionFor }) => {
     const navigate = useNavigate();
@@ -238,12 +239,9 @@ const ServiceCreate = ({ hasPermissionFor }) => {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
-                                <input
-                                    type="date"
-                                    name="purchaseDate"
+                                <DatePicker
                                     value={formData.purchaseDate}
-                                    onChange={handleChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    onChange={val => setFormData(prev => ({ ...prev, purchaseDate: val }))}
                                 />
                             </div>
                         </div>
