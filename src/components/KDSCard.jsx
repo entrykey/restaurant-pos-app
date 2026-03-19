@@ -1,7 +1,8 @@
-import React from 'react';
 import { Clock, Check, Play, AlertCircle } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 const KDSCard = ({ order, type = 'table', onUpdateStatus, onStartPrep, currentTime, canManage, canServe }) => {
+    const { theme, themeName } = useTheme();
     const status = order.status || 'PENDING';
     const referenceTime = status === 'PREPARING' ? order.startedAt : order.createdAt;
     const timeAgo = referenceTime ? Math.floor((currentTime - new Date(referenceTime).getTime()) / 60000) : 0;
@@ -15,12 +16,12 @@ const KDSCard = ({ order, type = 'table', onUpdateStatus, onStartPrep, currentTi
 
     const getTimeColor = (mins) => {
         if (status === 'PREPARING') {
-            if (order.estimatedTime && mins >= order.estimatedTime) return 'text-red-500 bg-red-50 animate-pulse';
-            return 'text-orange-600 bg-orange-50';
+            if (order.estimatedTime && mins >= order.estimatedTime) return 'text-red-500 bg-red-500/10 animate-pulse';
+            return 'text-orange-600 bg-orange-500/10';
         }
-        if (mins >= 30) return 'text-red-500 bg-red-50';
-        if (mins >= 15) return 'text-orange-500 bg-orange-50';
-        return 'text-indigo-600 bg-indigo-50';
+        if (mins >= 30) return 'text-red-500 bg-red-500/10';
+        if (mins >= 15) return 'text-orange-500 bg-orange-500/10';
+        return `text-indigo-600 ${themeName === 'dark' ? 'bg-indigo-900/40' : 'bg-indigo-50'}`;
     };
 
     const handleStart = () => {
@@ -31,18 +32,18 @@ const KDSCard = ({ order, type = 'table', onUpdateStatus, onStartPrep, currentTi
     const displayId = order.kotNumber || order._id;
 
     return (
-        <div className={`bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col border-l-8 ${getStatusColor()} transition-all hover:shadow-2xl`}>
+        <div className={`${theme.surfaceBg} rounded-3xl shadow-xl overflow-hidden flex flex-col border-l-8 ${getStatusColor()} transition-all hover:shadow-2xl border-t border-r border-b ${theme.borderLight}`}>
             {/* Card Header */}
-            <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
+            <div className={`p-4 ${theme.pageBg} border-b ${theme.borderLight} flex justify-between items-center`}>
                 <div className="min-w-0 flex-1">
-                    <h3 className="text-xl font-black text-gray-800 truncate">
+                    <h3 className={`text-xl font-black ${theme.textHeading} truncate`}>
                         {type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online'}
                     </h3>
                     <div className="flex flex-col">
                         <span className="text-xs font-black text-indigo-600 uppercase tracking-tighter">
                             Order: {orderNumber}
                         </span>
-                        <span className="text-[10px] font-bold text-gray-400">
+                        <span className={`text-[10px] font-bold ${theme.textMuted}`}>
                             KOT ID: {displayId}
                         </span>
                     </div>
@@ -63,18 +64,18 @@ const KDSCard = ({ order, type = 'table', onUpdateStatus, onStartPrep, currentTi
             {/* Items List */}
             <div className="p-4 flex-1 overflow-y-auto max-h-60 space-y-3">
                 {order.items?.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-start border-b border-dashed border-gray-100 pb-2 last:border-0">
+                    <div key={idx} className={`flex justify-between items-start border-b border-dashed ${theme.borderLight} pb-2 last:border-0`}>
                         <div className="flex-1">
                             <div className="flex items-center gap-2">
-                                <span className="w-7 h-7 bg-gray-100 rounded-lg flex items-center justify-center text-xs font-black text-gray-800">
+                                <span className={`w-7 h-7 ${theme.inputBg} rounded-lg flex items-center justify-center text-xs font-black ${theme.inputText}`}>
                                     {item.quantity}
                                 </span>
-                                <span className={`font-bold ${item.status === 'READY' ? 'text-green-600 line-through opacity-50' : 'text-gray-800'}`}>
+                                <span className={`font-bold ${item.status === 'READY' ? 'text-green-600 line-through opacity-50' : theme.textPrimary}`}>
                                     {item.itemId?.name || item.itemName || "Item"}
                                 </span>
                             </div>
                             {item.notes && (
-                                <div className="text-[10px] text-orange-500 italic mt-1 ml-9 bg-orange-50 px-2 py-0.5 rounded-md inline-block font-medium">
+                                <div className={`text-[10px] ${themeName === 'dark' ? 'text-orange-400 bg-orange-900/30' : 'text-orange-500 bg-orange-50'} italic mt-1 ml-9 px-2 py-0.5 rounded-md inline-block font-medium`}>
                                     {item.notes}
                                 </div>
                             )}
@@ -85,7 +86,7 @@ const KDSCard = ({ order, type = 'table', onUpdateStatus, onStartPrep, currentTi
 
             {/* Actions */}
             {status !== 'SERVED' && (
-                <div className="p-4 bg-gray-50 border-t flex gap-2">
+                <div className={`p-4 ${theme.pageBg} border-t ${theme.borderLight} flex gap-2`}>
                     {status === 'PENDING' && canManage && (
                         <button
                             onClick={handleStart}
@@ -123,9 +124,9 @@ const KDSCard = ({ order, type = 'table', onUpdateStatus, onStartPrep, currentTi
             )}
 
             {status === 'SERVED' && (
-                <div className="p-4 bg-blue-50 flex items-center justify-center gap-2">
+                <div className={`p-4 ${themeName === 'dark' ? 'bg-blue-900/30' : 'bg-blue-50'} flex items-center justify-center gap-2`}>
                     <Check className="text-blue-500" size={16} />
-                    <span className="text-xs font-black text-blue-700 uppercase tracking-widest">Served</span>
+                    <span className={`text-xs font-black ${themeName === 'dark' ? 'text-blue-400' : 'text-blue-700'} uppercase tracking-widest`}>Served</span>
                 </div>
             )}
         </div>

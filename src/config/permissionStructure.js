@@ -34,11 +34,13 @@ export const MODULES = Object.freeze({
   STAFF: "staff",
   SERVICE: "service",
   SUPPLIER: "supplier",
+  PARTIES: "PARTIES",
   PURCHASE: "purchase",
   BUSINESS_TYPES: "business_types",
   SHOP_MANAGEMENT: "shop_management",
   PLAN_MANAGEMENT: "plan_management",
   SUBSCRIPTION_MANAGEMENT: "subscription_management",
+  OFFER_MANAGEMENT: "OFFER_MANAGEMENT",
 });
 
 /**
@@ -50,18 +52,20 @@ export const MODULE_RESOURCES = Object.freeze({
   [MODULES.ORDERS]: ["online_orders"],
   [MODULES.KDS]: ["kds"],
   [MODULES.RESERVATIONS]: ["reservation"],
-  [MODULES.INVENTORY]: ["inventory", "menu"],
+  [MODULES.INVENTORY]: ["inventory", "menu", "tradeitem"],
   [MODULES.REPORTS]: ["report"],
   [MODULES.SETTINGS]: ["settings", "inventory_settings"],
   [MODULES.STAFF]: ["staff"],
   [MODULES.SERVICE]: ["service", "jobcard"],
   [MODULES.SUPPLIER]: ["supplier"],
+  [MODULES.PARTIES]: ["supplier", "customer"],
   [MODULES.PURCHASE]: ["purchase"],
   [MODULES.BUSINESS_TYPES]: ["business_type"],
   [MODULES.SHOP_MANAGEMENT]: ["shop"],
   [MODULES.PLAN_MANAGEMENT]: ["plan"],
   [MODULES.SUBSCRIPTION_MANAGEMENT]: ["subscription"],
   [MODULES.TABLE_MANAGEMENT]: ["TABLE", "DININGCATEGORY"],
+  [MODULES.OFFER_MANAGEMENT]: ["OFFER"],
 });
 
 /**
@@ -98,14 +102,16 @@ export const ROUTE_ACCESS = Object.freeze({
   WHOLESALE: { module: MODULES.POS, resource: "wholesale", action: "view" },
   ONLINE_ORDERS: { module: MODULES.POS, resource: "onlineorder", action: "view" },
   KDS: { module: MODULES.KDS, resource: "kds", action: "view" },
-  TAKEAWAY: { module: MODULES.POS, resource: "takeaway", action: "view" },
+  TAKEAWAY: { module: MODULES.POS, resource: "dining", action: "takeaway" },
   RESERVATIONS: { module: MODULES.RESERVATIONS, resource: "reservation", action: "viewing" },
   INVENTORY: { module: MODULES.INVENTORY, resource: "inventory", action: "view" },
-  REPORTS: { module: MODULES.REPORTS, resource: "report", action: "view" },
+  REPORTS: { module: MODULES.REPORTS, resource: "report", action: "VIEW.REPORTS" },
   SETTINGS: { module: MODULES.SETTINGS, resource: "settings", action: "view" },
   STAFF: { module: MODULES.STAFF, resource: "staff", action: "view" },
+  STAFF_DASHBOARD: { module: MODULES.STAFF, resource: "staff", action: "dashboard" },
   SERVICE: { module: MODULES.SERVICE, resource: "service", action: "view" },
   SUPPLIERS: { module: MODULES.SUPPLIER, resource: "supplier", action: "view" },
+  PARTIES: { module: MODULES.PARTIES, resource: "supplier", action: "view" }, // any PARTIES permission grants access
   PURCHASES: { module: MODULES.PURCHASE, resource: "purchase", action: "view" },
   BUSINESS_TYPES: { module: MODULES.BUSINESS_TYPES, resource: "business_type", action: "view" },
   SHOP_MANAGEMENT: { module: MODULES.SHOP_MANAGEMENT, resource: "shop", action: "view" },
@@ -113,6 +119,9 @@ export const ROUTE_ACCESS = Object.freeze({
   SUBSCRIPTION_MANAGEMENT: { module: MODULES.SUBSCRIPTION_MANAGEMENT, resource: "subscription", action: "view" },
   TABLE_MANAGEMENT: { module: MODULES.TABLE_MANAGEMENT, resource: "TABLE", action: "VIEWING" },
   ORGANIZATION: { module: MODULES.ORGANIZATION, resource: "organization", action: "view" },
+  OFFERS: { module: MODULES.OFFER_MANAGEMENT, resource: "OFFER", action: "view" },
+  ATTENDANCE_POLICIES: { module: MODULES.STAFF, resource: "ATTENDANCE", action: "POLICIES" },
+  ATTENDANCE_LOGS: { module: MODULES.STAFF, resource: "ATTENDANCE", action: "LOGS" },
 });
 
 /** Optional: page-level "manage" for sections that have edit/delete (e.g. staff.staff.manage) */
@@ -174,6 +183,7 @@ function buildPermissionsWithLabels() {
       const labels = {
         DINING: "Dining Hall",
         TAKEAWAY: "Takeaway",
+        JOINTABLES: "Join Tables",
         DIRECT_SALE: "Direct Sale",
         WHOLESALE: "Wholesale",
         ONLINE_ORDERS: "View Online Orders",
@@ -183,6 +193,7 @@ function buildPermissionsWithLabels() {
         REPORTS: "View Reports",
         SETTINGS: "View Settings",
         STAFF: "View Staff",
+        STAFF_DASHBOARD: "View Staff Dashboard",
         ORGANIZATION: "View Organization",
         SERVICE: "View Service",
         PURCHASES: "View Purchases",
@@ -190,13 +201,16 @@ function buildPermissionsWithLabels() {
       return r(module, resource, action, labels[routeKey] || `${resource} ${action}`);
     }),
     r(MODULES.POS, "order", EXTRA_ACTIONS.PROCESS_PAYMENT, "Process Payments"),
+    r(MODULES.POS, "dining", "jointables", "Join Tables"),
     r(MODULES.ORDERS, "ORDERS", "PROCESSPAYMENT", "Process Payments (Orders)"),
     r(MODULES.ORDERS, "ORDERS", "KOS", "Send to KOT"),
     r(MODULES.POS, "order", EXTRA_ACTIONS.APPLY_DISCOUNT, "Apply Discounts"),
     r(MODULES.ORDERS, "online_orders", "manage", "Manage Online Orders"),
     r(MODULES.RESERVATIONS, "reservation", "manage", "Manage Reservations"),
+    r(MODULES.RESERVATIONS, "reservation", "creating", "Create Reservations"),
     r(MODULES.INVENTORY, "inventory", "manage", "Manage Inventory"),
     r(MODULES.SETTINGS, "settings", "manage", "Manage Settings"),
+    r(MODULES.SETTINGS, "settings", "appearence_settings", "Appearance Settings"),
     r(MODULES.STAFF, "staff", "manage", "Manage Staff & Roles"),
     r(MODULES.SERVICE, "service", "manage", "Manage Service"),
     r(MODULES.SUPPLIER, "supplier", "manage", "Manage Suppliers"),

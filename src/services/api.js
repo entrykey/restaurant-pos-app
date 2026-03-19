@@ -79,11 +79,11 @@ api.interceptors.response.use(
                 return api(originalRequest);
             } catch (_error) {
                 processQueue(_error, null);
-                // The refresh token is invalid or expired
-                // Clear state and force re-login
-                // Ideally we'd dispatch a logout event here or redirect to login.
+                // The refresh token is invalid or expired.
+                // Clear auth-related storage and let the UI fall back to the login screen
+                // without forcing a hard reload (avoids infinite refresh loops).
                 localStorage.removeItem('accessToken');
-                window.location.href = '/'; // Simple redirect to force re-login
+                localStorage.removeItem('restaurant_pos_auth_v1');
                 return Promise.reject(_error);
             } finally {
                 isRefreshing = false;
@@ -104,11 +104,40 @@ export const shopService = {
         }
     },
 
+    switchShop: async (shopId) => {
+        try {
+            const response = await api.post('/auth/switch-shop', { shopId });
+            return response.data;
+        } catch (error) {
+            throw error.response ? error.response.data : error;
+        }
+    },
+
     createShop: async (payload) => {
         try {
             const response = await api.post('/shops', payload);
             return response.data;
         } catch (error) {
+            throw error.response ? error.response.data : error;
+        }
+    },
+
+    updateShop: async (id, payload) => {
+        try {
+            const response = await api.put(`/shops/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating shop:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+
+    getShopsByOwner: async (userId) => {
+        try {
+            const response = await api.get(`/shops/owner/${userId}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching shops by owner:", error);
             throw error.response ? error.response.data : error;
         }
     },
@@ -119,6 +148,16 @@ export const shopService = {
             return response.data;
         } catch (error) {
             console.error("Error fetching shop data by user ID:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+
+    getOrganizationDataByShopId: async (shopId) => {
+        try {
+            const response = await api.get(`/shops/organization/${shopId}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching organization data by shop ID:", error);
             throw error.response ? error.response.data : error;
         }
     },
@@ -239,6 +278,15 @@ export const branchService = {
             console.error("Error fetching branch tax data:", error);
             throw error.response ? error.response.data : error;
         }
+    },
+    getAllowedBranches: async () => {
+        try {
+            const response = await api.get('/branches/allowed');
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching allowed branches:", error);
+            throw error.response ? error.response.data : error;
+        }
     }
 };
 
@@ -273,20 +321,63 @@ export const employeeService = {
             throw error.response ? error.response.data : error;
         }
     },
-    getEmployeesByShopId: async (shopId) => {
+    getEmployeesByShopId: async (shopId, allShops = false, userId = null, filterShopId = null) => {
         try {
+            if (allShops && userId) {
+                const response = await api.post(`/employees/all-shops`, {
+                    user_id: userId,
+                    get_all_shop_user: true,
+                    shopId: filterShopId // Pass the filter if present
+                });
+                return response.data;
+            }
             const response = await api.get(`/employees/shop/${shopId}`);
             return response.data;
         } catch (error) {
             console.error("Error fetching employees by shop ID:", error);
             throw error.response ? error.response.data : error;
         }
+    },
+    getEmployeeById: async (id) => {
+        try {
+            const response = await api.get(`/employees/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching employee:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    update: async (id, payload) => {
+        try {
+            const response = await api.put(`/employees/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating employee:", error);
+            throw error.response ? error.response.data : error;
+        }
     }
 };
 
 export const roleService = {
-    getRolesByShopId: async (shopId) => {
+    getRoleById: async (id) => {
         try {
+            const response = await api.get(`/roles/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching role:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getRolesByShopId: async (shopId, allShops = false, userId = null, filterShopId = null) => {
+        try {
+            if (allShops && userId) {
+                const response = await api.post(`/roles/all-shops`, {
+                    user_id: userId,
+                    get_all_shop_user: true,
+                    shopId: filterShopId // Pass the filter if present
+                });
+                return response.data;
+            }
             const response = await api.get(`/roles/shop/${shopId}`);
             return response.data;
         } catch (error) {
@@ -309,6 +400,89 @@ export const roleService = {
             return response.data;
         } catch (error) {
             console.error("Error updating role:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getRoles: async (params = {}) => {
+        try {
+            const response = await api.get('/roles', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching roles:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+};
+
+export const customerService = {
+    getCustomers: async (params = {}) => {
+        try {
+            const response = await api.post('/customers/filter', params);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching customers:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    createCustomer: async (payload) => {
+        try {
+            const response = await api.post('/customers', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating customer:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateCustomer: async (id, payload) => {
+        try {
+            const response = await api.put(`/customers/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating customer:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteCustomer: async (id) => {
+        try {
+            const response = await api.delete(`/customers/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting customer:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
+export const settingService = {
+    getSettings: async (shopId) => {
+        try {
+            const response = await api.get('/settings', {
+                params: { shopId }
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching settings:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getSettingByKey: async (key, shopId) => {
+        try {
+            const response = await api.get(`/settings/${key}`, {
+                params: { shopId }
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching setting by key:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateSetting: async (key, payload) => {
+        try {
+            // Payload should contain { value, shopId }
+            const response = await api.put(`/settings/${key}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating setting:", error);
             throw error.response ? error.response.data : error;
         }
     },
@@ -485,6 +659,26 @@ export const itemService = {
             console.error("Error fetching item barcodes:", error);
             throw error.response ? error.response.data : error;
         }
+    },
+    getUsedCategories: async (params) => {
+        try {
+            const response = await api.get('/items/used-categories', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching used categories:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    bulkUploadItems: async (formData) => {
+        try {
+            const response = await api.post('/items/bulk-upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Error during bulk upload:", error);
+            throw error.response ? error.response.data : error;
+        }
     }
 };
 
@@ -564,6 +758,15 @@ export const orderService = {
             return response.data;
         } catch (error) {
             console.error("Error adding order payment:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateOrder: async (orderId, payload) => {
+        try {
+            const response = await api.put(`/orders/${orderId}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating order:", error);
             throw error.response ? error.response.data : error;
         }
     },
@@ -656,4 +859,277 @@ export const diningCategoryService = {
     }
 };
 
+export const offerService = {
+    getOffers: async (params = {}) => {
+        try {
+            const response = await api.get('/offers', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching offers:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getOfferById: async (id) => {
+        try {
+            const response = await api.get(`/offers/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching offer:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    createOffer: async (payload) => {
+        try {
+            const response = await api.post('/offers', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating offer:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateOffer: async (id, payload) => {
+        try {
+            const response = await api.put(`/offers/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating offer:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteOffer: async (id) => {
+        try {
+            const response = await api.delete(`/offers/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting offer:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
+export const dashboardService = {
+    getShopDashboard: async (shopId) => {
+        try {
+            const response = await api.get(`/dashboard/shop/${shopId}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching shop dashboard:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getPayInList: async (shopId) => {
+        try {
+            const response = await api.get(`/dashboard/shop/${shopId}/pay-in`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching pay in list:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getPayInHistory: async (shopId) => {
+        try {
+            const response = await api.get(`/dashboard/shop/${shopId}/pay-in/history`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching pay in history:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getPayOutList: async (shopId) => {
+        try {
+            const response = await api.get(`/dashboard/shop/${shopId}/pay-out`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching pay out list:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getPayOutHistory: async (shopId) => {
+        try {
+            const response = await api.get(`/dashboard/shop/${shopId}/pay-out/history`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching pay out history:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getProfitTimeline: async (shopId, branchId, days = 30) => {
+        try {
+            const response = await api.get(`/dashboard/shop/${shopId}/${branchId}/profit-timeline`, {
+                params: { days }
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching profit timeline:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
+export const attendanceService = {
+    // Policies
+    getPolicies: async (params = {}) => {
+        try {
+            const response = await api.get('/attendance/policies', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching attendance policies:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    createPolicy: async (payload) => {
+        try {
+            const response = await api.post('/attendance/policies', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating attendance policy:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updatePolicy: async (id, payload) => {
+        try {
+            const response = await api.put(`/attendance/policies/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating attendance policy:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updatePolicyStatus: async (id, status) => {
+        try {
+            const response = await api.patch(`/attendance/policies/${id}/status`, { status });
+            return response.data;
+        } catch (error) {
+            console.error("Error updating attendance policy status:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+
+    // Assignments
+    getAssignments: async (params = {}) => {
+        try {
+            const response = await api.get('/attendance/assignments', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching attendance assignments:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    createAssignment: async (payload) => {
+        try {
+            const response = await api.post('/attendance/assignments', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating attendance assignment:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteAssignment: async (id) => {
+        try {
+            const response = await api.delete(`/attendance/assignments/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting attendance assignment:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+
+    // Logs / Punching
+    checkIn: async (payload) => {
+        try {
+            const response = await api.post('/attendance/logs/check-in', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error attendance check-in:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    checkOut: async (payload) => {
+        try {
+            const response = await api.post('/attendance/logs/check-out', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error attendance check-out:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    addEvent: async (payload) => {
+        try {
+            const response = await api.post('/attendance/logs/event', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error adding attendance event:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getLogs: async (params = {}) => {
+        try {
+            const response = await api.get('/attendance/logs', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching attendance logs:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateLog: async (id, payload) => {
+        try {
+            const response = await api.put(`/attendance/logs/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating attendance log:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
+export const reportsService = {
+    getSalesReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/sales', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching sales report:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
 export default api;
+export const taxService = {
+    getTaxes: async (branchId) => {
+        try {
+            const response = await api.get('/taxes', { params: { branchId } });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching taxes:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    createTax: async (payload) => {
+        try {
+            const response = await api.post('/taxes', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating tax:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateTax: async (id, payload) => {
+        try {
+            const response = await api.put(`/taxes/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating tax:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteTax: async (id) => {
+        try {
+            const response = await api.delete(`/taxes/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting tax:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};

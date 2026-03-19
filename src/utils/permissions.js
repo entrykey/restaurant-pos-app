@@ -47,9 +47,14 @@ export const hasPermissionFor = (user, module, resource, action) => {
   if (!user) return false;
   if (user.isSuperAdmin === true) return true;
 
-  // Handle special edge case for settings
-  if (module === "settings" && resource === "inventory_settings") {
-    return hasPermissionById(user, "settings", "settings.inventory_settings");
+  // Handle special edge cases for settings
+  if (module === "settings") {
+    if (resource === "inventory_settings") {
+      return hasPermissionById(user, "settings", "settings.inventory_settings");
+    }
+    if (resource === "settings" && (action === "view" || action === "manage")) {
+      if (hasPermissionById(user, "settings", "SETTINGS.GENERAL")) return true;
+    }
   }
 
   // Check the direct action first

@@ -70,9 +70,16 @@ export const SUBSCRIPTION_PLANS = [
   },
 ];
 
-export const fetchOrganizationData = async (userId) => {
+export const fetchOrganizationData = async (userId, customShopId = null) => {
   try {
-    const data = await shopService.getShopDataByUserId(userId);
+    let data;
+    if (customShopId) {
+      data = await shopService.getOrganizationDataByShopId(customShopId);
+    } else {
+      data = await shopService.getShopDataByUserId(userId);
+    }
+
+    console.log("OrganizationService: fetchOrganizationData raw response:", data);
 
     if (!data || !data.shop) {
       throw new Error("Invalid data received from server");
@@ -81,8 +88,9 @@ export const fetchOrganizationData = async (userId) => {
     const orgData = {
       id: data.shop._id,
       businessName: data.shop.name,
-      ownerName: data.shop.ownerName,
-      ownerEmail: data.shop.ownerEmail || "",
+      ownerName: data.shop.ownerName || data.shop.user_id?.name || "",
+      ownerEmail: data.shop.ownerEmail || data.shop.user_id?.email || "",
+      ownerContact: data.shop.ownerContact || "",
       logoUrl: data.shop.logoUrl || null,
       defaultCountry: data.branches.find(b => b.isMainBranch)?.address?.country?.code || "IN",
       defaultCurrency: data.branches.find(b => b.isMainBranch)?.currency || "INR",
@@ -101,17 +109,17 @@ export const fetchOrganizationData = async (userId) => {
         line1: b.address.line1,
         line2: b.address.line2,
         city: b.address.city,
-        state: b.address.state.name,
-        country: b.address.country.name,
+        state: b.address.state?.name || "",
+        country: b.address.country?.name || "",
         pincode: b.address.pincode
       },
       taxConfig: {
-        taxSystem: b.taxProfile.taxSystem,
-        gstin: b.taxProfile.registrationNumber,
-        isGstRegistered: !!b.taxProfile.registrationNumber,
-        allowInterState: b.taxProfile.isInterStateAllowed
+        taxSystem: b.taxProfile?.taxSystem || TAX_SYSTEMS.GST,
+        gstin: b.taxProfile?.registrationNumber || "",
+        isGstRegistered: !!b.taxProfile?.registrationNumber,
+        allowInterState: b.taxProfile?.isInterStateAllowed || false
       },
-      currency: b.currency.code,
+      currency: b.currency?.code || "INR",
       isMainBranch: b.isMainBranch,
       status: b.status
     }));

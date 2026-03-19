@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Search, Plus, Edit3, Trash2, Globe, Layers, Wheat } from 'lucide-react';
+import { Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, Loader2, X } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
 import { getCommonFieldKeys } from '../../config/itemFields';
 import { ROUTE_ACCESS } from '../../config/permissionStructure';
@@ -9,6 +9,11 @@ import { useTheme } from '../../context/ThemeContext';
 import { useText } from '../../context/TextContext';
 import { itemService, inventoryService } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
+import ProductPage from './ProductPage';
+import Modal from '../../components/ui/Modal';
+import CommonSelect from '../../components/ui/CommonSelect';
+import BulkUploadModal from '../../components/modals/BulkUploadModal';
+import { Upload } from 'lucide-react';
 
 const Inventory = ({
     menu,
@@ -28,11 +33,16 @@ const Inventory = ({
     const canViewItems = hasPermissionFor?.("inventory", "inventory", "view");
     const canManageItems = hasPermissionFor?.("inventory", "inventory", "edit") || hasPermissionFor?.("inventory", "inventory", "create");
 
+    const canViewTradeItems = hasPermissionFor?.("inventory", "tradeitem", "view");
+    const canManageTradeItems = hasPermissionFor?.("inventory", "tradeitem", "edit") || hasPermissionFor?.("inventory", "tradeitem", "create");
+
     const canViewMenu = hasPermissionFor?.("inventory", "menu", "view");
     const canManageMenu = hasPermissionFor?.("inventory", "menu", "edit") || hasPermissionFor?.("inventory", "menu", "create");
 
     // Default to the first allowed tab
-    const [activeTab, setActiveTab] = useState(canViewMenu ? "menu" : (canViewItems ? "raw" : "menu"));
+    const [activeTab, setActiveTab] = useState(
+        canViewMenu ? "menu" : (canViewItems ? "raw" : (canViewTradeItems ? "trade" : "menu"))
+    );
 
     const [inventorySearch, setInventorySearch] = useState("");
     const [loadingItemId, setLoadingItemId] = useState(null); // while fetching item by id for edit
@@ -46,11 +56,36 @@ const Inventory = ({
     const [loadingItems, setLoadingItems] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [stockMap, setStockMap] = useState({}); // itemId -> quantityOnHand
+    const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+    const [editingProductId, setEditingProductId] = useState(null);
+    const [usedCategories, setUsedCategories] = useState([]);
+    const [selectedCategory, setSelectedCategory] = useState("ALL");
+    const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
 
-    // Reset page to 1 on tab or search change
+    // Reset page to 1 on tab, search or category change
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeTab, inventorySearch]);
+    }, [activeTab, inventorySearch, selectedCategory]);
+
+    // Fetch Used Categories for the current tab
+    useEffect(() => {
+        const fetchCategories = async () => {
+            if (!user?.shop_id) return;
+            try {
+                const params = {
+                    shopId: user.shop_id,
+                    branchId: activeBranchId || (user.branchIds?.length ? user.branchIds[0] : null),
+                    itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
+                };
+                const categories = await itemService.getUsedCategories(params);
+                setUsedCategories(categories || []);
+                setSelectedCategory("ALL"); // Reset filter when tab changes
+            } catch (err) {
+                console.error("Failed to fetch used categories:", err);
+            }
+        };
+        fetchCategories();
+    }, [activeTab, activeBranchId, user?.shop_id, user?.branchIds]);
 
     // Fetch Items when Dependencies Change
     useEffect(() => {
@@ -61,25 +96,19 @@ const Inventory = ({
                 const isMenu = activeTab === "menu";
                 const payload = {
                     page: currentPage,
-                    limit: 10, // Items per page
+                    limit: 5, // Items per page (as requested)
                     search: inventorySearch,
                     filters: {
-                        shopid: user.shop_id,
+                        shopId: user.shop_id,
                         branchId: activeBranchId || (user.branchIds?.length ? user.branchIds[0] : null),
-                        itemType: isMenu ? "MANUFACTURED" : undefined, // Menu tab ONLY shows manufactured
+                        itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
+                        categoryId: selectedCategory === "ALL" ? undefined : selectedCategory
                     }
                 };
 
                 const response = await itemService.getItems(payload);
                 if (response && response.data) {
-                    // Filter out MANUFACTURED from the raw/inventory tab if needed, but let's enforce it here
-                    let finalData = response.data;
-                    if (!isMenu) {
-                        // Raw Items tab should not show manufactured items
-                        finalData = response.data.filter(item => item.itemType !== "MANUFACTURED");
-                    }
-
-                    setLocalItems(finalData.map(item => ({ ...item, id: item._id })));
+                    setLocalItems(response.data.map(item => ({ ...item, id: item._id })));
                     if (response.pagination) {
                         setTotalPages(response.pagination.totalPages || 1);
                     }
@@ -125,11 +154,19 @@ const Inventory = ({
         "stock_applicable", "min_stock_alert", "weight_based", "status"
     ];
 
+    const TRADE_FIELD_KEYS = [
+        "item_code", "name", "description", "category_id",
+        "unit_id", "purchase_price", "selling_price", "tax_percent",
+        "stock_applicable", "min_stock_alert", "status"
+    ];
+
     useEffect(() => {
         if (activeTab === "menu") {
             setVisibleFields(MENU_FIELD_KEYS);
-        } else {
+        } else if (activeTab === "raw") {
             setVisibleFields(RAW_FIELD_KEYS);
+        } else {
+            setVisibleFields(TRADE_FIELD_KEYS);
         }
     }, [activeTab]);
 
@@ -149,8 +186,8 @@ const Inventory = ({
     const inventoryAccess = ROUTE_ACCESS.INVENTORY; // Assuming this points to module 'inventory'
     const menuAccess = ROUTE_ACCESS.MENU || { module: "inventory", resource: "menu" };
 
-    const canView = activeTab === "menu" ? canViewMenu : canViewItems;
-    const canManage = activeTab === "menu" ? canManageMenu : canManageItems;
+    const canView = activeTab === "menu" ? canViewMenu : (activeTab === "raw" ? canViewItems : canViewTradeItems);
+    const canManage = activeTab === "menu" ? canManageMenu : (activeTab === "raw" ? canManageItems : canManageTradeItems);
 
     if (!canView) {
         return (
@@ -167,7 +204,23 @@ const Inventory = ({
     }
 
     const handleOpenAddModal = () => {
-        navigate(`/inventory/new?tab=${activeTab}`);
+        setEditingProductId(null);
+        setIsProductModalOpen(true);
+    };
+
+    const toggleItemStatus = async (item) => {
+        const itemId = item._id || item.id;
+        const newStatus = item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+
+        try {
+            setLoadingItemId(itemId);
+            await itemService.updateItem(itemId, { status: newStatus });
+            setRefreshTrigger(prev => prev + 1);
+        } catch (error) {
+            console.error("Failed to toggle item status:", error);
+        } finally {
+            setLoadingItemId(null);
+        }
     };
 
     const handleEditItem = async (item) => {
@@ -176,7 +229,16 @@ const Inventory = ({
             console.error("Edit clicked for row without a valid id");
             return;
         }
-        navigate(`/inventory/edit/${itemId}?tab=${activeTab}`);
+        setEditingProductId(itemId);
+        setIsProductModalOpen(true);
+    };
+
+    const handleProductModalClose = (savedItem) => {
+        setIsProductModalOpen(false);
+        setEditingProductId(null);
+        if (savedItem) {
+            setRefreshTrigger(prev => prev + 1);
+        }
     };
 
     // --- Columns Definition ---
@@ -221,32 +283,33 @@ const Inventory = ({
             )
         },
         {
-            header: "Online Status",
-            key: "isAvailableOnline",
+            header: "Status",
+            key: "status",
             headerClassName: "text-center",
             className: "text-center",
-            render: (value, item) => (
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setMenu(
-                            menu.map((m) =>
-                                m.id === item.id ? { ...m, isAvailableOnline: !m.isAvailableOnline } : m
-                            )
-                        )
-                    }}
-                    className={`group relative p-3 rounded-2xl transition-all ${value
-                        ? "bg-green-100 text-green-600 hover:bg-green-200"
-                        : "bg-gray-100 text-gray-400 hover:bg-gray-200"
-                        }`}
-                    title={value ? "Available Online" : "Hidden from Online"}
-                >
-                    <Globe size={20} />
-                    {value && (
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
-                    )}
-                </button>
-            )
+            render: (value, item) => {
+                const isActive = value === "ACTIVE";
+                const isToggling = loadingItemId === (item._id || item.id);
+                return (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleItemStatus(item);
+                        }}
+                        disabled={isToggling}
+                        className={`group relative p-3 rounded-2xl transition-all ${isActive
+                            ? "bg-green-100 text-green-600 hover:bg-green-200"
+                            : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                            } ${isToggling ? "opacity-50 cursor-wait" : ""}`}
+                        title={isActive ? "Deactivate Item" : "Activate Item"}
+                    >
+                        {isToggling ? <Loader2 size={20} className="animate-spin" /> : <Globe size={20} />}
+                        {isActive && !isToggling && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+                        )}
+                    </button>
+                );
+            }
         }
     ];
 
@@ -277,7 +340,7 @@ const Inventory = ({
             headerClassName: "text-center",
             className: "text-center",
             render: (id, item) => {
-                const qty = stockMap[id] ?? stockMap[item._id] ?? null;
+                const qty = stockMap[id] ?? stockMap[item._id] ?? item.quantityOnHand ?? null;
                 const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
                 const low = qty !== null && qty <= min && min > 0;
                 if (qty === null) {
@@ -303,6 +366,35 @@ const Inventory = ({
             render: (_, item) => (
                 <div className={`font-medium ${theme.textPrimary}`}>{formatCurrency(item.pricing?.purchasePrice || item.costPerUnit || 0)}</div>
             )
+        },
+        {
+            header: "Status",
+            key: "status",
+            headerClassName: "text-center",
+            className: "text-center",
+            render: (value, item) => {
+                const isActive = value === "ACTIVE";
+                const isToggling = loadingItemId === (item._id || item.id);
+                return (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleItemStatus(item);
+                        }}
+                        disabled={isToggling}
+                        className={`group relative p-3 rounded-2xl transition-all ${isActive
+                            ? "bg-green-100 text-green-600 hover:bg-green-200"
+                            : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                            } ${isToggling ? "opacity-50 cursor-wait" : ""}`}
+                        title={isActive ? "Deactivate Item" : "Activate Item"}
+                    >
+                        {isToggling ? <Loader2 size={20} className="animate-spin" /> : <Globe size={20} />}
+                        {isActive && !isToggling && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+                        )}
+                    </button>
+                );
+            }
         }
     ];
 
@@ -332,7 +424,11 @@ const Inventory = ({
                             e.stopPropagation();
                             if (activeTab === "menu") {
                                 setMenu(menu.filter((m) => m.id !== item.id));
+                            } else if (activeTab === "raw") {
+                                setInventoryItems(inventoryItems.filter((i) => i.id !== item.id));
                             } else {
+                                // For trade items, we might need a separate setter if they are stored separately, 
+                                // but based on other tabs it seems localItems handle display.
                                 setInventoryItems(inventoryItems.filter((i) => i.id !== item.id));
                             }
                         }}
@@ -346,100 +442,160 @@ const Inventory = ({
     }
 
     return (
-        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto ${theme.pageBg}`}>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-                <div>
-                    {/* Header with Icon */}
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className={`p-3 text-white rounded-2xl shadow-lg ${activeTab === "menu" ? "bg-indigo-600 shadow-indigo-100 dark:shadow-indigo-900/20" : "bg-orange-500 shadow-orange-100 dark:shadow-orange-900/20"}`}>
-                            {activeTab === "menu" ? <Package size={28} /> : <Wheat size={28} />}
+        <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg}`}>
+            {/* Header section */}
+            <div className="p-4 md:p-6 flex-shrink-0">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
+                    <div>
+                        {/* Header with Icon */}
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className={`p-3 text-white rounded-2xl ${activeTab === "menu" ? "bg-indigo-600" : "bg-orange-500"}`}>
+                                {activeTab === "menu" ? <Package size={28} /> : <Boxes size={28} />}
+                            </div>
+                            <h2 className={`text-2xl md:text-4xl font-black tracking-tight ${theme.textHeading}`}>
+                                {activeTab === "menu" ? t('INVENTORY', 'menu_heading', 'Manufactured Items') : (activeTab === "raw" ? t('INVENTORY', 'items_heading', 'Stock Items') : t('INVENTORY', 'trade_items_heading', 'Trade Items'))}
+                            </h2>
                         </div>
-                        <h2 className={`text-2xl md:text-4xl font-black tracking-tight ${theme.textHeading}`}>
-                            {activeTab === "menu" ? t('INVENTORY', 'menu_heading', 'Menu Items') : t('INVENTORY', 'items_heading', 'Items')}
-                        </h2>
+                        <p className={`font-bold ml-1 ${theme.textMuted}`}>
+                            {activeTab === "menu" ? "Manage manufactured items & bill of materials" : (activeTab === "raw" ? "Manage stock items & levels" : "Manage trade items for buy & sell")}
+                        </p>
                     </div>
-                    <p className={`font-bold ml-1 ${theme.textMuted}`}>
-                        {activeTab === "menu" ? "Manage sales items & recipes" : "Manage inventory items & stock"}
-                    </p>
-                </div>
 
-                <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                    <div className="relative flex-1 md:w-72">
-                        <Search className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
-                        <input
-                            value={inventorySearch}
-                            onChange={(e) => setInventorySearch(e.target.value)}
-                            placeholder={activeTab === "menu" ? "Search menu..." : "Search items..."}
-                            className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
-                        />
+                    <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                        <div className="relative flex-1 md:w-72">
+                            <Search className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
+                            <input
+                                value={inventorySearch}
+                                onChange={(e) => setInventorySearch(e.target.value)}
+                                placeholder={activeTab === "menu" ? "Search menu..." : "Search items..."}
+                                className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
+                            />
+                        </div>
+
+                        {canManage && (
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setIsBulkModalOpen(true)}
+                                    className={`px-6 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-2
+                                    ${theme.mode === 'dark' ? 'bg-slate-800 text-indigo-400 hover:bg-slate-700' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}
+                                `}
+                                >
+                                    <Upload size={20} /> Bulk Import
+                                </button>
+                                <button
+                                    onClick={handleOpenAddModal}
+                                    className={`px-8 py-4 rounded-2xl font-black shadow-xl text-white transition-all flex items-center justify-center gap-2
+                                    ${activeTab === "menu" ? "bg-indigo-600 shadow-indigo-200 dark:shadow-indigo-900/20 hover:bg-indigo-700" : (activeTab === "raw" ? "bg-orange-500 shadow-orange-200 dark:shadow-orange-900/20 hover:bg-orange-600" : "bg-emerald-600 shadow-emerald-200 dark:shadow-emerald-900/20 hover:bg-emerald-700")}
+                                `}
+                                >
+                                    <Plus size={20} /> 
+                                    {activeTab === "menu" ? "Add Manufactured Item" : (activeTab === "raw" ? "Add Stock Item" : "Add Trade Item")}
+                                </button>
+                            </div>
+                        )}
                     </div>
-                    {canManage && (
-                        <button
-                            onClick={handleOpenAddModal}
-                            className={`px-8 py-4 rounded-2xl font-black shadow-xl text-white transition-all flex items-center justify-center gap-2
-                                ${activeTab === "menu" ? "bg-indigo-600 shadow-indigo-200 dark:shadow-indigo-900/20 hover:bg-indigo-700" : "bg-orange-500 shadow-orange-200 dark:shadow-orange-900/20 hover:bg-orange-600"}
-                            `}
-                        >
-                            <Plus size={20} /> Add {activeTab === "menu" ? t('INVENTORY', 'add_menu_btn', 'Menu Item') : t('INVENTORY', 'add_item_btn', 'Item')}
-                        </button>
-                    )}
                 </div>
             </div>
 
-            {/* Tabs - Only show if user has access to BOTH */}
-            {canViewMenu && canViewItems && (
-                <div className={`flex gap-4 mb-8 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
-                    <button
-                        onClick={() => setActiveTab("menu")}
-                        className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "menu"
-                            ? `${theme.primaryIconBg} ${theme.primaryIconText}`
-                            : `${theme.textSecondary} hover:opacity-80`
-                            }`}
-                    >
-                        <Layers size={18} /> {t('INVENTORY', 'menu_items_tab', 'Menu Items')}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("raw")}
-                        className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "raw"
-                            ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
-                            : `${theme.textSecondary} hover:opacity-80`
-                            }`}
-                    >
-                        <Wheat size={18} /> {t('INVENTORY', 'items_tab', 'Items')}
-                    </button>
+            {/* Tabs section */}
+            <div className="px-4 md:px-6 mb-6 flex-shrink-0 flex flex-col md:flex-row justify-between items-center gap-6">
+                <div className={`flex flex-wrap gap-4 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
+                    {canViewMenu && (
+                        <button
+                            onClick={() => setActiveTab("menu")}
+                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "menu"
+                                ? `${theme.primaryIconBg} ${theme.primaryIconText}`
+                                : `${theme.textSecondary} hover:opacity-80`
+                                }`}
+                        >
+                            <Layers size={18} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured Items')}
+                        </button>
+                    )}
+                    {canViewItems && (
+                        <button
+                            onClick={() => setActiveTab("raw")}
+                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "raw"
+                                ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
+                                : `${theme.textSecondary} hover:opacity-80`
+                                }`}
+                        >
+                            <Boxes size={18} /> {t('INVENTORY', 'items_tab', 'Stock Items')}
+                        </button>
+                    )}
+                    {canViewTradeItems && (
+                        <button
+                            onClick={() => setActiveTab("trade")}
+                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "trade"
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
+                                : `${theme.textSecondary} hover:opacity-80`
+                                }`}
+                        >
+                            <Package size={18} /> {t('INVENTORY', 'trade_items_tab', 'Trade Items')}
+                        </button>
+                    )}
                 </div>
-            )}
 
-            <CommonTable
-                columns={currentColumns}
-                data={filteredData}
-            />
+                {/* Category Filter Dropdown */}
+                <div className="w-full md:w-64">
+                    <CommonSelect
+                        options={[{ _id: "ALL", name: "All Categories" }, ...usedCategories]}
+                        value={selectedCategory}
+                        onChange={(val) => setSelectedCategory(val)}
+                        labelKey="name"
+                        valueKey="_id"
+                        placeholder="Filter by Category"
+                        searchPlaceholder="Search categories..."
+                    />
+                </div>
+            </div>
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-                <div className={`flex items-center justify-between mt-6 p-4 rounded-2xl shadow-sm border ${theme.surfaceBg} ${theme.borderLight}`}>
-                    <span className={`text-sm font-bold ${theme.textMuted}`}>
-                        Page {currentPage} of {totalPages}
-                    </span>
-                    <div className="flex gap-2">
-                        <button
-                            disabled={currentPage === 1 || loadingItems}
-                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                            className={`px-4 py-2 font-bold text-sm rounded-xl disabled:opacity-50 transition-all ${theme.textPrimary} ${theme.inputBg} hover:opacity-80`}
+            {/* Table section - FULL WIDTH with minimal padding */}
+            <div className="flex-1 overflow-hidden px-2 md:px-4 pb-4">
+                <CommonTable
+                    columns={currentColumns}
+                    data={filteredData}
+                    isLoading={loadingItems}
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                    className="max-h-full flex flex-col"
+                />
+            </div>
+
+            {/* Product Create/Edit Modal */}
+            {isProductModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 md:p-8 animate-in fade-in duration-200">
+                    <div className={`${theme.surfaceBg} w-full max-w-6xl max-h-[90vh] rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col border ${theme.borderLight} animate-in zoom-in-95 duration-200`}>
+                         <button 
+                            onClick={() => handleProductModalClose()}
+                            className="absolute top-8 right-8 p-3 hover:bg-red-50 hover:text-red-500 rounded-full transition-all z-10"
                         >
-                            Previous
+                            <X size={24} />
                         </button>
-                        <button
-                            disabled={currentPage === totalPages || loadingItems}
-                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                            className={`px-4 py-2 font-bold text-sm rounded-xl disabled:opacity-50 transition-all ${theme.textPrimary} ${theme.inputBg} hover:opacity-80`}
-                        >
-                            Next
-                        </button>
+                        
+                        <div className="flex-1 overflow-y-auto">
+                             <ProductPage 
+                                id={editingProductId}
+                                activeTabOverride={activeTab}
+                                asDialog={true} 
+                                onClose={handleProductModalClose}
+                                menu={menu}
+                                setMenu={setMenu}
+                                inventoryItems={inventoryItems}
+                                setInventoryItems={setInventoryItems}
+                            />
+                        </div>
                     </div>
                 </div>
             )}
 
+            {/* Bulk Upload Modal */}
+            <BulkUploadModal 
+                isOpen={isBulkModalOpen}
+                onClose={() => setIsBulkModalOpen(false)}
+                onSuccess={() => setRefreshTrigger(prev => prev + 1)}
+                activeTab={activeTab}
+            />
         </div>
     );
 };

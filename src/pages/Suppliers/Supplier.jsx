@@ -3,12 +3,12 @@ import { Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin } from
 import CommonTable from '../../components/CommonTable';
 import { SupplierService } from './SupplierService';
 import { ROUTE_ACCESS } from '../../config/permissionStructure';
-
+import { MODULES } from '../../constants/modules';
 import { shopService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
-const Supplier = ({ hasPermissionFor }) => {
+const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEmbedded }) => {
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -28,8 +28,10 @@ const Supplier = ({ hasPermissionFor }) => {
         status: "ACTIVE"
     });
 
-    // Check permissions
-    const supplierAccess = ROUTE_ACCESS.SUPPLIERS;
+    // Check permissions (when used under Parties, permissionModule/permissionResource override)
+    const supplierAccess = permissionModule != null && permissionResource != null
+        ? { module: permissionModule, resource: permissionResource }
+        : ROUTE_ACCESS.SUPPLIERS;
     const canView = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "view") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
     const canCreate = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "create") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
     const canEdit = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "edit") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
@@ -57,10 +59,11 @@ const Supplier = ({ hasPermissionFor }) => {
         }
     }, [shopId]);
 
-    const loadSuppliers = async () => {
+    const loadSuppliers = async (search = "") => {
+        if (!shopId) return;
         setLoading(true);
         try {
-            const data = await SupplierService.getSuppliers(shopId);
+            const data = await SupplierService.getSuppliers(shopId, search);
             setSuppliers(data);
         } catch (error) {
             console.error("Failed to load suppliers", error);
@@ -68,6 +71,15 @@ const Supplier = ({ hasPermissionFor }) => {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (shopId) {
+            const delayDebounceFn = setTimeout(() => {
+                loadSuppliers(searchTerm);
+            }, 500);
+            return () => clearTimeout(delayDebounceFn);
+        }
+    }, [shopId, searchTerm]);
 
     const handleOpenModal = (supplier = null) => {
         if (supplier) {
@@ -99,7 +111,7 @@ const Supplier = ({ hasPermissionFor }) => {
                 await SupplierService.addSupplier({ ...formData, shopId });
             }
             setIsModalOpen(false);
-            await loadSuppliers();
+            await loadSuppliers(searchTerm);
         } catch (error) {
             alert("Failed to save supplier: " + (error.message || "Unknown error"));
         } finally {
@@ -111,16 +123,10 @@ const Supplier = ({ hasPermissionFor }) => {
         if (window.confirm("Are you sure you want to delete this supplier?")) {
             setLoading(true);
             await SupplierService.deleteSupplier(id);
-            await loadSuppliers();
+            await loadSuppliers(searchTerm);
             setLoading(false);
         }
     };
-
-    const filteredSuppliers = suppliers.filter(s =>
-        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.contactPerson.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.phone.includes(searchTerm)
-    );
 
     const columns = [
         {
@@ -209,30 +215,32 @@ const Supplier = ({ hasPermissionFor }) => {
         );
     }
 
-    return (
-        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
+    const content = (
+        <>
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
-                <div>
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 dark:shadow-indigo-900/20">
-                            <Truck size={28} />
+            <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-6 ${isEmbedded ? 'mb-6' : 'mb-10'}`}>
+                {!isEmbedded && (
+                    <div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 dark:shadow-indigo-900/20">
+                                <Truck size={28} />
+                            </div>
+                            <h2 className={`text-2xl md:text-4xl font-black tracking-tight ${theme.textHeading}`}>
+                                Suppliers
+                            </h2>
                         </div>
-                        <h2 className={`text-2xl md:text-4xl font-black tracking-tight ${theme.textHeading}`}>
-                            Suppliers
-                        </h2>
+                        <p className={`font-bold ml-1 ${theme.textMuted}`}>Manage your supply chain partners</p>
                     </div>
-                    <p className={`font-bold ml-1 ${theme.textMuted}`}>Manage your supply chain partners</p>
-                </div>
+                )}
 
-                <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                <div className={`flex flex-col md:flex-row gap-4 w-full ${!isEmbedded ? 'md:w-auto' : ''}`}>
                     <div className="relative flex-1 md:w-72">
                         <Search className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                         <input
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             placeholder="Search suppliers..."
-                            className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
+                            className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 transition-all font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
                         />
                     </div>
                     {canCreate && (
@@ -254,7 +262,7 @@ const Supplier = ({ hasPermissionFor }) => {
                     </div>
                 </div>
             ) : (
-                <CommonTable columns={columns} data={filteredSuppliers} />
+                <CommonTable columns={columns} data={suppliers} />
             )}
 
             {/* Modal */}
@@ -377,6 +385,16 @@ const Supplier = ({ hasPermissionFor }) => {
                     </div>
                 </div>
             )}
+        </>
+    );
+
+    if (isEmbedded) {
+        return content;
+    }
+
+    return (
+        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
+            {content}
         </div>
     );
 };

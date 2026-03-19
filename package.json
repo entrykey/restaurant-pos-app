@@ -17,8 +17,10 @@
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.13.0",
     "react-scripts": "^5.0.0",
+    "recharts": "^3.7.0",
     "stream-browserify": "^3.0.0",
     "stream-http": "^3.2.0",
+    "tesseract.js": "^7.0.0",
     "url": "^0.11.4",
     "util": "^0.12.5"
   },

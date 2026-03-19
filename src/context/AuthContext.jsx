@@ -96,8 +96,18 @@ export const AuthProvider = ({ children }) => {
     setSessionInfo((prev) => ({ ...prev, logoutTime: new Date().toLocaleTimeString() }));
     setUser(null);
     setCustomTexts({});
+    
+    // Clear all app-specific storage
     localStorage.removeItem("accessToken");
     localStorage.removeItem("permissions");
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem("pos_businessType");
+    localStorage.removeItem("pos_businessSubtype");
+    localStorage.removeItem("pos_activeBranchId");
+    localStorage.removeItem("pos_enabledModules");
+    localStorage.removeItem("pos_branchId");
+    localStorage.removeItem("pos_organizationId");
+    localStorage.removeItem("pos_shopId");
   };
 
   const addAuthLog = (log) => {

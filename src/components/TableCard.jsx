@@ -10,6 +10,7 @@ import {
   Wind,
   Check
 } from "lucide-react";
+import { useTheme } from "../context/ThemeContext";
 
 const TableCard = ({
   table,
@@ -19,6 +20,7 @@ const TableCard = ({
   onSelect,
   totalLabel,
 }) => {
+  const { theme, themeName } = useTheme();
   return (
     <div
       onClick={() => {
@@ -26,25 +28,27 @@ const TableCard = ({
         onSelect?.(table);
       }}
       className={`min-h-[140px] md:min-h-[160px] p-5 rounded-[32px] cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg flex flex-col relative group ${table.isMaintenance
-        ? "bg-red-50 border-2 border-red-200 opacity-80"
+        ? (themeName === 'dark' ? "bg-red-900/20 border-2 border-red-800/50" : "bg-red-50 border-2 border-red-200")
         : table.status === "occupied"
           ? "bg-indigo-600 text-white"
-          : "bg-white border-2 border-dashed border-gray-200 text-gray-400 hover:border-indigo-400 hover:bg-indigo-50"
+          : `${theme.surfaceBg} border-2 border-dashed ${theme.borderLight} ${theme.textMuted} hover:border-indigo-400 ${theme.sidebarItemHoverBg}`
         } ${table.isSelected ? "ring-4 ring-indigo-400 ring-offset-4" : ""}`}
     >
       {/* Selection Checkbox */}
       {table.isSelectionMode && (
-        <div className={`absolute top-4 left-4 w-6 h-6 rounded-full border-2 flex items-center justify-center z-30 transition-all ${table.isSelected ? "bg-white border-white" : "bg-white/10 border-white/30"
+        <div className={`absolute top-4 left-4 w-6 h-6 rounded-full border-2 flex items-center justify-center z-30 transition-all ${table.isSelected 
+          ? (table.status === 'occupied' ? "bg-white border-white" : "bg-indigo-600 border-indigo-600") 
+          : "bg-white/10 border-white/30"
           }`}>
-          {table.isSelected && <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full" />}
+          {table.isSelected && <div className={`${table.status === 'occupied' ? 'bg-indigo-600' : 'bg-white'} w-2.5 h-2.5 rounded-full`} />}
         </div>
       )}
 
       {/* Maintenance Overlay */}
       {table.isMaintenance && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 backdrop-blur-[2px] rounded-[32px] z-10">
+        <div className={`absolute inset-0 flex flex-col items-center justify-center ${themeName === 'dark' ? 'bg-gray-900/60' : 'bg-white/60'} backdrop-blur-[2px] rounded-[32px] z-10`}>
           <Construction size={28} className="text-red-500 mb-2" />
-          <span className="text-xs font-black text-red-600 uppercase tracking-widest">
+          <span className={`text-xs font-black ${themeName === 'dark' ? 'text-red-400' : 'text-red-600'} uppercase tracking-widest`}>
             Maintenance
           </span>
         </div>
@@ -53,7 +57,7 @@ const TableCard = ({
       {/* Header: Name and Capacity */}
       <div className="flex justify-between items-start mb-2">
         <div className="flex flex-col">
-          <span className="font-black text-2xl md:text-3xl leading-tight tracking-tight">
+          <span className={`font-black text-2xl md:text-3xl leading-tight tracking-tight ${table.status === 'occupied' ? 'text-white' : theme.textHeading}`}>
             {table.name}
           </span>
           <div className="flex items-center gap-2 mt-1 opacity-80">
@@ -62,6 +66,7 @@ const TableCard = ({
             </span>
             {table.isParent && <span className="text-[10px] font-black uppercase bg-white/30 px-2 py-0.5 rounded-full">Master</span>}
             {table.parentTableId && <span className="text-[10px] font-black uppercase bg-white/30 px-2 py-0.5 rounded-full">Joined</span>}
+            {table.isCombined && <span className="text-[10px] font-black uppercase bg-white/30 px-2 py-0.5 rounded-full">Merged</span>}
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Edit2, Trash2, X, Check, Search } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
+import CommonSelect from "../../components/ui/CommonSelect";
 
 import { attributeService, shopService, unitService, categoryService } from "../../services/api";
 import { toast } from "react-hot-toast";
@@ -284,16 +285,14 @@ const AttributeSettings = () => {
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Data Type</label>
-                                    <select
-                                        required
-                                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
+                                    <CommonSelect
+                                        options={dataTypes.map(type => ({ value: type, label: type }))}
                                         value={formData.dataType}
-                                        onChange={(e) => setFormData({ ...formData, dataType: e.target.value })}
-                                    >
-                                        {dataTypes.map(type => (
-                                            <option key={type} value={type}>{type}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => setFormData({ ...formData, dataType: val })}
+                                        placeholder="Select Type"
+                                        labelKey="label"
+                                        valueKey="value"
+                                    />
                                 </div>
                                 {formData.dataType === "SELECT" && (
                                     <div className="space-y-2 md:col-span-2">
@@ -326,17 +325,14 @@ const AttributeSettings = () => {
                                         {formData.requiresUnit && (
                                             <div className={`mt-4 pt-4 border-t ${theme.borderLight}`}>
                                                 <label className={`text-xs font-black ${theme.textSecondary} uppercase mb-2 block`}>Select Default Unit</label>
-                                                <select
-                                                    required={formData.requiresUnit}
-                                                    className={`w-full p-4 ${theme.surfaceBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
+                                                <CommonSelect
+                                                    options={units}
                                                     value={formData.unitId}
-                                                    onChange={(e) => setFormData({ ...formData, unitId: e.target.value })}
-                                                >
-                                                    <option value="">Select a unit...</option>
-                                                    {units.map(unit => (
-                                                        <option key={unit._id} value={unit._id}>{unit.name} ({unit.code})</option>
-                                                    ))}
-                                                </select>
+                                                    onChange={(val) => setFormData({ ...formData, unitId: val })}
+                                                    placeholder="Select a unit..."
+                                                    labelKey="name"
+                                                    valueKey="_id"
+                                                />
                                             </div>
                                         )}
                                     </div>
@@ -359,17 +355,14 @@ const AttributeSettings = () => {
                                     {formData.categoryDependent && (
                                         <div className={`mt-4 pt-4 border-t ${theme.borderLight}`}>
                                             <label className={`text-xs font-black ${theme.textSecondary} uppercase mb-2 block`}>Select Category</label>
-                                            <select
-                                                required={formData.categoryDependent}
-                                                className={`w-full p-4 ${theme.surfaceBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
+                                            <CommonSelect
+                                                options={categories}
                                                 value={formData.categoryId}
-                                                onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                                            >
-                                                <option value="">Select a category...</option>
-                                                {categories.map(cat => (
-                                                    <option key={cat._id} value={cat._id}>{cat.name}</option>
-                                                ))}
-                                            </select>
+                                                onChange={(val) => setFormData({ ...formData, categoryId: val })}
+                                                placeholder="Select a category..."
+                                                labelKey="name"
+                                                valueKey="_id"
+                                            />
                                         </div>
                                     )}
                                 </div>

@@ -19,14 +19,19 @@ import {
     ChevronRight,
     ChevronLeft,
     Store,
+    Tag,
     CreditCard,
-    LayoutGrid
+    Grid3X3,
+    LayoutDashboard,
+    Users,
+    Boxes
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
 import { getModuleList } from "../config/businessTypes";
 import { usePermission } from "../auth/usePermission";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 const canAccessRoute = (can, canModule, routeKey) => {
     const r = ROUTE_ACCESS[routeKey];
@@ -56,7 +61,9 @@ const Sidebar = ({
     const navigate = useNavigate();
     const { can, canModule } = usePermission();
     const { theme } = useTheme();
+    const { user } = useAuth();
     const closeMobile = () => onMobileClose?.();
+
 
     // Modules to show: from business type intersected with user permissions; if no business list, use allowed-by-permission only
     const moduleList = useMemo(() => {
@@ -67,17 +74,34 @@ const Sidebar = ({
         } else {
             base = getModuleList(businessType, businessSubtype);
         }
-        // If business type gives no list (e.g. not loaded), show whatever user has permission for
-        let result = base.length === 0 ? allowedByPermission : base.filter((moduleKey) => allowedByPermission.includes(moduleKey));
+        // If business type gives no list (e.g. not loaded), or user is superadmin, show whatever user has permission for
+        let result = (user?.isSuperAdmin || base.length === 0) ? allowedByPermission : base.filter((moduleKey) => allowedByPermission.includes(moduleKey));
 
         // Consolidate TAKEAWAY and DIRECT_SALE: if both allowed, only show TAKEAWAY
         if (result.includes('TAKEAWAY') && result.includes('DIRECT_SALE')) {
             result = result.filter(k => k !== 'DIRECT_SALE');
         }
+
+        // Prefer Parties over Suppliers when user has PARTIES permission
+        if (result.includes('SUPPLIERS') && allowedByPermission.includes('PARTIES')) {
+            result = result.filter(k => k !== 'SUPPLIERS');
+            if (!result.includes('PARTIES')) result.push('PARTIES');
+        }
+
+        // Always ensure DASHBOARD is first if user has permission
+        if (allowedByPermission.includes('DASHBOARD') && !result.includes('DASHBOARD')) {
+            result = ['DASHBOARD', ...result];
+        }
+
         return result;
     }, [businessType, businessSubtype, enabledModules, can, canModule]);
 
     const MODULE_CONFIG = {
+        DASHBOARD: {
+            icon: LayoutDashboard, label: "Dashboard",
+            onClick: () => { setView("dashboard"); navigate("/dashboard"); closeMobile(); },
+            isActive: view === "dashboard" || view === "owner-dashboard"
+        },
         DINING: {
             icon: Utensils, label: "Dining Hall",
             onClick: () => { setView("tables"); setIsTakeaway(false); navigate("/dininghall"); closeMobile(); },
@@ -115,7 +139,7 @@ const Sidebar = ({
             isActive: view === "reservations"
         },
         INVENTORY: {
-            icon: Package, label: "Items",
+            icon: Boxes, label: "Stock Items",
             onClick: () => { setView("inventory"); navigate("/inventory"); closeMobile(); },
             isActive: view === "inventory"
         },
@@ -123,6 +147,11 @@ const Sidebar = ({
             icon: TrendingUp, label: "Reports",
             onClick: () => { setView("reports"); navigate("/reports"); closeMobile(); },
             isActive: view === "reports"
+        },
+        OFFERS: {
+            icon: Tag, label: "Offers",
+            onClick: () => { setView("offers"); navigate("/offers"); closeMobile(); },
+            isActive: view === "offers"
         },
         SETTINGS: {
             icon: Settings, label: "Settings",
@@ -134,6 +163,11 @@ const Sidebar = ({
             onClick: () => { setView("staff"); navigate("/staff"); closeMobile(); },
             isActive: view === "staff"
         },
+        STAFF_DASHBOARD: {
+            icon: Users, label: "Staff Dashboard",
+            onClick: () => { setView("staff-dashboard"); navigate("/staff-dashboard"); closeMobile(); },
+            isActive: view === "staff-dashboard"
+        },
         ORGANIZATION: {
             icon: Building2, label: "Organization",
             onClick: () => { setView("organization"); navigate("/organization"); closeMobile(); },
@@ -143,6 +177,11 @@ const Sidebar = ({
             icon: Truck, label: "Suppliers",
             onClick: () => { setView("suppliers"); navigate("/suppliers"); closeMobile(); },
             isActive: view === "suppliers"
+        },
+        PARTIES: {
+            icon: Users, label: "Parties",
+            onClick: () => { setView("parties"); navigate("/parties"); closeMobile(); },
+            isActive: view === "parties"
         },
         SERVICE: {
             icon: Wrench, label: "Service & Repairs",
@@ -175,7 +214,7 @@ const Sidebar = ({
             isActive: view === "subscription-management"
         },
         TABLE_MANAGEMENT: {
-            icon: LayoutGrid, label: "Table Management",
+            icon: Grid3X3, label: "Table Management",
             onClick: () => { setView("table-management"); navigate("/table-management"); closeMobile(); },
             isActive: view === "table-management"
         },
@@ -271,7 +310,7 @@ const Sidebar = ({
                 </div>
 
                 {/* Sidebar Buttons container */}
-                <div className="flex-1 w-full overflow-y-auto overflow-x-hidden no-scrollbar flex flex-col items-center">
+                <div className="flex-1 w-full overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col items-center">
                     {moduleList.map(moduleKey => renderNavButton(MODULE_CONFIG[moduleKey], moduleKey))}
                 </div>
 

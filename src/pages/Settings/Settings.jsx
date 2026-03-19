@@ -1,25 +1,26 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     Settings as SettingsIcon,
-    Plus,
-    Trash2,
-    LayoutDashboard,
-    History,
-    Search,
     Package,
-    Store,
-    CreditCard,
-    Palette
+    Palette,
+    Save,
+    RefreshCw,
+    Shield,
+    History,
+    Search
 } from "lucide-react";
-import { TABLE_AREAS } from "./SettingsService";
 import AttributeSettings from "./AttributeSettings";
 import UnitSettings from "./UnitSettings";
 import CategorySettings from "./CategorySettings";
 import AppearanceSettings from "./AppearanceSettings";
+import TaxSettings from "./TaxSettings";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
 import DatePicker from "../../components/ui/DatePicker";
+import { settingService, roleService } from "../../services/api";
+import CommonSelect from "../../components/ui/CommonSelect";
+import RolePermissionEditor from "./RolePermissionEditor";
 
 const Settings = ({
     settings,
@@ -28,13 +29,27 @@ const Settings = ({
     setTables,
     authLogs,
     hasPermissionFor,
+    currentUser,
 }) => {
     const { theme } = useTheme();
     const canViewGeneral = hasPermissionFor?.(ROUTE_ACCESS.SETTINGS.module, ROUTE_ACCESS.SETTINGS.resource, ROUTE_ACCESS.SETTINGS.action);
     const canViewAttributes = hasPermissionFor?.('settings', 'inventory_settings', 'manage');
+    const canViewAppearance = hasPermissionFor?.('settings', 'settings', 'appearence_settings');
+    const isSuperAdmin = currentUser?.isSuperAdmin === true;
 
-    // Need to initialize state properly since we can't use useState conditionally
-    const [activeTab, setActiveTab] = useState(canViewGeneral ? "general" : (canViewAttributes ? "attributes" : ""));
+    const allTabs = [
+        { id: "general", label: "General", icon: Shield, show: isSuperAdmin || canViewGeneral },
+        { id: "attributes", label: "Inventory Settings", icon: Package, show: canViewAttributes },
+        { id: "appearance", label: "Appearance", icon: Palette, show: canViewAppearance || isSuperAdmin },
+        { id: "activity", label: "Activity", icon: History, show: canViewGeneral },
+    ];
+
+    // Initialize state properly by picking the first visible tab
+    const [activeTab, setActiveTab] = useState(() => {
+        const visibleTab = allTabs.find(t => t.show !== false);
+        return visibleTab ? visibleTab.id : "";
+    });
+
     const [newTableName, setNewTableName] = useState("");
     const [newTableCapacity, setNewTableCapacity] = useState(4);
     const [newTableArea, setNewTableArea] = useState("AC");
@@ -43,7 +58,91 @@ const Settings = ({
         new Date().toISOString().split("T")[0]
     );
 
-    if (!canViewGeneral && !canViewAttributes) {
+    // Backend Settings State
+    const [backendSettings, setBackendSettings] = useState([]);
+    const [originalSettings, setOriginalSettings] = useState([]);
+    const [isLoadingBackend, setIsLoadingBackend] = useState(false);
+    const [isSavingBackend, setIsSavingBackend] = useState(false);
+    const [systemRoles, setSystemRoles] = useState([]);
+
+    // Role Edit State
+    const [isRoleEditorOpen, setIsRoleEditorOpen] = useState(false);
+    const [editingRoleId, setEditingRoleId] = useState(null);
+
+    useEffect(() => {
+        if (activeTab === "general" && (isSuperAdmin || canViewGeneral)) {
+            fetchBackendSettings();
+            if (isSuperAdmin) {
+                fetchSystemRoles();
+            }
+        }
+    }, [activeTab, isSuperAdmin, canViewGeneral]);
+
+    const fetchBackendSettings = async () => {
+        setIsLoadingBackend(true);
+        try {
+            // Respect currently selected shop context
+            const shopId = currentUser?.shop_id;
+            const data = await settingService.getSettings(shopId);
+            setBackendSettings(data || []);
+            setOriginalSettings(JSON.parse(JSON.stringify(data || []))); // Deep copy
+
+            // Sync with global settings context
+            if (data && Array.isArray(data)) {
+                const settingsMap = {};
+                data.forEach(s => {
+                    settingsMap[s.key] = s.value;
+                });
+                setSettings(prev => ({ ...prev, ...settingsMap }));
+            }
+        } catch (error) {
+            console.error("Failed to fetch backend settings:", error);
+        } finally {
+            setIsLoadingBackend(false);
+        }
+    };
+
+    const fetchSystemRoles = async () => {
+        try {
+            const roles = await roleService.getRoles({ isSystemRole: true });
+            setSystemRoles(roles || []);
+        } catch (error) {
+            console.error("Failed to fetch system roles:", error);
+        }
+    };
+
+    const handleUpdateBackendSetting = (key, value) => {
+        setBackendSettings(prev => prev.map(s => s.key === key ? { ...s, value } : s));
+    };
+
+    const handleSaveBackendSetting = async (setting) => {
+        setIsSavingBackend(true);
+        try {
+            const shopId = currentUser?.shop_id;
+            const updatedSetting = await settingService.updateSetting(setting.key, {
+                value: setting.value,
+                shopId: shopId
+            });
+
+            // Update original settings to match the saved value so the button hides
+            setOriginalSettings(prev => prev.map(s => s.key === setting.key ? updatedSetting : s));
+
+            // Update global settings context so other components (like POS) reflect the change immediately
+            setSettings(prev => ({
+                ...prev,
+                [setting.key]: setting.value
+            }));
+
+            alert(`Setting ${setting.displayString} updated successfully`);
+        } catch (error) {
+            console.error("Failed to update setting:", error);
+            alert("Failed to update setting");
+        } finally {
+            setIsSavingBackend(false);
+        }
+    };
+
+    if (!canViewGeneral && !canViewAttributes && !isSuperAdmin) {
         return (
             <div className={`p-8 text-center ${theme.textSecondary} font-bold`}>
                 You don't have permission to access settings.
@@ -79,209 +178,145 @@ const Settings = ({
         return matchesSearch && matchesDate;
     });
 
-    const allTabs = [
-        { id: "general", label: "General", icon: Store, show: canViewGeneral },
-        { id: "tables", label: "Tables", icon: LayoutDashboard, show: canViewGeneral },
-        { id: "attributes", label: "Inventory Settings", icon: Package, show: canViewAttributes },
-        { id: "appearance", label: "Appearance", icon: Palette, show: true },
-        { id: "activity", label: "Activity", icon: History, show: canViewGeneral },
-    ];
     const tabs = allTabs.filter(t => t.show !== false);
+
+    const renderSettingInput = (setting) => {
+        const { key, value, type, meta } = setting;
+
+        if (meta?.inputType === 'select') {
+            const options = key === 'DEFAULT_SHOP_OWNER_ROLE' ? systemRoles : (meta.options || []);
+            return (
+                <div className="flex items-center gap-2 w-full">
+                    <CommonSelect
+                        options={options}
+                        value={value}
+                        onChange={(val) => handleUpdateBackendSetting(key, val)}
+                        labelKey={key === 'DEFAULT_SHOP_OWNER_ROLE' ? "name" : "label"}
+                        valueKey={key === 'DEFAULT_SHOP_OWNER_ROLE' ? "_id" : "value"}
+                        className="flex-1"
+                    />
+                    {key === 'DEFAULT_SHOP_OWNER_ROLE' && value && (
+                        <button
+                            onClick={() => { setEditingRoleId(value); setIsRoleEditorOpen(true); }}
+                            className={`p-2.5 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all font-bold text-sm whitespace-nowrap`}
+                            title="Configure Modules & Permissions for this Role"
+                        >
+                            <SettingsIcon size={18} />
+                        </button>
+                    )}
+                </div>
+            );
+        }
+
+        switch (type) {
+            case 'boolean':
+                return (
+                    <button
+                        onClick={() => handleUpdateBackendSetting(key, !value)}
+                        className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${value ? theme.buttonBg : "bg-gray-300"}`}
+                    >
+                        <div className={`w-4 h-4 bg-white rounded-full transition-transform ${value ? "translate-x-6" : ""}`} />
+                    </button>
+                );
+            case 'number':
+                return (
+                    <input
+                        type="number"
+                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
+                        value={value}
+                        onChange={(e) => handleUpdateBackendSetting(key, parseFloat(e.target.value))}
+                    />
+                );
+            default:
+                return (
+                    <input
+                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
+                        value={value}
+                        onChange={(e) => handleUpdateBackendSetting(key, e.target.value)}
+                    />
+                );
+        }
+    };
 
     const renderContent = () => {
         switch (activeTab) {
             case "general":
                 return (
                     <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight} space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500`}>
-                        <h3 className={`text-xl font-bold flex items-center gap-2 ${theme.textHeading}`}>
-                            <Store className={theme.primaryIconText} /> Shop Identity & Tax
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>
-                                    Business Name
-                                </label>
-                                <input
-                                    className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
-                                    value={settings.shopName}
-                                    onChange={(e) =>
-                                        setSettings({
-                                            ...settings,
-                                            shopName: e.target.value,
-                                        })
-                                    }
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>
-                                    UPI ID
-                                </label>
-                                <input
-                                    className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
-                                    value={settings.upiId}
-                                    onChange={(e) =>
-                                        setSettings({
-                                            ...settings,
-                                            upiId: e.target.value,
-                                        })
-                                    }
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>
-                                    Default Tax (%)
-                                </label>
-                                <input
-                                    type="number"
-                                    className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
-                                    value={
-                                        isNaN(settings.defaultTaxPercent)
-                                            ? ""
-                                            : settings.defaultTaxPercent
-                                    }
-                                    onChange={(e) => {
-                                        const val = parseFloat(e.target.value);
-                                        setSettings({
-                                            ...settings,
-                                            defaultTaxPercent: isNaN(val) ? "" : val,
-                                        });
-                                    }}
-                                />
-                            </div>
-                            <div className={`flex items-center justify-between p-4 ${theme.inputBg} rounded-2xl border border-transparent transition-all`}>
-                                <span className={`font-bold ${theme.textPrimary}`}>
-                                    Enable Tax Calculation
-                                </span>
-                                <button
-                                    onClick={() =>
-                                        setSettings({
-                                            ...settings,
-                                            isTaxEnabled: !settings.isTaxEnabled,
-                                        })
-                                    }
-                                    className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${settings.isTaxEnabled ? theme.buttonBg.replace('bg-', 'bg-') : "bg-gray-300"
-                                        }`}
-                                >
-                                    <div
-                                        className={`w-4 h-4 bg-white rounded-full transition-transform ${settings.isTaxEnabled ? "translate-x-6" : ""
-                                            }`}
-                                    />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                );
-
-            case "tables":
-                return (
-                    <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight} space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500`}>
-                        <div className="flex items-center gap-3">
-                            <div className={`p-3 ${theme.primaryIconBg} rounded-2xl ${theme.primaryIconText}`}>
-                                <LayoutDashboard size={24} />
-                            </div>
-                            <h3 className={`text-xl font-bold ${theme.textHeading}`}>Table Management</h3>
-                        </div>
-
-                        <div className={`flex flex-col gap-4 ${theme.inputBg} p-6 rounded-3xl border border-dashed ${theme.inputBorder}`}>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <input
-                                    value={newTableName}
-                                    onChange={(e) => setNewTableName(e.target.value)}
-                                    placeholder="New Table Name (e.g. Patio 1)"
-                                    className={`w-full p-4 ${theme.surfaceBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} font-bold ${theme.inputText}`}
-                                />
-                                <div className="grid grid-cols-2 gap-4">
-                                    <input
-                                        type="number"
-                                        value={newTableCapacity}
-                                        onChange={(e) => setNewTableCapacity(e.target.value)}
-                                        placeholder="Capacity"
-                                        className={`w-full p-4 ${theme.surfaceBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} font-bold ${theme.inputText}`}
-                                    />
-                                    <select
-                                        value={newTableArea}
-                                        onChange={(e) => setNewTableArea(e.target.value)}
-                                        className={`w-full p-4 ${theme.surfaceBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} font-bold ${theme.inputText}`}
-                                    >
-                                        {TABLE_AREAS.map((area) => (
-                                            <option key={area} value={area}>
-                                                {area}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
+                        <div className="flex items-center justify-between">
+                            <h3 className={`text-xl font-bold flex items-center gap-2 ${theme.textHeading}`}>
+                                <Shield className={theme.primaryIconText} /> General System Settings
+                            </h3>
                             <button
-                                onClick={handleAddTable}
-                                className={`w-full md:w-auto ${theme.buttonBg} ${theme.buttonText} px-8 py-3 md:py-4 rounded-2xl font-bold shadow-lg ${theme.buttonHoverBg} transition-colors flex items-center justify-center gap-2 self-end shadow-indigo-200`}
+                                onClick={fetchBackendSettings}
+                                disabled={isLoadingBackend}
+                                className={`p-2 rounded-xl ${theme.inputBg} ${theme.textSecondary} hover:${theme.textPrimary} transition-all`}
                             >
-                                <Plus size={20} /> Add Table
+                                <RefreshCw size={18} className={isLoadingBackend ? "animate-spin" : ""} />
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
-                            {tables.map((t) => (
-                                <div
-                                    key={t.id}
-                                    className={`${theme.surfaceBg} px-5 py-4 rounded-3xl border-2 flex flex-col justify-between group transition-all hover:scale-[1.02] shadow-sm ${t.isMaintenance ? "border-red-200 bg-red-50" : `${theme.inputBorder}`
-                                        }`}
-                                >
-                                    <div className="flex justify-between items-start mb-2">
-                                        <span className={`font-black text-lg ${t.isMaintenance ? "text-red-500" : theme.textHeading}`}>
-                                            {t.name}
-                                        </span>
-                                        <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() =>
-                                                    setTables(
-                                                        tables.map((table) =>
-                                                            table.id === t.id
-                                                                ? {
-                                                                    ...table,
-                                                                    isMaintenance: !table.isMaintenance,
-                                                                }
-                                                                : table
-                                                        )
-                                                    )
-                                                }
-                                                className={`p-2 rounded-xl transition-colors ${t.isMaintenance
-                                                    ? "text-red-600 bg-red-100"
-                                                    : `${theme.textSecondary} hover:${theme.warningText} ${theme.warningBg.replace('bg-', 'hover:bg-')}`
-                                                    }`}
-                                                title="Maintenance Mode"
-                                            >
-                                                <SettingsIcon size={16} />
-                                            </button>
-                                            {t.status === "available" && (
+                        {isLoadingBackend ? (
+                            <div className="py-20 text-center">
+                                <RefreshCw className="animate-spin mx-auto mb-4 text-indigo-500" size={40} />
+                                <p className={`font-bold ${theme.textSecondary}`}>Loading system settings...</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-6">
+                                {backendSettings.filter(s => isSuperAdmin ? s.isSystem : !s.isSystem).map((setting) => (
+                                    <div key={setting.key} className={`p-6 ${theme.inputBg} rounded-3xl border ${theme.inputBorder} flex flex-col md:flex-row md:items-center justify-between gap-4`}>
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <h4 className={`font-black ${theme.textHeading}`}>{setting.displayString}</h4>
+                                                {setting.isSystem && (
+                                                    <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase">System</span>
+                                                )}
+                                            </div>
+                                            <p className={`text-xs ${theme.textSecondary} max-w-md`}>{setting.description}</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="min-w-[200px]">
+                                                {renderSettingInput(setting)}
+                                            </div>
+                                            {backendSettings.find(s => s.key === setting.key)?.value !== originalSettings.find(s => s.key === setting.key)?.value && (
                                                 <button
-                                                    onClick={() =>
-                                                        setTables(
-                                                            tables.filter((table) => table.id !== t.id)
-                                                        )
-                                                    }
-                                                    className={`p-2 rounded-xl transition-colors ${theme.textSecondary} hover:text-red-500 hover:bg-red-50`}
+                                                    onClick={() => handleSaveBackendSetting(setting)}
+                                                    disabled={isSavingBackend}
+                                                    className={`p-4 ${theme.buttonBg} ${theme.buttonText} rounded-2xl shadow-lg hover:scale-105 transition-all disabled:opacity-50 animate-in zoom-in-50 duration-200`}
+                                                    title="Save Changes"
                                                 >
-                                                    <Trash2 size={16} />
+                                                    <Save size={20} />
                                                 </button>
                                             )}
                                         </div>
                                     </div>
-                                    <div className={`text-xs font-bold ${theme.textSecondary} flex gap-2`}>
-                                        <span className={`${theme.inputBg} px-2 py-1 rounded-lg`}>{t.capacity} Seater</span>
-                                        <span className={`${theme.inputBg} px-2 py-1 rounded-lg`}>{t.area}</span>
+                                ))}
+
+                                {backendSettings.length === 0 && (
+                                    <div className="py-10 text-center border-2 border-dashed rounded-3xl border-gray-100 italic text-gray-400 font-bold">
+                                        No general settings found in the system.
                                     </div>
-                                </div>
-                            ))}
-                        </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 );
 
             case "attributes":
                 return (
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-                        <CategorySettings />
-                        <AttributeSettings />
-                        <UnitSettings />
+                        {!isSuperAdmin && (
+                            <>
+                                <CategorySettings />
+                                <TaxSettings />
+                            </>
+                        )}
+                        {isSuperAdmin && (
+                            <>
+                                <UnitSettings />
+                                <AttributeSettings />
+                            </>
+                        )}
                     </div>
                 );
 
@@ -378,6 +413,12 @@ const Settings = ({
             <div className="flex-1 overflow-y-auto pb-20 pt-2 custom-scrollbar">
                 {renderContent()}
             </div>
+
+            <RolePermissionEditor
+                isOpen={isRoleEditorOpen}
+                onClose={() => { setIsRoleEditorOpen(false); setEditingRoleId(null); }}
+                roleId={editingRoleId}
+            />
         </div>
     );
 };

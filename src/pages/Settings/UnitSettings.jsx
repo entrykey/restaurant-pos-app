@@ -90,8 +90,8 @@ const UnitSettings = () => {
     };
 
     const columns = [
-        { header: "Name", key: "name", className: `font-bold ${theme.textPrimary}` },
-        { header: "Code", key: "code", className: `${theme.textSecondary} font-mono text-sm` },
+        { header: "Unit Name", key: "name", className: `font-bold ${theme.textPrimary}` },
+        { header: "Symbol", key: "code", className: `${theme.textSecondary} font-mono font-black` },
         {
             header: "Category", key: "category", render: (value) => (
                 <span className={`px-3 py-1 ${theme.successBg} ${theme.successText} rounded-lg text-[10px] uppercase font-black tracking-widest`}>{value}</span>

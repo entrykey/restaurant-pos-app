@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
+import { usePermission } from "../../auth/usePermission";
+import { MODULES } from "../../config/permissionStructure";
+import { ACTIONS } from "../../constants/actions";
 import { ShoppingBag, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import TableCard from "../../components/TableCard";
+import { useTheme } from "../../context/ThemeContext";
 import { diningHallService } from "./DiningHallService";
 
 const DiningHall = ({
@@ -19,8 +23,11 @@ const DiningHall = ({
   setOrderSearch,
   setActiveTableId,
   joinTables,
+  refreshData,
 }) => {
+  const { theme, themeName } = useTheme();
   const navigate = useNavigate();
+  const { can } = usePermission();
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
 
   useEffect(() => {
@@ -28,6 +35,12 @@ const DiningHall = ({
       setSelectedCategoryId(categories[0]._id);
     }
   }, [categories, selectedCategoryId]);
+
+  useEffect(() => {
+    if (refreshData) {
+      refreshData();
+    }
+  }, [refreshData]);
 
   const today = new Date().toISOString().split("T")[0];
   const isAdmin = currentUser?.role === "Admin";
@@ -82,18 +95,18 @@ const DiningHall = ({
   };
 
   return (
-    <div className="p-4 md:p-8 h-full overflow-y-auto">
+    <div className={`p-4 md:p-8 h-full overflow-y-auto ${theme.pageBg}`}>
       <div className="flex justify-between items-center mb-6 md:mb-10">
-        <h2 className="text-2xl md:text-4xl font-black text-gray-800 flex items-center">
+        <h2 className={`text-2xl md:text-4xl font-black ${theme.textHeading} flex items-center`}>
           <Users className="mr-3 text-indigo-600" /> Dining Hall
         </h2>
 
         <div className="flex gap-4">
-          {isJoinMode ? (
+          {can(MODULES.POS, ACTIONS.POS_DINING_JOINTABLES) && (isJoinMode ? (
             <>
               <button
                 onClick={toggleJoinMode}
-                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-2xl font-bold hover:bg-gray-300 transition-colors"
+                className={`${theme.surfaceBg} ${theme.textPrimary} border ${theme.borderLight} px-4 py-2 rounded-2xl font-bold transition-colors`}
               >
                 Cancel
               </button>
@@ -107,24 +120,26 @@ const DiningHall = ({
           ) : (
             <button
               onClick={toggleJoinMode}
-              className="bg-white border-2 border-indigo-100 text-indigo-700 px-4 py-2 rounded-2xl font-bold hover:bg-indigo-50 transition-colors"
+              className={`${theme.surfaceBg} border-2 ${theme.borderLight} ${theme.linkText} px-4 py-2 rounded-2xl font-bold ${theme.sidebarItemHoverBg} transition-colors`}
             >
               Join Tables
             </button>
-          )}
+          ))}
 
-          <button
-            onClick={() => {
-              setIsTakeaway(true);
-              setTakeawayOrder({ items: [], isSentToKOT: false });
-              setView("order");
-              setOrderSearch("");
-              navigate("/takeaway");
-            }}
-            className="bg-indigo-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg text-sm md:text-base"
-          >
-            <ShoppingBag size={20} /> Takeaway
-          </button>
+          {can(MODULES.POS, ACTIONS.POS_DINING_TAKEAWAY) && (
+            <button
+              onClick={() => {
+                setIsTakeaway(true);
+                setTakeawayOrder({ items: [], isSentToKOT: false });
+                setView("order");
+                setOrderSearch("");
+                navigate("/takeaway");
+              }}
+              className="bg-indigo-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg text-sm md:text-base"
+            >
+              <ShoppingBag size={20} /> Takeaway
+            </button>
+          )}
         </div>
       </div>
 
@@ -133,7 +148,7 @@ const DiningHall = ({
         {loading ? (
           <div className="flex gap-4">
             {[1, 2, 3].map(i => (
-              <div key={i} className="bg-gray-100 w-32 h-10 rounded-xl animate-pulse" />
+              <div key={i} className={`${theme.inputBg} w-32 h-10 rounded-xl animate-pulse`} />
             ))}
           </div>
         ) : (
@@ -143,7 +158,7 @@ const DiningHall = ({
               onClick={() => setSelectedCategoryId(cat._id)}
               className={`px-6 py-2.5 rounded-xl font-bold whitespace-nowrap transition-all duration-200 shadow-sm border ${selectedCategoryId === cat._id
                 ? "bg-indigo-600 text-white border-indigo-600 shadow-indigo-200"
-                : "bg-white text-indigo-900 border-indigo-50 hover:border-indigo-200 hover:bg-indigo-50"
+                : `${theme.surfaceBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-400 ${theme.sidebarItemHoverBg}`
                 }`}
             >
               {cat.name} ({propsTables.filter(t => t.diningCategoryId?._id === cat._id || t.diningCategoryId === cat._id).length})
@@ -153,36 +168,74 @@ const DiningHall = ({
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4 md:gap-8">
-        {filteredTables.map((t) => {
-          const duration = getTableDuration(t.startTime);
-          const hasReservation = reservations.find(
-            (r) =>
-              String(r.tableId) === String(t.id) &&
-              r.date === today &&
-              r.status === "CONFIRMED"
-          );
+        {(() => {
+          const renderedTableIds = new Set();
+          const processedMergeGroups = new Set();
 
-          // Enhanced table object for UI
-          const tableForCard = {
-            ...t,
-            isSelectionMode: isJoinMode,
-            isSelected: selectedTables.includes(t.id)
-          };
+          return filteredTables.map((t) => {
+            if (renderedTableIds.has(t.id)) return null;
 
-          return (
-            <TableCard
-              key={t.id}
-              table={tableForCard}
-              duration={duration}
-              hasReservation={hasReservation}
-              isAdmin={isAdmin}
-              totalLabel={
-                t.order ? formatCurrency(calculateTotal(t.order)) : null
-              }
-              onSelect={handleTableSelect}
-            />
-          );
-        })}
+            let displayTable = { ...t };
+
+            if (t.activeMerge) {
+              const primaryId = String(t.activeMerge.primaryTableId);
+              if (processedMergeGroups.has(primaryId)) return null;
+              processedMergeGroups.add(primaryId);
+
+              const mergeGroup = filteredTables.filter(ft =>
+                String(ft.id) === primaryId ||
+                (ft.activeMerge && String(ft.activeMerge.primaryTableId) === primaryId)
+              );
+
+              // Mark all tables in this merge as "rendered"
+              mergeGroup.forEach(mt => renderedTableIds.add(mt.id));
+
+              // Find the primary table or use the first one available
+              const primaryTable = mergeGroup.find(mt => String(mt.id) === primaryId) || mergeGroup[0];
+
+              displayTable = { ...primaryTable };
+              displayTable.isCombined = true;
+              displayTable.name = mergeGroup.map(mt => mt.tableNumber).join(' + ');
+              displayTable.capacity = mergeGroup.reduce((acc, mt) => acc + (mt.capacity || 0), 0);
+
+              // Aggregate status and order
+              const tableWithOrder = mergeGroup.find(mt => mt.order);
+              displayTable.order = tableWithOrder ? tableWithOrder.order : null;
+              displayTable.status = mergeGroup.some(mt => mt.status === 'occupied') ? 'occupied' : primaryTable.status;
+              displayTable.startTime = tableWithOrder ? tableWithOrder.order?.kotSentAt : primaryTable.startTime;
+            } else {
+              renderedTableIds.add(t.id);
+            }
+
+            const duration = getTableDuration(displayTable.startTime);
+            const hasReservation = reservations.find(
+              (r) =>
+                String(r.tableId) === String(displayTable.id) &&
+                r.date === today &&
+                r.status === "CONFIRMED"
+            );
+
+            const tableForCard = {
+              ...displayTable,
+              isSelectionMode: isJoinMode,
+              isSelected: selectedTables.includes(displayTable.id)
+            };
+
+            return (
+              <TableCard
+                key={displayTable.id}
+                table={tableForCard}
+                duration={duration}
+                hasReservation={hasReservation}
+                isAdmin={isAdmin}
+                totalLabel={
+                  displayTable.order ? formatCurrency(calculateTotal(displayTable.order)) : null
+                }
+                onSelect={handleTableSelect}
+              />
+            );
+          });
+        })()}
       </div>
     </div>
   );

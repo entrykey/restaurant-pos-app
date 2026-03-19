@@ -188,13 +188,14 @@ const PlanForm = ({ planToEdit, onBack }) => {
         const allowedModules = Object.keys(selectedCapabilities)
             .map(modId => {
                 const availableCap = availableCapabilities.find(c => (c.module?._id || c.module) === modId);
-                const validPerms = availableCap?.allowedPermissions?.map(p => p?._id || p) || [];
+                if (!availableCap) return null; // Module not allowed
+                const validPerms = availableCap.allowedPermissions?.map(p => p?._id || p) || [];
                 return {
                     module: modId,
                     allowedPermissions: selectedCapabilities[modId].filter(pId => validPerms.includes(pId))
                 };
             })
-            .filter(m => availableCapabilities.some(c => (c.module?._id || c.module) === m.module));
+            .filter(m => m !== null);
 
         const payload = {
             ...formData,
@@ -529,9 +530,9 @@ const PlanForm = ({ planToEdit, onBack }) => {
                                         return (
                                             <div
                                                 key={modId}
-                                                className={`relative overflow-hidden p-[22px] border-2 rounded-2xl transition-all duration-300 shadow-sm ${isChecked
-                                                    ? `border-indigo-500/60 bg-white dark:border-indigo-500/60 dark:bg-indigo-900/40 shadow-indigo-100 dark:shadow-none translate-y-[-2px]`
-                                                    : `border-transparent ${theme.surfaceBg} hover:border-indigo-300 dark:hover:border-indigo-700/50 hover:shadow-md`
+                                                className={`relative overflow-hidden p-[22px] border-2 rounded-3xl transition-all duration-300 ${isChecked
+                                                    ? `border-indigo-500 shadow-xl shadow-indigo-100 dark:shadow-none ${theme.surfaceBg} -translate-y-1`
+                                                    : `border-transparent ${theme.sectionBg} hover:border-indigo-200`
                                                     }`}
                                             >
                                                 <div
@@ -539,26 +540,29 @@ const PlanForm = ({ planToEdit, onBack }) => {
                                                     onClick={() => toggleModule(modId)}
                                                 >
                                                     <div className="flex items-start gap-4">
-                                                        <div className={`mt-[3px] transition-all duration-300 ${isChecked ? 'text-indigo-600 dark:text-indigo-400 opacity-100 scale-100 drop-shadow-sm' : 'text-gray-400 dark:text-gray-500 opacity-60 scale-95 hover:scale-100'}`}>
+                                                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 ${isChecked ? 'bg-indigo-600 text-white shadow-lg' : `${theme.primaryIconBg} ${theme.textMuted} opacity-40`}`}>
                                                             {isChecked ? <CheckSquare size={22} className="stroke-[2.5]" /> : <Square size={22} />}
                                                         </div>
                                                         <div className="flex-1">
-                                                            <span className={`font-black tracking-wide text-[15px] block transition-colors duration-300 leading-none ${isChecked ? 'text-gray-900 dark:text-white' : theme.textPrimary}`}>
-                                                                {cap.customLabel || modObj.name || 'Unknown Module'}
+                                                            <span className={`font-black tracking-tight text-[16px] block transition-colors duration-300 leading-none ${isChecked ? theme.textHeading : theme.textPrimary}`}>
+                                                                {(() => {
+                                                                    const name = cap.customLabel || modObj.name || "";
+                                                                    return name.split(/[._ ]/).map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+                                                                })()}
                                                             </span>
                                                             <span className={`text-[10px] uppercase font-black tracking-widest mt-1.5 block transition-colors duration-300 ${isChecked ? 'text-indigo-600 dark:text-indigo-400' : theme.textMuted}`}>
-                                                                {modObj.key || modId}
+                                                                {modObj.key}
                                                             </span>
                                                         </div>
                                                     </div>
                                                 </div>
 
                                                 <div className={`transition-all duration-500 overflow-hidden ${isChecked ? 'max-h-[800px] opacity-100 mt-5' : 'max-h-0 opacity-0 mt-0 pointer-events-none'}`}>
-                                                    <div className="relative pl-[11px]">
+                                                    <div className="relative pl-1">
                                                         {/* Vertical line connector */}
-                                                        <div className="absolute left-[22px] top-[-8px] bottom-[14px] w-[2px] bg-indigo-200 dark:bg-indigo-800/60 rounded-full" />
+                                                        <div className="absolute left-[20px] top-[0px] bottom-[20px] w-0.5 bg-indigo-100 dark:bg-indigo-900/40 rounded-full" />
 
-                                                        <div className="flex flex-col gap-2.5 pl-[30px]">
+                                                        <div className="flex flex-col gap-2 pl-8 pt-4">
                                                             {perms.length > 0 ? perms.map((permObj, idx) => {
                                                                 const pId = permObj._id || permObj;
                                                                 const pName = permObj.name || 'Unknown Permission';
@@ -567,24 +571,34 @@ const PlanForm = ({ planToEdit, onBack }) => {
                                                                 return (
                                                                     <div
                                                                         key={pId}
-                                                                        className="flex items-center gap-3 cursor-pointer select-none group relative py-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg -ml-2 pl-2 transition-colors pr-2"
+                                                                        className={`group flex items-center gap-3 p-2.5 rounded-xl border-2 transition-all cursor-pointer ${isPermChecked
+                                                                            ? `border-indigo-500/50 bg-indigo-50/30 dark:bg-indigo-900/10`
+                                                                            : `border-transparent hover:${theme.sectionBg}`}`}
                                                                         onClick={() => togglePermission(modId, pId)}
                                                                     >
                                                                         {/* Horizontal line connector */}
-                                                                        <div className={`absolute -left-[20px] top-[14px] w-4 h-[2px] rounded-full transition-colors duration-300 ${isPermChecked ? 'bg-indigo-500 dark:bg-indigo-500' : 'bg-indigo-200 dark:bg-indigo-800/60'}`} />
+                                                                        <div className={`absolute -left-[20px] top-1/2 -translate-y-1/2 w-4 h-[2px] rounded-full transition-colors duration-300 ${isPermChecked ? 'bg-indigo-500' : 'bg-indigo-100 dark:bg-indigo-900/40'}`} />
 
-                                                                        <div className={`flex items-center justify-center w-[16px] h-[16px] rounded-[4px] border-[2px] transition-all duration-300 relative z-10 ${isPermChecked ? 'bg-indigo-600 border-indigo-600 text-white dark:bg-indigo-500 dark:border-indigo-500 shadow-sm shadow-indigo-200 dark:shadow-none' : `bg-white dark:bg-slate-900 border-gray-300 dark:border-gray-600 group-hover:border-indigo-400 dark:group-hover:border-indigo-600`}`}>
-                                                                            <CheckSquare size={13} className={`stroke-[3.5] transition-all duration-300 absolute ${isPermChecked ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`} />
+                                                                        <div className={`flex items-center justify-center w-[18px] h-[18px] rounded-md border-2 transition-all duration-300 relative z-10 ${isPermChecked ? 'bg-indigo-600 border-indigo-600 text-white' : `border-gray-200 ${theme.surfaceBg}`}`}>
+                                                                            {isPermChecked && <div className="w-2 h-2 bg-white rounded-sm" />}
                                                                         </div>
 
-                                                                        <span className={`text-[12px] font-bold tracking-wide transition-colors duration-300 mt-0.5 ${isPermChecked ? 'text-gray-900 dark:text-gray-100' : theme.textSecondary}`}>
-                                                                            {pName}
+                                                                        <span className={`text-[13px] font-bold transition-colors duration-300 ${isPermChecked ? theme.textHeading : theme.textPrimary}`}>
+                                                                            {(() => {
+                                                                                let name = pName || "";
+                                                                                const modName = (modObj.name || "").toLowerCase();
+                                                                                if (modName && name.toLowerCase().startsWith(modName)) {
+                                                                                    name = name.substring(modName.length);
+                                                                                }
+                                                                                name = name.replace(/^[._]+/, "").replace(/[._]/g, " ").trim();
+                                                                                return name.charAt(0).toUpperCase() + name.slice(1);
+                                                                            })()}
                                                                         </span>
                                                                     </div>
                                                                 )
                                                             }) : (
-                                                                <div className="flex items-center gap-3 relative py-2 -ml-2 pl-2">
-                                                                    <div className="absolute -left-[20px] top-[18px] w-4 h-[2px] rounded-full bg-indigo-200 dark:bg-indigo-800/60" />
+                                                                <div className="flex items-center gap-3 relative py-2 -ml-2 pl-6">
+                                                                    <div className="absolute left-[2px] top-1/2 -translate-y-1/2 w-4 h-[2px] rounded-full bg-indigo-100 dark:bg-indigo-900/40" />
                                                                     <span className="text-[11px] font-bold italic text-indigo-500 dark:text-indigo-400">Core module only (No sub-permissions)</span>
                                                                 </div>
                                                             )}

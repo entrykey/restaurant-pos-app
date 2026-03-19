@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     FileText,
     Download,
@@ -14,27 +14,297 @@ import {
     DollarSign,
     Zap
 } from 'lucide-react';
+import { useTheme } from "../../context/ThemeContext";
 import CommonTable from '../../components/CommonTable';
 import { formatCurrency } from '../../utils/format';
 import DatePicker from "../../components/ui/DatePicker";
 
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
+import { usePermission } from "../../auth/usePermission";
+import api, { reportsService } from "../../services/api";
+import { useApp } from "../../context/AppContext";
+import { printCustomHtml, escapeHtml } from "../../utils/print";
+
+const toAbsoluteLogoUrl = (logoUrl) => {
+    if (!logoUrl) return null;
+    if (/^https?:\/\//i.test(logoUrl)) return logoUrl;
+    const base = (api?.defaults?.baseURL || "").replace(/\/api\/?$/, "");
+    if (!base) return logoUrl;
+    return `${base}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
+};
 
 const Reports = ({
-    salesHistory = [],
     staffList = [],
     tables = [],
     onlineOrders = [],
     settings = { defaultTaxPercent: 5 },
-    hasPermissionFor,
+    shopId,
+    branchId
 }) => {
+    const { theme, themeName } = useTheme();
+    const { organization, branches } = useApp();
+    const { can } = usePermission();
     const [reportCategory, setReportCategory] = useState("sales");
-    const [filterDate, setFilterDate] = useState(new Date().toISOString().split("T")[0]);
+    const today = new Date().toISOString().split("T")[0];
+    const [filterStartDate, setFilterStartDate] = useState(today);
+    const [filterEndDate, setFilterEndDate] = useState(today);
+    const [salesHistory, setSalesHistory] = useState([]);
+    const [loading, setLoading] = useState(false);
 
-    const reportsAccess = ROUTE_ACCESS.REPORTS;
-    const canView = hasPermissionFor?.(reportsAccess.module, reportsAccess.resource, reportsAccess.action);
+    useEffect(() => {
+        const fetchSales = async () => {
+            if (!shopId) return;
+
+            setLoading(true);
+            try {
+                const response = await reportsService.getSalesReport({
+                    shopId,
+                    branchId,
+                    startDate: filterStartDate,
+                    endDate: filterEndDate
+                });
+                setSalesHistory(response.data || response?.data?.data || []);
+            } catch (error) {
+                console.error("Failed to fetch sales history:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchSales();
+    }, [filterStartDate, filterEndDate, shopId, branchId]);
+
+    const isWithinRange = (dateStr) => {
+        if (!dateStr) return false;
+        // YYYY-MM-DD strings can be safely compared lexicographically
+        return dateStr >= filterStartDate && dateStr <= filterEndDate;
+    };
+
+    const rangeLabel = filterStartDate === filterEndDate
+        ? filterStartDate
+        : `${filterStartDate} → ${filterEndDate}`;
+
+    const activeBranch = branches?.find(
+        (b) => String(b._id || b.id) === String(branchId)
+    ) || null;
+
+    const headerShopName = organization?.businessName || settings?.shopName || "Shop";
+    const headerBranchName = activeBranch?.name || "Branch";
+    const headerLogoUrl = toAbsoluteLogoUrl(organization?.logoUrl);
+
+    const address = activeBranch?.address || {};
+    const addressLines = [
+        address?.line1,
+        address?.line2,
+        [address?.city, address?.state?.name || address?.state].filter(Boolean).join(", "),
+        [address?.country?.name || address?.country, address?.pincode].filter(Boolean).join(" - "),
+    ].filter(Boolean);
+    const headerContact = organization?.ownerContact || settings?.shopPhone || "";
+
+    const handleExport = () => {
+        let columns = [];
+        let rows = [];
+
+        if (reportCategory === "sales") {
+            columns = ["Sales Invoice", "Date", "Time", "Type", "Payment Mode", "Amount"];
+            rows = salesHistory
+                .filter((s) => isWithinRange(s.date))
+                .map((s) => [
+                    `#${s.invoiceNumber}`,
+                    s.date,
+                    new Date(s.timestamp).toLocaleTimeString(),
+                    s.type,
+                    s.method,
+                    s.amount
+                ]);
+        } else if (reportCategory === "items") {
+            const itemStats = {};
+            salesHistory
+                .filter((s) => isWithinRange(s.date))
+                .forEach((sale) => {
+                    if (sale.items) {
+                        sale.items.forEach((item) => {
+                            if (!itemStats[item.name])
+                                itemStats[item.name] = { qty: 0, revenue: 0, profit: 0 };
+                            itemStats[item.name].qty += item.quantity;
+                            itemStats[item.name].revenue += item.price * item.quantity;
+                            itemStats[item.name].profit += (item.price - (item.purchasePrice || 0)) * item.quantity;
+                        });
+                    }
+                });
+            columns = ["Item Name", "Qty Sold", "Revenue", "Profit"];
+            rows = Object.entries(itemStats).map(([name, stats]) => [
+                name,
+                stats.qty,
+                stats.revenue,
+                stats.profit
+            ]);
+        } else if (reportCategory === "category") {
+            const catStats = {};
+            salesHistory
+                .filter((s) => isWithinRange(s.date))
+                .forEach((sale) => {
+                    if (sale.items) {
+                        sale.items.forEach((item) => {
+                            const cat = item.category || "Uncategorized";
+                            if (!catStats[cat]) catStats[cat] = 0;
+                            catStats[cat] += item.price * item.quantity;
+                        });
+                    }
+                });
+            columns = ["Category", "Revenue"];
+            rows = Object.entries(catStats).map(([cat, revenue]) => [cat, revenue]);
+        } else if (reportCategory === "payments") {
+            const methods = ["Cash", "UPI", "Card"];
+            columns = ["Payment Method", "Transactions", "Total Amount"];
+            rows = methods.map((method) => {
+                const total = salesHistory
+                    .filter((s) => isWithinRange(s.date) && s.method === method)
+                    .reduce((a, b) => a + b.amount, 0);
+                const count = salesHistory.filter(
+                    (s) => isWithinRange(s.date) && s.method === method
+                ).length;
+                return [method, count, total];
+            });
+        } else if (reportCategory === "staff_report") {
+            columns = ["Staff Name", "Orders", "Total Sales"];
+            rows = staffList
+                .filter((s) => s.role !== "Admin")
+                .map((s) => {
+                    const staffSales = salesHistory.filter(
+                        (sale) => isWithinRange(sale.date) && sale.waiterName === s.name
+                    );
+                    return [
+                        s.name,
+                        staffSales.length,
+                        staffSales.reduce((sum, sale) => sum + sale.amount, 0)
+                    ];
+                });
+        } else if (reportCategory === "table_report") {
+            columns = ["Table", "Orders", "Revenue"];
+            rows = tables.map((t) => {
+                const tableSales = salesHistory.filter(
+                    (s) => isWithinRange(s.date) && s.tableName === t.name
+                );
+                const totalRevenue = tableSales.reduce((sum, s) => sum + s.amount, 0);
+                const orderCount = tableSales.length;
+                return [t.name, orderCount, totalRevenue];
+            });
+        } else if (reportCategory === "hourly") {
+            columns = ["Hour", "Orders", "Revenue"];
+            const result = [];
+            for (let i = 0; i < 14; i++) {
+                const hour = 9 + i;
+                const hourSales = salesHistory.filter(
+                    (s) => isWithinRange(s.date) && new Date(s.timestamp).getHours() === hour
+                );
+                const revenue = hourSales.reduce((a, b) => a + b.amount, 0);
+                const count = hourSales.length;
+                result.push([
+                    `${hour > 12 ? hour - 12 : hour} ${hour >= 12 ? "PM" : "AM"}`,
+                    count,
+                    revenue
+                ]);
+            }
+            rows = result;
+        } else if (reportCategory === "online_report") {
+            const platformStats = {
+                Zomato: { count: 0, sales: 0 },
+                Swiggy: { count: 0, sales: 0 },
+                Others: { count: 0, sales: 0 },
+            };
+            onlineOrders.forEach((o) => {
+                const p = o.platform || "Others";
+                if (!platformStats[p]) platformStats[p] = { count: 0, sales: 0 };
+                platformStats[p].count++;
+                platformStats[p].sales += o.total;
+            });
+            columns = ["Platform", "Orders", "Sales"];
+            rows = Object.entries(platformStats).map(([plat, stats]) => [
+                plat,
+                stats.count,
+                stats.sales
+            ]);
+        } else if (reportCategory === "tax") {
+            const taxStats = {};
+            salesHistory
+                .filter((s) => isWithinRange(s.date))
+                .forEach((sale) => {
+                    const items = sale.items || [];
+                    items.forEach((item) => {
+                        const taxP = (item.taxPercent !== undefined && item.taxPercent !== null && item.taxPercent !== 0) 
+                            ? Number(item.taxPercent) 
+                            : (settings?.defaultTaxPercent || 0);
+                        
+                        const itemTax = item.taxAmount || (((item.price || 0) * item.quantity * taxP) / 100);
+                        
+                        const key = `${item.name}-${taxP}`;
+                        if (!taxStats[key]) {
+                            taxStats[key] = { name: item.name, taxPercent: taxP, qty: 0, taxAmount: 0 };
+                        }
+                        taxStats[key].qty += item.quantity;
+                        taxStats[key].taxAmount += (itemTax || 0);
+                    });
+                });
+            columns = ["Item Name", "Qty", "Tax %", "Tax Collected"];
+            rows = Object.values(taxStats).map((s) => [
+                s.name,
+                s.qty,
+                `${s.taxPercent}%`,
+                s.taxAmount
+            ]);
+        }
+
+        if (!columns.length) return;
+
+        const headerLines = [
+            escapeHtml(headerShopName),
+            escapeHtml(headerBranchName),
+        ];
+
+        const html = `
+          <div style="font-family: Inter, -apple-system, system-ui, sans-serif; padding: 24px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; border-bottom:1px solid #eee; padding-bottom:10px;">
+              <div style="display: flex; gap: 16px; align-items: flex-start;">
+                ${headerLogoUrl ? `<img src="${headerLogoUrl}" style="max-height: 60px; max-width: 120px; object-fit: contain;" />` : ""}
+                <div>
+                  <div style="font-size:20px; font-weight:900; margin-bottom:4px;">${escapeHtml(headerShopName)}</div>
+                  <div style="font-size:12px; font-weight:600; color:#111;">${escapeHtml(headerBranchName)}</div>
+                  ${headerContact ? `<div style="font-size:11px; color:#555; margin-top:2px;">Ph: ${escapeHtml(headerContact)}</div>` : ""}
+                  ${addressLines.length > 0 ? `<div style="font-size:10px; color:#777; margin-top:2px; line-height:1.4;">${addressLines.map(escapeHtml).join("<br/>")}</div>` : ""}
+                  <div style="font-size:11px; color:#777; margin-top:8px; font-weight: 600;">${escapeHtml(rangeLabel)}</div>
+                </div>
+              </div>
+              <div style="text-align:right; font-size:11px; color:#777;">
+                <div style="font-weight:700; text-transform:uppercase; letter-spacing:1px; color: #111;">${escapeHtml(reportCategories.find(r => r.id === reportCategory)?.label || "Report")}</div>
+                <div>Generated at ${escapeHtml(new Date().toLocaleString())}</div>
+              </div>
+            </div>
+            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+              <thead>
+                <tr>
+                  ${columns.map(h => `<th style="text-align:left; padding:8px 6px; border-bottom:2px solid #111; background:#fafafa; font-size:11px; text-transform:uppercase; letter-spacing:0.8px;">${escapeHtml(h)}</th>`).join("")}
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(row => `
+                  <tr>
+                    ${row.map(cell => `<td style="padding:6px; border-bottom:1px solid #eee;">${escapeHtml(String(cell ?? ""))}</td>`).join("")}
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        printCustomHtml({
+            title: `${headerShopName} - ${reportCategories.find(r => r.id === reportCategory)?.label || "Report"}`,
+            bodyHtml: html,
+        });
+    };
+
+    const canView = can("reports", "VIEW.REPORTS");
     if (!canView) {
-        return <div className="p-8 text-center text-gray-500 font-bold">You don't have permission to view reports.</div>;
+        return <div className={`p-8 text-center ${theme.textMuted} font-bold`}>You don't have permission to view reports.</div>;
     }
 
     const reportCategories = [
@@ -50,33 +320,47 @@ const Reports = ({
     ];
 
     return (
-        <div className="p-4 md:p-8 h-full overflow-y-auto bg-gray-50">
+        <div className={`p-4 md:p-8 h-full overflow-y-auto ${theme.pageBg}`}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                <h2 className="text-2xl md:text-4xl font-black flex items-center text-gray-800">
+                <h2 className={`text-2xl md:text-4xl font-black flex items-center ${theme.textHeading}`}>
                     <FileText className="mr-3 text-indigo-600" /> Reports & Analytics
                 </h2>
                 <div className="flex gap-3 items-center">
-                    <DatePicker
-                        value={filterDate}
-                        onChange={val => setFilterDate(val)}
-                        className="w-48"
-                    />
-                    <button className="p-3 bg-white border-2 rounded-xl shadow-sm text-gray-600 hover:text-indigo-600">
-                        <Download size={20} />
+                    <div className={`flex items-center gap-2 ${theme.surfaceBg} border-2 ${theme.borderLight} rounded-2xl px-3 py-2 shadow-sm`}>
+                        <DatePicker
+                            value={filterStartDate}
+                            onChange={val => setFilterStartDate(val || today)}
+                            className="w-40"
+                            placeholder="From date"
+                        />
+                        <span className={`text-xs font-bold ${theme.textMuted}`}>to</span>
+                        <DatePicker
+                            value={filterEndDate}
+                            onChange={val => setFilterEndDate(val || today)}
+                            className="w-40"
+                            placeholder="To date"
+                        />
+                    </div>
+                    <button
+                        onClick={handleExport}
+                        className={`inline-flex items-center gap-2 px-4 py-3 ${theme.buttonBg} ${theme.buttonText} rounded-2xl shadow-sm text-sm font-bold ${theme.buttonHoverBg}`}
+                    >
+                        <Download size={18} />
+                        <span>Export</span>
                     </button>
                 </div>
             </div>
 
             <div className="flex flex-col lg:flex-row gap-6 h-full lg:h-[calc(100vh-200px)] overflow-hidden">
                 {/* Sidebar for Reports */}
-                <div className="w-full lg:w-64 bg-white rounded-3xl shadow-lg border p-2 lg:p-4 flex flex-row lg:flex-col gap-2 shrink-0 overflow-x-auto lg:overflow-y-auto no-scrollbar">
+                <div className={`w-full lg:w-64 ${theme.surfaceBg} rounded-3xl shadow-lg border ${theme.borderLight} p-2 lg:p-4 flex flex-row lg:flex-col gap-2 shrink-0 overflow-x-auto lg:overflow-y-auto no-scrollbar`}>
                     {reportCategories.map((item) => (
                         <button
                             key={item.id}
                             onClick={() => setReportCategory(item.id)}
                             className={`flex items-center gap-3 p-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap flex-shrink-0 ${reportCategory === item.id
-                                ? "bg-indigo-600 text-white shadow-md"
-                                : "text-gray-500 hover:bg-gray-100"
+                                ? `${theme.buttonBg} ${theme.buttonText} shadow-md`
+                                : `${theme.textMuted} ${theme.sidebarItemHoverBg}`
                                 }`}
                         >
                             {item.icon} {item.label}
@@ -85,39 +369,47 @@ const Reports = ({
                 </div>
 
                 {/* Report Content Area */}
-                <div className="flex-1 bg-white rounded-3xl shadow-lg border p-4 lg:p-6 overflow-y-auto">
+                <div className={`flex-1 ${theme.surfaceBg} rounded-3xl shadow-lg border ${theme.borderLight} p-4 lg:p-6 overflow-y-auto relative`}>
+                    {loading && (
+                        <div className={`absolute inset-0 ${theme.surfaceBg}/50 backdrop-blur-sm z-10 flex items-center justify-center`}>
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                <p className="text-sm font-bold text-indigo-600">Loading Report...</p>
+                            </div>
+                        </div>
+                    )}
                     {/* 1. SALES REPORT */}
                     {reportCategory === "sales" && (
                         <div className="space-y-6">
-                            <h3 className="text-xl font-black text-gray-800 border-b pb-4">
-                                Sales Summary ({filterDate})
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
+                                Sales Summary ({rangeLabel})
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100">
-                                    <p className="text-xs font-bold text-indigo-400 uppercase">Total Revenue</p>
-                                    <p className="text-3xl font-black text-indigo-900 mt-2">
+                                <div className={`p-6 ${theme.infoBg} rounded-2xl border ${theme.infoBorder}`}>
+                                    <p className={`text-xs font-bold ${theme.infoText} opacity-70 uppercase`}>Total Revenue</p>
+                                    <p className={`text-3xl font-black ${theme.infoText} mt-2`}>
                                         {formatCurrency(
                                             salesHistory
-                                                .filter((s) => s.date === filterDate)
+                                                .filter((s) => isWithinRange(s.date))
                                                 .reduce((a, b) => a + b.amount, 0)
                                         )}
                                     </p>
                                 </div>
-                                <div className="p-6 bg-green-50 rounded-2xl border border-green-100">
-                                    <p className="text-xs font-bold text-green-400 uppercase">Total Orders</p>
-                                    <p className="text-3xl font-black text-green-900 mt-2">
-                                        {salesHistory.filter((s) => s.date === filterDate).length}
+                                <div className={`p-6 ${theme.successBg} rounded-2xl border ${theme.successBorder || 'border-green-100'}`}>
+                                    <p className={`text-xs font-bold ${theme.successText} opacity-70 uppercase`}>Total Orders</p>
+                                    <p className={`text-3xl font-black ${theme.successText} mt-2`}>
+                                        {salesHistory.filter((s) => isWithinRange(s.date)).length}
                                     </p>
                                 </div>
-                                <div className="p-6 bg-orange-50 rounded-2xl border border-orange-100">
-                                    <p className="text-xs font-bold text-orange-400 uppercase">Avg Bill Value</p>
-                                    <p className="text-3xl font-black text-orange-900 mt-2">
+                                <div className={`p-6 ${theme.warningBg} rounded-2xl border ${theme.warningBorder}`}>
+                                    <p className={`text-xs font-bold ${theme.warningText} opacity-70 uppercase`}>Avg Bill Value</p>
+                                    <p className={`text-3xl font-black ${theme.warningText} mt-2`}>
                                         {formatCurrency(
-                                            salesHistory.filter((s) => s.date === filterDate).length
+                                            salesHistory.filter((s) => isWithinRange(s.date)).length
                                                 ? salesHistory
-                                                    .filter((s) => s.date === filterDate)
+                                                    .filter((s) => isWithinRange(s.date))
                                                     .reduce((a, b) => a + b.amount, 0) /
-                                                salesHistory.filter((s) => s.date === filterDate).length
+                                                salesHistory.filter((s) => isWithinRange(s.date)).length
                                                 : 0
                                         )}
                                     </p>
@@ -126,27 +418,31 @@ const Reports = ({
                             <CommonTable
                                 columns={[
                                     {
-                                        header: "Bill ID",
-                                        key: "id",
-                                        render: (value) => <span className="font-mono text-xs">#{value.toString().slice(-6)}</span>
+                                        header: "Sales Invoice",
+                                        key: "invoiceNumber",
+                                        render: (value) => <span className="font-mono text-xs font-bold">#{value}</span>
                                     },
                                     {
                                         header: "Time",
                                         key: "timestamp",
+                                        headerClassName: "text-center",
+                                        className: "text-center",
                                         render: (value) => (
-                                            <span className="text-sm">
-                                                {new Date(value).toLocaleTimeString()}
+                                            <span className="text-sm font-medium">
+                                                {new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                         )
                                     },
                                     {
                                         header: "Type",
                                         key: "type",
+                                        headerClassName: "text-center",
+                                        className: "text-center",
                                         render: (value) => (
                                             <span
-                                                className={`px-2 py-1 rounded text-xs font-bold ${value === "Dine-in"
-                                                    ? "bg-blue-100 text-blue-600"
-                                                    : "bg-orange-100 text-orange-600"
+                                                className={`px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${value === "Dine-in"
+                                                    ? (themeName === 'dark' ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-100 text-indigo-600")
+                                                    : (themeName === 'dark' ? "bg-orange-900/40 text-orange-400" : "bg-orange-100 text-orange-600")
                                                     }`}
                                             >
                                                 {value}
@@ -157,11 +453,11 @@ const Reports = ({
                                         header: "Amount",
                                         key: "amount",
                                         headerClassName: "text-right",
-                                        className: "text-right font-bold",
+                                        className: "text-right font-black text-indigo-600",
                                         render: (value) => formatCurrency(value)
                                     }
                                 ]}
-                                data={salesHistory.filter((s) => s.date === filterDate)}
+                                data={salesHistory.filter((s) => isWithinRange(s.date))}
                                 className="mt-4"
                             />
                         </div>
@@ -170,31 +466,50 @@ const Reports = ({
                     {/* 2. ITEM-WISE REPORT */}
                     {reportCategory === "items" && (
                         <div className="space-y-6">
-                            <h3 className="text-xl font-black text-gray-800 border-b pb-4">
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
                                 Item-wise Sales
                             </h3>
                             <CommonTable
                                 columns={[
-                                    { header: "Item Name", key: "name", className: "font-bold text-gray-700" },
-                                    { header: "Qty Sold", key: "qty", className: "text-center font-bold" },
+                                    { 
+                                        header: "Item Name", 
+                                        key: "name", 
+                                        width: "40%",
+                                        className: `font-bold ${theme.textPrimary}` 
+                                    },
+                                    { 
+                                        header: "Qty Sold", 
+                                        key: "qty", 
+                                        headerClassName: "text-center",
+                                        className: "text-center font-bold" 
+                                    },
                                     {
                                         header: "Revenue",
                                         key: "revenue",
+                                        headerClassName: "text-right",
                                         className: "text-right font-bold text-indigo-600",
+                                        render: (value) => formatCurrency(value)
+                                    },
+                                    {
+                                        header: "Profit",
+                                        key: "profit",
+                                        headerClassName: "text-right",
+                                        className: "text-right font-bold text-emerald-600",
                                         render: (value) => formatCurrency(value)
                                     }
                                 ]}
                                 data={(() => {
                                     const itemStats = {};
                                     salesHistory
-                                        .filter((s) => s.date === filterDate)
+                                        .filter((s) => isWithinRange(s.date))
                                         .forEach((sale) => {
                                             if (sale.items) {
                                                 sale.items.forEach((item) => {
                                                     if (!itemStats[item.name])
-                                                        itemStats[item.name] = { qty: 0, revenue: 0 };
-                                                    itemStats[item.name].qty += item.quantity;
-                                                    itemStats[item.name].revenue += item.price * item.quantity;
+                                                        itemStats[item.name] = { qty: 0, revenue: 0, profit: 0 };
+                                                    itemStats[item.name].qty += (item.quantity || 0);
+                                                    itemStats[item.name].revenue += (item.price || 0) * (item.quantity || 0);
+                                                    itemStats[item.name].profit += ((item.price || 0) - (item.purchasePrice || 0)) * (item.quantity || 0);
                                                 });
                                             }
                                         });
@@ -207,14 +522,14 @@ const Reports = ({
                     {/* 3. CATEGORY REPORT */}
                     {reportCategory === "category" && (
                         <div className="space-y-6">
-                            <h3 className="text-xl font-black text-gray-800 border-b pb-4">
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
                                 Category Performance
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {(() => {
                                     const catStats = {};
                                     salesHistory
-                                        .filter((s) => s.date === filterDate)
+                                        .filter((s) => isWithinRange(s.date))
                                         .forEach((sale) => {
                                             if (sale.items) {
                                                 sale.items.forEach((item) => {
@@ -225,8 +540,8 @@ const Reports = ({
                                             }
                                         });
                                     return Object.entries(catStats).map(([cat, revenue]) => (
-                                        <div key={cat} className="p-4 border rounded-2xl flex justify-between items-center hover:shadow-md transition-all">
-                                            <span className="font-bold text-gray-600">{cat}</span>
+                                        <div key={cat} className={`p-4 border ${theme.borderLight} rounded-2xl flex justify-between items-center hover:shadow-md transition-all`}>
+                                            <span className={`font-bold ${theme.textSecondary}`}>{cat}</span>
                                             <span className="font-black text-indigo-600 text-lg">{formatCurrency(revenue)}</span>
                                         </div>
                                     ));
@@ -238,29 +553,35 @@ const Reports = ({
                     {/* 4. PAYMENT MODES */}
                     {reportCategory === "payments" && (
                         <div className="space-y-6">
-                            <h3 className="text-xl font-black text-gray-800 border-b pb-4">
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
                                 Payment Methods
                             </h3>
                             <div className="space-y-4">
                                 {["Cash", "UPI", "Card"].map((method) => {
                                     const total = salesHistory
-                                        .filter((s) => s.date === filterDate && s.method === method)
+                                        .filter((s) => isWithinRange(s.date) && s.method === method)
                                         .reduce((a, b) => a + b.amount, 0);
                                     const count = salesHistory.filter(
-                                        (s) => s.date === filterDate && s.method === method
+                                        (s) => isWithinRange(s.date) && s.method === method
                                     ).length;
                                     return (
-                                        <div key={method} className="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border">
+                                        <div key={method} className={`flex justify-between items-center p-5 ${theme.pageBg} rounded-2xl border ${theme.borderLight}`}>
                                             <div className="flex items-center gap-4">
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${method === "Cash" ? "bg-green-100 text-green-600" : method === "UPI" ? "bg-indigo-100 text-indigo-600" : "bg-blue-100 text-blue-600"}`}>
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                                    method === "Cash" 
+                                                        ? (themeName === 'dark' ? "bg-green-900/40 text-green-400" : "bg-green-100 text-green-600")
+                                                        : method === "UPI" 
+                                                            ? (themeName === 'dark' ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-100 text-indigo-600")
+                                                            : (themeName === 'dark' ? "bg-blue-900/40 text-blue-400" : "bg-blue-100 text-blue-600")
+                                                }`}>
                                                     {method === "Cash" ? <DollarSign size={20} /> : method === "UPI" ? <Zap size={20} /> : <CreditCard size={20} />}
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-gray-800">{method}</p>
-                                                    <p className="text-xs text-gray-500">{count} Transactions</p>
+                                                    <p className={`font-bold ${theme.textPrimary}`}>{method}</p>
+                                                    <p className={`text-xs ${theme.textMuted}`}>{count} Transactions</p>
                                                 </div>
                                             </div>
-                                            <p className="text-xl font-black text-gray-900">{formatCurrency(total)}</p>
+                                            <p className={`text-xl font-black ${theme.textPrimary}`}>{formatCurrency(total)}</p>
                                         </div>
                                     );
                                 })}
@@ -271,19 +592,70 @@ const Reports = ({
                     {/* 5. TAX REPORT */}
                     {reportCategory === "tax" && (
                         <div className="space-y-6">
-                            <h3 className="text-xl font-black text-gray-800 border-b pb-4">
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
                                 Tax / GST Report
                             </h3>
-                            <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100 text-center">
-                                <p className="text-sm font-bold text-blue-400 uppercase tracking-widest">Total Tax Collected</p>
-                                <p className="text-4xl font-black text-blue-900 mt-2">
+                            <div className={`p-6 ${theme.infoBg} rounded-3xl border ${theme.infoBorder} text-center`}>
+                                <p className={`text-sm font-bold ${theme.infoText} opacity-70 uppercase tracking-widest`}>Total Tax Collected</p>
+                                <p className={`text-4xl font-black ${theme.infoText} mt-2`}>
                                     {formatCurrency(
                                         salesHistory
-                                            .filter((s) => s.date === filterDate)
+                                            .filter((s) => isWithinRange(s.date))
                                             .reduce((sum, s) => sum + (s.taxAmount || 0), 0)
                                     )}
                                 </p>
-                                <p className="text-xs text-blue-400 mt-2">Based on {settings.defaultTaxPercent}% Rate</p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h4 className={`font-bold ${theme.textSecondary}`}>Item-wise Tax Split-up</h4>
+                                <CommonTable
+                                    columns={[
+                                        { header: "Item Name", key: "name", className: `font-bold ${theme.textPrimary}` },
+                                        { 
+                                            header: "Qty", 
+                                            key: "qty", 
+                                            headerClassName: "text-center",
+                                            className: "text-center font-bold" 
+                                        },
+                                        { 
+                                            header: "Tax %", 
+                                            key: "taxPercent", 
+                                            headerClassName: "text-center",
+                                            className: "text-center font-bold text-indigo-600", 
+                                            render: (v) => `${v}%` 
+                                        },
+                                        {
+                                            header: "Tax Collected",
+                                            key: "taxAmount",
+                                            headerClassName: "text-right",
+                                            className: `text-right font-black ${theme.textPrimary}`,
+                                            render: (value) => formatCurrency(value)
+                                        }
+                                    ]}
+                                    data={(() => {
+                                        const taxStats = {};
+                                        salesHistory
+                                            .filter((s) => isWithinRange(s.date))
+                                            .forEach((sale) => {
+                                                const items = sale.items || [];
+                                                items.forEach((item) => {
+                                                    const taxP = (item.taxPercent !== undefined && item.taxPercent !== null && item.taxPercent !== 0) 
+                                                        ? Number(item.taxPercent) 
+                                                        : (settings?.defaultTaxPercent || 0);
+                                                    
+                                                    const itemTax = item.taxAmount || (((item.price || 0) * item.quantity * taxP) / 100);
+                                                    
+                                                    const key = `${item.name}-${taxP}`;
+                                                    if (!taxStats[key]) {
+                                                        taxStats[key] = { name: item.name, taxPercent: taxP, qty: 0, taxAmount: 0 };
+                                                    }
+                                                    taxStats[key].qty += item.quantity;
+                                                    taxStats[key].taxAmount += (itemTax || 0);
+                                                });
+                                            });
+                                        return Object.values(taxStats);
+                                    })()}
+                                />
                             </div>
                         </div>
                     )}
@@ -291,17 +663,23 @@ const Reports = ({
                     {/* 6. STAFF PERFORMANCE REPORT */}
                     {reportCategory === "staff_report" && (
                         <div className="space-y-6">
-                            <h3 className="text-xl font-black text-gray-800 border-b pb-4">
-                                Staff Performance ({filterDate})
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
+                                Staff Performance ({rangeLabel})
                             </h3>
                             <CommonTable
                                 columns={[
-                                    { header: "Staff Name", key: "name", className: "font-bold text-gray-700" },
-                                    { header: "Orders", key: "orders", className: "text-center font-bold text-indigo-600" },
+                                    { header: "Staff Name", key: "name", className: `font-bold ${theme.textPrimary}` },
+                                    { 
+                                        header: "Orders", 
+                                        key: "orders", 
+                                        headerClassName: "text-center",
+                                        className: "text-center font-bold text-indigo-600" 
+                                    },
                                     {
                                         header: "Total Sales",
                                         key: "sales",
-                                        className: "text-right font-black",
+                                        headerClassName: "text-right",
+                                        className: `text-right font-black ${theme.textPrimary}`,
                                         render: (value) => formatCurrency(value)
                                     }
                                 ]}
@@ -309,7 +687,7 @@ const Reports = ({
                                     .filter((s) => s.role !== "Admin")
                                     .map((s) => {
                                         const staffSales = salesHistory.filter(
-                                            (sale) => sale.date === filterDate && sale.waiterName === s.name
+                                            (sale) => isWithinRange(sale.date) && sale.waiterName === s.name
                                         );
                                         return {
                                             id: s.id,
@@ -326,21 +704,21 @@ const Reports = ({
                     {/* 7. TABLE REVENUE REPORT */}
                     {reportCategory === "table_report" && (
                         <div className="space-y-6">
-                            <h3 className="text-xl font-black text-gray-800 border-b pb-4">
-                                Table Revenue Analysis ({filterDate})
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
+                                Table Revenue Analysis ({rangeLabel})
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {tables.map((t) => {
                                     const tableSales = salesHistory.filter(
-                                        (s) => s.date === filterDate && s.tableName === t.name
+                                        (s) => isWithinRange(s.date) && s.tableName === t.name
                                     );
                                     const totalRevenue = tableSales.reduce((sum, s) => sum + s.amount, 0);
                                     const orderCount = tableSales.length;
                                     return (
-                                        <div key={t.id} className="p-4 border rounded-2xl flex flex-col justify-between hover:shadow-md transition-all bg-gray-50">
+                                        <div key={t.id} className={`p-4 border ${theme.borderLight} rounded-2xl flex flex-col justify-between hover:shadow-md transition-all ${theme.pageBg}`}>
                                             <div className="flex justify-between items-start mb-2">
-                                                <span className="font-bold text-gray-700 text-lg">{t.name}</span>
-                                                <span className="text-xs bg-white px-2 py-1 rounded border text-gray-500">{orderCount} Orders</span>
+                                                <span className={`font-bold ${theme.textPrimary} text-lg`}>{t.name}</span>
+                                                <span className={`text-xs ${theme.surfaceBg} px-2 py-1 rounded border ${theme.borderLight} ${theme.textMuted}`}>{orderCount} Orders</span>
                                             </div>
                                             <span className="font-black text-indigo-600 text-2xl">{formatCurrency(totalRevenue)}</span>
                                         </div>
@@ -353,31 +731,56 @@ const Reports = ({
                     {/* 8. PEAK HOURS REPORT */}
                     {reportCategory === "hourly" && (
                         <div className="space-y-6">
-                            <h3 className="text-xl font-black text-gray-800 border-b pb-4">
-                                Hourly Sales & Activity ({filterDate})
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
+                                Hourly Sales & Activity ({rangeLabel})
                             </h3>
-                            <div className="h-64 flex items-end justify-between gap-1 px-2 pb-2 border-b border-dashed min-w-[600px] overflow-x-auto">
-                                {[...Array(14)].map((_, i) => {
-                                    const hour = 9 + i;
-                                    const hourSales = salesHistory.filter(
-                                        (s) => s.date === filterDate && new Date(s.timestamp).getHours() === hour
-                                    );
-                                    const revenue = hourSales.reduce((a, b) => a + b.amount, 0);
-                                    const count = hourSales.length;
-                                    const maxRev = 5000;
-                                    const height = Math.min(100, (revenue / maxRev) * 100) || 5;
-                                    return (
-                                        <div key={i} className="flex flex-col items-center gap-1 group flex-1 min-w-[40px]">
-                                            <div
-                                                className="w-full bg-indigo-100 rounded-t-lg relative transition-all group-hover:bg-indigo-300 flex items-end justify-center"
-                                                style={{ height: `${height}%` }}
-                                            >
-                                                <span className="text-[10px] font-bold text-indigo-700 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">{count}</span>
+                            <div className={`h-64 flex items-end justify-between gap-1 px-2 pb-2 border-b border-dashed ${theme.borderLight} min-w-[600px] overflow-x-auto`}>
+                                {(() => {
+                                    const hourlyData = [...Array(14)].map((_, i) => {
+                                        const hour = 9 + i;
+                                        const hourSales = salesHistory.filter(
+                                            (s) => isWithinRange(s.date) && new Date(s.timestamp).getHours() === hour
+                                        );
+                                        const revenue = hourSales.reduce((a, b) => a + Number(b.amount || 0), 0);
+                                        const count = hourSales.length;
+                                        return { hour, revenue, count, i };
+                                    });
+
+                                    let maxRevInRange = Math.max(...hourlyData.map(d => d.revenue), 0);
+                                    if (isNaN(maxRevInRange) || maxRevInRange <= 0) maxRevInRange = 1000;
+
+                                    return hourlyData.map(({ hour, revenue, count, i }) => {
+                                        const scaleFactor = (revenue / maxRevInRange);
+                                        const height = revenue > 0 
+                                            ? Math.max(12, (isNaN(scaleFactor) ? 0 : scaleFactor) * 100) 
+                                            : 5;
+                                        const isActive = revenue > 0;
+
+                                        return (
+                                            <div key={i} className="flex flex-col items-center gap-1 group flex-1 min-w-[40px] h-full">
+                                                <div className="flex-1 w-full flex items-end justify-center relative">
+                                                    <div
+                                                        className={`w-full rounded-t-lg relative transition-all flex items-end justify-center ${
+                                                            isActive 
+                                                                ? "bg-indigo-500 group-hover:bg-indigo-600 shadow-sm" 
+                                                                : `${theme.borderLight} bg-opacity-20 group-hover:bg-opacity-40`
+                                                        } ${!isActive && themeName === 'dark' ? 'bg-gray-700' : 'bg-gray-100'}`}
+                                                        style={{ height: `${height}%` }}
+                                                    >
+                                                        {isActive && (
+                                                            <span className="absolute -top-6 bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-md font-bold shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                                                {count} Orders
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <span className={`text-[10px] font-bold ${isActive ? "text-indigo-600" : theme.textMuted} pb-1`}>
+                                                    {hour > 12 ? hour - 12 : hour} {hour >= 12 ? "PM" : "AM"}
+                                                </span>
                                             </div>
-                                            <span className="text-[10px] font-bold text-gray-400">{hour > 12 ? hour - 12 : hour} {hour >= 12 ? "PM" : "AM"}</span>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    });
+                                })()}
                             </div>
                         </div>
                     )}
@@ -385,7 +788,7 @@ const Reports = ({
                     {/* 9. ONLINE ORDERS REPORT */}
                     {reportCategory === "online_report" && (
                         <div className="space-y-6">
-                            <h3 className="text-xl font-black text-gray-800 border-b pb-4">
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
                                 Online Orders Performance
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -402,12 +805,12 @@ const Reports = ({
                                         platformStats[p].sales += o.total;
                                     });
                                     return Object.entries(platformStats).map(([plat, stats]) => (
-                                        <div key={plat} className={`p-6 rounded-3xl border flex flex-col ${plat === "Zomato" ? "bg-red-50 border-red-100" : plat === "Swiggy" ? "bg-orange-50 border-orange-100" : "bg-gray-50 border-gray-200"}`}>
+                                        <div key={plat} className={`p-6 rounded-3xl border flex flex-col ${plat === "Zomato" ? (themeName === 'dark' ? "bg-red-900/20 border-red-800/50" : "bg-red-50 border-red-100") : plat === "Swiggy" ? (themeName === 'dark' ? "bg-orange-900/20 border-orange-800/50" : "bg-orange-50 border-orange-100") : `${theme.pageBg} ${theme.borderLight}`}`}>
                                             <div className="flex justify-between items-center mb-4">
-                                                <h4 className={`text-lg font-black ${plat === "Zomato" ? "text-red-600" : plat === "Swiggy" ? "text-orange-600" : "text-gray-600"}`}>{plat}</h4>
-                                                <span className="bg-white px-3 py-1 rounded-full text-xs font-bold shadow-sm">{stats.count} Orders</span>
+                                                <h4 className={`text-lg font-black ${plat === "Zomato" ? "text-red-500" : plat === "Swiggy" ? "text-orange-500" : theme.textSecondary}`}>{plat}</h4>
+                                                <span className={`${theme.surfaceBg} px-3 py-1 rounded-full text-xs font-bold shadow-sm ${theme.textPrimary}`}>{stats.count} Orders</span>
                                             </div>
-                                            <p className="text-3xl font-black text-gray-800">{formatCurrency(stats.sales)}</p>
+                                            <p className={`text-3xl font-black ${theme.textHeading}`}>{formatCurrency(stats.sales)}</p>
                                         </div>
                                     ));
                                 })()}

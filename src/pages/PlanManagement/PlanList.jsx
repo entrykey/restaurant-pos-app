@@ -55,7 +55,7 @@ const PlanList = ({ onEdit, onAddNew }) => {
                     </div>
                     <span className={`font-bold text-sm ${theme.textPrimary}`}>{plan.name}</span>
                     {plan.isCustom && (
-                        <span className="ml-2 px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-black uppercase rounded-lg">Custom</span>
+                        <span className={`ml-2 px-2 py-0.5 ${theme.warningBg} border ${theme.warningBorder} ${theme.warningText} text-[10px] font-black uppercase rounded-lg`}>Custom</span>
                     )}
                 </div>
             )
@@ -65,7 +65,7 @@ const PlanList = ({ onEdit, onAddNew }) => {
             key: "businessType",
             render: (_, plan) => (
                 <div className="flex items-center">
-                    <span className={`px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg text-xs font-bold ${theme.textPrimary}`}>
+                    <span className={`px-3 py-1.5 ${theme.sectionBg} border ${theme.sectionBorder} rounded-lg text-xs font-bold ${theme.textPrimary}`}>
                         {plan.businessType?.displayString || 'Standard'}
                         {plan.subType?.displayString && (
                             <span className={`ml-1 text-[11px] font-black uppercase tracking-widest text-indigo-500`}>
@@ -84,7 +84,7 @@ const PlanList = ({ onEdit, onAddNew }) => {
                 <>
                     {plan.durationDays} Days
                     {plan.hasTrial && (
-                        <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-600 text-[10px] font-black uppercase rounded-lg">Trial {plan.trialDurationDays}d</span>
+                        <span className={`ml-2 px-2 py-0.5 ${theme.successBg} ${theme.successText} text-[10px] font-black uppercase rounded-lg`}>Trial {plan.trialDurationDays}d</span>
                     )}
                 </>
             )

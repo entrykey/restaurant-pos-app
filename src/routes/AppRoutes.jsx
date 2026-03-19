@@ -18,9 +18,13 @@ import ProductPage from "../pages/Inventory/ProductPage";
 import Reports from "../pages/Reports/Reports";
 import Settings from "../pages/Settings/Settings";
 import Staff from "../pages/Staff/Staff";
+import StaffDashboard from "../pages/Staff/StaffDashboard";
 import Organization from "../pages/Organization/Organization";
+import OfferList from "../pages/Offers/OfferList";
+import OfferForm from "../pages/Offers/OfferForm";
 
 import Supplier from "../pages/Suppliers/Supplier";
+import Parties from "../pages/Parties/Parties";
 import ServiceList from "../pages/Service/ServiceList";
 import ServiceCreate from "../pages/Service/ServiceCreate";
 import ServiceDetails from "../pages/Service/ServiceDetails";
@@ -32,6 +36,11 @@ import ShopManagementPage from "../pages/ShopManagement";
 import PlanManagementPage from "../pages/PlanManagement";
 import SubscriptionManagementPage from "../pages/SubscriptionManagement/SubscriptionManagement";
 import TableManagement from "../pages/TableManagement/TableManagement";
+import OwnerDashboard from "../pages/OwnerDashboard/OwnerDashboard";
+import Dashboard from "../pages/Dashboard/Dashboard";
+import PayInList from "../pages/Dashboard/PayInList";
+import PayOutList from "../pages/Dashboard/PayOutList";
+import OperatingExpenses from "../pages/Dashboard/OperatingExpenses";
 
 const TableOrderWrapper = ({ setActiveTableId, setView, setIsTakeaway, children }) => {
   const { tableId } = useParams();
@@ -127,11 +136,37 @@ const AppRoutes = (props) => {
     setBranches,
     inventoryItems,
     setInventoryItems,
+    businessTypeData,
+    activeBranchId,
   } = props;
 
   const isWholesale = takeawayOrder?.orderType === "WHOLESALE";
   const isDirectSale = takeawayOrder?.orderType === "DIRECT_SALE";
-  const stockMenu = (inventoryItems || []).filter((i) => i.itemType === "STOCK");
+
+  const sellStock = businessTypeData?.features?.sellStockItems ?? true;
+  const sellManufactured = businessTypeData?.features?.sellManufacturedItems ?? true;
+  const sellTrade = businessTypeData?.features?.sellTradeItems ?? false;
+
+  const stockItems = (inventoryItems || []).filter((i) => i.itemType === "STOCK");
+  const tradeItems = (inventoryItems || []).filter((i) => i.itemType === "TRADE");
+  const manufacturedItems = props.menu || [];
+
+  // Determine what to show in the POS menu
+  let filteredMenu = [];
+  if (sellStock) filteredMenu = [...filteredMenu, ...stockItems];
+  if (sellManufactured) filteredMenu = [...filteredMenu, ...manufacturedItems];
+  if (sellTrade) filteredMenu = [...filteredMenu, ...tradeItems];
+
+  // Specific override for Wholesale: usually only stock, 
+  // but if superadmin said "only manufactured", then wholesale should show manufactured?
+  // Let's stick to the features flags as the primary source.
+  if (isWholesale) {
+    filteredMenu = stockItems; // Wholesale is traditionally stock
+    if (!sellStock && sellManufactured) filteredMenu = manufacturedItems; // Fallback if stock is disabled
+  }
+
+  const safeHasPermission = typeof hasPermission === "function" ? hasPermission : (typeof props.hasPermission === "function" ? props.hasPermission : () => false);
+  const safeHasPermissionFor = typeof hasPermissionFor === "function" ? hasPermissionFor : (typeof props.hasPermissionFor === "function" ? props.hasPermissionFor : () => false);
 
   const orderProps = {
     isTakeaway,
@@ -141,6 +176,8 @@ const AppRoutes = (props) => {
     formatCurrency,
     calculateTotal,
     calculateItemTotal,
+    calculateBillDetails: props.calculateBillDetails,
+    offers: props.offers,
     handlePrintReceipt,
     handleSendToKOT,
     setIsPaymentModalOpen,
@@ -157,16 +194,50 @@ const AppRoutes = (props) => {
     setIsTakeaway,
     setView,
     settings,
-    hasPermission: hasPermission || props.hasPermission || (() => false),
-    hasPermissionFor: hasPermissionFor || props.hasPermissionFor || (() => false),
+    hasPermission: safeHasPermission,
+    hasPermissionFor: safeHasPermissionFor,
     currentUser: currentUser || props.currentUser,
-    menu: isWholesale ? stockMenu : (isDirectSale ? [...(props.menu || []), ...stockMenu] : (props.menu || [])),
+    menu: filteredMenu,
     setMenu: props.setMenu,
   };
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <Routes>
+        {/* Generic Dashboard Route */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute routeKey="DASHBOARD">
+              <Dashboard hasPermissionFor={hasPermissionFor || props.hasPermissionFor} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/pay-in"
+          element={
+            <ProtectedRoute routeKey="DASHBOARD">
+              <PayInList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/pay-out"
+          element={
+            <ProtectedRoute routeKey="DASHBOARD">
+              <PayOutList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/operating-expenses"
+          element={
+            <ProtectedRoute routeKey="DASHBOARD">
+              <OperatingExpenses />
+            </ProtectedRoute>
+          }
+        />
+
         {/* New specific route for dining hall */}
         <Route
           path="/dininghall"
@@ -187,6 +258,7 @@ const AppRoutes = (props) => {
                 setOrderSearch={props.setOrderSearch}
                 setActiveTableId={props.setActiveTableId}
                 joinTables={props.joinTables}
+                refreshData={props.refreshData}
               />
             </ProtectedRoute>
           }
@@ -358,11 +430,12 @@ const AppRoutes = (props) => {
           element={
             <ProtectedRoute routeKey="REPORTS">
               <Reports
-                salesHistory={salesHistory}
                 staffList={staffList}
                 tables={tables}
                 onlineOrders={onlineOrders}
                 settings={settings}
+                shopId={currentUser?.shop_id}
+                branchId={activeBranchId}
                 hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
               />
             </ProtectedRoute>
@@ -382,6 +455,7 @@ const AppRoutes = (props) => {
                 authLogs={props.authLogs}
                 hasPermission={hasPermission || props.hasPermission}
                 hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
+                currentUser={currentUser}
               />
             </ProtectedRoute>
           }
@@ -403,6 +477,35 @@ const AppRoutes = (props) => {
           }
         />
 
+        {/* Offers Route */}
+        <Route
+          path="/offers"
+          element={
+            <ProtectedRoute routeKey="OFFERS">
+              <OfferList
+                hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
+                formatCurrency={formatCurrency}
+              />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/offers/new"
+          element={
+            <ProtectedRoute routeKey="OFFERS">
+              <OfferForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/offers/edit/:id"
+          element={
+            <ProtectedRoute routeKey="OFFERS">
+              <OfferForm />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Staff Route */}
         <Route
           path="/staff"
@@ -419,8 +522,16 @@ const AppRoutes = (props) => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/staff-dashboard"
+          element={
+            <ProtectedRoute routeKey="STAFF_DASHBOARD">
+              <StaffDashboard />
+            </ProtectedRoute>
+          }
+        />
 
-        {/* Suppliers Route */}
+        {/* Suppliers Route (standalone) */}
         <Route
           path="/suppliers"
           element={
@@ -428,6 +539,16 @@ const AppRoutes = (props) => {
               <Supplier
                 hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
               />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Parties Route (Suppliers + Customers tabs) */}
+        <Route
+          path="/parties"
+          element={
+            <ProtectedRoute routeKey="PARTIES">
+              <Parties hasPermissionFor={hasPermissionFor || props.hasPermissionFor} />
             </ProtectedRoute>
           }
         />
@@ -550,11 +671,24 @@ const AppRoutes = (props) => {
           }
         />
 
+        {/* Owner Dashboard Route (Keep direct url access optional, though it'll be part of unified dashboard) */}
+        <Route
+          path="/owner-dashboard"
+          element={
+            <ProtectedRoute routeKey="DASHBOARD">
+              <OwnerDashboard />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Maintain existing view-based logic for other pages for now */}
         <Route
           path="*"
           element={
             <>
+              {view === "dashboard" && (
+                <Navigate to="/dashboard" replace />
+              )}
               {view === "tables" && (
                 <Navigate to="/dininghall" replace />
               )}
@@ -585,6 +719,9 @@ const AppRoutes = (props) => {
               {view === "suppliers" && (
                 <Navigate to="/suppliers" replace />
               )}
+              {view === "parties" && (
+                <Navigate to="/parties" replace />
+              )}
               {view === "service" && (
                 <Navigate to="/service" replace />
               )}
@@ -603,12 +740,18 @@ const AppRoutes = (props) => {
               {view === "table-management" && (
                 <Navigate to="/table-management" replace />
               )}
-              {view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "service" && view !== "purchases" && view !== "business-types" && view !== "shop-management" && view !== "plan-management" && view !== "table-management" && props.children}
+              {view === "offers" && (
+                <Navigate to="/offers" replace />
+              )}
+              {view === "owner-dashboard" && (
+                <Navigate to="/owner-dashboard" replace />
+              )}
+              {view !== "dashboard" && view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "parties" && view !== "service" && view !== "purchases" && view !== "business-types" && view !== "shop-management" && view !== "plan-management" && view !== "table-management" && view !== "owner-dashboard" && view !== "offers" && props.children}
             </>
           }
         />
       </Routes>
-    </div>
+    </div >
   );
 };
 

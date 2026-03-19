@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus, Search, Calendar, User, Wrench } from "lucide-react";
+import { useTheme } from "../../context/ThemeContext";
 
 // Placeholder data - replace with API call
 const MOCK_SERVICES = [
@@ -39,6 +40,7 @@ const STATUS_COLORS = {
 };
 
 const ServiceList = ({ hasPermissionFor }) => {
+    const { theme } = useTheme();
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState("");
     const [filterStatus, setFilterStatus] = useState("All");
@@ -48,7 +50,7 @@ const ServiceList = ({ hasPermissionFor }) => {
     const canCreate = hasPermissionFor("service", "jobcard", "create");
 
     if (!canView) {
-        return <div className="p-8 text-center text-red-500">Access Denied</div>;
+        return <div className={`p-8 text-center ${theme.errorText} font-bold`}>Access Denied</div>;
     }
 
     const filteredServices = MOCK_SERVICES.filter((service) => {
@@ -63,17 +65,17 @@ const ServiceList = ({ hasPermissionFor }) => {
     });
 
     return (
-        <div className="h-full flex flex-col bg-gray-50">
+        <div className={`h-full flex flex-col ${theme.pageBg}`}>
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 bg-white shadow-sm shrink-0">
+            <div className={`flex items-center justify-between px-6 py-4 ${theme.surfaceBg} border-b ${theme.borderLight} shadow-sm shrink-0`}>
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Service Jobs</h1>
-                    <p className="text-sm text-gray-500">Manage repair orders & job cards</p>
+                    <h1 className={`text-2xl font-bold ${theme.textHeading}`}>Service Jobs</h1>
+                    <p className={`text-sm ${theme.textMuted}`}>Manage repair orders & job cards</p>
                 </div>
                 {canCreate && (
                     <Link
                         to="/service/new"
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                        className={`flex items-center gap-2 px-4 py-2 ${theme.buttonBg} ${theme.buttonText} rounded-lg ${theme.buttonHoverBg} transition-colors shadow-sm`}
                     >
                         <Plus className="w-5 h-5" />
                         <span>New Job Card</span>
@@ -84,20 +86,20 @@ const ServiceList = ({ hasPermissionFor }) => {
             {/* Filters & Search */}
             <div className="px-6 py-4 grid grid-cols-1 md:grid-cols-12 gap-4 shrink-0">
                 <div className="md:col-span-4 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 ${theme.textSecondary} w-5 h-5`} />
                     <input
                         type="text"
                         placeholder="Search by name, mobile, ID, product..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                        className={`w-full pl-10 pr-4 py-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-lg ${theme.inputFocus} outline-none focus:ring-2`}
                     />
                 </div>
                 <div className="md:col-span-3">
                     <select
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white"
+                        className={`w-full px-4 py-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-lg ${theme.inputFocus} outline-none focus:ring-2`}
                     >
                         <option value="All">All Statuses</option>
                         <option value="Received">Received</option>
@@ -116,11 +118,11 @@ const ServiceList = ({ hasPermissionFor }) => {
                         <div
                             key={service.id}
                             onClick={() => navigate(`/service/${service.id}`)}
-                            className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-gray-100 overflow-hidden flex flex-col"
+                            className={`${theme.surfaceBg} rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer border ${theme.borderLight} overflow-hidden flex flex-col`}
                         >
                             <div className="p-4 flex-1">
                                 <div className="flex justify-between items-start mb-3">
-                                    <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                    <span className={`font-mono text-xs ${theme.textMuted} ${theme.pageBg} px-2 py-1 rounded`}>
                                         {service.id}
                                     </span>
                                     <span
@@ -131,20 +133,20 @@ const ServiceList = ({ hasPermissionFor }) => {
                                     </span>
                                 </div>
 
-                                <h3 className="font-semibold text-gray-800 mb-1 flex items-center gap-2">
-                                    <Wrench className="w-4 h-4 text-gray-400" />
+                                <h3 className={`font-semibold ${theme.textHeading} mb-1 flex items-center gap-2`}>
+                                    <Wrench className={`w-4 h-4 ${theme.textSecondary}`} />
                                     {service.product}
                                 </h3>
 
-                                <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
-                                    <User className="w-4 h-4 text-gray-400" />
+                                <div className={`flex items-center gap-2 text-sm ${theme.textPrimary} mb-1`}>
+                                    <User className={`w-4 h-4 ${theme.textSecondary}`} />
                                     {service.customerName}
                                 </div>
-                                <div className="text-xs text-gray-500 ml-6 mb-3">
+                                <div className={`text-xs ${theme.textMuted} ml-6 mb-3`}>
                                     {service.mobile}
                                 </div>
 
-                                <div className="flex items-center gap-2 text-xs text-gray-400 mt-auto pt-3 border-t border-gray-50">
+                                <div className={`flex items-center gap-2 text-xs ${theme.textSecondary} mt-auto pt-3 border-t ${theme.borderLight}`}>
                                     <Calendar className="w-3 h-3" />
                                     {new Date(service.date).toLocaleString()}
                                 </div>
@@ -153,7 +155,7 @@ const ServiceList = ({ hasPermissionFor }) => {
                     ))}
 
                     {filteredServices.length === 0 && (
-                        <div className="col-span-full py-12 text-center text-gray-400">
+                        <div className={`col-span-full py-12 text-center ${theme.textMuted}`}>
                             <Wrench className="w-12 h-12 mx-auto mb-3 opacity-20" />
                             <p>No service jobs found matching your criteria.</p>
                         </div>

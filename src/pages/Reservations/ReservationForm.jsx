@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { reservationsService } from './ReservationsService';
-import { tableService, diningCategoryService } from '../../services/api';
+import { tableService, diningCategoryService, customerService } from '../../services/api';
 import DatePicker from '../../components/ui/DatePicker';
 import CommonSelect from '../../components/ui/CommonSelect';
 import { toast } from 'react-hot-toast';
@@ -120,6 +120,30 @@ const ReservationForm = () => {
         fetchTablesByCategory();
     }, [selectedCategoryId, activeBranchId]);
 
+    // Customer Auto-fill Logic
+    useEffect(() => {
+        const searchCustomer = async () => {
+            // Only search if phone has a reasonable length and we're not currently editing (or name is empty)
+            if (formData.phone && formData.phone.length >= 4 && !isEditing) {
+                try {
+                    const customers = await customerService.getCustomers({ search: formData.phone });
+                    if (customers && customers.length > 0) {
+                        // Find an exact match or use the first result
+                        const match = customers.find(c => c.phone === formData.phone) || customers[0];
+                        if (match && match.name && !formData.customerName) {
+                            setFormData(prev => ({ ...prev, customerName: match.name }));
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error searching customer:", error);
+                }
+            }
+        };
+
+        const timeoutId = setTimeout(searchCustomer, 500); // 500ms debounce
+        return () => clearTimeout(timeoutId);
+    }, [formData.phone, isEditing]);
+
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
         if (errors[field]) {
@@ -219,23 +243,6 @@ const ReservationForm = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div>
                                 <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
-                                    Customer Name <span className="text-red-500">*</span>
-                                </label>
-                                <div className="relative">
-                                    <User className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={18} />
-                                    <input
-                                        type="text"
-                                        value={formData.customerName}
-                                        onChange={(e) => handleChange('customerName', e.target.value)}
-                                        className={`w-full pl-12 pr-4 py-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors.customerName ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                        placeholder="Full Name"
-                                    />
-                                </div>
-                                {errors.customerName && <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors.customerName}</p>}
-                            </div>
-
-                            <div>
-                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
                                     Phone Number <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
@@ -249,6 +256,23 @@ const ReservationForm = () => {
                                     />
                                 </div>
                                 {errors.phone && <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors.phone}</p>}
+                            </div>
+
+                            <div>
+                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
+                                    Customer Name <span className="text-red-500">*</span>
+                                </label>
+                                <div className="relative">
+                                    <User className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={18} />
+                                    <input
+                                        type="text"
+                                        value={formData.customerName}
+                                        onChange={(e) => handleChange('customerName', e.target.value)}
+                                        className={`w-full pl-12 pr-4 py-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors.customerName ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                                        placeholder="Full Name"
+                                    />
+                                </div>
+                                {errors.customerName && <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors.customerName}</p>}
                             </div>
                         </div>
                     </div>

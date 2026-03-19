@@ -1,9 +1,9 @@
 import api from '../../services/api';
 
 export const SupplierService = {
-    getSuppliers: async (shopId) => {
+    getSuppliers: async (shopId, search = "") => {
         try {
-            const response = await api.get(`/suppliers?shopId=${shopId}`);
+            const response = await api.post('/suppliers/filter', { shopId, search });
             return response.data;
         } catch (error) {
             console.error("Error fetching suppliers:", error);

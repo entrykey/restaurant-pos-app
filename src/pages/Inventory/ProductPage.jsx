@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { ALL_FIELDS } from '../../config/itemFields';
-import { attributeService, unitService, shopService, categoryService, itemService, branchService } from '../../services/api';
+import { attributeService, unitService, shopService, categoryService, itemService, branchService, taxService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { SupplierService } from '../Suppliers/SupplierService';
-import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft, ClipboardList, ChevronDown, Package, FilePlus } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import DatePicker from '../../components/ui/DatePicker';
+import CommonSelect from '../../components/ui/CommonSelect';
 
-const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialog, onClose }) => {
+const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialog, onClose, fixedBranchId, prefillData, activeTabOverride }) => {
     const { user } = useAuth();
     const { activeBranchId } = useApp();
     const { theme } = useTheme();
@@ -17,9 +19,9 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     const { id } = useParams();
     const location = useLocation();
 
-    const isEditing = asDialog ? false : Boolean(id);
+    const isEditing = id ? Boolean(id) : false;
     const searchParams = new URLSearchParams(location.search);
-    const activeTab = asDialog ? 'raw' : (searchParams.get('tab') || 'menu'); // 'menu' or 'raw'
+    const activeTab = activeTabOverride || (asDialog ? 'raw' : (searchParams.get('tab') || 'menu')); 
     const showRecipe = activeTab === 'menu';
 
     const [isLoading, setIsLoading] = useState(isEditing);
@@ -36,6 +38,13 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     const [stockItems, setStockItems] = useState([]);
     const [itemAttributes, setItemAttributes] = useState({});
     const [ingredients, setIngredients] = useState([]);
+    const [shopTaxes, setShopTaxes] = useState([]);
+    const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState("");
+    const [isCategorySaving, setIsCategorySaving] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
+
+    const CORE_FIELD_KEYS = ["name", "category_id", "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type"];
 
     // Determine visible fields based on activeTab
     const getVisibleFields = () => {
@@ -43,13 +52,20 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         if (activeTab === "menu") {
             fields = [
                 "item_code", "name", "description", "category_id",
-                "unit_id", "selling_price", "mrp", "tax_id", "hsn_sac_code", "stock_applicable",
-                "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking", "status"
+                "unit_id", "selling_price", "mrp", "tax_percent", "hsn_sac_code", "stock_applicable",
+                "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking"
             ];
-        } else {
+        } else if (activeTab === "raw") {
             fields = [
                 "item_code", "name", "description", "category_id",
-                "unit_id", "purchase_price", "selling_price", "mrp", "tax_id", "hsn_sac_code",
+                "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "hsn_sac_code",
+                "stock_applicable", "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking"
+            ];
+        } else {
+            // Trade tab
+            fields = [
+                "item_code", "name", "description", "category_id",
+                "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "hsn_sac_code",
                 "stock_applicable", "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking", "status"
             ];
         }
@@ -96,6 +112,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         expiryTracking: full.tracking?.expiryTracking ?? full.expiryTracking ?? false,
                         serialTracking: full.tracking?.serialTracking ?? full.serialTracking ?? false,
                         weightBased: full.weightBased ?? false,
+                        taxPercent: full.taxPercent ?? 0,
                     };
                     setFormData(flat);
                     setItemAttributes(normalizedAttributes);
@@ -114,6 +131,24 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         fetchItemData();
     }, [id, isEditing]);
+ 
+    useEffect(() => {
+        if (!isEditing && prefillData) {
+            setFormData(prev => ({
+                ...prev,
+                name: prefillData.name || "",
+                pricing: {
+                    ...prev.pricing,
+                    purchasePrice: prefillData.purchasePrice || 0,
+                    sellingPrice: prefillData.purchasePrice || 0,
+                    mrp: prefillData.purchasePrice || 0
+                },
+                itemType: prefillData.itemType || "STOCK",
+                status: "ACTIVE"
+            }));
+        }
+    }, [prefillData, isEditing]);
+
 
     useEffect(() => {
         const fetchAttributesAndUnits = async () => {
@@ -141,7 +176,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     attributeService.getAttributes(params),
                     unitService.getUnits(),
                     categoryService.getCategories({ shopId: user?.shop_id }),
-                    SupplierService.getSuppliers(user?.shop_id)
+                    SupplierService.getSuppliers(user?.shop_id),
+                    taxService.getTaxes(branchIdToUse || activeBranchId)
                 ];
 
                 const results = await Promise.all(promises);
@@ -149,6 +185,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 const unitsRes = results[1];
                 const categoriesRes = results[2];
                 const suppliersRes = results[3];
+                const taxesRes = results[4];
 
                 if (branchIdToUse && user?.shop_id) {
                     try {
@@ -174,6 +211,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
                 const suppliersData = Array.isArray(suppliersRes) ? suppliersRes : (suppliersRes.data || []);
                 setSuppliers(suppliersData);
+                setShopTaxes(taxesRes.filter(t => t.isActive !== false));
             } catch (error) {
                 console.error("Failed to load attributes/units", error);
             }
@@ -185,7 +223,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     const response = await itemService.getItems({
                         limit: 1000,
                         filters: {
-                            shopid: user.shop_id,
+                            shopId: user.shop_id,
                             branchId: activeBranchId || undefined,
                             itemType: "STOCK"
                         }
@@ -217,20 +255,21 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         let options = fieldDef.options || [];
         if (fieldKey === "category_id") {
             options = categories.map(c => ({ label: c.name, value: c._id }));
+            fieldDef.required = true; 
         } else if (fieldKey === "supplier_id") {
             options = suppliers.map(s => ({ label: s.name, value: s._id }));
         } else if (fieldKey === "unit_id") {
             options = units.map(u => ({ label: u.name || u.code, value: u._id }));
-        } else if (fieldKey === "tax_id") {
-            options = [
-                { label: 'GST', value: 'GST' },
-                { label: 'VAT', value: 'VAT' },
-                { label: 'SALES_TAX', value: 'SALES_TAX' },
-                { label: 'NONE', value: 'NONE' }
-            ];
+        } else if (fieldKey === "tax_percent") {
+            options = shopTaxes.map(t => ({ label: `${t.name} (${t.percentage}%)`, value: t.percentage }));
         }
 
-        acc[section].push({ ...fieldDef, originalKey: fieldKey, options });
+        acc[section].push({ 
+            ...fieldDef, 
+            originalKey: fieldKey, 
+            options,
+            type: fieldKey === 'tax_percent' ? 'select' : fieldDef.type 
+        });
         return acc;
     }, {});
 
@@ -239,10 +278,6 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             ...prev,
             [ALL_FIELDS[fieldKey].key]: value
         }));
-
-        if (fieldKey === "tax_id") {
-            setIsGSTApplicable(value === 'GST');
-        }
 
         if (errors[fieldKey]) {
             setErrors(prev => {
@@ -335,9 +370,9 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         const payload = {
             ...cleanFormData,
-            shopid: user?.shop_id,
-            branchId: activeBranchId || (user?.branchIds && user.branchIds.length > 0 ? user.branchIds[0] : formData.branchId),
-            itemType: activeTab === "menu" ? "MANUFACTURED" : "STOCK",
+            shopId: user?.shop_id,
+            branchId: fixedBranchId || activeBranchId || (user?.branchIds && user.branchIds.length > 0 ? user.branchIds[0] : formData.branchId),
+            itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
             pricing: {
                 purchasePrice: parseFloat(formData.purchasePrice || 0),
                 sellingPrice: parseFloat(formData.sellingPrice || 0),
@@ -376,7 +411,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 } else {
                     setMenu(prev => [newItem, ...prev]);
                 }
-            } else if (activeTab === "raw" && setInventoryItems && inventoryItems) {
+                } else if ((activeTab === "raw" || activeTab === "trade") && setInventoryItems && inventoryItems) {
                 if (isEditing) {
                     setInventoryItems(prev => prev.map((m) => (m.id === id ? newItem : m)));
                 } else {
@@ -391,7 +426,32 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             }
         } catch (error) {
             console.error("Failed to save product:", error);
-            alert("Failed to save product. Please check console for details.");
+            toast.error("Failed to save product. Please check console for details.");
+        }
+    };
+
+    const handleCreateCategory = async (e) => {
+        e.preventDefault();
+        if (!newCategoryName.trim()) return;
+
+        setIsCategorySaving(true);
+        try {
+            const res = await categoryService.createCategory({
+                name: newCategoryName,
+                shopId: user.shop_id,
+                isActive: true
+            });
+            const created = res.data || res;
+            setCategories(prev => [...prev, created]);
+            setFormData(prev => ({ ...prev, categoryId: created._id || created.id }));
+            setIsCategoryModalOpen(false);
+            setNewCategoryName("");
+            toast.success("Category created successfully!");
+        } catch (error) {
+            console.error("Failed to create category:", error);
+            toast.error("Failed to create category");
+        } finally {
+            setIsCategorySaving(false);
         }
     };
 
@@ -404,8 +464,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     }
 
     const title = isEditing
-        ? `Edit ${activeTab === 'menu' ? 'Menu Item' : 'Item'}`
-        : `Add New ${activeTab === 'menu' ? 'Menu Item' : 'Item'}`;
+        ? `Edit ${activeTab === 'menu' ? 'Manufactured Item' : (activeTab === 'raw' ? 'Stock Item' : 'Trade Item')}`
+        : `Add New ${activeTab === 'menu' ? 'Manufactured Item' : (activeTab === 'raw' ? 'Stock Item' : 'Trade Item')}`;
 
     return (
         <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
@@ -426,85 +486,187 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     <div>
                         <h3 className={`text-3xl font-black ${theme.textHeading}`}>{title}</h3>
                         <p className={`text-sm mt-1 ${theme.textMuted}`}>
-                            Fill in the details below to {isEditing ? 'update' : 'create'} this {activeTab === 'menu' ? 'menu item' : 'inventory item'}.
+                            Fill in the details below to {isEditing ? 'update' : 'create'} this {activeTab === 'menu' ? 'manufactured item' : (activeTab === 'raw' ? 'stock item' : 'trade item')}.
                         </p>
                     </div>
                 </div>
 
                 <div className="space-y-12">
-                    {/* Dynamic Sections mapped from config */}
-                    {Object.entries(groupedFields).map(([section, fields]) => (
-                        <div key={section}>
-                            <div className="flex items-center gap-4 mb-8">
-                                <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>{section} Details</h4>
-                                <div className={`flex-1 h-px ${theme.borderLight}`}></div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                {fields.map(field => {
-                                    if (field.originalKey === 'min_stock_alert') {
-                                        const isStockApplicable = formData['stockApplicable'] !== false;
-                                        if (!isStockApplicable) return null;
-                                    }
+                    {/* CORE FIELDS SECTION */}
+                    <div>
+                        <div className="flex items-center gap-4 mb-8">
+                            <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Core Details</h4>
+                            <div className={`flex-1 h-px ${theme.borderLight}`}></div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                            {visibleFields.filter(fk => CORE_FIELD_KEYS.includes(fk)).map(fieldKey => {
+                                const field = ALL_FIELDS[fieldKey];
+                                if (!field) return null;
+                                
+                                const isRequired = field.required || fieldKey === 'category_id';
 
-                                    return (
-                                        <div key={field.originalKey} className={field.type === 'textarea' ? 'md:col-span-3' : ''}>
-                                            <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
-                                                {field.label} {field.required && <span className="text-red-500">*</span>}
-                                            </label>
+                                // Helper to get options for standard selects
+                                let options = field.options || [];
+                                if (fieldKey === 'category_id') {
+                                    options = categories.map(c => ({ label: c.name, value: c._id }));
+                                } else if (fieldKey === 'unit_id') {
+                                    options = units.map(u => ({ label: u.name, value: u._id }));
+                                } else if (fieldKey === 'tax_id') {
+                                    options = shopTaxes.map(t => ({ label: t.name, value: t._id || t.name }));
+                                } else if (fieldKey === 'item_type') {
+                                    options = field.options || ["STOCK", "SERVICE", "MANUFACTURED"];
+                                }
 
-                                            {field.type === 'select' ? (
-                                                <select
-                                                    value={formData[field.key] || field.defaultValue || ""}
-                                                    onChange={(e) => handleChange(field.originalKey, e.target.value)}
-                                                    className={`w-full p-4 border-2 rounded-2xl ${theme.inputBg} ${theme.textPrimary} outline-none font-bold transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                >
-                                                    <option value="">Select...</option>
-                                                    {(field.options || []).map(opt => {
-                                                        const val = typeof opt === 'object' ? opt.value : opt;
-                                                        const lbl = typeof opt === 'object' ? opt.label : opt;
-                                                        return <option key={val} value={val}>{lbl}</option>;
-                                                    })}
-                                                </select>
-                                            ) : field.type === 'textarea' ? (
-                                                <textarea
-                                                    value={formData[field.key] || ""}
-                                                    onChange={(e) => handleChange(field.originalKey, e.target.value)}
-                                                    rows={3}
-                                                    className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                />
-                                            ) : field.type === 'boolean' ? (
-                                                <div className={`w-full p-4 border-2 rounded-2xl flex items-center justify-between transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : theme.inputBorder} ${theme.inputBg}`}>
-                                                    <span className={`text-sm font-bold ${formData[field.key] ? 'text-indigo-600' : theme.textSecondary}`}>
-                                                        {formData[field.key] ? 'Yes' : 'No'}
-                                                    </span>
+                                return (
+                                    <div key={fieldKey}>
+                                        <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
+                                            {field.label} {isRequired && <span className="text-red-500">*</span>}
+                                        </label>
+                                        
+                                        {field.type === 'select' ? (
+                                            <CommonSelect
+                                                options={options}
+                                                value={formData[field.key] || field.defaultValue || ""}
+                                                onChange={(val) => handleChange(fieldKey, val)}
+                                                placeholder={`Select ${field.label}...`}
+                                                className="w-full"
+                                                extraAction={fieldKey === 'category_id' ? (
                                                     <button
                                                         type="button"
-                                                        onClick={(e) => { e.preventDefault(); handleChange(field.originalKey, !formData[field.key]); }}
-                                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${formData[field.key] ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-slate-700'}`}
+                                                        onClick={() => setIsCategoryModalOpen(true)}
+                                                        className={`w-full p-4 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between group transition-colors border-t ${theme.borderLight}`}
                                                     >
-                                                        <span
-                                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData[field.key] ? 'translate-x-6' : 'translate-x-1'}`}
-                                                        />
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="bg-indigo-100 dark:bg-indigo-900/40 p-2 rounded-xl text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                                <Plus size={18} />
+                                                            </div>
+                                                            <div className="font-black text-indigo-600 dark:text-indigo-400">Add New Category</div>
+                                                        </div>
+                                                        <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
                                                     </button>
-                                                </div>
-                                            ) : (
-                                                <input
-                                                    type={field.type}
-                                                    value={formData[field.key] !== undefined ? formData[field.key] : ""}
-                                                    onChange={(e) => handleChange(field.originalKey, e.target.value)}
-                                                    className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                    placeholder={field.label}
-                                                />
-                                            )}
-                                            {errors[field.originalKey] && (
-                                                <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors[field.originalKey]}</p>
-                                            )}
+                                                ) : null}
+                                            />
+                                        ) : (
+                                            <input
+                                                type={field.type}
+                                                value={formData[field.key] !== undefined ? formData[field.key] : ""}
+                                                onChange={(e) => handleChange(fieldKey, e.target.value)}
+                                                className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                                                placeholder={field.placeholder || field.label}
+                                            />
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* ADVANCED FIELDS TOGGLE */}
+                    <div className="flex flex-col gap-8">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (asDialog) {
+                                    // If asDialog is true, navigate to full edit page instead of expanding inline
+                                    const path = isEditing ? `/inventory/edit/${id}` : '/inventory/new';
+                                    navigate(`${path}?tab=${activeTab}`);
+                                    if(onClose) onClose();
+                                } else {
+                                    setShowAdvanced(!showAdvanced);
+                                }
+                            }}
+                            className={`flex items-center gap-2 text-sm font-black uppercase tracking-wider ${theme.primaryIconText} hover:opacity-80 transition-all w-fit`}
+                        >
+                            {showAdvanced ? "Hide Advanced Fields" : "Show Advanced Fields"}
+                            <ChevronDown size={18} className={`transition-transform duration-300 ${(showAdvanced || asDialog) ? 'rotate-[-90deg]' : ''}`} />
+                        </button>
+
+                        {showAdvanced && (
+                            <div className="space-y-12 animate-in slide-in-from-top-4 duration-300">
+                                {Object.entries(groupedFields).map(([section, fields]) => {
+                                    // Filter fields that are NOT in CORE_FIELD_KEYS and are in the current section
+                                    const advancedFieldsInSection = fields.filter(f => !CORE_FIELD_KEYS.includes(f.originalKey));
+                                    
+                                    if (advancedFieldsInSection.length === 0) return null;
+
+                                    return (
+                                        <div key={section}>
+                                            <div className="flex items-center gap-4 mb-8">
+                                                <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>{section} Details</h4>
+                                                <div className={`flex-1 h-px ${theme.borderLight}`}></div>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                                {advancedFieldsInSection.map(field => {
+                                                    // Helper to get options for standard selects
+                                                    let options = field.options || [];
+                                                    if (field.originalKey === 'category_id') {
+                                                        options = categories.map(c => ({ label: c.name, value: c._id }));
+                                                    } else if (field.originalKey === 'unit_id') {
+                                                        options = units.map(u => ({ label: u.name, value: u._id }));
+                                                    } else if (field.originalKey === 'tax_id') {
+                                                        options = shopTaxes.map(t => ({ label: t.name, value: t._id || t.name }));
+                                                    } else if (field.originalKey === 'item_type') {
+                                                        options = field.options || ["STOCK", "SERVICE", "MANUFACTURED"];
+                                                    }
+
+                                                    return (
+                                                        <div key={field.originalKey} className={field.type === 'textarea' ? 'md:col-span-3' : ''}>
+                                                            <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
+                                                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                                                            </label>
+
+                                                            {field.type === 'select' ? (
+                                                                <CommonSelect
+                                                                    options={options}
+                                                                    value={formData[field.key] || field.defaultValue || ""}
+                                                                    onChange={(val) => handleChange(field.originalKey, val)}
+                                                                    placeholder={`Select ${field.label}...`}
+                                                                    className="w-full"
+                                                                />
+                                                        ) : field.type === 'textarea' ? (
+                                                            <textarea
+                                                                value={formData[field.key] || ""}
+                                                                onChange={(e) => handleChange(field.originalKey, e.target.value)}
+                                                                rows={3}
+                                                                className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                                                            />
+                                                        ) : field.type === 'boolean' ? (
+                                                            <div className={`w-full p-4 border-2 rounded-2xl flex items-center justify-between transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : theme.inputBorder} ${theme.inputBg}`}>
+                                                                <span className={`text-sm font-bold ${formData[field.key] ? 'text-indigo-600' : theme.textSecondary}`}>
+                                                                    {formData[field.key] ? 'Yes' : 'No'}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => { e.preventDefault(); handleChange(field.originalKey, !formData[field.key]); }}
+                                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${formData[field.key] ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-slate-700'}`}
+                                                                >
+                                                                    <span
+                                                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData[field.key] ? 'translate-x-6' : 'translate-x-1'}`}
+                                                                    />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <input
+                                                                type={field.type}
+                                                                value={formData[field.key] !== undefined ? formData[field.key] : ""}
+                                                                onChange={(e) => handleChange(field.originalKey, e.target.value)}
+                                                                className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                                                                placeholder={field.placeholder || field.label}
+                                                            />
+                                                        )}
+                                                        {errors[field.originalKey] && (
+                                                            <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors[field.originalKey]}</p>
+                                                        )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                            </div>
                                         </div>
-                                    )
+                                    );
                                 })}
                             </div>
-                        </div>
-                    ))}
+                        )}
+                    </div>
 
                     {/* DYNAMIC ATTRIBUTES SECTION */}
                     {dynamicAttributes.length > 0 && (
@@ -531,16 +693,13 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
                                         <div className="flex gap-2">
                                             {attr.dataType === 'SELECT' ? (
-                                                <select
-                                                    value={itemAttributes[attr.code]?.value || ""}
-                                                    onChange={(e) => handleAttributeChange(attr.code, 'value', e.target.value)}
-                                                    className={`w-full p-4 border-2 ${theme.inputBorder} rounded-2xl ${theme.inputBg} ${theme.textPrimary} outline-none font-bold transition-all focus:border-blue-400`}
-                                                >
-                                                    <option value="">Select...</option>
-                                                    {(attr.options || []).map(opt => (
-                                                        <option key={opt} value={opt}>{opt}</option>
-                                                    ))}
-                                                </select>
+                                                <CommonSelect
+                                                   options={attr.options || []}
+                                                   value={itemAttributes[attr.code]?.value || ""}
+                                                   onChange={(val) => handleAttributeChange(attr.code, 'value', val)}
+                                                   placeholder={`Select ${attr.name}...`}
+                                                   className="w-full"
+                                                />
                                             ) : attr.dataType === 'BOOLEAN' ? (
                                                 <div className={`w-full p-4 border-2 rounded-2xl flex items-center justify-between transition-all ${theme.inputBorder} ${theme.inputBg}`}>
                                                     <span className={`text-sm font-bold ${itemAttributes[attr.code]?.value ? 'text-blue-600' : theme.textSecondary}`}>
@@ -594,30 +753,31 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     {showRecipe && (
                         <div>
                             <div className="flex items-center gap-4 mb-2">
-                                <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Recipe / Ingredients</h4>
+                                <ClipboardList className="text-orange-500" size={24} />
+                                <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Bill of Materials</h4>
                                 <div className={`flex-1 h-px ${theme.borderLight}`}></div>
                             </div>
-                            <p className={`text-sm ${theme.textMuted} mb-8`}>Define what raw items are used to make this product.</p>
+                            <p className={`text-sm ${theme.textMuted} mb-8`}>Define what stock items are used to create this manufactured product.</p>
 
                             <div className="flex flex-col md:flex-row gap-4 mb-6 items-end">
                                 <div className="flex-1">
                                     <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Stock Item</label>
-                                    <select
+                                    <CommonSelect
+                                        options={stockItems.map(item => ({ 
+                                            label: `${item.name} (${item.unitId?.name || "N/A"})`, 
+                                            value: item._id || item.id 
+                                        }))}
                                         value={selectedRawItem}
-                                        onChange={(e) => {
-                                            setSelectedRawItem(e.target.value);
-                                            const item = stockItems.find(i => i._id === e.target.value || i.id === e.target.value);
+                                        onChange={(val) => {
+                                            setSelectedRawItem(val);
+                                            const item = stockItems.find(i => (i._id || i.id) === val);
                                             if (item && item.unitId) {
                                                 setIngredientUnitId(item.unitId._id || item.unitId);
                                             }
                                         }}
-                                        className={`w-full p-3 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400`}
-                                    >
-                                        <option value="">Select Stock Item</option>
-                                        {stockItems.map(item => (
-                                            <option key={item._id || item.id} value={item._id || item.id}>{item.name} ({item.unitId?.name || "N/A"})</option>
-                                        ))}
-                                    </select>
+                                        placeholder="Select Stock Item..."
+                                        className="w-full"
+                                    />
                                 </div>
                                 <div className="w-full md:w-32">
                                     <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Qty</label>
@@ -626,21 +786,18 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                         value={ingredientQty}
                                         onChange={(e) => setIngredientQty(e.target.value)}
                                         placeholder="0"
-                                        className={`w-full p-3 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400`}
+                                        className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400`}
                                     />
                                 </div>
                                 <div className="w-full md:w-40">
                                     <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Unit</label>
-                                    <select
+                                    <CommonSelect
+                                        options={units.map(u => ({ label: u.name, value: u._id }))}
                                         value={ingredientUnitId}
-                                        onChange={(e) => setIngredientUnitId(e.target.value)}
-                                        className={`w-full p-3 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400`}
-                                    >
-                                        <option value="">Select Unit</option>
-                                        {units.map(u => (
-                                            <option key={u._id} value={u._id}>{u.name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => setIngredientUnitId(val)}
+                                        placeholder="Unit..."
+                                        className="w-full"
+                                    />
                                 </div>
                                 <button
                                     onClick={(e) => { e.preventDefault(); handleAddIngredient(); }}
@@ -701,6 +858,47 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     </button>
                 </div>
             </div>
+
+            {/* Create Category Modal */}
+            {isCategoryModalOpen && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                    <div className={`w-full max-w-md ${theme.surfaceBg} rounded-[32px] shadow-2xl p-8 relative animate-in zoom-in duration-200`}>
+                        <h2 className={`text-2xl font-black ${theme.textHeading} mb-2`}>New Category</h2>
+                        <p className={`text-sm ${theme.textSecondary} mb-8 font-medium`}>Create a new category for your products.</p>
+                        
+                        <form onSubmit={handleCreateCategory} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase text-gray-400 ml-1`}>Category Name</label>
+                                <input
+                                    autoFocus
+                                    required
+                                    className={`w-full p-4 border-2 rounded-2xl outline-none font-bold transition-all ${theme.inputBg} ${theme.textPrimary} ${theme.inputBorder} focus:border-indigo-500`}
+                                    value={newCategoryName}
+                                    onChange={e => setNewCategoryName(e.target.value)}
+                                    placeholder="e.g. Cold Beverages"
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCategoryModalOpen(false)}
+                                    className={`px-6 py-3 rounded-xl font-bold ${theme.textSecondary} hover:${theme.inputBg.replace('bg-', '')} transition-colors`}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isCategorySaving || !newCategoryName.trim()}
+                                    className={`${theme.buttonBg} ${theme.buttonText} px-8 py-3 rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg shadow-indigo-200`}
+                                >
+                                    {isCategorySaving ? "Saving..." : "Create Category"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

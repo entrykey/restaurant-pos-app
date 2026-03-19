@@ -6,19 +6,22 @@ import { MODULES } from "./modules";
 import { ACTIONS } from "./actions";
 
 export const ROUTE_ACCESS = Object.freeze({
+  DASHBOARD: { module: MODULES.DASHBOARD },
   DINING: { module: MODULES.POS, action: 'pos.dining' },
-  TAKEAWAY: { module: MODULES.POS, action: 'pos.takeaway' },
+  TAKEAWAY: { module: MODULES.POS, action: 'POS.DINING.TAKEAWAY' },
   DIRECT_SALE: { module: MODULES.POS, action: 'pos.direct_sale' },
   WHOLESALE: { module: MODULES.POS, action: 'pos.wholesale' },
   ONLINE_ORDERS: { module: MODULES.POS, action: 'pos.onlineorder' },
   KDS: { module: MODULES.KDS },
   RESERVATIONS: { module: MODULES.RESERVATIONS, action: ACTIONS.RESERVATION_VIEWING },
   INVENTORY: { module: MODULES.INVENTORY },
-  REPORTS: { module: MODULES.REPORTS },
+  REPORTS: { module: MODULES.REPORTS, action: ACTIONS.REPORTS_VIEW },
   SETTINGS: { module: MODULES.SETTINGS },
   STAFF: { module: MODULES.STAFF, action: ACTIONS.STAFF_VIEW },
+  STAFF_DASHBOARD: { module: MODULES.DASHBOARD, action: ACTIONS.STAFF_DASHBOARD },
   ORGANIZATION: { module: MODULES.ORGANIZATION, action: ACTIONS.ORGANIZATION_VIEW },
   SUPPLIERS: { module: MODULES.SUPPLIER, action: ACTIONS.SUPPLIER_VIEW },
+  PARTIES: { module: MODULES.PARTIES }, // Access if user has any PARTIES permission (supplier/customer)
   SERVICE: { module: MODULES.SERVICE },
   PURCHASES: { module: MODULES.PURCHASE, action: ACTIONS.PURCHASE_VIEW },
   BUSINESS_TYPES: { module: MODULES.BUSINESS_TYPES },
@@ -26,10 +29,12 @@ export const ROUTE_ACCESS = Object.freeze({
   PLAN_MANAGEMENT: { module: MODULES.PLAN_MANAGEMENT },
   SUBSCRIPTION_MANAGEMENT: { module: MODULES.SUBSCRIPTION_MANAGEMENT },
   TABLE_MANAGEMENT: { module: MODULES.TABLE_MANAGEMENT, action: ACTIONS.TABLE_VIEWING },
+  OFFERS: { module: MODULES.OFFER_MANAGEMENT, action: ACTIONS.OFFER_MANAGE },
 });
 
 // Define order in sidebar
 export const ROUTE_KEYS_ORDER = [
+  'DASHBOARD',
   'DINING',
   'TAKEAWAY',
   'DIRECT_SALE',
@@ -43,7 +48,9 @@ export const ROUTE_KEYS_ORDER = [
   'STAFF',
   'ORGANIZATION',
   'SUPPLIERS',
+  'PARTIES',
   'REPORTS',
+  'OFFERS',
   'SETTINGS',
   'BUSINESS_TYPES',
   'SHOP_MANAGEMENT',
@@ -54,6 +61,7 @@ export const ROUTE_KEYS_ORDER = [
 
 /** Map route key to path for redirects */
 export const ROUTE_KEY_TO_PATH = Object.freeze({
+  DASHBOARD: "/dashboard",
   DINING: "/dininghall",
   TAKEAWAY: "/takeaway",
   DIRECT_SALE: "/takeaway",
@@ -67,13 +75,16 @@ export const ROUTE_KEY_TO_PATH = Object.freeze({
   STAFF: "/staff",
   ORGANIZATION: "/organization",
   SUPPLIERS: "/suppliers",
+  PARTIES: "/parties",
   SERVICE: "/service",
   PURCHASES: "/purchases",
+  STAFF_DASHBOARD: "/staff-dashboard",
   BUSINESS_TYPES: "/business-types",
   SHOP_MANAGEMENT: "/shop-management",
   PLAN_MANAGEMENT: "/plan-management",
   SUBSCRIPTION_MANAGEMENT: "/subscription-management",
   TABLE_MANAGEMENT: "/table-management",
+  OFFERS: "/offers",
 });
 
 /** Resolve first path the user is allowed to access (for redirect when denying a route) */
@@ -84,5 +95,5 @@ export function getFirstAllowedPath(can, canModule) {
     const allowed = r.action != null && r.action !== undefined ? can(r.module, r.action) : canModule(r.module);
     if (allowed) return ROUTE_KEY_TO_PATH[key];
   }
-  return "/dininghall";
+  return "/dashboard";
 }

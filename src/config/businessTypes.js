@@ -62,6 +62,7 @@ export const MODULE_LABELS = {
   ORGANIZATION: "Organization",
   SERVICE: "Service & Repairs",
   TABLE_MANAGEMENT: "Table Management",
+  OFFERS: "Offers",
 };
 
 /**
@@ -155,6 +156,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "STAFF",
       "ORGANIZATION",
       "SERVICE",
+      "OFFERS",
     ],
     casual: [
       "DINING",
@@ -169,6 +171,7 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "SETTINGS",
       "STAFF",
       "ORGANIZATION",
+      "OFFERS",
     ],
     fast_food: [
       "TAKEAWAY",

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Tag, ChevronDown, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer } from "lucide-react";
+import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Tag, ChevronDown, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera } from "lucide-react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { PurchaseService } from "../../services/PurchaseService";
 import { SupplierService } from "../Suppliers/SupplierService";
-import api, { itemService, branchService, shopService } from "../../services/api";
+import api, { itemService, branchService, shopService, taxService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -11,6 +11,8 @@ import ProductPage from "../Inventory/ProductPage";
 import Modal from "../../components/ui/Modal";
 import DatePicker from "../../components/ui/DatePicker";
 import CommonSelect from "../../components/ui/CommonSelect";
+import InvoiceScannerModal from "../../components/modals/InvoiceScannerModal";
+import { toast } from "react-hot-toast";
 import {
     TAX_SYSTEMS,
     BRANCH_STATUS,
@@ -40,7 +42,7 @@ const PurchasePage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { activeBranchId, formatCurrency } = useApp();
+    const { activeBranchId, formatCurrency, businessTypeData } = useApp();
     const { theme } = useTheme();
     const isEditing = !!id;
 
@@ -50,6 +52,7 @@ const PurchasePage = () => {
     const [branches, setBranches] = useState([]);
     const [stockItems, setStockItems] = useState([]);
     const [shopInfo, setShopInfo] = useState(null);
+    const [shopTaxes, setShopTaxes] = useState([]);
 
     const [formData, setFormData] = useState({
         supplierId: "",
@@ -73,6 +76,7 @@ const PurchasePage = () => {
     const [supplierSearch, setSupplierSearch] = useState("");
     const [showSupplierResults, setShowSupplierResults] = useState(false);
     const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [savingSupplier, setSavingSupplier] = useState(false);
     const [supplierFormData, setSupplierFormData] = useState({
         name: "",
@@ -90,6 +94,7 @@ const PurchasePage = () => {
     const [savingBranch, setSavingBranch] = useState(false);
     const [branchForm, setBranchForm] = useState(emptyBranch(null));
     const [isLocationLoading, setIsLocationLoading] = useState(false);
+    const [productPrefillData, setProductPrefillData] = useState(null);
 
     const [barcodePrintDialog, setBarcodePrintDialog] = useState({
         isOpen: false,
@@ -106,6 +111,8 @@ const PurchasePage = () => {
         batchOverride: "",
         expiryOverride: "",
         layout: "ROWS",
+        labelWidth: 38,
+        labelHeight: 20,
         elementsOrder: ["logo", "barcode", "name", "code", "price", "batch", "expiry", "custom"]
     });
 
@@ -149,7 +156,6 @@ const PurchasePage = () => {
         }
     };
 
-    // --- Initialize Data ---
     useEffect(() => {
         if (user?.shop_id) {
             fetchInitialData();
@@ -157,23 +163,30 @@ const PurchasePage = () => {
         if (isEditing) {
             loadPurchase();
         }
-    }, [user?.shop_id, id]);
+    }, [user?.shop_id, id, activeBranchId, formData.branchId]);
 
-    const fetchInitialData = async () => {
+    const fetchInitialData = async (branchIdArg) => {
         try {
-            const [suppliersData, branchesData, shopData, itemsRes] = await Promise.all([
+            const branchId = branchIdArg || formData.branchId || activeBranchId;
+            const [suppliersData, branchesData, shopData, itemsRes, taxesRes] = await Promise.all([
                 SupplierService.getSuppliers(user.shop_id),
                 branchService.getBranchesByShopId(user.shop_id),
                 shopService.getShopById(user.shop_id),
                 itemService.getItems({
-                    filters: { shopid: user.shop_id, itemType: "STOCK" },
+                    filters: {
+                        shopId: user.shop_id,
+                        itemType: { $in: ["STOCK", "TRADE"] },
+                        branchId: branchId || undefined
+                    },
                     limit: 100
-                })
+                }),
+                taxService.getTaxes(branchId)
             ]);
             setSuppliers(suppliersData);
             setBranches(branchesData);
             setShopInfo(shopData);
             setStockItems(itemsRes.data || []);
+            setShopTaxes(taxesRes.filter(t => t.isActive !== false));
         } catch (error) {
             console.error("Error fetching form data:", error);
         }
@@ -194,42 +207,48 @@ const PurchasePage = () => {
                     ...it,
                     itemId: it.itemId?._id || it.itemId,
                     name: it.itemId?.name || "Unknown Item",
-                    itemCode: it.itemId?.itemCode || ""
+                    itemCode: it.itemId?.itemCode || "",
+                    taxPercent: it.taxPercent || it.itemId?.taxPercent || 0
                 }))
             });
+
+            if (p.supplierId?.name) setSupplierSearch(p.supplierId.name);
+            if (p.branchId?.name) setBranchSearch(p.branchId.name);
         } catch (error) {
             console.error("Error loading purchase:", error);
-            alert("Failed to load purchase details");
+            toast.error("Failed to load purchase details");
         } finally {
             setLoading(false);
         }
     };
 
     // --- Calculations ---
-    const totals = useMemo(() => {
-        const sub = formData.items.reduce((acc, it) => acc + (it.quantity * it.purchasePrice), 0);
-        const tax = formData.items.reduce((acc, it) => acc + (it.taxAmount || 0), 0);
-        const disc = formData.items.reduce((acc, it) => acc + (it.discountAmount || 0), 0);
-        const grand = sub + tax - disc;
-        return { sub, tax, disc, grand };
+    const { subtotal, taxTotal } = useMemo(() => {
+        return formData.items.reduce((acc, it) => {
+            acc.subtotal += (it.quantity * it.purchasePrice);
+            acc.taxTotal += (it.taxAmount || 0);
+            return acc;
+        }, { subtotal: 0, taxTotal: 0 });
     }, [formData.items]);
 
     useEffect(() => {
-        setFormData(prev => ({
-            ...prev,
-            subtotal: totals.sub,
-            taxTotal: totals.tax,
-            discountTotal: totals.disc,
-            grandTotal: totals.grand,
-            balanceAmount: totals.grand - (prev.paidAmount || 0)
-        }));
-    }, [totals]);
+        setFormData(prev => {
+            const grand = subtotal + taxTotal - (Number(prev.discountTotal) || 0);
+            return {
+                ...prev,
+                subtotal: subtotal,
+                taxTotal: taxTotal,
+                grandTotal: grand,
+                balanceAmount: grand - (Number(prev.paidAmount) || 0)
+            };
+        });
+    }, [subtotal, taxTotal, formData.discountTotal, formData.paidAmount]);
 
     // --- Handlers ---
     const handleAddItem = (item) => {
         const existing = formData.items.find(it => it.itemId === item._id);
         if (existing) {
-            alert("Item already added. Adjust quantity in the list.");
+            toast.error("Item already added. Adjust quantity in the list.");
             return;
         }
 
@@ -251,6 +270,8 @@ const PurchasePage = () => {
             existingBarcode: item.barcode || "",
             // For IMEI / serial-tracked items we may want per-unit barcode generation
             hasIndividualBarcode: item.tracking?.serialTracking || false,
+            taxPercent: item.taxPercent || 0,
+            taxAmount: (item.pricing?.purchasePrice || 0) * (item.taxPercent || 0) / 100
         };
 
         setFormData(prev => ({
@@ -261,12 +282,131 @@ const PurchasePage = () => {
         setShowResults(false);
     };
 
-    const handleProductDialogClose = (newItem) => {
+    const handleProductDialogClose = async (newProduct) => {
         setIsProductModalOpen(false);
-        if (newItem) {
-            setStockItems(prev => [...prev, newItem]);
-            handleAddItem(newItem);
+        setProductPrefillData(null);
+        
+        if (newProduct && (newProduct._id || newProduct.id) && newProduct.name) {
+            try {
+                // Refresh stock items list to get the full item details
+                const response = await itemService.getItems({
+                    limit: 1000,
+                    filters: {
+                        shopId: user.shop_id,
+                        branchId: formData.branchId || activeBranchId || undefined,
+                        itemType: { $in: ["STOCK", "TRADE"] }
+                    }
+                });
+                const updatedStockItems = response.data || response.items || response;
+                setStockItems(updatedStockItems);
+
+                // Try to find if there was an 'isNew' item with this name and remove it
+                setFormData(prev => {
+                    const existsAsNew = prev.items.findIndex(it => it.isNew && it.name.toLowerCase() === newProduct.name.toLowerCase());
+                    if (existsAsNew !== -1) {
+                        const newItems = [...prev.items];
+                        newItems.splice(existsAsNew, 1);
+                        return { ...prev, items: newItems };
+                    }
+                    return prev;
+                });
+
+                // Find the newly created product in the updated list
+                const fullProduct = updatedStockItems.find(it => (it._id || it.id) === (newProduct._id || newProduct.id));
+                if (fullProduct) {
+                    handleAddItem(fullProduct);
+                } else {
+                    handleAddItem(newProduct);
+                }
+            } catch (error) {
+                console.error("Failed to refresh items after adding product:", error);
+                handleAddItem(newProduct);
+            }
         }
+    };
+
+
+    const handleDataExtracted = (data) => {
+        // Handle Supplier Missing
+        if (!data.supplierId && data.supplierName) {
+            setSupplierFormData(prev => ({
+                ...prev,
+                name: data.supplierName
+            }));
+            setIsSupplierModalOpen(true);
+            toast.info(`Supplier "${data.supplierName}" not found. Please create it.`);
+        }
+
+        setFormData(prev => {
+            const updatedItems = [...prev.items];
+            
+            // Try to match and add items
+            data.items.forEach(extractedItem => {
+                // Try to find matching stock item by name
+                const match = stockItems.find(it => 
+                    it.name.toLowerCase().includes(extractedItem.name.toLowerCase()) ||
+                    extractedItem.name.toLowerCase().includes(it.name.toLowerCase())
+                );
+
+                if (match) {
+                    // Avoid duplicate entry of same itemId
+                    const alreadyExists = updatedItems.find(it => it.itemId === match._id);
+                    if (!alreadyExists) {
+                        updatedItems.push({
+                            itemId: match._id,
+                            name: match.name,
+                            itemCode: match.itemCode,
+                            quantity: extractedItem.quantity || 1,
+                            purchasePrice: extractedItem.purchasePrice || match.pricing?.purchasePrice || 0,
+                            sellingPrice: match.pricing?.sellingPrice || 0,
+                            mrp: match.pricing?.mrp || 0,
+                            taxPercent: match.taxPercent || 0,
+                            taxAmount: (extractedItem.purchasePrice || match.pricing?.purchasePrice || 0) * (match.taxPercent || 0) / 100,
+                            batchTracking: match.tracking?.batchTracking || false,
+                            expiryTracking: match.tracking?.expiryTracking || false,
+                            existingBarcode: match.barcode || "",
+                            itemType: match.itemType || "STOCK"
+                        });
+                    } else {
+                        alreadyExists.quantity += (extractedItem.quantity || 0);
+                    }
+                } else if (extractedItem.name) {
+                    // Add as a "Pending/New" item that needs to be created
+                    updatedItems.push({
+                        itemId: `new_${Date.now()}_${Math.random()}`,
+                        name: extractedItem.name,
+                        itemCode: "PENDING",
+                        quantity: extractedItem.quantity || 1,
+                        purchasePrice: extractedItem.purchasePrice || 0,
+                        isNew: true,
+                        taxPercent: 0,
+                        taxAmount: 0
+                    });
+                }
+            });
+
+            // Format date if it exists
+            let validDate = prev.invoiceDate;
+            if (data.date) {
+                try {
+                    const d = new Date(data.date);
+                    if (!isNaN(d.getTime())) {
+                        validDate = d.toISOString().split('T')[0];
+                    }
+                } catch (e) {}
+            }
+
+            return {
+                ...prev,
+                supplierInvoiceNumber: data.invoiceNumber || prev.supplierInvoiceNumber,
+                invoiceDate: validDate,
+                supplierId: data.supplierId || prev.supplierId,
+                items: updatedItems
+            };
+        });
+        
+        if (data.supplierName) setSupplierSearch(data.supplierName);
+        toast.success("Invoice scanned and synced! Please review the details.");
     };
 
     const handleRemoveItem = (index) => {
@@ -276,104 +416,288 @@ const PurchasePage = () => {
         }));
     };
 
-    const handleItemChange = (index, field, value) => {
+    const handleItemChange = async (index, field, value) => {
         const updatedItems = [...formData.items];
         updatedItems[index][field] = value;
+
+        // Recalculate taxAmount if price or taxPercent changes
+        if (field === 'purchasePrice' || field === 'taxPercent' || field === 'quantity') {
+            const row = updatedItems[index];
+            row.taxAmount = (row.quantity * row.purchasePrice * row.taxPercent) / 100;
+        }
+
         setFormData(prev => ({ ...prev, items: updatedItems }));
+
+        // If taxPercent is changed, update product master
+        if (field === 'taxPercent') {
+            try {
+                const row = updatedItems[index];
+                await itemService.updateItem(row.itemId, { taxPercent: value });
+                toast.success(`Tax updated for ${row.name}`);
+            } catch (error) {
+                console.error("Failed to update product tax percentage:", error);
+                toast.error("Failed to sync tax to product master");
+            }
+        }
     };
 
     const handlePrintInvoice = () => {
         const supplier = suppliers.find(s => s._id === formData.supplierId);
+        const branchContext = branches.find(b => b._id === formData.branchId || b.id === formData.branchId);
+
+        const formatAddress = (addr) => {
+            if (!addr) return '';
+            const parts = [
+                addr.line1,
+                addr.line2,
+                addr.city,
+                addr.state?.name || addr.state,
+                addr.pincode
+            ].filter(Boolean);
+            return parts.join(', ');
+        };
+
         const html = `
 <!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Purchase Invoice</title>
+    <title>Purchase Invoice - ${formData.supplierInvoiceNumber || 'INV'}</title>
     <style>
-      body { font-family: system-ui, -apple-system, sans-serif; padding: 30px; color: #111; max-width: 800px; margin: 0 auto; }
-      .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 20px; margin-bottom: 30px; }
-      .title { font-size: 28px; font-weight: 900; letter-spacing: 1px; }
-      .info-box { margin-bottom: 20px; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-      th, td { border-bottom: 1px solid #ddd; padding: 12px 8px; text-align: left; font-size: 14px; }
-      th { font-weight: bold; background: #f8f9fa; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
-      .totals { width: 300px; float: right; }
-      .total-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; }
-      .total-row.grand { font-weight: 900; font-size: 20px; border-top: 2px solid #000; margin-top: 10px; padding-top: 15px; }
-      .footer { clear: both; margin-top: 60px; text-align: center; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+      @page { size: A4; margin: 15mm; }
+      body { 
+        font-family: 'Inter', -apple-system, system-ui, sans-serif; 
+        padding: 0; 
+        color: #1a1a1a; 
+        line-height: 1.6;
+        background: #fff;
+      }
+      .container { max-width: 800px; margin: 0 auto; }
+      .header { 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: flex-start;
+        border-bottom: 2px solid #f0f0f0; 
+        padding-bottom: 30px; 
+        margin-bottom: 40px; 
+      }
+      .title-section h1 { 
+        font-size: 32px; 
+        font-weight: 900; 
+        letter-spacing: -0.5px; 
+        margin: 0;
+        color: #000;
+        text-transform: uppercase;
+      }
+      .meta-info { margin-top: 15px; font-size: 13px; color: #444; }
+      .meta-info div { margin-bottom: 4px; }
+      .meta-info strong { color: #000; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+
+      .address-grid { 
+        display: grid; 
+        grid-template-columns: 1fr 1fr; 
+        gap: 40px; 
+        margin-bottom: 50px; 
+      }
+      .address-box h3 { 
+        font-size: 11px; 
+        text-transform: uppercase; 
+        letter-spacing: 1.5px; 
+        color: #666; 
+        margin-bottom: 15px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 8px;
+      }
+      .address-content { font-size: 14px; }
+      .address-content strong { font-size: 18px; display: block; margin-bottom: 5px; color: #000; }
+      .address-detail { color: #444; margin-bottom: 2px; }
+
+      table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
+      th { 
+        text-align: left; 
+        font-size: 11px; 
+        text-transform: uppercase; 
+        letter-spacing: 1px; 
+        color: #666;
+        padding: 15px 10px;
+        border-bottom: 2px solid #1a1a1a;
+        background: #fafafa;
+      }
+      td { 
+        padding: 15px 10px; 
+        border-bottom: 1px solid #f0f0f0; 
+        font-size: 14px; 
+        vertical-align: top;
+      }
+      .item-name { font-weight: 600; color: #000; }
+      .item-code { font-size: 11px; color: #666; margin-top: 4px; }
+
+      .summary-section { 
+        display: flex; 
+        justify-content: flex-end; 
+      }
+      .totals-table { width: 300px; }
+      .total-row { 
+        display: flex; 
+        justify-content: space-between; 
+        padding: 10px 0; 
+        font-size: 14px; 
+        color: #444;
+      }
+      .total-row.grand { 
+        border-top: 2px solid #000; 
+        margin-top: 15px; 
+        padding-top: 20px; 
+        font-weight: 900; 
+        font-size: 22px; 
+        color: #000; 
+      }
+
+      .footer { 
+        margin-top: 100px; 
+        padding-top: 30px;
+        border-top: 1px solid #f0f0f0;
+        text-align: center; 
+        color: #999; 
+        font-size: 10px; 
+        text-transform: uppercase; 
+        letter-spacing: 2px;
+      }
+      
       @media print {
-          body { padding: 0; }
-          .no-print { display: none; }
+        body { padding: 0; }
+        .no-print { display: none; }
       }
     </style>
   </head>
   <body>
-    <div class="header">
-      <div>
-        <div class="title">PURCHASE INVOICE</div>
-        <div style="margin-top: 10px; font-size: 14px;"><strong>Date:</strong> ${new Date(formData.invoiceDate).toLocaleDateString()}</div>
-        <div style="font-size: 14px;"><strong>Invoice No:</strong> ${formData.supplierInvoiceNumber || '—'}</div>
+    <div class="container">
+      <div class="header">
+        <div class="title-section">
+          <h1>Purchase Invoice</h1>
+          <div class="meta-info">
+            <div><strong>Date:</strong> ${new Date(formData.invoiceDate).toLocaleDateString()}</div>
+            <div><strong>Ref No:</strong> ${formData.purchaseNumber || '—'}</div>
+            <div><strong>Supplier Inv:</strong> ${formData.supplierInvoiceNumber || '—'}</div>
+            ${formData.invoiceNumber ? `<div><strong>System Inv:</strong> ${formData.invoiceNumber}</div>` : ''}
+          </div>
+        </div>
+        <div style="text-align: right;">
+          ${shopInfo?.logoUrl ? `<img src="${shopInfo.logoUrl.startsWith('http') ? shopInfo.logoUrl : (api.defaults.baseURL.replace(/\/api\/?$/, '') + shopInfo.logoUrl)}" style="max-height: 60px; margin-bottom: 10px;" />` : ''}
+          <div style="font-size: 18px; font-weight: 900;">${shopInfo?.name || 'Restaurant POS'}</div>
+        </div>
       </div>
-      <div style="text-align: right; font-size: 14px; line-height: 1.5;">
-        <strong style="font-size: 11px; color:#666; text-transform:uppercase; letter-spacing:1px;">Billed By</strong><br/>
-        <strong style="font-size: 18px;">${supplier ? supplier.name : 'Unknown Supplier'}</strong><br/>
-        ${supplier && supplier.phone ? `Ph: ${supplier.phone}<br/>` : ''}
-        ${supplier && supplier.taxNumber ? `Tax ID: ${supplier.taxNumber}` : ''}
-      </div>
-    </div>
-    
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 5%">#</th>
-          <th style="width: 45%">Item Description</th>
-          <th style="width: 10%">Qty</th>
-          <th style="width: 20%">Price</th>
-          <th style="width: 20%; text-align:right;">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${formData.items.map((it, idx) => `
-          <tr>
-            <td style="color:#666">${idx + 1}</td>
-            <td><strong>${it.name || 'Unknown'}</strong><br/><span style="font-size:11px; color:#666;">${it.itemCode || ''}</span></td>
-            <td>${it.quantity}</td>
-            <td>₹${Number(it.purchasePrice).toFixed(2)}</td>
-            <td style="text-align:right; font-weight:bold;">₹${(it.quantity * it.purchasePrice).toFixed(2)}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
 
-    <div class="totals">
-      <div class="total-row"><span>Subtotal:</span> <span>₹${Number(formData.subtotal).toFixed(2)}</span></div>
-      <div class="total-row"><span>Tax (+):</span> <span>₹${Number(formData.taxTotal).toFixed(2)}</span></div>
-      <div class="total-row"><span>Discount (-):</span> <span>₹${Number(formData.discountTotal).toFixed(2)}</span></div>
-      <div class="total-row grand"><span>GRAND TOTAL:</span> <span>₹${Number(formData.grandTotal).toFixed(2)}</span></div>
+      <div class="address-grid">
+        <div class="address-box">
+          <h3>Supplier Details</h3>
+          <div class="address-content">
+            <strong>${supplier ? supplier.name : 'Unknown Supplier'}</strong>
+            <div class="address-detail">${formatAddress(supplier?.address)}</div>
+            ${supplier?.phone ? `<div class="address-detail">Ph: ${supplier.phone}</div>` : ''}
+            ${supplier?.email ? `<div class="address-detail">Email: ${supplier.email}</div>` : ''}
+            ${supplier?.taxNumber ? `<div class="address-detail">TAX ID: ${supplier.taxNumber}</div>` : ''}
+          </div>
+        </div>
+        <div class="address-box">
+          <h3>Billed To (Branch)</h3>
+          <div class="address-content">
+            <strong>${branchContext ? branchContext.name : (shopInfo?.name || 'Main Branch')}</strong>
+            <div class="address-detail">${formatAddress(branchContext?.address)}</div>
+            ${branchContext?.address?.city ? `<div class="address-detail">${branchContext.address.city}, ${branchContext.address.state?.name || branchContext.address.state || ''}</div>` : ''}
+            ${branchContext?.taxProfile?.registrationNumber ? `<div class="address-detail">GST/TAX: ${branchContext.taxProfile.registrationNumber}</div>` : ''}
+          </div>
+        </div>
+      </div>
+      
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 8%">#</th>
+            <th style="width: 42%">Item Description</th>
+            <th style="width: 12%; text-align: center;">Qty</th>
+            <th style="width: 18%; text-align: right;">Price</th>
+            <th style="width: 20%; text-align: right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${formData.items.map((it, idx) => `
+            <tr>
+              <td style="color:#888">${String(idx + 1).padStart(2, '0')}</td>
+              <td>
+                <div class="item-name">${it.name || 'Unknown'}</div>
+                <div class="item-code">${it.itemCode || ''}</div>
+              </td>
+              <td style="text-align: center;">${it.quantity}</td>
+              <td style="text-align: right;">${formatCurrency(it.purchasePrice)}</td>
+              <td style="text-align: right; font-weight: 600;">${formatCurrency(it.quantity * it.purchasePrice)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <div class="summary-section">
+        <div class="totals-table">
+          <div class="total-row">
+            <span>Subtotal</span>
+            <span>${formatCurrency(formData.subtotal)}</span>
+          </div>
+          <div class="total-row">
+            <span>Tax (+)</span>
+            <span>${formatCurrency(formData.taxTotal)}</span>
+          </div>
+          <div class="total-row">
+            <span>Discount (-)</span>
+            <span>${formatCurrency(formData.discountTotal)}</span>
+          </div>
+          <div class="total-row grand">
+            <span>GRAND TOTAL</span>
+            <span>${formatCurrency(formData.grandTotal)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        Supplier Invoice generated from Restaurant POS system behalf of ${shopInfo?.name || 'Restaurant'}
+      </div>
     </div>
-    <div class="footer">
-      Generated from Restaurant POS System
-    </div>
+    <script>
+      window.onload = () => {
+        window.print();
+        setTimeout(() => window.close(), 500);
+      };
+    </script>
   </body>
 </html>
         `;
-        const printWindow = window.open('', '', 'width=850,height=900');
+        const printWindow = window.open('', '_blank', 'width=900,height=900');
+        if (!printWindow) {
+            toast.error("Popup blocked. Please allow popups to print.");
+            return;
+        }
         printWindow.document.write(html);
         printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
-        }, 300);
     };
 
     const handleSubmit = async (e, shouldPrint = false) => {
         if (e && e.preventDefault) e.preventDefault();
         if (formData.items.length === 0) {
-            alert("Please add at least one item.");
+            toast.error("Please add at least one item.");
             return;
         }
+
+        // Validation for items requiring batch/expiry tracking
+        for (const item of formData.items) {
+            if (item.batchTracking && !item.batchNo) {
+                toast.error(`Batch number is required for item: ${item.name}`);
+                return;
+            }
+            if (item.expiryTracking && !item.expiryDate) {
+                toast.error(`Expiry date is required for item: ${item.name}`);
+                return;
+            }
+        }
+
         setLoading(true);
         try {
             const itemsWithTotal = formData.items.map(it => ({
@@ -389,8 +713,10 @@ const PurchasePage = () => {
             let savedPurchase;
             if (isEditing) {
                 savedPurchase = await PurchaseService.updatePurchase(id, payload);
+                toast.success("Purchase updated successfully");
             } else {
                 savedPurchase = await PurchaseService.createPurchase(payload);
+                toast.success("Purchase created successfully");
             }
             if (shouldPrint) {
                 handlePrintInvoice();
@@ -398,7 +724,7 @@ const PurchasePage = () => {
             navigate("/purchases");
         } catch (error) {
             console.error("Save error:", error);
-            alert(error.message || "Failed to save purchase");
+            toast.error(error.message || "Failed to save purchase");
         } finally {
             setLoading(false);
         }
@@ -444,7 +770,7 @@ const PurchasePage = () => {
             setSupplierSearch("");
         } catch (error) {
             console.error("Failed to save supplier:", error);
-            alert(error.message || "Failed to save supplier");
+            toast.error(error.message || "Failed to save supplier");
         } finally {
             setSavingSupplier(false);
         }
@@ -452,7 +778,7 @@ const PurchasePage = () => {
 
     const handleOpenBranchModal = () => {
         if (!user?.shop_id) {
-            alert("Organization details are missing.");
+            toast.error("Organization details are missing.");
             return;
         }
         setBranchForm(emptyBranch(user.shop_id));
@@ -480,7 +806,7 @@ const PurchasePage = () => {
             setBranchSearch("");
         } catch (error) {
             console.error("Failed to save branch:", error);
-            alert(error.message || "Failed to save branch");
+            toast.error(error.message || "Failed to save branch");
         } finally {
             setSavingBranch(false);
         }
@@ -536,36 +862,42 @@ const PurchasePage = () => {
                     }
                 } catch (error) {
                     console.error("Failed to fetch current location address", error);
-                    alert("Failed to fetch address from location.");
+                    toast.error("Failed to fetch address from location.");
                 } finally {
                     setIsLocationLoading(false);
                 }
             }, (error) => {
                 console.error("Geolocation error:", error);
                 setIsLocationLoading(false);
-                alert("Location access denied or unavailable.");
+                toast.error("Location access denied or unavailable.");
             });
         } else {
-            alert("Geolocation is not supported by this browser.");
+            toast.error("Geolocation is not supported by this browser.");
         }
     };
 
-    const filteredSearchItems = stockItems.filter(it =>
-        it.name.toLowerCase().includes(itemSearch.toLowerCase()) ||
-        it.itemCode.toLowerCase().includes(itemSearch.toLowerCase())
-    ).slice(0, 5);
+    const filteredSearchItems = stockItems.filter(it => {
+        const name = String(it.name || "").toLowerCase();
+        const code = String(it.itemCode || "").toLowerCase();
+        const search = (itemSearch || "").toLowerCase();
+        return name.includes(search) || code.includes(search);
+    }).slice(0, 5);
 
-    const filteredSuppliers = suppliers.filter(s =>
-        s.name.toLowerCase().includes(supplierSearch.toLowerCase()) ||
-        (s.contactPerson || "").toLowerCase().includes(supplierSearch.toLowerCase()) ||
-        (s.phone || "").includes(supplierSearch)
-    ).slice(0, 5);
+    const filteredSuppliers = suppliers.filter(s => {
+        const name = String(s.name || "").toLowerCase();
+        const contact = String(s.contactPerson || "").toLowerCase();
+        const search = (supplierSearch || "").toLowerCase();
+        return name.includes(search) || contact.includes(search) || (s.phone || "").includes(supplierSearch);
+    }).slice(0, 5);
 
-    const filteredBranches = branches.filter(b =>
-        b.name.toLowerCase().includes(branchSearch.toLowerCase()) ||
-        (b.address?.city || "").toLowerCase().includes(branchSearch.toLowerCase()) ||
-        (b.address?.state || "").toLowerCase().includes(branchSearch.toLowerCase())
-    ).slice(0, 5);
+    const filteredBranches = branches.filter(b => {
+        const name = String(b.name || "").toLowerCase();
+        const city = String(b.address?.city || "").toLowerCase();
+        const stateStr = b.address?.state?.name || b.address?.state || "";
+        const state = String(stateStr).toLowerCase();
+        const search = (branchSearch || "").toLowerCase();
+        return name.includes(search) || city.includes(search) || state.includes(search);
+    }).slice(0, 5);
 
     const handleConfirmBarcodePrint = () => {
         const {
@@ -582,10 +914,12 @@ const PurchasePage = () => {
             batchOverride,
             expiryOverride,
             layout,
+            labelWidth,
+            labelHeight,
             elementsOrder
         } = barcodePrintDialog;
         if (!barcode || !barcode.fullUrl) {
-            alert("No barcode image available to print.");
+            toast.error("No barcode image available to print.");
             return;
         }
         const count = Math.max(1, Number(copies) || 1);
@@ -593,11 +927,11 @@ const PurchasePage = () => {
         const effectiveBatch = includeBatch ? (batchOverride || item?.batchNo || "") : "";
         const effectiveExpiry = includeExpiry ? (expiryOverride || item?.expiryDate || "") : "";
         if (includeBatch && !effectiveBatch) {
-            alert("Please enter a batch number to print.");
+            toast.error("Please enter a batch number to print.");
             return;
         }
         if (includeExpiry && !effectiveExpiry) {
-            alert("Please enter an expiry date to print.");
+            toast.error("Please enter an expiry date to print.");
             return;
         }
 
@@ -668,8 +1002,8 @@ const PurchasePage = () => {
       .labels.rows { flex-direction: row; }
       .labels.columns { flex-direction: column; }
       .label {
-        width: 38mm;
-        min-height: 20mm;
+        width: ${labelWidth}mm;
+        min-height: ${labelHeight}mm;
         border: 1px solid #ccc;
         padding: 2mm;
         box-sizing: border-box;
@@ -681,8 +1015,9 @@ const PurchasePage = () => {
       }
       .label img {
         max-width: 100%;
+        max-height: ${labelHeight * 0.4}mm;
         height: auto;
-        margin-bottom: 1mm;
+        margin-bottom: 0.5mm;
       }
       .slot {
         margin: 0;
@@ -712,7 +1047,7 @@ const PurchasePage = () => {
 
         const win = window.open("", "_blank");
         if (!win) {
-            alert("Popup blocked. Please allow popups for this site to print labels.");
+            toast.error("Popup blocked. Please allow popups for this site to print labels.");
             return;
         }
         win.document.open();
@@ -749,84 +1084,151 @@ const PurchasePage = () => {
                         </h1>
                         <p className={`font-bold text-xs uppercase tracking-widest mt-1 ${theme.textMuted}`}>Invoice Details & Stock Update</p>
                     </div>
+
+                    {!isEditing && (
+                        <button
+                            type="button"
+                            onClick={() => setIsScannerOpen(true)}
+                            className={`flex items-center gap-2 px-6 py-4 rounded-[20px] font-black transition-all shadow-xl active:scale-95 group overflow-hidden relative ${theme.mode === 'dark' 
+                                ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-600/20' 
+                                : 'bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100'}`}
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                            <Camera size={20} className="group-hover:rotate-12 transition-transform" />
+                            <div className="flex flex-col items-start leading-none text-left">
+                                <span className="text-[11px] tracking-tight">UPLOAD & SCAN</span>
+                                <span className="text-[8px] opacity-60 tracking-widest font-bold">POWERED BY FIVEPE AI</span>
+                            </div>
+                        </button>
+                    )}
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-8 pb-12">
                     {/* section: General Info */}
                     <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 md:p-12 border ${theme.borderLight}`}>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             <div className="space-y-3">
                                 <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
                                     <User size={12} /> Supplier *
                                 </label>
                                 <div className="relative">
-                                    <div className="relative">
-                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                        <input
-                                            required
-                                            value={supplierSearch}
-                                            onChange={(e) => {
-                                                setSupplierSearch(e.target.value);
-                                                setShowSupplierResults(true);
-                                            }}
-                                            onFocus={() => setShowSupplierResults(true)}
-                                            placeholder={
-                                                formData.supplierId
-                                                    ? (suppliers.find(s => s._id === formData.supplierId)?.name || "Search suppliers...")
-                                                    : "Search suppliers..."
-                                            }
-                                            className={`w-full pl-12 pr-4 py-4 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-bold ${theme.inputBg} ${theme.textPrimary}`}
-                                        />
-                                    </div>
-                                    {showSupplierResults && (
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden divide-y divide-gray-50 animate-in slide-in-from-top-2 duration-200">
-                                            {filteredSuppliers.map(supplier => (
-                                                <button
-                                                    key={supplier._id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            supplierId: supplier._id
-                                                        }));
-                                                        setSupplierSearch(supplier.name);
-                                                        setShowSupplierResults(false);
-                                                    }}
-                                                    className="w-full p-4 text-left hover:bg-indigo-50 flex items-center justify-between group transition-colors"
-                                                >
-                                                    <div>
-                                                        <div className="font-black text-gray-800">{supplier.name}</div>
-                                                        {supplier.contactPerson && (
-                                                            <div className="text-[10px] font-bold text-gray-400 uppercase">
-                                                                {supplier.contactPerson}
+                                    {formData.supplierId ? (
+                                        (() => {
+                                            const supplier = suppliers.find(s => s._id === formData.supplierId);
+                                            return (
+                                                <div className={`p-6 rounded-3xl border-2 border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-900/10 relative group transition-all`}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setFormData(prev => ({ ...prev, supplierId: "" }));
+                                                            setSupplierSearch("");
+                                                        }}
+                                                        className="absolute top-4 right-4 p-2 hover:bg-red-50 hover:text-red-600 rounded-full transition-all opacity-0 group-hover:opacity-100 flex items-center gap-2 text-[8px] font-black uppercase"
+                                                    >
+                                                        <X size={14} /> Change
+                                                    </button>
+                                                    <div className="space-y-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none">
+                                                                <User size={18} />
                                                             </div>
-                                                        )}
+                                                            <div>
+                                                                <h3 className={`text-lg font-black leading-none ${theme.textHeading}`}>{supplier?.name || "Unknown Supplier"}</h3>
+                                                                <p className={`text-[10px] font-black uppercase tracking-widest mt-1.5 ${theme.textSecondary}`}>Bill From</p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 gap-2.5 pt-2 border-t border-indigo-500/10">
+                                                            {supplier?.email && (
+                                                                <div className="flex items-center gap-2 text-[11px] font-bold text-gray-500 dark:text-gray-400">
+                                                                    <Mail size={12} className="text-indigo-400" />
+                                                                    {supplier.email}
+                                                                </div>
+                                                            )}
+                                                            {supplier?.phone && (
+                                                                <div className="flex items-center gap-2 text-[11px] font-bold text-gray-500 dark:text-gray-400">
+                                                                    <Phone size={12} className="text-indigo-400" />
+                                                                    {supplier.phone}
+                                                                </div>
+                                                            )}
+                                                            {supplier?.address && (
+                                                                <div className="flex items-start gap-2 text-[11px] font-bold text-gray-500 dark:text-gray-400">
+                                                                    <MapPin size={12} className="mt-0.5 text-indigo-400 shrink-0" />
+                                                                    <span className="leading-relaxed">{supplier.address}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    <Check size={16} className="text-indigo-600 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0" />
-                                                </button>
-                                            ))}
-                                            {filteredSuppliers.length === 0 && (
-                                                <div className="p-4 text-center text-gray-400 font-bold text-xs uppercase">
-                                                    No suppliers found
+                                                </div>
+                                            );
+                                        })()
+                                    ) : (
+                                        <>
+                                            <div className="relative">
+                                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                                <input
+                                                    required
+                                                    value={supplierSearch}
+                                                    onChange={(e) => {
+                                                        setSupplierSearch(e.target.value);
+                                                        setShowSupplierResults(true);
+                                                    }}
+                                                    onFocus={() => setShowSupplierResults(true)}
+                                                    placeholder="Search suppliers..."
+                                                    className={`w-full pl-12 pr-4 py-4 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-bold ${theme.inputBg} ${theme.textPrimary}`}
+                                                />
+                                            </div>
+                                            {showSupplierResults && (
+                                                <div className={`absolute top-full left-0 right-0 mt-2 rounded-2xl shadow-2xl border z-50 overflow-hidden divide-y animate-in slide-in-from-top-2 duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}>
+                                                    {filteredSuppliers.map(supplier => (
+                                                        <button
+                                                            key={supplier._id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setFormData(prev => ({
+                                                                    ...prev,
+                                                                    supplierId: supplier._id
+                                                                }));
+                                                                setSupplierSearch(supplier.name);
+                                                                setShowSupplierResults(false);
+                                                            }}
+                                                            className={`w-full p-4 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between group transition-colors`}
+                                                        >
+                                                            <div>
+                                                                <div className={`font-black ${theme.textPrimary}`}>{supplier.name}</div>
+                                                                {supplier.contactPerson && (
+                                                                    <div className={`text-[10px] font-bold uppercase ${theme.textSecondary}`}>
+                                                                        {supplier.contactPerson}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <Check size={16} className="text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0" />
+                                                        </button>
+                                                    ))}
+                                                    {filteredSuppliers.length === 0 && (
+                                                        <div className={`p-4 text-center font-bold text-xs uppercase ${theme.textMuted}`}>
+                                                            No suppliers found
+                                                        </div>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowSupplierResults(false);
+                                                            handleOpenSupplierModal();
+                                                        }}
+                                                        className={`w-full p-4 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between group transition-colors border-t mt-2 ${theme.borderLight}`}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="bg-indigo-100 dark:bg-indigo-900/40 p-2 rounded-xl text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                                <Plus size={18} />
+                                                            </div>
+                                                            <div className="font-black text-indigo-600 dark:text-indigo-400">Add New Supplier</div>
+                                                        </div>
+                                                        <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
+                                                    </button>
                                                 </div>
                                             )}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowSupplierResults(false);
-                                                    handleOpenSupplierModal();
-                                                }}
-                                                className="w-full p-4 text-left hover:bg-indigo-50 flex items-center justify-between group transition-colors border-t border-gray-100 mt-2"
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                                        <Plus size={18} />
-                                                    </div>
-                                                    <div className="font-black text-indigo-600">Add New Supplier</div>
-                                                </div>
-                                                <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
-                                            </button>
-                                        </div>
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -836,110 +1238,155 @@ const PurchasePage = () => {
                                     <Building size={12} /> Branch *
                                 </label>
                                 <div className="relative">
-                                    <div className="relative">
-                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                        <input
-                                            required
-                                            value={branchSearch}
-                                            onChange={(e) => {
-                                                setBranchSearch(e.target.value);
-                                                setShowBranchResults(true);
-                                            }}
-                                            onFocus={() => setShowBranchResults(true)}
-                                            placeholder={
-                                                formData.branchId
-                                                    ? (branches.find(b => b._id === formData.branchId)?.name || "Search branches...")
-                                                    : "Search branches..."
-                                            }
-                                            className={`w-full pl-12 pr-4 py-4 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-bold ${theme.inputBg} ${theme.textPrimary}`}
-                                        />
-                                    </div>
-                                    {showBranchResults && (
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden divide-y divide-gray-50 animate-in slide-in-from-top-2 duration-200">
-                                            {filteredBranches.map(branch => (
-                                                <button
-                                                    key={branch._id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            branchId: branch._id
-                                                        }));
-                                                        setBranchSearch(branch.name);
-                                                        setShowBranchResults(false);
-                                                    }}
-                                                    className="w-full p-4 text-left hover:bg-indigo-50 flex items-center justify-between group transition-colors"
-                                                >
-                                                    <div>
-                                                        <div className="font-black text-gray-800">{branch.name}</div>
-                                                        <div className="text-[10px] font-bold text-gray-400 uppercase">
-                                                            {branch.address?.city || ""}{branch.address?.state ? `, ${branch.address.state}` : ""}
+                                    {formData.branchId ? (
+                                        (() => {
+                                            const branch = branches.find(b => b._id === formData.branchId);
+                                            return (
+                                                <div className={`p-6 rounded-3xl border-2 border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-900/10 relative group transition-all`}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setFormData(prev => ({ ...prev, branchId: "" }));
+                                                            setBranchSearch("");
+                                                        }}
+                                                        className="absolute top-4 right-4 p-2 hover:bg-red-50 hover:text-red-600 rounded-full transition-all opacity-0 group-hover:opacity-100 flex items-center gap-2 text-[8px] font-black uppercase"
+                                                    >
+                                                        <X size={14} /> Change
+                                                    </button>
+                                                    <div className="space-y-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none">
+                                                                <Building size={18} />
+                                                            </div>
+                                                            <div>
+                                                                <h3 className={`text-lg font-black leading-none ${theme.textHeading}`}>{branch?.name || "Unknown Branch"}</h3>
+                                                                <p className={`text-[10px] font-black uppercase tracking-widest mt-1.5 ${theme.textSecondary}`}>Bill To / Delivery</p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 gap-2.5 pt-2 border-t border-indigo-500/10">
+                                                            {branch?.address && (
+                                                                <div className="flex items-start gap-2 text-[11px] font-bold text-gray-500 dark:text-gray-400">
+                                                                    <MapPin size={12} className="mt-0.5 text-indigo-400 shrink-0" />
+                                                                    <div className="flex flex-col gap-0.5">
+                                                                        <span className="leading-relaxed">{branch.address.line1}</span>
+                                                                        <span className="text-[10px] opacity-70">
+                                                                            {branch.address.city}{(branch.address.state?.name || branch.address.state) ? `, ${branch.address.state?.name || branch.address.state}` : ""}{branch.address.pincode ? ` - ${branch.address.pincode}` : ""}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <Check size={16} className="text-indigo-600 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0" />
-                                                </button>
-                                            ))}
-                                            {filteredBranches.length === 0 && (
-                                                <div className="p-4 text-center text-gray-400 font-bold text-xs uppercase">
-                                                    No branches found
+                                                </div>
+                                            );
+                                        })()
+                                    ) : (
+                                        <>
+                                            <div className="relative">
+                                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                                <input
+                                                    required
+                                                    value={branchSearch}
+                                                    onChange={(e) => {
+                                                        setBranchSearch(e.target.value);
+                                                        setShowBranchResults(true);
+                                                    }}
+                                                    onFocus={() => setShowBranchResults(true)}
+                                                    placeholder="Search branches..."
+                                                    className={`w-full pl-12 pr-4 py-4 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-bold ${theme.inputBg} ${theme.textPrimary}`}
+                                                />
+                                            </div>
+                                            {showBranchResults && (
+                                                <div className={`absolute top-full left-0 right-0 mt-2 rounded-2xl shadow-2xl border z-50 overflow-hidden divide-y animate-in slide-in-from-top-2 duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}>
+                                                    {filteredBranches.map(branch => (
+                                                        <button
+                                                            key={branch._id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setFormData(prev => ({
+                                                                    ...prev,
+                                                                    branchId: branch._id
+                                                                }));
+                                                                setBranchSearch(branch.name);
+                                                                setShowBranchResults(false);
+                                                            }}
+                                                            className={`w-full p-4 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between group transition-colors`}
+                                                        >
+                                                            <div>
+                                                                <div className={`font-black ${theme.textPrimary}`}>{branch.name}</div>
+                                                                <div className={`text-[10px] font-bold uppercase ${theme.textSecondary}`}>
+                                                                    {branch.address?.city || ""}{(branch.address?.state?.name || branch.address?.state) ? `, ${branch.address.state.name || branch.address.state}` : ""}
+                                                                </div>
+                                                            </div>
+                                                            <Check size={16} className="text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0" />
+                                                        </button>
+                                                    ))}
+                                                    {filteredBranches.length === 0 && (
+                                                        <div className={`p-4 text-center font-bold text-xs uppercase ${theme.textMuted}`}>
+                                                            No branches found
+                                                        </div>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowBranchResults(false);
+                                                            handleOpenBranchModal();
+                                                        }}
+                                                        className={`w-full p-4 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between group transition-colors border-t mt-2 ${theme.borderLight}`}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="bg-indigo-100 dark:bg-indigo-900/40 p-2 rounded-xl text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                                <Plus size={18} />
+                                                            </div>
+                                                            <div className="font-black text-indigo-600 dark:text-indigo-400">Add New Branch</div>
+                                                        </div>
+                                                        <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
+                                                    </button>
                                                 </div>
                                             )}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowBranchResults(false);
-                                                    handleOpenBranchModal();
-                                                }}
-                                                className="w-full p-4 text-left hover:bg-indigo-50 flex items-center justify-between group transition-colors border-t border-gray-100 mt-2"
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                                        <Plus size={18} />
-                                                    </div>
-                                                    <div className="font-black text-indigo-600">Add New Branch</div>
-                                                </div>
-                                                <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
-                                            </button>
-                                        </div>
+                                        </>
                                     )}
                                 </div>
                             </div>
 
-                            <div className="space-y-3">
-                                <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
-                                    <FileText size={12} /> Invoice No *
-                                </label>
-                                <input
-                                    required
-                                    className={`w-full p-4 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-black ${theme.inputBg} ${theme.textPrimary}`}
-                                    value={formData.supplierInvoiceNumber}
-                                    onChange={e => setFormData({ ...formData, supplierInvoiceNumber: e.target.value })}
-                                    placeholder="INV/2024/001"
-                                />
-                            </div>
+                            <div className="flex flex-col gap-6">
+                                <div className="space-y-3">
+                                    <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
+                                        <FileText size={12} /> Invoice No *
+                                    </label>
+                                    <input
+                                        required
+                                        className={`w-full p-4 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-black ${theme.inputBg} ${theme.textPrimary}`}
+                                        value={formData.supplierInvoiceNumber}
+                                        onChange={e => setFormData({ ...formData, supplierInvoiceNumber: e.target.value })}
+                                        placeholder="INV/2024/001"
+                                    />
+                                </div>
 
-                            <div className="space-y-3">
-                                <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
-                                    <Calendar size={12} /> Date *
-                                </label>
-                                <DatePicker
-                                    value={formData.invoiceDate}
-                                    onChange={val => setFormData({ ...formData, invoiceDate: val })}
-                                    className={`w-full px-4 py-3 border-2 border-transparent focus-within:border-indigo-500 rounded-2xl outline-none transition-all font-black ${theme.inputBg} ${theme.textPrimary}`}
-                                />
+                                <div className="space-y-3">
+                                    <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
+                                        <Calendar size={12} /> Date *
+                                    </label>
+                                    <DatePicker
+                                        value={formData.invoiceDate}
+                                        onChange={val => setFormData({ ...formData, invoiceDate: val })}
+                                        className={`w-full px-4 py-3 border-2 border-transparent focus-within:border-indigo-500 rounded-2xl outline-none transition-all font-black ${theme.inputBg} ${theme.textPrimary}`}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     {/* section: Item Entry */}
                     <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 md:p-12 border ${theme.borderLight} flex flex-col gap-8`}>
-                        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b pb-8 ${theme.borderLight}`}>
+                        <div className={`flex flex-col gap-6 border-b pb-8 ${theme.borderLight}`}>
                             <h2 className={`text-xl font-black flex items-center gap-3 uppercase tracking-tight ${theme.textHeading}`}>
                                 <Package className="text-indigo-600" /> Items List
                             </h2>
 
-                            {/* Search for Adding Items */}
-                            <div className="relative w-full md:w-96">
+                            {/* Search for Adding Items - Now Full Width */}
+                            <div className="relative w-full">
                                 <CommonSelect
                                     options={stockItems}
                                     value={null}
@@ -948,12 +1395,34 @@ const PurchasePage = () => {
                                     searchPlaceholder="Search by name or code..."
                                     labelKey="name"
                                     valueKey="_id"
-                                    className="w-full bg-indigo-50/30 border-indigo-100"
+                                    className="w-full"
                                     renderOption={(item) => (
                                         <div>
-                                            <div className="font-black text-gray-800">{item.name}</div>
-                                            <div className="text-[10px] font-bold text-gray-400 uppercase">{item.itemCode}</div>
+                                            <div className="flex items-center justify-between">
+                                                <div className={`font-black ${theme.textPrimary}`}>{item.name}</div>
+                                                {businessTypeData?.features?.sellTradeItems && (
+                                                    <span className={`text-[8px] px-1.5 py-0.5 rounded font-black ${item.itemType === 'TRADE' ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-600'}`}>
+                                                        {item.itemType}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className={`text-[10px] font-bold uppercase ${theme.textSecondary}`}>{item.itemCode}</div>
                                         </div>
+                                    )}
+                                    extraAction={(
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsProductModalOpen(true)}
+                                            className={`w-full p-3 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between group transition-colors rounded-xl`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-indigo-100 dark:bg-indigo-900/40 p-2 rounded-xl text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                    <Plus size={18} />
+                                                </div>
+                                                <div className="font-black text-indigo-600 dark:text-indigo-400">Add New Product</div>
+                                            </div>
+                                            <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
+                                        </button>
                                     )}
                                 />
                             </div>
@@ -966,6 +1435,9 @@ const PurchasePage = () => {
                                     <tr className={`text-[10px] font-black uppercase tracking-widest border-b ${theme.textMuted} ${theme.borderLight}`}>
                                         <th className="py-4 px-2">#</th>
                                         <th className="py-4 px-2">Item Description</th>
+                                        {businessTypeData?.features?.sellTradeItems && (
+                                            <th className="py-4 px-2 w-24">Item Type</th>
+                                        )}
                                         <th className="py-4 px-2 w-24">Qty</th>
                                         <th className="py-4 px-2 w-28">Purchase Price</th>
                                         <th className="py-4 px-2 w-28">Selling Price</th>
@@ -973,6 +1445,7 @@ const PurchasePage = () => {
                                         <th className="py-4 px-2 w-28">Margin (%)</th>
                                         <th className="py-4 px-2 w-28">Batch / Exp</th>
                                         <th className="py-4 px-2 w-48">Barcode / Print</th>
+                                        <th className="py-4 px-2 w-28">Tax (%)</th>
                                         <th className="py-4 px-2 text-right">Total</th>
                                         <th className="py-4 px-2 text-right w-12"></th>
                                     </tr>
@@ -982,9 +1455,45 @@ const PurchasePage = () => {
                                         <tr key={it.itemId} className="group hover:opacity-80 transition-opacity">
                                             <td className={`py-5 px-2 font-bold ${theme.textMuted}`}>{idx + 1}</td>
                                             <td className="py-5 px-2">
-                                                <div className={`font-black ${theme.textPrimary}`}>{it.name}</div>
-                                                <div className={`text-[10px] font-bold ${theme.textSecondary}`}>{it.itemCode}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`font-black ${theme.textPrimary}`}>{it.name}</div>
+                                                    {it.isNew && (
+                                                        <span className="text-[9px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-full animate-pulse">NEW</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center justify-between mt-1">
+                                                    <div className={`text-[10px] font-bold ${theme.textSecondary}`}>{it.itemCode}</div>
+                                                    {it.isNew && (
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setProductPrefillData({
+                                                                    name: it.name,
+                                                                    purchasePrice: it.purchasePrice,
+                                                                    itemType: businessTypeData?.features?.sellTradeItems ? "TRADE" : "STOCK"
+                                                                });
+                                                                setIsProductModalOpen(true);
+                                                            }}
+                                                            className="text-[9px] font-black text-indigo-600 hover:underline"
+                                                        >
+                                                            + CREATE PRODUCT
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
+                                            {businessTypeData?.features?.sellTradeItems && (
+                                                <td className="py-5 px-2">
+                                                    <select
+                                                        value={it.itemType || "STOCK"}
+                                                        onChange={e => handleItemChange(idx, 'itemType', e.target.value)}
+                                                        disabled={it.isNew}
+                                                        className={`p-1.5 text-[10px] font-black rounded-lg border border-transparent focus:border-indigo-400 outline-none ${theme.inputBg} ${it.itemType === 'TRADE' ? 'text-amber-600' : 'text-gray-600'}`}
+                                                    >
+                                                        <option value="STOCK">STOCK</option>
+                                                        <option value="TRADE">TRADE</option>
+                                                    </select>
+                                                </td>
+                                            )}
                                             <td className="py-5 px-2 text-sm">
                                                 <input
                                                     type="number"
@@ -1043,23 +1552,27 @@ const PurchasePage = () => {
                                                     <div className="flex flex-col gap-1 w-full relative group/tracking cursor-pointer">
                                                         {it.batchTracking && (
                                                             <div className="relative">
-                                                                <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-indigo-400`}>BAT</span>
+                                                                <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-indigo-400`}>
+                                                                    BAT <span className="text-red-500">*</span>
+                                                                </span>
                                                                 <input
-                                                                    placeholder="BATCH NO"
+                                                                    placeholder="BATCH NO (REQUIRED)"
                                                                     value={it.batchNo}
                                                                     onChange={e => handleItemChange(idx, 'batchNo', e.target.value)}
-                                                                    className={`w-full pl-8 p-1.5 text-[10px] rounded border-transparent focus:border-indigo-400 uppercase font-black placeholder:font-medium outline-none border ${theme.inputBg} ${theme.textPrimary}`}
+                                                                    className={`w-full pl-12 p-1.5 text-[11px] rounded border-transparent focus:border-indigo-400 uppercase font-bold outline-none border ${theme.inputBg} ${theme.textPrimary}`}
                                                                 />
                                                             </div>
                                                         )}
                                                         {it.expiryTracking && (
                                                             <div className="relative">
-                                                                <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-pink-400 z-10 pointer-events-none`}>EXP</span>
+                                                                <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-pink-400 z-10 pointer-events-none`}>
+                                                                    EXP <span className="text-red-500">*</span>
+                                                                </span>
                                                                 <DatePicker
                                                                     value={it.expiryDate}
                                                                     onChange={val => handleItemChange(idx, 'expiryDate', val)}
-                                                                    className={`w-full pl-8 py-1.5 text-[10px] rounded border-transparent focus-within:border-indigo-400 uppercase font-black outline-none border ${theme.inputBg} ${theme.textPrimary}`}
-                                                                    placeholder="EXPIRY"
+                                                                    className={`w-full pl-12 py-1.5 text-[11px] rounded border-transparent focus-within:border-indigo-400 uppercase font-bold outline-none border ${theme.inputBg} ${theme.textPrimary}`}
+                                                                    placeholder="EXPIRY (REQUIRED)"
                                                                 />
                                                             </div>
                                                         )}
@@ -1094,10 +1607,20 @@ const PurchasePage = () => {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="py-5 px-2 text-right">
-                                                <div className={`font-black ${theme.textPrimary}`}>
-                                                    {formatCurrency ? formatCurrency(it.quantity * it.purchasePrice) : `₹${(it.quantity * it.purchasePrice).toFixed(2)}`}
-                                                </div>
+                                            <td className="py-5 px-2">
+                                                <select
+                                                    value={it.taxPercent || 0}
+                                                    onChange={e => handleItemChange(idx, 'taxPercent', parseFloat(e.target.value))}
+                                                    className={`w-full p-2 rounded-lg font-black border border-transparent focus:border-indigo-400 outline-none ${theme.inputBg} ${theme.textPrimary}`}
+                                                >
+                                                    <option value="0">0%</option>
+                                                    {shopTaxes.map(t => (
+                                                        <option key={t._id} value={t.percentage}>{t.name} ({t.percentage}%)</option>
+                                                    ))}
+                                                </select>
+                                            </td>
+                                            <td className="py-5 px-2 text-right font-black">
+                                                {formatCurrency((it.quantity * it.purchasePrice) + (it.taxAmount || 0))}
                                             </td>
                                             <td className="py-5 px-2 text-right">
                                                 <button
@@ -1147,7 +1670,7 @@ const PurchasePage = () => {
                                     type="number"
                                     value={formData.taxTotal}
                                     onChange={e => setFormData({ ...formData, taxTotal: parseFloat(e.target.value || 0) })}
-                                    className="text-right font-black text-gray-800 bg-gray-50 min-w-[80px] p-2 rounded-lg outline-none"
+                                    className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} min-w-[80px] p-2 rounded-lg outline-none border ${theme.borderLight}`}
                                 />
                             </div>
                             <div className="flex justify-between items-center px-2 border-b border-gray-100 pb-4">
@@ -1156,7 +1679,7 @@ const PurchasePage = () => {
                                     type="number"
                                     value={formData.discountTotal}
                                     onChange={e => setFormData({ ...formData, discountTotal: parseFloat(e.target.value || 0) })}
-                                    className="text-right font-black text-indigo-600 bg-indigo-50 min-w-[80px] p-2 rounded-lg outline-none"
+                                    className={`text-right font-black ${theme.mode === 'dark' ? 'text-indigo-400 bg-indigo-900/40' : 'text-indigo-600 bg-indigo-50'} min-w-[80px] p-2 rounded-lg outline-none border ${theme.mode === 'dark' ? 'border-indigo-800' : 'border-indigo-100'}`}
                                 />
                             </div>
                             <div className="flex justify-between items-center bg-gray-900 rounded-3xl p-6 text-white shadow-2xl">
@@ -1204,152 +1727,155 @@ const PurchasePage = () => {
                 isOpen={barcodePrintDialog.isOpen}
                 onClose={() => setBarcodePrintDialog(prev => ({ ...prev, isOpen: false }))}
                 title="Print Barcodes"
-                className="max-w-md"
+                className="max-w-4xl"
             >
-                <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Item</label>
-                            <div className={`text-sm font-black ${theme.textPrimary}`}>
-                                {barcodePrintDialog.item?.name || "—"}
+                <div className="flex flex-col md:flex-row gap-8">
+                    {/* Left Panel: Settings */}
+                    <div className="flex-1 space-y-6">
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="space-y-1 col-span-2">
+                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Selected Item</label>
+                                <div className={`text-sm font-black ${theme.textPrimary} p-3 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border ${theme.borderLight} min-h-[44px] flex items-center`}>
+                                    {barcodePrintDialog.item?.name || "—"}
+                                </div>
                             </div>
-                            {barcodePrintDialog.item?.itemCode && (
-                                <div className={`text-[10px] font-bold ${theme.textSecondary}`}>{barcodePrintDialog.item.itemCode}</div>
-                            )}
+                            <div className="space-y-1">
+                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Number of Copies</label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    value={barcodePrintDialog.copies}
+                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, copies: e.target.value }))}
+                                    className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-sm`}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Label Size (W×H mm)</label>
+                                <div className="flex items-center gap-2">
+                                    <div className="relative flex-1">
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            value={barcodePrintDialog.labelWidth}
+                                            onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelWidth: parseFloat(e.target.value || 0) }))}
+                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs text-center pr-6`}
+                                        />
+                                        <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>W</span>
+                                    </div>
+                                    <span className={theme.textMuted}>×</span>
+                                    <div className="relative flex-1">
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            value={barcodePrintDialog.labelHeight}
+                                            onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelHeight: parseFloat(e.target.value || 0) }))}
+                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs text-center pr-6`}
+                                        />
+                                        <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>H</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+
+                        <div className="space-y-2">
+                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Include on label</label>
+                            <div className="grid grid-cols-2 gap-3 text-[11px] font-bold">
+                                <label className={`flex items-center gap-2 p-2 rounded-xl border ${theme.borderLight} cursor-pointer ${theme.mode === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'} transition-colors`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={barcodePrintDialog.includeLogo}
+                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeLogo: e.target.checked }))}
+                                        className="rounded accent-indigo-600"
+                                    />
+                                    Shop Logo
+                                </label>
+                                <label className={`flex items-center gap-2 p-2 rounded-xl border ${theme.borderLight} cursor-pointer ${theme.mode === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'} transition-colors`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={barcodePrintDialog.includeName}
+                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeName: e.target.checked }))}
+                                        className="rounded accent-indigo-600"
+                                    />
+                                    Name
+                                </label>
+                                <label className={`flex items-center gap-2 p-2 rounded-xl border ${theme.borderLight} cursor-pointer ${theme.mode === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'} transition-colors`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={barcodePrintDialog.includeCode}
+                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeCode: e.target.checked }))}
+                                        className="rounded accent-indigo-600"
+                                    />
+                                    Item Code
+                                </label>
+                                <label className={`flex items-center gap-2 p-2 rounded-xl border ${theme.borderLight} cursor-pointer ${theme.mode === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'} transition-colors`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={barcodePrintDialog.includePrice}
+                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includePrice: e.target.checked }))}
+                                        className="rounded accent-indigo-600"
+                                    />
+                                    Purchase Price
+                                </label>
+                                <label className={`flex items-center gap-2 p-2 rounded-xl border ${theme.borderLight} cursor-pointer ${theme.mode === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'} transition-colors`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={barcodePrintDialog.includeBatch}
+                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeBatch: e.target.checked }))}
+                                        className="rounded accent-indigo-600"
+                                    />
+                                    Batch No
+                                </label>
+                                <label className={`flex items-center gap-2 p-2 rounded-xl border ${theme.borderLight} cursor-pointer ${theme.mode === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'} transition-colors`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={barcodePrintDialog.includeExpiry}
+                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeExpiry: e.target.checked }))}
+                                        className="rounded accent-indigo-600"
+                                    />
+                                    Expiry Date
+                                </label>
+                            </div>
+                        </div>
+
+                        {(barcodePrintDialog.includeBatch || barcodePrintDialog.includeExpiry) && (
+                            <div className="grid grid-cols-2 gap-3 text-[11px]">
+                                {barcodePrintDialog.includeBatch && (
+                                    <div className="space-y-1">
+                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Batch Number</label>
+                                        <input
+                                            value={barcodePrintDialog.batchOverride ?? ""}
+                                            onChange={e => setBarcodePrintDialog(prev => ({ ...prev, batchOverride: e.target.value }))}
+                                            placeholder={barcodePrintDialog.item?.batchNo || "Enter batch"}
+                                            className={`w-full p-2 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary}`}
+                                        />
+                                    </div>
+                                )}
+                                {barcodePrintDialog.includeExpiry && (
+                                    <div className="space-y-1">
+                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Expiry</label>
+                                        <DatePicker
+                                            value={barcodePrintDialog.expiryOverride ?? ""}
+                                            onChange={val => setBarcodePrintDialog(prev => ({ ...prev, expiryOverride: val }))}
+                                            className={`w-full p-2 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-xs`}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="space-y-1">
-                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Copies</label>
+                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Custom Text</label>
                             <input
-                                type="number"
-                                min={1}
-                                value={barcodePrintDialog.copies}
-                                onChange={e => setBarcodePrintDialog(prev => ({ ...prev, copies: e.target.value }))}
-                                className={`w-full p-2 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-sm`}
+                                value={barcodePrintDialog.customText}
+                                onChange={e => setBarcodePrintDialog(prev => ({ ...prev, customText: e.target.value }))}
+                                placeholder="Optional line (e.g. OFFER, location)"
+                                className={`w-full p-2 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-[11px]`}
                             />
                         </div>
-                    </div>
-                    <div className="space-y-2">
-                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Include on label</label>
-                        <div className="flex flex-wrap gap-3 text-[11px] font-bold">
-                            <label className="inline-flex items-center gap-1">
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeLogo}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeLogo: e.target.checked }))}
-                                    className="rounded accent-indigo-600"
-                                />
-                                Shop Logo
-                            </label>
-                            <label className="inline-flex items-center gap-1">
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeName}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeName: e.target.checked }))}
-                                    className="rounded accent-indigo-600"
-                                />
-                                Name
-                            </label>
-                            <label className="inline-flex items-center gap-1">
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeCode}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeCode: e.target.checked }))}
-                                    className="rounded accent-indigo-600"
-                                />
-                                Item Code
-                            </label>
-                            <label className="inline-flex items-center gap-1">
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includePrice}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includePrice: e.target.checked }))}
-                                    className="rounded accent-indigo-600"
-                                />
-                                Purchase Price
-                            </label>
-                            <label className="inline-flex items-center gap-1">
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeBatch}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeBatch: e.target.checked }))}
-                                    className="rounded accent-indigo-600"
-                                />
-                                Batch No
-                            </label>
-                            <label className="inline-flex items-center gap-1">
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeExpiry}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeExpiry: e.target.checked }))}
-                                    className="rounded accent-indigo-600"
-                                />
-                                Expiry Date
-                            </label>
-                        </div>
-                    </div>
-                    {(barcodePrintDialog.includeBatch || barcodePrintDialog.includeExpiry) && (
-                        <div className="grid grid-cols-2 gap-3 text-[11px]">
-                            {barcodePrintDialog.includeBatch && (
-                                <div className="space-y-1">
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Batch Number</label>
-                                    <input
-                                        value={barcodePrintDialog.batchOverride ?? ""}
-                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, batchOverride: e.target.value }))}
-                                        placeholder={barcodePrintDialog.item?.batchNo || "Enter batch"}
-                                        className={`w-full p-2 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary}`}
-                                    />
-                                </div>
-                            )}
-                            {barcodePrintDialog.includeExpiry && (
-                                <div className="space-y-1">
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Expiry</label>
-                                    <DatePicker
-                                        value={barcodePrintDialog.expiryOverride ?? ""}
-                                        onChange={val => setBarcodePrintDialog(prev => ({ ...prev, expiryOverride: val }))}
-                                        className={`w-full p-2 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-xs`}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    )}
-                    <div className="space-y-1">
-                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Custom Text</label>
-                        <input
-                            value={barcodePrintDialog.customText}
-                            onChange={e => setBarcodePrintDialog(prev => ({ ...prev, customText: e.target.value }))}
-                            placeholder="Optional line (e.g. OFFER, location)"
-                            className={`w-full p-2 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-[11px]`}
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Label flow</label>
-                        <div className="flex gap-3 text-[11px] font-bold">
-                            <button
-                                type="button"
-                                onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "ROWS" }))}
-                                className={`flex-1 py-2 rounded-xl border text-center ${barcodePrintDialog.layout === "ROWS"
-                                    ? "border-indigo-500 text-indigo-600 bg-indigo-50"
-                                    : `${theme.borderLight} ${theme.textSecondary} bg-gray-50`
-                                    }`}
-                            >
-                                Row-wise
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "COLUMNS" }))}
-                                className={`flex-1 py-2 rounded-xl border text-center ${barcodePrintDialog.layout === "COLUMNS"
-                                    ? "border-indigo-500 text-indigo-600 bg-indigo-50"
-                                    : `${theme.borderLight} ${theme.textSecondary} bg-gray-50`
-                                    }`}
-                            >
-                                Column-wise
-                            </button>
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Preview (drag to re-order)</label>
-                        <div className="border rounded-2xl p-3 bg-gray-50">
-                            <div className="border border-dashed border-gray-300 rounded-xl p-2 bg-white flex flex-col items-center gap-1 min-h-[80px]">
+
+                        <div className="space-y-2">
+                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Order & Layout</label>
+                            <div className={`border border-dashed ${theme.borderLight} rounded-2xl p-3 ${theme.inputBg} space-y-2`}>
                                 {barcodePrintDialog.elementsOrder.map((key, idx) => {
                                     const labelMap = {
                                         logo: "Shop Logo",
@@ -1390,34 +1916,124 @@ const PurchasePage = () => {
                                                     return { ...prev, elementsOrder: order };
                                                 });
                                             }}
-                                            className="px-3 py-1 rounded-lg border border-gray-200 text-[10px] font-bold text-gray-700 bg-gray-50 cursor-move flex items-center gap-2 w-full justify-center"
+                                            className={`px-3 py-1.5 rounded-lg border ${theme.borderLight} text-[10px] font-bold ${theme.textPrimary} ${theme.surfaceBg} cursor-move flex items-center gap-2 hover:border-indigo-300 hover:shadow-sm`}
                                         >
-                                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                                            <div className="flex flex-col gap-0.5 opacity-30">
+                                                <div className="w-2.5 h-0.5 bg-gray-600" />
+                                                <div className="w-2.5 h-0.5 bg-gray-600" />
+                                            </div>
                                             {labelMap[key] || key}
                                         </div>
                                     );
                                 })}
                             </div>
+                            
+                            <div className="flex gap-2 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "ROWS" }))}
+                                    className={`flex-1 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${barcodePrintDialog.layout === "ROWS"
+                                        ? (theme.mode === 'dark' ? "border-indigo-400 text-indigo-300 bg-indigo-400/10" : "border-indigo-500 text-indigo-600 bg-indigo-50")
+                                        : `${theme.borderLight} ${theme.textSecondary} ${theme.surfaceBg}`
+                                        }`}
+                                >
+                                    Row-wise
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "COLUMNS" }))}
+                                    className={`flex-1 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${barcodePrintDialog.layout === "COLUMNS"
+                                        ? (theme.mode === 'dark' ? "border-indigo-400 text-indigo-300 bg-indigo-400/10" : "border-indigo-500 text-indigo-600 bg-indigo-50")
+                                        : `${theme.borderLight} ${theme.textSecondary} ${theme.surfaceBg}`
+                                        }`}
+                                >
+                                    Column-wise
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div className="flex justify-end gap-3 pt-2">
-                        <button
-                            type="button"
-                            onClick={() => setBarcodePrintDialog(prev => ({ ...prev, isOpen: false }))}
-                            className="px-4 py-2 rounded-xl font-bold text-gray-600 hover:bg-gray-100 text-sm"
+
+                    {/* Right Panel: Preview */}
+                    <div className={`flex-1 flex flex-col items-center justify-center p-8 rounded-[32px] ${theme.mode === 'dark' ? 'bg-gray-900' : 'bg-gray-100/50'} border-2 border-dashed ${theme.borderLight} min-h-[440px] transition-all`}>
+                        <div className="mb-6 text-center">
+                            <h4 className={`text-[10px] font-black uppercase tracking-[0.2em] ${theme.textMuted}`}>Live Printing Preview</h4>
+                            <p className="text-[9px] font-bold text-indigo-500 mt-1">Reflects actual print output (${barcodePrintDialog.labelWidth}mm × ${barcodePrintDialog.labelHeight}mm)</p>
+                        </div>
+
+                        {/* The Actual Label Mockup */}
+                        <div 
+                            style={{ width: `${barcodePrintDialog.labelWidth}mm`, minHeight: `${barcodePrintDialog.labelHeight}mm` }}
+                            className={`bg-white text-black p-[2mm] shadow-2xl rounded-sm text-center flex flex-col items-center justify-center border border-gray-200 transition-all`}
                         >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleConfirmBarcodePrint}
-                            className="px-6 py-2 rounded-xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 text-sm"
-                        >
-                            Print Labels
-                        </button>
+                            {barcodePrintDialog.elementsOrder.map((key) => {
+                                if (key === "logo" && barcodePrintDialog.includeLogo && (shopInfo?.logoUrl || shopInfo?.logo)) {
+                                    const root = (api.defaults.baseURL || "").replace(/\/api\/?$/, "");
+                                    const logoUrl = shopInfo.logoUrl?.startsWith("http") ? shopInfo.logoUrl : `${root}${shopInfo.logoUrl}`;
+                                    return (
+                                        <div key={key} className="mb-0.5">
+                                            <img src={logoUrl} alt="Logo" className="max-h-[5mm] object-contain" />
+                                        </div>
+                                    );
+                                }
+                                if (key === "barcode" && barcodePrintDialog.barcode?.fullUrl) {
+                                    return (
+                                        <div key={key} className="mb-0.5 w-full">
+                                            <img src={barcodePrintDialog.barcode.fullUrl} alt="Barcode" className="w-full h-auto" />
+                                        </div>
+                                    );
+                                }
+                                if (key === "name" && barcodePrintDialog.includeName && barcodePrintDialog.item?.name) {
+                                    return <div key={key} className="text-[8px] font-bold leading-tight uppercase line-clamp-2">{barcodePrintDialog.item.name}</div>;
+                                }
+                                if (key === "code" && barcodePrintDialog.includeCode && barcodePrintDialog.item?.itemCode) {
+                                    return <div key={key} className="text-[7px] text-gray-600">{barcodePrintDialog.item.itemCode}</div>;
+                                }
+                                if (key === "price" && barcodePrintDialog.includePrice && barcodePrintDialog.item?.purchasePrice != null) {
+                                    return <div key={key} className="text-[8px] font-black mt-0.5">₹{Number(barcodePrintDialog.item.purchasePrice).toFixed(2)}</div>;
+                                }
+                                if (key === "batch" && barcodePrintDialog.includeBatch && (barcodePrintDialog.batchOverride || barcodePrintDialog.item?.batchNo)) {
+                                    return <div key={key} className="text-[7px] font-medium">B: {barcodePrintDialog.batchOverride || barcodePrintDialog.item?.batchNo}</div>;
+                                }
+                                if (key === "expiry" && barcodePrintDialog.includeExpiry && (barcodePrintDialog.expiryOverride || barcodePrintDialog.item?.expiryDate)) {
+                                    return <div key={key} className="text-[7px] font-medium">E: {barcodePrintDialog.expiryOverride || barcodePrintDialog.item?.expiryDate}</div>;
+                                }
+                                if (key === "custom" && barcodePrintDialog.customText) {
+                                    return <div key={key} className="text-[7px] italic mt-0.5">{barcodePrintDialog.customText}</div>;
+                                }
+                                return null;
+                            })}
+                        </div>
+
+                        <div className="mt-8 flex flex-col gap-4 w-full max-w-[200px]">
+                            <button
+                                type="button"
+                                onClick={handleConfirmBarcodePrint}
+                                className={`w-full py-3 rounded-2xl font-black bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl ${theme.mode === 'dark' ? 'shadow-indigo-500/20' : 'shadow-indigo-100'} transition-all flex items-center justify-center gap-2 group`}
+                            >
+                                <Printer size={18} className="group-hover:scale-110 transition-transform" />
+                                PRINT {barcodePrintDialog.copies > 1 ? `${barcodePrintDialog.copies} LABELS` : "LABEL"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setBarcodePrintDialog(prev => ({ ...prev, isOpen: false }))}
+                                className={`w-full py-2 rounded-2xl font-bold text-[10px] uppercase tracking-widest ${theme.textMuted} hover:opacity-80 transition-colors`}
+                            >
+                                Cancel
+                            </button>
+                        </div>
                     </div>
                 </div>
             </Modal>
+
+            {/* AI Scanner Modal */}
+            <InvoiceScannerModal 
+                isOpen={isScannerOpen}
+                onClose={() => setIsScannerOpen(false)}
+                onDataExtracted={handleDataExtracted}
+                theme={theme}
+                suppliers={suppliers}
+                stockItems={stockItems}
+            />
 
             {/* Product Modal */}
             {isProductModalOpen && (
@@ -1425,12 +2041,17 @@ const PurchasePage = () => {
                     <div className={`w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-[40px] shadow-2xl relative flex flex-col ${theme.surfaceBg}`}>
                         <button
                             onClick={() => setIsProductModalOpen(false)}
-                            className="absolute top-6 right-6 z-10 p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                            className={`absolute top-6 right-6 z-10 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors ${theme.textMuted}`}
                         >
-                            <X size={24} className="text-gray-600" />
+                            <X size={24} />
                         </button>
                         <div className="flex-1 overflow-y-auto w-full relative">
-                            <ProductPage asDialog={true} onClose={handleProductDialogClose} />
+                            <ProductPage
+                                asDialog={true}
+                                onClose={handleProductDialogClose}
+                                fixedBranchId={formData.branchId || activeBranchId}
+                                prefillData={productPrefillData}
+                            />
                         </div>
                     </div>
                 </div>
@@ -1646,7 +2267,7 @@ const PurchasePage = () => {
                                         required
                                         className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={supplierFormData.name}
-                                        onChange={e => setSupplierFormData({ ...supplierFormData, name: e.target.value })}
+                                        onChange={e => setSupplierFormData({ ...supplierFormData, name: e.target.value, contactPerson: supplierFormData.contactPerson || e.target.value })}
                                         placeholder="Company Name"
                                     />
                                 </div>

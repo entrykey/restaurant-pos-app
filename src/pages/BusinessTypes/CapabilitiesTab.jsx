@@ -202,6 +202,18 @@ const CapabilitiesTab = () => {
         });
     };
 
+    const handleSelectAllPermissions = (isChecked) => {
+        if (!configuringModule) return;
+        const allPermIds = modulePermissions.map(p => p._id);
+        setSelectedModules(prev => ({
+            ...prev,
+            [configuringModule._id]: {
+                ...prev[configuringModule._id],
+                allowedPermissions: isChecked ? allPermIds : []
+            }
+        }));
+    };
+
     // Derived values for the currently configuring module
     const currentConfig = configuringModule ? selectedModules[configuringModule._id] : null;
     const modulePermissions = configuringModule
@@ -281,21 +293,22 @@ const CapabilitiesTab = () => {
                                         return (
                                             <div
                                                 key={module._id}
-                                                className={`relative overflow-hidden flex items-center justify-between p-4 rounded-xl border-2 transition-all ${isSelected
-                                                    ? `border-indigo-500 ${isConfiguring ? 'ring-2 ring-indigo-500/30' : ''} ${theme.primaryIconBg} shadow-sm`
-                                                    : `border-transparent ${theme.inputBg} hover:border-indigo-300`
+                                                className={`relative overflow-hidden flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer ${isSelected
+                                                    ? `border-indigo-500 shadow-lg shadow-indigo-100 dark:shadow-none ${theme.surfaceBg}`
+                                                    : `border-transparent ${theme.sectionBg} hover:border-indigo-200`
                                                     }`}
+                                                onClick={() => handleModuleToggle(module._id)}
                                             >
-                                                <div
-                                                    className="flex items-center gap-3 flex-1 cursor-pointer"
-                                                    onClick={() => handleModuleToggle(module._id)}
-                                                >
-                                                    <div className={`text-indigo-600 ${isSelected ? 'opacity-100' : 'opacity-30'}`}>
-                                                        {isSelected ? <CheckSquare size={20} /> : <Square size={20} className={theme.textMuted} />}
+                                                <div className="flex items-center gap-3 flex-1">
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isSelected ? 'bg-indigo-600 text-white shadow-md' : `${theme.primaryIconBg} ${theme.textMuted} opacity-40`}`}>
+                                                        {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
                                                     </div>
                                                     <div>
                                                         <span className={`font-bold text-sm leading-tight block ${isSelected ? theme.primaryIconText : theme.textPrimary}`}>
-                                                            {conf?.customLabel || module.name}
+                                                            {(() => {
+                                                                const name = conf?.customLabel || module.name || "";
+                                                                return name.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+                                                            })()}
                                                         </span>
                                                         {(conf?.customLabel || conf?.customIcon || Object.keys(conf?.customTexts || {}).length > 0 || conf?.allowedPermissions?.length > 0) && isSelected ? (
                                                             <span className="text-[10px] mt-0.5 opacity-80 uppercase tracking-widest block text-indigo-600 font-bold">Customized</span>
@@ -308,7 +321,7 @@ const CapabilitiesTab = () => {
                                                 {isSelected && (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setConfiguringModule(module); }}
-                                                        className={`p-2 rounded-lg ml-2 hover:bg-white/50 dark:hover:bg-black/20 text-indigo-700 transition-colors ${isConfiguring ? 'bg-white/50 dark:bg-black/20' : ''}`}
+                                                        className={`p-2.5 rounded-xl ml-2 transition-all ${isConfiguring ? 'bg-indigo-600 text-white shadow-lg' : `text-indigo-600 ${theme.sectionBg} hover:bg-indigo-100`}`}
                                                         title="Configure Module"
                                                     >
                                                         <Settings2 size={18} />
@@ -324,7 +337,7 @@ const CapabilitiesTab = () => {
                                     <div className={`p-5 rounded-2xl border-2 border-indigo-100 dark:border-indigo-900/50 ${theme.surfaceBg} shadow-sm h-fit sticky top-6 animate-in fade-in slide-in-from-right-4`}>
                                         <div className="flex items-center justify-between mb-4 pb-3 border-b border-indigo-50 dark:border-indigo-900/30">
                                             <h4 className={`font-black text-indigo-600 flex items-center gap-2`}>
-                                                <Settings2 size={18} /> Configure: {configuringModule.name}
+                                                <Settings2 size={18} /> Configure: {configuringModule.name?.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
                                             </h4>
                                             <button onClick={() => setConfiguringModule(null)} className="text-gray-400 hover:text-gray-600">
                                                 <X size={18} />
@@ -332,6 +345,8 @@ const CapabilitiesTab = () => {
                                         </div>
 
                                         <div className="space-y-5">
+                                            {/* Hide Custom Menu Label and Icon as per user request */}
+                                            {/* 
                                             <div>
                                                 <label className={`block text-xs font-black uppercase tracking-wider mb-2 ${theme.textMuted}`}>Custom Menu Label</label>
                                                 <input
@@ -362,6 +377,7 @@ const CapabilitiesTab = () => {
                                                     })}
                                                 </div>
                                             </div>
+                                            */}
 
                                             {/* Dynamic Custom Texts */}
                                             {configuringModule.key && MODULE_TEXT_KEYS[configuringModule.key.toUpperCase()] && (
@@ -385,9 +401,23 @@ const CapabilitiesTab = () => {
                                             )}
 
                                             <div className="pt-2 border-t border-indigo-50 dark:border-indigo-900/30">
-                                                <label className={`block text-xs font-black uppercase tracking-wider mb-2 ${theme.textMuted}`}>
-                                                    Allowed Permissions ({currentConfig?.allowedPermissions.length}/{modulePermissions.length})
-                                                </label>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <label className={`block text-xs font-black uppercase tracking-wider ${theme.textMuted}`}>
+                                                        Allowed Permissions ({currentConfig?.allowedPermissions.length || 0}/{modulePermissions.length})
+                                                    </label>
+                                                    {modulePermissions.length > 0 && (
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                id="select-all-perms"
+                                                                checked={modulePermissions.length > 0 && modulePermissions.every(p => currentConfig?.allowedPermissions.includes(p._id))}
+                                                                onChange={(e) => handleSelectAllPermissions(e.target.checked)}
+                                                                className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                                                            />
+                                                            <label htmlFor="select-all-perms" className="text-[10px] font-black uppercase text-indigo-600 cursor-pointer">Select All</label>
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 {modulePermissions.length === 0 ? (
                                                     <p className="text-xs text-gray-400 italic">No specific permissions registered for this module.</p>
                                                 ) : (
@@ -398,13 +428,32 @@ const CapabilitiesTab = () => {
                                                                 <div
                                                                     key={perm._id}
                                                                     onClick={() => togglePermission(perm._id)}
-                                                                    className={`flex items-start gap-3 p-2.5 rounded-xl border transition-colors cursor-pointer select-none ${hasPerm ? `border-indigo-200 bg-indigo-50/50 dark:border-indigo-800/50 dark:bg-indigo-900/20` : `border-transparent hover:${theme.inputBg}`}`}
+                                                                    className={`group flex items-start gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${hasPerm
+                                                                        ? `border-indigo-500/50 bg-indigo-50/30 dark:bg-indigo-900/10`
+                                                                        : `border-transparent hover:${theme.sectionBg}`}`}
                                                                 >
-                                                                    <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${hasPerm ? 'bg-indigo-600 border-indigo-600 text-white' : `border-gray-300`}`}>
-                                                                        {hasPerm && <CheckSquare size={12} />}
+                                                                    <div className={`mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${hasPerm
+                                                                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                                                                        : `border-gray-200 ${theme.surfaceBg}`}`}>
+                                                                        {hasPerm && <div className="w-2.5 h-2.5 bg-white rounded-sm" />}
                                                                     </div>
                                                                     <div>
-                                                                        <span className={`text-sm font-bold block leading-none ${hasPerm ? 'text-indigo-700 dark:text-indigo-300' : theme.textPrimary}`}>{perm.name}</span>
+                                                                        <span className={`text-sm font-bold block leading-none ${hasPerm ? 'text-indigo-700 dark:text-indigo-300' : theme.textPrimary}`}>
+                                                                            {(() => {
+                                                                                let name = perm.name || "";
+                                                                                const modName = configuringModule.name?.toLowerCase();
+                                                                                // Remove module name if it's the first word
+                                                                                if (modName && name.toLowerCase().startsWith(modName)) {
+                                                                                    name = name.substring(modName.length);
+                                                                                }
+                                                                                // Remove leading dots/underscores
+                                                                                name = name.replace(/^[._]+/, "");
+                                                                                // Replace dots/underscores with spaces
+                                                                                name = name.replace(/[._]/g, " ").trim();
+                                                                                // Capitalize
+                                                                                return name.charAt(0).toUpperCase() + name.slice(1);
+                                                                            })()}
+                                                                        </span>
                                                                         {perm.description && <span className={`text-[10px] mt-1 block ${theme.textSecondary}`}>{perm.description}</span>}
                                                                     </div>
                                                                 </div>

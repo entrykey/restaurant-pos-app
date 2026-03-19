@@ -10,7 +10,7 @@ import {
     Sparkles,
     Loader2,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
@@ -50,6 +50,10 @@ const emptyBranch = (organizationId) => ({
 });
 
 const Organization = ({
+    organization,
+    setOrganization,
+    branches,
+    setBranches,
     hasPermissionFor,
 }) => {
     const orgAccess = ROUTE_ACCESS.ORGANIZATION;
@@ -60,8 +64,7 @@ const Organization = ({
     const canDeleteBranch = hasPermissionFor?.(MODULES.ORGANIZATION, "branch", "delete");
     const { theme, themeName } = useTheme();
 
-    const [organization, setOrganization] = useState(null);
-    const [branches, setBranches] = useState([]);
+    // Use props for organization and branches, but keep local for others
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -72,11 +75,17 @@ const Organization = ({
     const [editingBranch, setEditingBranch] = useState(null);
     const [branchForm, setBranchForm] = useState(emptyBranch(null));
 
+    const [isSaving, setIsSaving] = useState(false);
+    const [originalOrg, setOriginalOrg] = useState(null);
+    const [isDirty, setIsDirty] = useState(false);
+
     const [alertConfig, setAlertConfig] = useState({ isOpen: false, type: "info", title: "", message: "" });
     const closeAlert = () => setAlertConfig(prev => ({ ...prev, isOpen: false }));
     const showAlert = (type, title, message) => setAlertConfig({ isOpen: true, type, title, message });
-    // ... existing ...
 
+    // Shop switching state
+    const [userShops, setUserShops] = useState([]);
+    const [isSwitchingShop, setIsSwitchingShop] = useState(false);
     // ... loadData and useEffect ...
 
     // ... handleStartTrial ...
@@ -149,40 +158,132 @@ const Organization = ({
     };
 
     // Use auth context for logout and user data
-    const { user, logout } = useAuth();
+    const { user, login } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    const canSelectOrganization = hasPermissionFor?.(MODULES.ORGANIZATION, "organization", "select") || user?.permissions?.ORGANIZATION?.includes("ORGANIZATION.SELECT");
 
     const [logoUploading, setLogoUploading] = useState(false);
 
     const loadData = async () => {
         try {
-            // Use user from context instead of localStorage to avoid race conditions
-            if (!user || (!user._id && !user.id)) {
-                console.log("No valid user in context, redirecting");
-                logout();
+            if (!user) {
+                console.log("Organization: User not yet loaded, skipping loadData");
                 return;
             }
 
             const userId = user._id || user.id;
-            console.log("Fetching organization data for userId:", userId);
+            console.log("Organization: Starting loadData...", { userId, shopId: user.shop_id });
+            setLoading(true);
 
+            // We no longer pass targetShopId, because getShopDataByUserId in the backend 
+            // has been fixed to automatically prioritize the user's active shop_id from the context.
             const data = await fetchOrganizationData(userId);
+            console.log("Organization: Data fetched successfully:", data);
 
-            setOrganization(data.organization);
-            setBranches(data.branches);
-            setPlans(data.plans);
+            if (data.organization) {
+                setOrganization(data.organization);
+                setOriginalOrg(data.organization);
+            }
+            if (data.branches) {
+                setBranches(data.branches);
+            }
+            if (data.plans) {
+                setPlans(data.plans);
+            }
+
+            // Fetch user's shops for the switcher dropdown
+            try {
+                if (canSelectOrganization) {
+                    const shopsData = await shopService.getShopsByOwner(userId);
+                    setUserShops(shopsData);
+                }
+            } catch (err) {
+                console.error("Failed to fetch user's shops for dropdown:", err);
+            }
+
             setLoading(false);
+            console.log("Organization: Data state updated.");
 
         } catch (err) {
-            console.error("Error loading organization data:", err);
-            setError(err.message);
+            console.error("Organization: Error loading organization data:", err);
+            setError(err.message || "Failed to load data");
             setLoading(false);
         }
     };
 
     React.useEffect(() => {
-        loadData();
-    }, [user]);
+        if (user?._id || user?.id) {
+            loadData();
+        }
+    }, [user?._id, user?.id, user?.shop_id]);
+
+    React.useEffect(() => {
+        if (organization && originalOrg) {
+            const hasChanges =
+                organization.businessName !== originalOrg.businessName ||
+                organization.ownerName !== originalOrg.ownerName ||
+                organization.ownerEmail !== originalOrg.ownerEmail ||
+                organization.defaultCountry !== originalOrg.defaultCountry ||
+                organization.defaultCurrency !== originalOrg.defaultCurrency ||
+                organization.defaultTaxSystem !== originalOrg.defaultTaxSystem;
+            setIsDirty(hasChanges);
+        }
+    }, [organization, originalOrg]);
+
+    const handleSwitchShop = async (newShopId) => {
+        if (newShopId === organization?.id) return;
+        setIsSwitchingShop(true);
+        try {
+            const newAuthData = await shopService.switchShop(newShopId);
+            const newAccessToken = newAuthData.accessToken;
+            // First we MUST update localStorage for axios interceptors
+            localStorage.setItem('accessToken', newAccessToken);
+
+            // MANUALLY commit to AuthContext storage to prevent React async batching race condition with reload()
+            const storageKey = "restaurant_pos_auth_v1";
+            const currentStorageParams = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            localStorage.setItem(storageKey, JSON.stringify({
+                ...currentStorageParams,
+                user: { ...newAuthData.user, accessToken: newAccessToken }
+            }));
+
+            // Update context state
+            login({ ...newAuthData.user, accessToken: newAccessToken });
+
+            // Fetch new shop data and populate the UI in-place
+            await loadData(newShopId);
+
+            showAlert("success", "Switched Shop", "Successfully switched context to new shop.");
+        } catch (error) {
+            console.error("Failed to switch shop:", error);
+            showAlert("error", "Switch Failed", error.message || "Failed to switch shop.");
+        } finally {
+            setIsSwitchingShop(false);
+        }
+    };
+
+    const handleSaveChanges = async () => {
+        if (!organization?.id || !canEditOrg) return;
+        setIsSaving(true);
+        try {
+            const updatePayload = {
+                name: organization.businessName,
+                ownerName: organization.ownerName,
+                ownerEmail: organization.ownerEmail,
+            };
+            await shopService.updateShop(organization.id, updatePayload);
+            showAlert("success", "Changes Saved", "Organization details updated successfully.");
+            setOriginalOrg(organization);
+            setIsDirty(false);
+        } catch (error) {
+            console.error("Failed to update organization:", error);
+            showAlert("error", "Update Failed", error.message || "Failed to update organization");
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     const handleStartTrial = async (plan) => {
         if (!organization?.id) return;
@@ -353,10 +454,33 @@ const Organization = ({
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-3 md:gap-4 text-[10px] md:text-[11px] font-black">
-                            <div className="px-3 py-1.5 rounded-full bg-white/10 text-white flex items-center gap-2 backdrop-blur">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
-                                {organization?.businessName || "Unnamed Business"}
-                            </div>
+                            {canSelectOrganization && userShops.length > 1 ? (
+                                <div className="px-1 py-0.5 rounded-full bg-white/10 text-white flex items-center gap-2 backdrop-blur">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 ml-2" />
+                                    <select
+                                        className="bg-transparent border-none text-white focus:ring-0 outline-none cursor-pointer appearance-none font-black pl-1 pr-6 py-1"
+                                        value={organization?.id || ""}
+                                        onChange={(e) => handleSwitchShop(e.target.value)}
+                                        disabled={isSwitchingShop}
+                                    >
+                                        <option value="" disabled className="text-black">Select a Shop</option>
+                                        {userShops.map((shop) => (
+                                            <option key={shop._id} value={shop._id} className="text-black">
+                                                {shop.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div className="pointer-events-none absolute right-3">
+                                        <svg className="w-3 h-3 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                                    </div>
+                                    {isSwitchingShop && <Loader2 size={12} className="animate-spin text-white absolute right-8" />}
+                                </div>
+                            ) : (
+                                <div className="px-3 py-1.5 rounded-full bg-white/10 text-white flex items-center gap-2 backdrop-blur">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
+                                    {organization?.businessName || "Unnamed Business"}
+                                </div>
+                            )}
                             <div className="px-3 py-1.5 rounded-full bg-black/10 text-indigo-100 flex items-center gap-1.5 backdrop-blur">
                                 <Sparkles size={12} />
                                 <span>{organization?.planName || "No Active Plan"}</span>
@@ -371,9 +495,21 @@ const Organization = ({
 
                 {/* Organization Details */}
                 <div className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight || 'border-slate-100 dark:border-slate-700'}`}>
-                    <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} mb-6 flex items-center gap-2`}>
-                        <Building2 size={20} className="text-indigo-500 dark:text-indigo-400" /> Organization Details
-                    </h3>
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                        <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} flex items-center gap-2`}>
+                            <Building2 size={20} className="text-indigo-500 dark:text-indigo-400" /> Organization Details
+                        </h3>
+                        {isDirty && canEditOrg && (
+                            <button
+                                onClick={handleSaveChanges}
+                                disabled={isSaving}
+                                className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                                Save Changes
+                            </button>
+                        )}
+                    </div>
                     <div className="flex flex-col lg:flex-row gap-8 items-start">
                         {/* Left Side: Logo */}
                         <div className="space-y-3 shrink-0">

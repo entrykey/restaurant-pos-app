@@ -19,7 +19,10 @@ const BusinessTypesTab = () => {
         production: false,
         reservation: false,
         serialTracking: false,
-        serviceManagement: false
+        serviceManagement: false,
+        sellStockItems: true,
+        sellManufacturedItems: true,
+        sellTradeItems: true
     };
 
     const fetchBusinessTypes = async () => {
@@ -139,7 +142,10 @@ const BusinessTypesTab = () => {
                             <label className={`block text-xs font-black uppercase tracking-wider mb-2 ${theme.textMuted}`}>Global Features</label>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 {Object.keys(defaultFeatures).map(key => (
-                                    <label key={key} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderLight} ${theme.inputBg} cursor-pointer hover:border-indigo-300 transition-colors`}>
+                                    <label key={key}
+                                        onClick={() => handleFeatureChange(key)}
+                                        className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderLight} ${theme.inputBg} cursor-pointer hover:border-indigo-300 transition-colors`}
+                                    >
                                         <div className={`w-5 h-5 rounded flex items-center justify-center border-2 ${formData.features[key] ? 'bg-indigo-600 border-indigo-600 text-white' : `${theme.inputBorder} ${theme.inputBg}`}`}>
                                             {formData.features[key] && <Check size={14} strokeWidth={3} />}
                                         </div>

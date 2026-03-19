@@ -10,10 +10,16 @@ import {
     Utensils,
     Plus,
     Minus,
-    Edit3
+    Edit3,
+    LayoutGrid,
+    List as ListIcon,
+    Loader2,
 } from "lucide-react";
 import FoodItemCard from "../../components/FoodItemCard";
-import { takeawayService } from "./TakeawayService";
+import { useApp } from "../../context/AppContext";
+import { itemService } from "../../services/api";
+import { DEFAULT_ITEM_IMAGE, getBingImage } from "../../utils/getImage";
+import { useTheme } from "../../context/ThemeContext";
 
 const TakeawayOrder = ({
     isTakeaway,
@@ -23,6 +29,7 @@ const TakeawayOrder = ({
     formatCurrency,
     calculateTotal,
     calculateItemTotal,
+    calculateBillDetails,
     handlePrintReceipt,
     handleSendToKOT,
     setIsPaymentModalOpen,
@@ -43,8 +50,12 @@ const TakeawayOrder = ({
     hasPermissionFor = () => false,
     currentUser,
     menu,
-    setMenu
+    setMenu,
+    offers = []
 }) => {
+    const { theme, themeName } = useTheme();
+    const { activeBranchId } = useApp();
+
     const orderTypeLabels = {
         'DINE_IN': 'Dine-in Order',
         'TAKEAWAY': 'Takeaway Order',
@@ -55,24 +66,94 @@ const TakeawayOrder = ({
 
     const [activeMenuCategory, setActiveMenuCategory] = useState("All");
     const [mobileOrderTab, setMobileOrderTab] = useState("menu");
+    const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
+    const [isSearchingRemote, setIsSearchingRemote] = useState(false);
+    const [remoteMenu, setRemoteMenu] = useState(null); // null → use local menu
+
+    // Debounced AI/Backend search
+    useEffect(() => {
+        const term = (orderSearch || "").trim();
+
+        // If search cleared or too short, go back to local menu
+        if (term.length < 2) {
+            setRemoteMenu(null);
+            setIsSearchingRemote(false);
+            return;
+        }
+
+        let cancelled = false;
+        setIsSearchingRemote(true);
+
+        const handle = setTimeout(async () => {
+            try {
+                const payload = {
+                    page: 1,
+                    limit: 200,
+                    search: term,
+                    filters: {
+                        shopId: currentUser?.shop_id,
+                        branchId: activeBranchId || null,
+                    },
+                };
+
+                const response = await itemService.getItems(payload);
+                if (cancelled) return;
+
+                const items = response?.data || [];
+
+                const mapped = items.map((item) => ({
+                    ...item,
+                    id: item._id || item.id,
+                    price: item.pricing?.sellingPrice ?? item.price ?? 0,
+                    pricePerUnit: item.pricing?.sellingPrice ?? item.price ?? 0,
+                    sellingPrice: item.pricing?.sellingPrice ?? item.price ?? 0,
+                    category: item.categoryId?.name || item.category || "Uncategorized",
+                    unitName: item.unitId?.name || item.unitName || "Unit",
+                    sellingType: item.weightBased
+                        ? "Weight"
+                        : item.sellingType || "Standard",
+                    unitId: item.unitId,
+                    quantityOnHand: item.quantityOnHand ?? 0,
+                }));
+
+                setRemoteMenu(mapped);
+            } catch (err) {
+                console.error("Failed to AI-search menu:", err);
+                setRemoteMenu(null);
+            } finally {
+                if (!cancelled) setIsSearchingRemote(false);
+            }
+        }, 400);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(handle);
+        };
+    }, [orderSearch, currentUser?.shop_id, activeBranchId]);
 
     // Derive categories dynamically from the menu prop (already normalized in AppContent)
     const categories = ["All", ...new Set(menu.map((item) => item.category || "Uncategorized"))];
 
     const currentOrder = isTakeaway
         ? takeawayOrder
-        : tables.find((t) => t.id === activeTableId)?.order || { items: [] };
+        : tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))?.order || { items: [] };
 
-    const displayTitle = !isTakeaway && activeTableId
-        ? `Table ${activeTableId}`
+    const activeTable = !isTakeaway && activeTableId ? tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) : null;
+    const displayTitle = activeTable
+        ? (activeTable.name || `Table ${activeTable.tableNumber}`)
         : orderTypeLabels[currentOrder.orderType] || "POS Order";
 
     const isSentToKOT = currentOrder.isSentToKOT;
+    const hasPendingKitchenItems = (currentOrder.items || []).some((item) => {
+        if (item.itemType !== "MANUFACTURED") return false;
+        const previouslySent = item.sentQuantity || 0;
+        return (item.quantity || 0) - previouslySent > 0;
+    });
 
     return (
-        <div className="flex flex-col h-full overflow-hidden bg-gray-50">
+        <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg}`}>
             {/* Mobile Tab Switcher */}
-            <div className="lg:hidden flex p-2 bg-white border-b gap-2 shrink-0">
+            <div className={`lg:hidden flex p-2 ${theme.surfaceBg} border-b gap-2 shrink-0`}>
                 <button
                     onClick={() => setMobileOrderTab("menu")}
                     className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${mobileOrderTab === "menu" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600"
@@ -97,22 +178,22 @@ const TakeawayOrder = ({
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
                 {/* Menu Section */}
                 <div
-                    className={`flex-1 p-4 overflow-y-auto bg-gray-50 flex flex-col ${mobileOrderTab === "cart" ? "hidden lg:flex" : "flex"
+                    className={`flex-1 p-4 ${theme.pageBg} flex flex-col min-h-0 ${mobileOrderTab === "cart" ? "hidden lg:flex" : "flex"
                         }`}
                 >
                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl md:text-2xl font-black text-indigo-900">
+                        <h2 className={`text-xl md:text-2xl font-black ${theme.textHeading}`}>
                             {displayTitle}
                         </h2>
-                        <button
-                            onClick={() => {
-                                setIsTakeaway(false);
-                                setView("tables");
-                            }}
-                            className="p-2 bg-white rounded-full shadow-sm"
-                        >
-                            <X />
-                        </button>
+                            <button
+                                onClick={() => {
+                                    setIsTakeaway(false);
+                                    setView("tables");
+                                }}
+                                className={`p-2 ${theme.surfaceBg} rounded-full shadow-sm ${theme.textPrimary}`}
+                            >
+                                <X />
+                            </button>
                     </div>
 
                     {isTakeaway && (
@@ -121,36 +202,74 @@ const TakeawayOrder = ({
                                 value={takeawayCustName}
                                 onChange={(e) => setTakeawayCustName(e.target.value)}
                                 placeholder="Customer Name"
-                                className="p-3 border rounded-xl outline-none bg-white"
+                                className={`p-3 border ${theme.borderLight} rounded-xl outline-none ${theme.inputBg} ${theme.textPrimary}`}
                             />
                             <input
                                 value={takeawayCustPhone}
                                 onChange={(e) => setTakeawayCustPhone(e.target.value)}
                                 placeholder="Phone Number"
-                                className="p-3 border rounded-xl outline-none bg-white"
+                                className={`p-3 border ${theme.borderLight} rounded-xl outline-none ${theme.inputBg} ${theme.textPrimary}`}
                             />
                         </div>
                     )}
 
-                    {/* Search Input */}
-                    <div className="relative mb-4">
-                        <Search className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                        <input
-                            value={orderSearch}
-                            onChange={(e) => setOrderSearch(e.target.value)}
-                            placeholder="Search menu..."
-                            className="w-full pl-10 p-3 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                        />
+                    {/* Search + view mode */}
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="relative flex-1">
+                            <Search className={`absolute left-3 top-3.5 ${theme.textMuted}`} size={18} />
+                            <input
+                                value={orderSearch}
+                                onChange={(e) => setOrderSearch(e.target.value)}
+                                placeholder="Search menu with AI..."
+                                className={`w-full pl-10 pr-9 p-3 border ${theme.borderLight} rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 ${theme.inputBg} ${theme.textPrimary}`}
+                            />
+                            {isSearchingRemote && (
+                                <Loader2 className="absolute right-3 top-3.5 h-4 w-4 text-indigo-500 animate-spin" />
+                            )}
+                            {!isSearchingRemote && orderSearch && (
+                                <button
+                                    type="button"
+                                    onClick={() => setOrderSearch("")}
+                                    className="absolute right-3 top-3 text-xs text-gray-400 hover:text-gray-600"
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
+                        <div className={`inline-flex rounded-xl ${theme.surfaceBg} shadow-sm border ${theme.borderLight} overflow-hidden`}>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode("grid")}
+                                className={`px-3 py-2 text-xs md:text-sm font-semibold flex items-center gap-1 ${viewMode === "grid"
+                                    ? "bg-indigo-600 text-white"
+                                    : "text-gray-500 hover:bg-gray-50"
+                                    }`}
+                            >
+                                <LayoutGrid size={14} />
+                                Grid
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode("list")}
+                                className={`px-3 py-2 text-xs md:text-sm font-semibold flex items-center gap-1 border-l ${viewMode === "list"
+                                    ? "bg-indigo-600 text-white"
+                                    : "text-gray-500 hover:bg-gray-50"
+                                    }`}
+                            >
+                                <ListIcon size={14} />
+                                List
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="flex gap-2 overflow-x-auto pb-4 shrink-0 no-scrollbar">
+                    <div className="flex gap-2 overflow-x-auto pb-3 shrink-0 no-scrollbar">
                         {categories.map((cat) => (
                             <button
                                 key={cat}
                                 onClick={() => setActiveMenuCategory(cat)}
                                 className={`px-4 md:px-6 py-2 rounded-full font-bold whitespace-nowrap transition-all border-2 text-sm md:text-base ${activeMenuCategory === cat
                                     ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
-                                    : "bg-white border-gray-200 text-gray-500"
+                                    : `${theme.surfaceBg} ${theme.borderLight} ${theme.textMuted}`
                                     }`}
                             >
                                 {cat}
@@ -158,12 +277,16 @@ const TakeawayOrder = ({
                         ))}
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto pr-2">
-                        {menu
-                            .filter(
-                                (item) =>
-                                    (activeMenuCategory === "All" || item.category === activeMenuCategory) &&
-                                    item.name.toLowerCase().includes(orderSearch.toLowerCase())
+                    <div
+                        className={`${viewMode === "grid"
+                            ? "grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4"
+                            : "flex flex-col gap-3"
+                            } overflow-y-auto pr-2 flex-1 min-h-0 custom-scrollbar mt-2`}
+                    >
+                        {(remoteMenu || menu)
+                            .filter((item) =>
+                                activeMenuCategory === "All" ||
+                                item.category === activeMenuCategory
                             )
                             .map((item) => (
                                 <FoodItemCard
@@ -171,6 +294,7 @@ const TakeawayOrder = ({
                                     item={item}
                                     formatCurrency={formatCurrency}
                                     onSelect={initiateAddItem}
+                                    viewMode={viewMode}
                                 />
                             ))}
                     </div>
@@ -178,11 +302,11 @@ const TakeawayOrder = ({
 
                 {/* Cart Section */}
                 <div
-                    className={`w-full lg:w-[450px] bg-white border-l flex flex-col shrink-0 h-full ${mobileOrderTab === "menu" ? "hidden lg:flex" : "flex"
+                    className={`w-full lg:w-[450px] ${theme.surfaceBg} border-l ${theme.borderLight} flex flex-col shrink-0 h-full ${mobileOrderTab === "menu" ? "hidden lg:flex" : "flex"
                         }`}
                 >
-                    <div className="p-4 md:p-6 border-b bg-white z-10 flex justify-between items-center">
-                        <h3 className="text-lg md:text-xl font-black">Order Summary</h3>
+                    <div className={`p-4 md:p-6 border-b ${theme.borderLight} ${theme.surfaceBg} z-10 flex justify-between items-center`}>
+                        <h3 className={`text-lg md:text-xl font-black ${theme.textPrimary}`}>Order Summary</h3>
                         <div className="flex items-center gap-2">
                             <button
                                 className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600"
@@ -204,39 +328,54 @@ const TakeawayOrder = ({
                         {currentOrder.items.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-2 border-2 border-dashed rounded-3xl m-2">
                                 <Utensils size={32} />
-                                <p className="text-sm font-bold uppercase tracking-widest">Cart is empty</p>
+                                <p className={`text-sm font-bold uppercase tracking-widest ${theme.textMuted}`}>Cart is empty</p>
                             </div>
                         ) : (
-                            <div className="divide-y border rounded-xl overflow-hidden">
+                            <div className={`divide-y ${theme.borderLight} border rounded-xl overflow-hidden`}>
                                 {currentOrder.items.map((item, idx) => (
-                                    <div key={item.id + idx} className="p-3 hover:bg-gray-50 transition-colors bg-white">
+                                    <div key={item.id + idx} className={`p-3 hover:${themeName === 'dark' ? 'bg-gray-800' : 'bg-gray-50'} transition-colors ${theme.surfaceBg}`}>
                                         <div className="flex justify-between items-start gap-2">
                                             <div className="flex gap-3 flex-1 min-w-0">
-                                                <div className="flex flex-col items-center bg-gray-100 rounded-lg p-1 h-fit shrink-0">
+                                                <div className={`flex flex-col items-center ${theme.pageBg} rounded-lg p-1 h-fit shrink-0`}>
                                                     <button
                                                         onClick={() => updateItemQuantity(idx, 1)}
-                                                        className="p-1 text-indigo-600 hover:bg-white rounded"
+                                                        className={`p-1 text-indigo-600 hover:${theme.surfaceBg} rounded`}
                                                     >
                                                         <Plus size={12} />
                                                     </button>
-                                                    <span className="font-bold text-sm py-0.5 w-6 text-center">
+                                                    <span className={`font-bold text-sm py-0.5 w-6 text-center ${theme.textPrimary}`}>
                                                         {item.sellingType === "Weight" && item.enteredUnit === "g"
                                                             ? `${parseFloat((item.quantity * 1000).toFixed(0))}`
                                                             : item.quantity}
                                                     </span>
                                                     <button
                                                         onClick={() => updateItemQuantity(idx, -1)}
-                                                        className="p-1 text-red-500 hover:bg-white rounded"
+                                                        className={`p-1 text-red-500 hover:${theme.surfaceBg} rounded`}
                                                     >
                                                         <Minus size={12} />
                                                     </button>
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex justify-between items-start">
-                                                        <span className="font-bold text-sm text-gray-800 leading-tight">
-                                                            {item.name}
-                                                        </span>
-                                                        <span className="font-bold text-sm text-gray-900 shrink-0 ml-2">
+                                                        <div className="flex items-start gap-2 min-w-0">
+                                                            <img
+                                                                src={getBingImage(item?.name, { w: 64, h: 64 })}
+                                                                alt={item?.name || "Item"}
+                                                                loading="lazy"
+                                                                className={`w-10 h-10 rounded-lg object-cover ${theme.pageBg} border ${theme.borderLight} shrink-0`}
+                                                                onError={(e) => {
+                                                                    e.currentTarget.onerror = null;
+                                                                    e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                                                }}
+                                                            />
+                                                            <span className={`font-bold text-sm ${theme.textPrimary} leading-tight truncate`}>
+                                                                {item.name}
+                                                                <span className={`ml-1 text-[10px] ${theme.textMuted} font-medium`}>
+                                                                    ({(item.taxPercent !== undefined && item.taxPercent !== null) ? item.taxPercent : (settings?.defaultTaxPercent || 0)}%)
+                                                                </span>
+                                                            </span>
+                                                        </div>
+                                                        <span className={`font-bold text-sm ${theme.textPrimary} shrink-0 ml-2`}>
                                                             {formatCurrency(calculateItemTotal(item))}
                                                         </span>
                                                     </div>
@@ -258,7 +397,7 @@ const TakeawayOrder = ({
                                         <div className="mt-2 flex justify-end">
                                             <button
                                                 onClick={() => openNoteModal(idx, item.suggestion)}
-                                                className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-200 text-[10px] font-bold text-gray-500 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                                                className={`flex items-center gap-1 ${theme.surfaceBg} px-2 py-1 rounded-lg border ${theme.borderLight} text-[10px] font-bold ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors`}
                                             >
                                                 <Edit3 size={10} />
                                                 {item.suggestion ? "Edit Note" : "Add Note"}
@@ -270,29 +409,51 @@ const TakeawayOrder = ({
                         )}
                     </div>
 
-                    <div className="p-4 md:p-6 bg-white border-t shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 space-y-3">
-                        <div className="flex justify-between items-center text-sm text-gray-500">
-                            <span>Subtotal</span>
-                            <span>{formatCurrency(calculateTotal(currentOrder) / (1 + (settings?.defaultTaxPercent || 0) / 100))}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm text-gray-500">
-                            <span>Tax ({settings?.defaultTaxPercent || 0}%)</span>
-                            <span>
-                                {formatCurrency(
-                                    calculateTotal(currentOrder) -
-                                    calculateTotal(currentOrder) / (1 + (settings?.defaultTaxPercent || 0) / 100)
-                                )}
-                            </span>
-                        </div>
-                        <div className="flex justify-between items-center text-2xl font-black text-indigo-900 pt-2 border-t border-dashed">
-                            <span>Total</span>
-                            <span>{formatCurrency(calculateTotal(currentOrder))}</span>
-                        </div>
+                    <div className={`p-4 md:p-6 ${theme.surfaceBg} border-t ${theme.borderLight} shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 space-y-3`}>
+                        {(() => {
+                            const billDetails = calculateBillDetails(
+                                currentOrder.items,
+                                { type: "flat", value: 0 },
+                                settings?.defaultTaxPercent || 0,
+                                false
+                            );
+
+                            return (
+                                <>
+                                    <div className={`flex justify-between items-center text-sm ${theme.textMuted}`}>
+                                        <span>Subtotal</span>
+                                        <span className={theme.textPrimary}>{formatCurrency(billDetails.subtotal)}</span>
+                                    </div>
+    
+                                    {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
+                                        <div className="space-y-1">
+                                            <div className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Applied Offers</div>
+                                            {billDetails.appliedOffers.map((offer, oIdx) => (
+                                                <div key={oIdx} className="flex justify-between items-center text-sm text-green-600 font-medium bg-green-50 px-2 py-1 rounded-lg">
+                                                    <span>{offer.name}</span>
+                                                    <span>-{formatCurrency(offer.discount)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+    
+                                    <div className={`flex justify-between items-center text-sm ${theme.textMuted}`}>
+                                        <span>Tax</span>
+                                        <span className={theme.textPrimary}>{formatCurrency(billDetails.taxAmount)}</span>
+                                    </div>
+    
+                                    <div className={`flex justify-between items-center text-2xl font-black ${theme.textHeading} pt-2 border-t border-dashed ${theme.borderLight}`}>
+                                        <span>Total</span>
+                                        <span>{formatCurrency(billDetails.finalTotal)}</span>
+                                    </div>
+                                </>
+                            );
+                        })()}
                         <div className="grid grid-cols-2 gap-3 pt-2">
                             {(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) && (
                                 <button
                                     onClick={handleSendToKOT}
-                                    disabled={currentOrder.items.length === 0 || isSentToKOT}
+                                    disabled={currentOrder.items.length === 0 || (!hasPendingKitchenItems)}
                                     className="py-3 md:py-4 rounded-xl font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
                                 >
                                     <Printer size={18} /> KOT

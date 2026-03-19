@@ -39,5 +39,14 @@ export const PurchaseService = {
     addPayment: async (data) => {
         const response = await api.post(`/purchases/${data.purchaseId}/pay`, data);
         return response.data;
+    },
+
+    scanInvoice: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await api.post('/purchases/scan', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return response.data;
     }
 };

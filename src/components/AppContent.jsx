@@ -10,8 +10,11 @@ import { useOnlineOrders } from "../pages/OnlineOrders/OnlineOrderContext";
 import { useAuth } from "../context/AuthContext";
 import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from "../utils/permissions";
 import { formatCurrency } from "../utils/format";
-import api, { itemService, orderService } from "../services/api";
+import { printBill, printBillA4, printKot } from "../utils/print";
+import api, { itemService, orderService, settingService, tableService, employeeService } from "../services/api";
+import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
 import { TextProvider } from "../context/TextContext";
+import { useTheme } from "../context/ThemeContext";
 
 // Modals
 import NoteModal from "./modals/NoteModal";
@@ -21,6 +24,7 @@ import PaymentModal from "./modals/PaymentModal";
 import FullOrderSummaryModal from "./modals/FullOrderSummaryModal";
 
 const AppContent = () => {
+    const { theme } = useTheme();
     const auth = useAuth();
     const isAuthenticated = auth.isAuthenticated;
     const currentUser = auth.user;
@@ -32,7 +36,7 @@ const AppContent = () => {
         currentTime, menu, setMenu, addExpense, settings, setSettings,
         salesHistory, setSalesHistory, rolesList, staffList, setRolesList, setStaffList,
         organization, setOrganization, branches, setBranches,
-        businessType, setBusinessType, businessSubtype, setBusinessSubtype,
+        businessType, setBusinessType, businessTypeData, businessSubtype, setBusinessSubtype,
         activeBranchId,
         enabledModules, setEnabledModules, setInventoryItems,
         inventoryItems
@@ -41,14 +45,16 @@ const AppContent = () => {
     const {
         billingStage, setBillingStage, billDiscount,
         setCouponCode, setCouponStatus, resetBillingState,
-        calculateItemTotal, calculateTotal
+        calculateItemTotal, calculateTotal, calculateBillDetails,
+        fetchActiveOffers, offers
     } = useOrder();
 
     const {
         tables, setTables, categories, loading: diningLoading,
         activeTableId, setActiveTableId,
         reservations, setReservations, getTableDuration,
-        handleCheckInReservation, handleCompleteKOT, joinTables
+        handleCheckInReservation, handleCompleteKOT, joinTables,
+        refreshData
     } = useDining();
 
     const {
@@ -64,16 +70,41 @@ const AppContent = () => {
     } = useOnlineOrders();
 
     useEffect(() => {
+        const fetchSettings = async () => {
+            if (isAuthenticated && currentUser?.shop_id) {
+                try {
+                    const data = await settingService.getSettings(currentUser.shop_id);
+                    if (data && Array.isArray(data)) {
+                        const settingsMap = {};
+                        data.forEach(s => {
+                            settingsMap[s.key] = s.value;
+                        });
+                        console.log("Fetched Backend Settings:", settingsMap);
+                        setSettings(prev => ({ ...prev, ...settingsMap }));
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch shop settings:", error);
+                }
+            }
+        };
+        fetchSettings();
+    }, [isAuthenticated, currentUser?.shop_id]);
+
+    useEffect(() => {
         const fetchItems = async () => {
             if (isAuthenticated && currentUser?.shop_id) {
                 try {
+                    const branchId = getResolvedBranchId();
                     const response = await itemService.getItems({
-                        limit: 500, // Fetch a large chunk for initial POS load
-                        filters: { shopid: currentUser.shop_id }
+                        limit: 500,
+                        filters: {
+                            shopId: currentUser.shop_id,
+                            branchId: branchId
+                        }
                     });
                     const items = response.data || [];
-                    const menuData = items.filter(item => item.itemType === "MANUFACTURED");
-                    const rawData = items.filter(item => item.itemType === "STOCK" || item.itemType === "SERVICE" || item.itemType === "RAW");
+                    const menuData = items.filter(item => item.itemType === "MANUFACTURED" && item.status === "ACTIVE");
+                    const rawData = items.filter(item => (item.itemType === "STOCK" || item.itemType === "SERVICE" || item.itemType === "RAW" || item.itemType === "TRADE") && item.status === "ACTIVE");
 
                     // Map backend ID to `id` for frontend consistency and normalize fields for POS logic
                     const mapItems = (arr) => arr.map(item => ({
@@ -85,21 +116,76 @@ const AppContent = () => {
                         category: item.categoryId?.name || "Uncategorized",
                         unitName: item.unitId?.name || "Unit",
                         sellingType: item.weightBased ? "Weight" : "Standard",
-                        unitId: item.unitId // Ensure this is preserved for React State
+                        unitId: item.unitId, // Ensure this is preserved for React State
+                        quantityOnHand: item.quantityOnHand || 0,
+                        taxPercent: Number(item.taxPercent || item.tax_percent || 0)
                     }));
 
                     setMenu(mapItems(menuData));
                     setInventoryItems(mapItems(rawData));
+
+                    // Fetch Active Offers as well
+                    fetchActiveOffers(currentUser.shop_id, branchId);
                 } catch (error) {
                     console.error("Failed to fetch shop items:", error);
                 }
             }
         };
         fetchItems();
+    }, [isAuthenticated, currentUser?.shop_id, activeBranchId]);
+
+    useEffect(() => {
+        const fetchStaff = async () => {
+            if (isAuthenticated && currentUser?.shop_id) {
+                try {
+                    const branchId = getResolvedBranchId();
+                    // Fetch employees for this branch
+                    const data = await employeeService.getEmployeesByShopId(currentUser.shop_id);
+                    
+                    // Filter by branch if branchId is available
+                    const filteredStaff = data.filter(emp => {
+                        if (!branchId) return true;
+                        if (!emp.allowedBranches || emp.allowedBranches.length === 0) return true;
+                        return emp.allowedBranches.includes(branchId);
+                    });
+
+                    const mappedStaff = filteredStaff.map(emp => ({
+                        ...emp,
+                        id: emp._id,
+                        name: emp.userId?.name || "N/A",
+                        role: emp.roleId?.name || "N/A",
+                        phone: emp.userId?.phone || "",
+                        active: emp.status === "ACTIVE"
+                    }));
+
+                    console.log("Fetched and mapped staff:", mappedStaff);
+                    setStaffList(mappedStaff);
+                } catch (error) {
+                    console.error("Failed to fetch employees:", error);
+                }
+            }
+        };
+        fetchStaff();
+    }, [isAuthenticated, currentUser?.shop_id, activeBranchId]);
+
+    useEffect(() => {
+        const fetchOrg = async () => {
+            if (isAuthenticated && (currentUser?._id || currentUser?.id)) {
+                try {
+                    const { organization: org, branches: brs } = await fetchOrganizationData(currentUser._id || currentUser.id, currentUser.shop_id);
+                    console.log("AppContent: Fetched dynamic organization & branches:", { org, brs });
+                    setOrganization(org);
+                    setBranches(brs);
+                } catch (error) {
+                    console.error("Failed to fetch organization data:", error);
+                }
+            }
+        };
+        fetchOrg();
     }, [isAuthenticated, currentUser?.shop_id]);
 
     // Local UI State
-    const [view, setView] = useState("tables");
+    const [view, setView] = useState("dashboard");
     const [orderSearch, setOrderSearch] = useState("");
     const [isCustomizationModalOpen, setIsCustomizationModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -134,8 +220,138 @@ const AppContent = () => {
         auth.logout();
     };
 
-    const handlePrintReceipt = () => {
-        window.print();
+    const getActiveBranchForPrint = () => {
+        const branchId = getResolvedBranchId();
+        if (!branchId) return null;
+        return (branches || []).find((b) => String(b._id || b.id) === String(branchId)) || null;
+    };
+
+    const toAbsoluteLogoUrl = (logoUrl) => {
+        if (!logoUrl) return null;
+        if (/^https?:\/\//i.test(logoUrl)) return logoUrl;
+        const base = (api?.defaults?.baseURL || "").replace(/\/api\/?$/, "");
+        if (!base) return logoUrl;
+        return `${base}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
+    };
+
+    const getPrintHeader = (orderFromBackend = null) => {
+        const backendShop = orderFromBackend?.shopId || null;
+        const backendBranch = orderFromBackend?.branchId || null;
+        const activeBranch = backendBranch || getActiveBranchForPrint();
+        const address = activeBranch?.address || {};
+        const addressLines = [
+            address?.line1,
+            address?.line2,
+            [address?.city, address?.state?.name || address?.state].filter(Boolean).join(", "),
+            [address?.country?.name || address?.country, address?.pincode].filter(Boolean).join(" - "),
+        ].filter(Boolean);
+
+        return {
+            logoUrl: toAbsoluteLogoUrl(backendShop?.logoUrl || organization?.logoUrl || null),
+            shopName: backendShop?.name || organization?.businessName || settings?.shopName || "Shop",
+            branchName: backendBranch?.name || activeBranch?.name || "Branch",
+            contact: backendShop?.ownerContact || organization?.ownerContact || settings?.shopPhone || settings?.phone || currentUser?.phone || "",
+            addressLines,
+        };
+    };
+
+    const handlePrintReceipt = async (format = "thermal") => {
+        try {
+            const table = !isTakeaway
+                ? tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))
+                : null;
+            const currentOrder = isTakeaway ? takeawayOrder : (table?.order || { items: [] });
+            const orderItems = currentOrder.items || activeOrderItems || [];
+            if (orderItems.length === 0) return;
+
+            let orderId = currentOrder.orderId;
+            if (!orderId) {
+                const { subtotal, taxTotal, total } = calculateBillDetails(
+                    orderItems,
+                    currentOrder.discount || billDiscount || { type: 'flat', value: 0 },
+                    settings?.defaultTaxPercent || 0
+                );
+
+                const payloadItems = orderItems.map(item => {
+                    const itemTaxPercent = (item.taxPercent !== undefined && item.taxPercent !== null) 
+                        ? Number(item.taxPercent) 
+                        : (settings?.defaultTaxPercent || 0);
+                    return {
+                        itemId: item.id || item._id,
+                        itemName: item.name,
+                        price: item.price,
+                        quantity: item.quantity,
+                        totalAmount: calculateItemTotal(item),
+                        variantId: item.selectedVariant ? item.selectedVariant._id : null,
+                        notes: item.suggestion,
+                        taxPercent: itemTaxPercent,
+                        taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
+                    };
+                });
+
+                const created = await orderService.createOrder({
+                    shopId: currentUser.shop_id,
+                    branchId: getResolvedBranchId(),
+                    businessType: businessType || "RESTAURANT",
+                    orderType: activeOrderType,
+                    customerId: null,
+                    tableId: !isTakeaway ? table?._id || table?.id : null,
+                    items: payloadItems,
+                    subtotal,
+                    discountTotal: currentOrder.discountTotal || 0,
+                    taxTotal,
+                    grandTotal: total,
+                    createdBy: currentUser._id,
+                    customerName: takeawayCustName || "",
+                    customerPhone: takeawayCustPhone || ""
+                });
+
+                orderId = created?._id;
+            }
+
+            if (!orderId) return;
+            const orderFromBackend = await orderService.getOrderById(orderId);
+
+            const backendItems = orderFromBackend?.items || [];
+            const itemsForPrint = backendItems.map((it) => ({
+                name: it?.itemId?.name || it?.itemName || it?.name || "Item",
+                qty: it?.quantity ?? 0,
+                variant: "",
+                lineTotal: it?.totalAmount ?? (Number(it?.price || 0) * Number(it?.quantity || 0)),
+            }));
+
+            const totals = {
+                subtotal: orderFromBackend?.subtotal ?? 0,
+                discountAmount: orderFromBackend?.discountTotal ?? 0,
+                taxAmount: orderFromBackend?.taxTotal ?? 0,
+                roundOff: 0,
+                finalTotal: orderFromBackend?.grandTotal ?? 0,
+            };
+
+            const tableLabel = isTakeaway ? "Takeaway" : (table?.name || activeTable?.name || "");
+            const invoiceLabel = orderFromBackend?.invoiceNumber ? `Invoice: ${orderFromBackend.invoiceNumber}` : "";
+            const orderLabel = orderFromBackend?.orderNumber ? `Order: ${orderFromBackend.orderNumber}` : "";
+            const customerLabel = orderFromBackend?.customerId?.name
+                ? `Customer: ${orderFromBackend.customerId.name}${orderFromBackend.customerId.phone ? ` (${orderFromBackend.customerId.phone})` : ""}`
+                : "";
+
+            const printer = format === "a4" ? printBillA4 : printBill;
+            printer({
+                header: getPrintHeader(orderFromBackend),
+                meta: {
+                    orderLabel: [invoiceLabel, orderLabel].filter(Boolean).join(" • "),
+                    tableLabel: tableLabel ? `Table: ${tableLabel}` : "",
+                    customerLabel,
+                    printedAt: new Date().toLocaleString(),
+                },
+                items: itemsForPrint,
+                totals,
+                formatCurrency,
+            });
+        } catch (e) {
+            console.error("Print bill failed:", e);
+            alert("Failed to print bill. Please try again.");
+        }
     };
 
     // --- Order Logic ---
@@ -143,13 +359,14 @@ const AppContent = () => {
     // Derived State
     const activeOrderItems = isTakeaway
         ? takeawayOrder.items
-        : tables.find((t) => t.id === activeTableId)?.order?.items || [];
+        : tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))?.order?.items || [];
 
     const activeOrderType = isTakeaway
         ? (takeawayOrder.orderType || "DIRECT_SALE")
         : "DINE_IN";
 
-    const activeTable = tables.find(t => t.id === activeTableId);
+    const activeTable = tables.find(t => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId));
+    const activeOrderCustomerId = activeTable?.order?.customerId || null;
 
     const addToCart = (item, quantity, variant, extras, enteredUnit = null) => {
         const orderItem = {
@@ -179,9 +396,14 @@ const AppContent = () => {
                 return iGroupKey === groupKey;
             });
 
-            if (existingIndex > -1) {
+            if (existingIndex >= 0) {
                 const newItems = [...currentItems];
-                newItems[existingIndex].quantity += parseFloat(quantity);
+                const existingItem = newItems[existingIndex];
+                const newQty = existingItem.quantity + quantity;
+                newItems[existingIndex] = {
+                    ...existingItem,
+                    quantity: parseFloat(newQty.toFixed(3)),
+                };
                 return newItems;
             } else {
                 return [...currentItems, orderItem];
@@ -291,7 +513,7 @@ const AppContent = () => {
         } else {
             setTables((prev) =>
                 prev.map((t) => {
-                    if (t.id === activeTableId && t.order) {
+                    if ((String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) && t.order) {
                         const newItems = updateList(t.order.items);
                         return {
                             ...t,
@@ -319,7 +541,7 @@ const AppContent = () => {
     const handleSendToKOT = async () => {
         const nowTs = Date.now();
         const table = !isTakeaway
-            ? tables.find((t) => t.id === activeTableId)
+            ? tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))
             : null;
         const currentOrder = isTakeaway
             ? takeawayOrder
@@ -329,43 +551,71 @@ const AppContent = () => {
         if (orderItems.length === 0) return;
 
         try {
-            // 1) Create or reuse backend Order
-            let existingOrderId = currentOrder.orderId;
-            if (!existingOrderId) {
-                const orderPayload = {
-                    shopId: currentUser.shop_id,
-                    branchId: getResolvedBranchId(),
-                    businessType: businessType || "RESTAURANT",
-                    orderType: activeOrderType,
-                    customerId: null,
-                    tableId: !isTakeaway ? table?._id || table?.id : null,
-                    items: orderItems.map(item => ({
-                        itemId: item.id || item._id,
-                        itemName: item.name,
-                        price: item.price,
-                        quantity: item.quantity,
-                        totalAmount: calculateItemTotal(item),
-                        variantId: item.selectedVariant ? item.selectedVariant._id : null,
-                        notes: item.suggestion
-                    })),
-                    subtotal: calculateTotal(currentOrder) / (1 + (settings?.defaultTaxPercent || 0) / 100),
-                    discountTotal: 0,
-                    taxTotal: calculateTotal(currentOrder) - (calculateTotal(currentOrder) / (1 + (settings?.defaultTaxPercent || 0) / 100)),
-                    grandTotal: calculateTotal(currentOrder),
-                    createdBy: currentUser._id
+            const { subtotal, taxTotal, total } = calculateBillDetails(
+                orderItems,
+                currentOrder.discount || { type: 'flat', value: 0 },
+                settings?.defaultTaxPercent || 0
+            );
+
+            const payloadItems = orderItems.map(item => {
+                const itemTaxPercent = (item.taxPercent !== undefined && item.taxPercent !== null) 
+                    ? Number(item.taxPercent) 
+                    : (settings?.defaultTaxPercent || 0);
+                return {
+                    itemId: item.id || item._id,
+                    itemName: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    totalAmount: calculateItemTotal(item),
+                    variantId: item.selectedVariant ? item.selectedVariant._id : null,
+                    notes: item.suggestion,
+                    taxPercent: itemTaxPercent,
+                    taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
                 };
+            });
+
+            // 1) Create or Update backend Order
+            let existingOrderId = currentOrder.orderId;
+            const orderPayload = {
+                shopId: currentUser.shop_id,
+                branchId: getResolvedBranchId(),
+                businessType: businessType || "RESTAURANT",
+                orderType: activeOrderType,
+                customerId: null,
+                tableId: !isTakeaway ? table?._id || table?.id : null,
+                items: payloadItems,
+                subtotal,
+                discountTotal: currentOrder.discountTotal || 0,
+                taxTotal,
+                grandTotal: total,
+                createdBy: currentUser._id
+            };
+
+            if (existingOrderId) {
+                await orderService.updateOrder(existingOrderId, orderPayload);
+            } else {
                 const order = await orderService.createOrder(orderPayload);
                 existingOrderId = order._id;
             }
 
-            // 2) Create KOT only for manufactured items (items that go to kitchen)
+            // 2) Create KOT only for new items or increased quantities
             const kitchenItems = orderItems
                 .filter(item => item.itemType === "MANUFACTURED")
-                .map(item => ({
-                    itemId: item.id || item._id,
-                    quantity: item.quantity,
-                    notes: item.suggestion || ""
-                }));
+                .map(item => {
+                    const previouslySent = item.sentQuantity || 0;
+                    const diff = item.quantity - previouslySent;
+                    if (diff > 0) {
+                        return {
+                            itemId: item.id || item._id,
+                            itemName: item.name,
+                            quantity: diff,
+                            notes: item.suggestion || "",
+                            variant: item.selectedVariant?.name || ""
+                        };
+                    }
+                    return null;
+                })
+                .filter(Boolean);
 
             if (kitchenItems.length > 0) {
                 await api.post('/kitchen/kots', {
@@ -373,33 +623,39 @@ const AppContent = () => {
                     branchId: getResolvedBranchId(),
                     orderId: existingOrderId,
                     tableId: !isTakeaway ? table?._id || table?.id : null,
-                    items: kitchenItems
+                    items: kitchenItems.map(k => ({ itemId: k.itemId, quantity: k.quantity, notes: k.notes }))
                 });
             }
 
-            // 3) Update local state to reflect KOT sent + store orderId
+            // 3) Update local state with sentQuantity and orderId
+            const updatedItems = orderItems.map(item => ({
+                ...item,
+                sentQuantity: item.quantity
+            }));
+
             if (isTakeaway) {
                 setTakeawayOrder({
                     ...takeawayOrder,
+                    items: updatedItems,
                     orderId: existingOrderId,
-                    isSentToKOT: kitchenItems.length > 0,
-                    kotSentAt: kitchenItems.length > 0 ? nowTs : null,
-                    kotStatus: kitchenItems.length > 0 ? "preparing" : undefined,
+                    isSentToKOT: true,
+                    kotSentAt: nowTs,
+                    kotStatus: "preparing",
                 });
             } else {
                 setTables((prev) =>
                     prev.map((t) => {
-                        if (t.id === activeTableId) {
+                        if (String(t._id || t.id) === String(activeTableId)) {
                             return {
                                 ...t,
                                 startTime: t.startTime ? t.startTime : nowTs,
                                 order: {
                                     ...(t.order || {}),
                                     orderId: existingOrderId,
-                                    isSentToKOT: kitchenItems.length > 0,
-                                    kotSentAt: kitchenItems.length > 0 ? nowTs : null,
-                                    kotStatus: kitchenItems.length > 0 ? "preparing" : undefined,
-                                    items: orderItems,
+                                    isSentToKOT: true,
+                                    kotSentAt: nowTs,
+                                    kotStatus: "preparing",
+                                    items: updatedItems,
                                 },
                             };
                         }
@@ -407,107 +663,152 @@ const AppContent = () => {
                     })
                 );
             }
+
+            // Print KOT (only the newly sent/incremental items)
+            if (kitchenItems.length > 0) {
+                const tableLabel = isTakeaway ? "Takeaway" : (table?.name || "");
+                const orderLabel = table?.order?.orderNumber ? `Order #${table.order.orderNumber}` : "";
+
+                printKot({
+                    header: getPrintHeader(),
+                    meta: {
+                        orderLabel,
+                        tableLabel: tableLabel ? `Table: ${tableLabel}` : "",
+                        printedAt: new Date().toLocaleString(),
+                    },
+                    items: kitchenItems.map((k) => ({
+                        name: k.itemName,
+                        qty: k.quantity,
+                        notes: k.notes,
+                        variant: k.variant,
+                    })),
+                });
+            }
         } catch (error) {
             console.error("Failed to send KOT / create order:", error);
             alert("Failed to send KOT. Please try again.");
         }
     };
 
-    const handleFinalizePayment = async (method, billDetails) => {
+    const handleFinalizePayment = async (method, billDetails, paidAmount = null, directCustName = "", directCustPhone = "") => {
         const now = Date.now();
-        const table = !isTakeaway ? tables.find(t => String(t.id) === String(activeTableId)) : null;
+        const table = !isTakeaway ? tables.find(t => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) : null;
         const orderItems = isTakeaway ? takeawayOrder.items : table?.order?.items || [];
+        const finalPaidAmount = paidAmount !== null ? paidAmount : billDetails.finalTotal;
+        const finalCustName = directCustName || takeawayCustName || "";
+        const finalCustPhone = directCustPhone || takeawayCustPhone || "";
 
         const saleRecord = {
             id: now,
             amount: billDetails.finalTotal,
+            paidAmount: finalPaidAmount,
             ...billDetails,
+            taxAmount: billDetails.taxAmount || orderItems.reduce((sum, item) => {
+                const itemTaxPercent = (item.taxPercent !== undefined && item.taxPercent !== null) 
+                    ? Number(item.taxPercent) 
+                    : (settings?.defaultTaxPercent || 0);
+                return sum + ((calculateItemTotal(item) * itemTaxPercent) / 100);
+            }, 0),
             couponUsed: billDiscount.type !== "flat" || billDiscount.value > 0 ? "COUPON" : null,
             date: new Date().toISOString().split("T")[0],
-            type: activeOrderType,
             method,
             timestamp: now,
-            tableId: !isTakeaway ? table?.id : null,
             tableName: !isTakeaway ? table?.name : "Takeaway",
             waiterName: currentUser?.name || "Staff",
-            startTime: !isTakeaway ? table?.startTime : now,
-            endTime: now,
-            durationMinutes: !isTakeaway && table?.startTime ? Math.floor((now - table.startTime) / 60000) : 0,
             itemCount: orderItems.length,
-            items: JSON.parse(JSON.stringify(orderItems)),
+            items: orderItems.map(item => {
+                const itemTaxPercent = (item.taxPercent !== undefined && item.taxPercent !== null) 
+                    ? Number(item.taxPercent) 
+                    : (settings?.defaultTaxPercent || 0);
+                return {
+                    ...item,
+                    taxPercent: itemTaxPercent,
+                    taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
+                };
+            }),
         };
 
         try {
-            const currentOrder = isTakeaway
-                ? takeawayOrder
-                : table?.order || { items: [] };
+            const currentOrder = isTakeaway ? takeawayOrder : table?.order || { items: [] };
+            let paymentStatus = 'PAID';
+            if (finalPaidAmount === 0) paymentStatus = 'PENDING';
+            else if (finalPaidAmount < billDetails.finalTotal) paymentStatus = 'PARTIAL';
 
-            // If we already have an orderId (KOT flow), just add payment and mark as completed.
-            if (currentOrder.orderId) {
-                await orderService.addPayment(currentOrder.orderId, {
-                    paymentMethod: method.toUpperCase(),
-                    amount: billDetails.finalTotal,
-                    referenceNumber: null
-                });
-                await orderService.updateStatus(currentOrder.orderId, { status: 'COMPLETED' });
-            } else {
-                // No KOT / ready-made products: create a completed, paid order directly.
+            let currentOrderId = currentOrder.orderId;
+
+            if (!currentOrderId) {
                 const orderPayload = {
                     shopId: currentUser.shop_id,
                     branchId: getResolvedBranchId(),
                     businessType: businessType || "RESTAURANT",
                     orderType: activeOrderType,
-                    customerId: null,
+                    customerId: billDetails.customerId || null,
+                    customerName: finalCustName,
+                    customerPhone: finalCustPhone,
                     tableId: !isTakeaway ? table?._id || table?.id : null,
-                    items: orderItems.map(item => ({
-                        itemId: item.id || item._id,
-                        itemName: item.name,
-                        price: item.price,
-                        quantity: item.quantity,
-                        totalAmount: calculateItemTotal(item),
-                        variantId: item.selectedVariant ? item.selectedVariant._id : null,
-                        notes: item.suggestion
-                    })),
+                    items: orderItems.map(item => {
+                        const itemTaxPercent = (item.taxPercent !== undefined && item.taxPercent !== null) 
+                            ? Number(item.taxPercent) 
+                            : (settings?.defaultTaxPercent || 0);
+                        return {
+                            itemId: item.id || item._id,
+                            itemName: item.name,
+                            price: item.price,
+                            quantity: item.quantity,
+                            totalAmount: calculateItemTotal(item),
+                            variantId: item.selectedVariant ? item.selectedVariant._id : null,
+                            notes: item.suggestion,
+                            taxPercent: itemTaxPercent,
+                            taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
+                        };
+                    }),
                     subtotal: billDetails.subtotal,
                     discountTotal: billDetails.discountAmount,
                     taxTotal: billDetails.taxAmount,
                     grandTotal: billDetails.finalTotal,
-                    paymentStatus: 'PAID',
+                    totalPaid: finalPaidAmount,
+                    paymentStatus: paymentStatus,
                     orderStatus: 'COMPLETED',
                     createdBy: currentUser._id
                 };
-                await orderService.createOrder(orderPayload);
+                const createdOrder = await orderService.createOrder(orderPayload);
+                currentOrderId = createdOrder._id;
             }
 
-            // Backend: Mark table as Available after checkout
-            if (!isTakeaway && table) {
-                await tableService.updateTable(table.id, { status: "AVAILABLE" });
+            // Always register the payment if the paid amount is greater than 0, or if it's the required standard
+            if (currentOrderId && finalPaidAmount >= 0) {
+                await orderService.addPayment(currentOrderId, {
+                    paymentMethod: method.toUpperCase(),
+                    amount: finalPaidAmount,
+                    customerName: finalCustName,
+                    customerPhone: finalCustPhone
+                });
+
+                // createOrder already sets it to COMPLETED, but we update status just in case to ensure synchronization
+                await orderService.updateStatus(currentOrderId, { status: 'COMPLETED' });
             }
 
-            // Local sales history + table reset stay as before
+            try {
+                if (!isTakeaway && table) {
+                    await tableService.updateTable(table._id || table.id, { status: "AVAILABLE" });
+                }
+            } catch (tErr) {
+                console.warn("Table release call failed (might be already released by backend):", tErr);
+            }
+
             setSalesHistory((prev) => [...prev, saleRecord]);
             if (isTakeaway) {
                 resetTakeaway();
             } else {
                 setTables((prev) =>
                     prev.map((t) => {
-                        if (t.id === activeTableId) {
-                            return {
-                                ...t,
-                                status: "available",
-                                order: null,
-                                startTime: null,
-                                isParent: false,
-                                childTables: []
-                            };
+                        const tid = t._id || t.id;
+                        const aid = activeTableId;
+                        if (String(tid) === String(aid)) {
+                            return { ...t, status: "available", order: null, startTime: null, isParent: false, childTables: [] };
                         }
-                        if (t.parentTableId === activeTableId) {
-                            return {
-                                ...t,
-                                status: "available",
-                                parentTableId: null,
-                                startTime: null
-                            };
+                        if (String(t.parentTableId) === String(aid)) {
+                            return { ...t, status: "available", parentTableId: null, startTime: null };
                         }
                         return t;
                     })
@@ -515,11 +816,17 @@ const AppContent = () => {
             }
             setIsPaymentModalOpen(false);
             resetBillingState();
+            setTakeawayCustName("");
+            setTakeawayCustPhone("");
             setOrderSearch("");
             setView("tables");
+
+            // Proactive table clean-up
+            if (!isTakeaway) {
+                setActiveTableId(null);
+            }
         } catch (err) {
             console.error("Failed to finalize order / payment:", err);
-            // Fallback to local save if backend fails (depending on requirement)
             setSalesHistory((prev) => [...prev, saleRecord]);
         }
     };
@@ -540,7 +847,7 @@ const AppContent = () => {
             } else {
                 setTables((prev) =>
                     prev.map((t) =>
-                        t.id === activeTableId && t.order
+                        (String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) && t.order
                             ? { ...t, order: { ...t.order, items: updateList(t.order.items) } }
                             : t
                     )
@@ -551,7 +858,7 @@ const AppContent = () => {
     };
 
     return (
-        <div className="flex flex-col-reverse md:flex-row h-screen bg-gray-50 overflow-hidden font-sans">
+        <div className={`flex flex-col-reverse md:flex-row h-screen ${theme.pageBg} overflow-hidden font-sans`}>
             {/* HIDDEN RECEIPT COMPONENT logic from App.jsx is still needed for Print. 
                 I'm omitting it here for brevity but it SHOULD be here or in a separate component.
                 For now, assuming window.print() prints the page and we use print CSS.
@@ -637,8 +944,11 @@ const AppContent = () => {
                             formatCurrency={formatCurrency}
                             calculateTotal={calculateTotal}
                             calculateItemTotal={calculateItemTotal}
+                            calculateBillDetails={calculateBillDetails}
+                            offers={offers}
                             handlePrintReceipt={handlePrintReceipt}
                             handleSendToKOT={handleSendToKOT}
+                            businessTypeData={businessTypeData}
                             setIsPaymentModalOpen={setIsPaymentModalOpen}
                             setBillingStage={setBillingStage}
                             initiateAddItem={initiateAddItem}
@@ -686,6 +996,7 @@ const AppContent = () => {
                             branches={branches}
                             setBranches={setBranches}
                             joinTables={joinTables}
+                            refreshData={refreshData}
                         />
                     </Layout>
                 </TextProvider>
@@ -720,11 +1031,18 @@ const AppContent = () => {
                 onClose={() => setIsPaymentModalOpen(false)}
                 isTakeaway={isTakeaway}
                 activeTableId={activeTableId}
+                tableName={activeTable ? activeTable.name : ""}
                 orderItems={activeOrderItems}
                 settings={settings}
                 onFinalizePayment={handleFinalizePayment}
+                onPrintBill={handlePrintReceipt}
                 hasPermission={hasPermission}
                 hasPermissionFor={hasPermissionFor}
+                custName={takeawayCustName}
+                setCustName={setTakeawayCustName}
+                custPhone={takeawayCustPhone}
+                setCustPhone={setTakeawayCustPhone}
+                existingCustomerId={activeOrderCustomerId}
             />
 
             <ExpenseModal
@@ -749,6 +1067,8 @@ const AppContent = () => {
                 tableName={activeTable ? activeTable.name : ""}
                 orderItems={activeOrderItems}
                 calculateItemTotal={calculateItemTotal}
+                calculateBillDetails={calculateBillDetails}
+                settings={settings}
                 calculateTotal={calculateTotal}
                 onPrint={handlePrintReceipt}
             />

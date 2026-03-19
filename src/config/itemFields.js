@@ -1,7 +1,7 @@
 // Only fields from backend item.model.js - all other attributes are dynamic based on business type/subtype
 export const ALL_FIELDS = {
     // --- Core Fields (from item.model.js) ---
-    item_code: { key: "itemCode", label: "Item Code", type: "text", required: true, section: "Common" },
+    item_code: { key: "itemCode", label: "Item Code", type: "text", required: false, placeholder: "Auto-generated if empty", section: "Common" },
     barcode: { key: "barcode", label: "Barcode", type: "text", section: "Common" },
     name: { key: "name", label: "Item Name", type: "text", required: true, section: "Common" },
     description: { key: "description", label: "Description", type: "textarea", section: "Common" },
@@ -28,7 +28,7 @@ export const ALL_FIELDS = {
     mrp: { key: "mrp", label: "MRP", type: "number", section: "Pricing" },
 
     // Tax
-    tax_id: { key: "taxId", label: "Tax", type: "select", section: "Tax" }, // Will be populated dynamically
+    tax_percent: { key: "taxPercent", label: "Item Tax %", type: "number", section: "Tax" },
     hsn_sac_code: { key: "hsnSacCode", label: "HSN / SAC Code", type: "text", section: "Tax" },
 
     // Stock Settings

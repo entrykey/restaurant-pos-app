@@ -25,25 +25,24 @@ const Navbar = ({
     // Initialize Active Branch and Fetch Branches
     useEffect(() => {
         const fetchBranches = async () => {
-            if (currentUser?.shop_id && currentUser?.branchIds?.length > 1) {
-                try {
-                    const branches = await branchService.getBranchesByShopId(currentUser.shop_id);
-                    // Filter to only branches the user has access to
-                    const accessibleBranches = branches.filter(b => currentUser.branchIds.includes(b._id));
-                    setUserBranches(accessibleBranches);
+            try {
+                const branches = await branchService.getAllowedBranches();
+                setUserBranches(branches || []);
 
-                    // Set default active branch if not set or invalid
-                    if (!activeBranchId || !accessibleBranches.find(b => b._id === activeBranchId)) {
-                        setActiveBranchId(currentUser.branchIds[0]);
+                // If only one branch, ensure it's selected
+                if (branches.length === 1) {
+                    if (activeBranchId !== branches[0]._id) {
+                        setActiveBranchId(branches[0]._id);
                     }
-                } catch (error) {
-                    console.error("Failed to fetch branches for navbar", error);
+                } else if (branches.length > 1) {
+                    // Check if current activeBranchId is still valid in the new list
+                    const isValid = branches.find(b => b._id === activeBranchId);
+                    if (!activeBranchId || !isValid) {
+                        setActiveBranchId(branches[0]._id);
+                    }
                 }
-            } else if (currentUser?.branchIds?.length === 1) {
-                // Only one branch, ensure it's set
-                if (activeBranchId !== currentUser.branchIds[0]) {
-                    setActiveBranchId(currentUser.branchIds[0]);
-                }
+            } catch (error) {
+                console.error("Failed to fetch branches for navbar", error);
             }
         };
         fetchBranches();
@@ -67,8 +66,8 @@ const Navbar = ({
                     </span>
                 </div>
 
-                {/* Branch Selector (Only if multiple branches) */}
-                {userBranches.length > 1 && (
+                {/* Branch Selector (Only if multiple branches or is owner, and NOT superadmin/system role) */}
+                {userBranches.length > 0 && !currentUser?.isSuperAdmin && !currentUser?.roles?.some(r => r.isSystemRole) && (
                     <div className={`flex items-center gap-2 ${theme.inputBg} px-3 py-1.5 rounded-xl border ${theme.inputBorder}`}>
                         <MapPin size={16} className={theme.textSecondary} />
                         <select
@@ -78,7 +77,7 @@ const Navbar = ({
                         >
                             {userBranches.map(branch => (
                                 <option key={branch._id} value={branch._id}>
-                                    {branch.branchName}
+                                    {branch.name}
                                 </option>
                             ))}
                         </select>

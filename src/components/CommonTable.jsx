@@ -17,20 +17,23 @@ const CommonTable = ({
     className = '',
     isLoading = false,
     loadingMessage = "Loading...",
-    emptyMessage = "No records found."
+    emptyMessage = "No records found.",
+    currentPage = 1,
+    totalPages = 1,
+    onPageChange
 }) => {
     const { theme } = useTheme();
 
     return (
         <div className={`overflow-hidden rounded-[24px] shadow-sm border ${theme.surfaceBg} ${theme.borderLight} ${className}`}>
-            <div className="overflow-x-auto">
+            <div className="overflow-auto flex-1">
                 <table className="w-full text-left border-collapse">
-                    <thead className={theme.pageBg}>
+                    <thead className={`${theme.pageBg} sticky top-0 z-10`}>
                         <tr className={`${theme.textSecondary} text-[11px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
                             {columns.map((col, index) => (
                                 <th
                                     key={index}
-                                    className={`p-4 ${col.headerClassName || ''}`}
+                                    className={`px-4 py-3 ${col.headerClassName || ''}`}
                                     style={col.width ? { width: col.width } : {}}
                                 >
                                     {col.header}
@@ -58,7 +61,7 @@ const CommonTable = ({
                                     {columns.map((col, colIndex) => (
                                         <td
                                             key={colIndex}
-                                            className={`p-4 ${col.className || ''}`}
+                                            className={`px-4 py-2.5 ${col.className || ''}`}
                                         >
                                             {col.render ? col.render(row[col.key], row) : row[col.key]}
                                         </td>
@@ -75,6 +78,31 @@ const CommonTable = ({
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && onPageChange && (
+                <div className={`flex items-center justify-between p-4 border-t ${theme.borderLight}`}>
+                    <span className={`text-[11px] font-black uppercase tracking-widest ${theme.textSecondary}`}>
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <div className="flex gap-2">
+                        <button
+                            disabled={currentPage === 1 || isLoading}
+                            onClick={() => onPageChange(currentPage - 1)}
+                            className={`px-4 py-2 font-black text-[11px] uppercase tracking-widest rounded-xl disabled:opacity-30 transition-all ${theme.textPrimary} ${theme.pageBg} hover:opacity-80 active:scale-95 shadow-sm border ${theme.borderLight}`}
+                        >
+                            Previous
+                        </button>
+                        <button
+                            disabled={currentPage === totalPages || isLoading}
+                            onClick={() => onPageChange(currentPage + 1)}
+                            className={`px-4 py-2 font-black text-[11px] uppercase tracking-widest rounded-xl disabled:opacity-30 transition-all ${theme.textPrimary} ${theme.pageBg} hover:opacity-80 active:scale-95 shadow-sm border ${theme.borderLight}`}
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

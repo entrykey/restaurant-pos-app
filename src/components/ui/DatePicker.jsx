@@ -28,7 +28,7 @@ const DatePicker = ({
     const [currentYear, setCurrentYear] = useState(initialDate ? initialDate.getFullYear() : new Date().getFullYear());
     const [pickerMode, setPickerMode] = useState("date"); // 'date', 'month', 'year'
 
-    const { theme } = useTheme();
+    const { theme, themeName } = useTheme();
 
     const containerRef = useRef(null);
 
@@ -145,7 +145,7 @@ const DatePicker = ({
                         w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all
                         ${isDisabledDay ? `${theme.textMuted} opacity-50 cursor-not-allowed` : 'cursor-pointer'}
                         ${isSelected ? 'bg-indigo-600 text-white shadow-md' :
-                            isToday ? 'bg-indigo-50 text-indigo-600' :
+                            isToday ? `${themeName === 'dark' ? 'bg-indigo-900/40' : 'bg-indigo-50'} text-indigo-600` :
                                 !isDisabledDay ? `${theme.textPrimary} hover:${theme.inputBg}` : ''}
                     `}
                 >
@@ -222,8 +222,8 @@ const DatePicker = ({
                 onClick={() => !disabled && setIsOpen(!isOpen)}
             >
                 <div className="flex items-center gap-3 overflow-hidden">
-                    <CalendarIcon size={18} className={isOpen ? 'text-indigo-600' : 'text-gray-400 group-hover:text-indigo-500 transition-colors'} />
-                    <span className={`font-bold truncate text-sm mt-0.5 ${value ? theme.textPrimary : 'text-gray-400'}`}>
+                    <CalendarIcon size={18} className={isOpen ? 'text-indigo-600' : `${theme.textMuted} group-hover:text-indigo-500 transition-colors`} />
+                    <span className={`font-bold truncate mt-0.5 ${value ? theme.textPrimary : theme.textMuted} ${!className.includes('text-') ? 'text-sm' : ''}`}>
                         {displayDate() || placeholder}
                     </span>
                 </div>
@@ -231,7 +231,7 @@ const DatePicker = ({
                     <button
                         type="button"
                         onClick={handleClear}
-                        className="p-1 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors z-10"
+                        className={`p-1 rounded-full ${theme.textMuted} hover:text-red-500 hover:bg-red-50 transition-colors z-10`}
                     >
                         <X size={14} />
                     </button>
@@ -245,7 +245,7 @@ const DatePicker = ({
                         <button
                             type="button"
                             onClick={prevMonth}
-                            className={`p-1.5 rounded-full hover:${theme.inputBg} text-gray-500 hover:${theme.textPrimary} transition-colors`}
+                            className={`p-1.5 rounded-full hover:${theme.inputBg} ${theme.textMuted} hover:${theme.textPrimary} transition-colors`}
                         >
                             <ChevronLeft size={16} />
                         </button>
@@ -254,14 +254,14 @@ const DatePicker = ({
                             <button
                                 type="button"
                                 onClick={() => setPickerMode(pickerMode === "month" ? "date" : "month")}
-                                className="hover:bg-gray-100 px-2 py-1 rounded-lg transition-colors"
+                                className={`hover:${theme.inputBg} px-2 py-1 rounded-lg transition-colors`}
                             >
                                 {MONTHS[currentMonth]}
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setPickerMode(pickerMode === "year" ? "date" : "year")}
-                                className="hover:bg-gray-100 px-2 py-1 rounded-lg transition-colors"
+                                className={`hover:${theme.inputBg} px-2 py-1 rounded-lg transition-colors`}
                             >
                                 {currentYear}
                             </button>
@@ -270,7 +270,7 @@ const DatePicker = ({
                         <button
                             type="button"
                             onClick={nextMonth}
-                            className={`p-1.5 rounded-full hover:${theme.inputBg} text-gray-500 hover:${theme.textPrimary} transition-colors`}
+                            className={`p-1.5 rounded-full hover:${theme.inputBg} ${theme.textMuted} hover:${theme.textPrimary} transition-colors`}
                         >
                             <ChevronRight size={16} />
                         </button>

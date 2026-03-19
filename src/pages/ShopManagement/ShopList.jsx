@@ -41,8 +41,8 @@ const ShopList = ({ onEdit, onAddNew }) => {
 
     const filteredShops = shops.filter(s =>
         s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.ownerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.ownerContact?.includes(searchTerm)
+        (s.ownerName || s.user_id?.name)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (s.ownerContact || s.user_id?.phone)?.includes(searchTerm)
     );
 
     const columns = [
@@ -62,20 +62,20 @@ const ShopList = ({ onEdit, onAddNew }) => {
             header: "Owner",
             key: "ownerName",
             className: `font-bold text-sm ${theme.textSecondary}`,
-            render: (value) => value || '—'
+            render: (value, shop) => value || shop.user_id?.name || '—'
         },
         {
             header: "Contact",
             key: "ownerContact",
             className: `font-bold text-sm ${theme.textSecondary}`,
-            render: (value) => value || '—'
+            render: (value, shop) => value || shop.user_id?.phone || '—'
         },
         {
             header: "Industry",
             key: "industry",
             render: (_, shop) => (
                 <div className="flex items-center">
-                    <span className={`px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg text-xs font-bold ${theme.textPrimary}`}>
+                    <span className={`px-3 py-1.5 ${theme.sectionBg} border ${theme.sectionBorder} rounded-lg text-xs font-bold ${theme.textPrimary}`}>
                         {shop.businessType?.displayString || 'Standard'}
                         {shop.subType?.displayString && (
                             <span className={`ml-1 text-[11px] font-black uppercase tracking-widest text-indigo-500`}>

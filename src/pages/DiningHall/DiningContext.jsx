@@ -9,7 +9,7 @@ const DiningContext = createContext();
 export const useDining = () => useContext(DiningContext);
 
 export const DiningProvider = ({ children }) => {
-    const { currentTime, branches } = useApp();
+    const { currentTime, branches, activeBranchId } = useApp();
     const { user } = useAuth();
     const [tables, setTables] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -18,29 +18,22 @@ export const DiningProvider = ({ children }) => {
     const [reservations, setReservations] = useState([]);
 
     const fetchDiningData = useCallback(async (isPolling = false) => {
-        const branchId = user?.branch_id || user?.branchId ||
-            (user?.branchIds && user.branchIds[0]) ||
-            (branches && branches[0]?._id);
-
-        if (!branchId) {
-            setLoading(false);
-            return;
-        }
+        const branchId = activeBranchId;
 
         if (!isPolling) setLoading(true);
         try {
             const [tablesRes, categoriesRes, reservationsRes, ordersRes, kotsRes] = await Promise.all([
-                tableService.getTables({ branchId }),
-                diningCategoryService.getCategories({ branchId }),
+                tableService.getTables({ branchId: branchId || null }),
+                diningCategoryService.getCategories({ branchId: branchId || null }),
                 reservationsService.getReservations({
-                    branchId,
+                    branchId: branchId || null,
                     date: new Date().toISOString().split("T")[0],
                     status: 'CONFIRMED'
                 }),
                 // Fetch active orders (OPEN or IN_PROGRESS)
-                api.get('/orders', { params: { branchId, orderStatus: ['OPEN', 'IN_PROGRESS', 'READY', 'SERVED'] } }),
+                api.get('/orders', { params: { branchId: branchId || null, orderStatus: ['OPEN', 'IN_PROGRESS', 'READY', 'SERVED'] } }),
                 // Fetch active KOTs (not COMPLETED)
-                api.get('/kitchen/kots', { params: { branchId, status: { $ne: 'COMPLETED' } } })
+                api.get('/kitchen/kots', { params: { branchId: branchId || null, status: { $ne: 'COMPLETED' } } })
             ]);
 
             const activeOrders = ordersRes.data || [];
@@ -83,6 +76,9 @@ export const DiningProvider = ({ children }) => {
                             ...item,
                             id: item.itemId?._id || item.itemId,
                             name: item.itemId?.name || item.itemName,
+                            // If the order already has at least one KOT, treat backend quantities as already sent
+                            // so the POS can generate incremental KOTs only for newly added/increased items.
+                            sentQuantity: (tableKots.length > 0 ? (item.quantity ?? 0) : (item.sentQuantity ?? 0)),
                         })),
                         isSentToKOT: tableKots.length > 0,
                         kotStatus: kotStatus,
@@ -95,7 +91,8 @@ export const DiningProvider = ({ children }) => {
                     id: tableId,
                     name: `Table ${t.tableNumber}`,
                     status: status.toLowerCase(), // Frontend expects lowercase
-                    order
+                    order,
+                    activeMerge: t.activeMerge // Pass through the merge info from backend
                 };
             });
 
@@ -107,7 +104,62 @@ export const DiningProvider = ({ children }) => {
                 date: new Date(r.reservationTime).toISOString().split("T")[0] // Add YYYY-MM-DD
             }));
 
-            setTables(mappedTables);
+            // IMPORTANT:
+            // We poll the backend every ~10s. If a cashier is building a cart locally (not yet saved/sent),
+            // the backend won't know about those draft items. Replacing `tables` outright would wipe the cart
+            // and make the UI total "disappear after some time".
+            setTables((prev) => {
+                const prevById = new Map((prev || []).map((t) => [String(t.id || t._id), t]));
+
+                return mappedTables.map((nextTable) => {
+                    const key = String(nextTable.id || nextTable._id);
+                    const prevTable = prevById.get(key);
+                    if (!prevTable) return nextTable;
+
+                    const prevOrder = prevTable.order;
+                    const nextOrder = nextTable.order;
+
+                    const prevItemsCount = prevOrder?.items?.length || 0;
+                    if (prevItemsCount === 0) {
+                        // Keep some local fields if backend didn't send them
+                        return {
+                            ...nextTable,
+                            startTime: nextTable.startTime ?? prevTable.startTime ?? null,
+                        };
+                    }
+
+                    const prevOrderId = prevOrder?.orderId;
+                    const nextOrderId = nextOrder?.orderId;
+                    const prevHasBackendOrder = Boolean(prevOrderId);
+                    const nextHasBackendOrder = Boolean(nextOrderId);
+                    const isSameBackendOrder =
+                        prevHasBackendOrder &&
+                        nextHasBackendOrder &&
+                        String(prevOrderId) === String(nextOrderId);
+
+                    // Preserve local draft carts:
+                    // - If no backend order id yet (purely local cart), always keep it.
+                    // - If this is the currently active table and we're still on the same backend order,
+                    //   keep the local items to avoid losing unsent edits between polls.
+                    const shouldPreserveLocalOrder =
+                        !prevHasBackendOrder ||
+                        (String(activeTableId) === key && (isSameBackendOrder || !nextHasBackendOrder));
+
+                    if (!shouldPreserveLocalOrder) {
+                        return {
+                            ...nextTable,
+                            startTime: nextTable.startTime ?? prevTable.startTime ?? null,
+                        };
+                    }
+
+                    return {
+                        ...nextTable,
+                        status: prevTable.status ?? nextTable.status,
+                        startTime: prevTable.startTime ?? nextTable.startTime ?? null,
+                        order: prevOrder,
+                    };
+                });
+            });
             setCategories(categoriesRes.data || categoriesRes);
             setReservations(mappedReservations);
         } catch (error) {
@@ -115,9 +167,14 @@ export const DiningProvider = ({ children }) => {
         } finally {
             if (!isPolling) setLoading(false);
         }
-    }, [user?.branch_id, user?.branchId, user?.branchIds, branches]);
+    }, [activeBranchId, branches, activeTableId, user]);
 
     useEffect(() => {
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+        
         fetchDiningData();
 
         // Refresh dining hall data every 10 seconds to catch remote updates/reservations
@@ -126,7 +183,7 @@ export const DiningProvider = ({ children }) => {
         }, 10000);
 
         return () => clearInterval(intervalId);
-    }, [fetchDiningData]);
+    }, [user, fetchDiningData]);
 
     const getTableDuration = (startTime) => {
         if (!startTime) return null;

@@ -9,7 +9,10 @@ const SUPER_ADMIN_MODULES = [
   "business_types",
   "shop_management",
   "plan_management",
-  "subscription_management"
+  "subscription_management",
+  "settings",
+
+
 ];
 
 export const hasPermission = (user, module, action) => {

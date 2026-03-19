@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { useAuth } from "./AuthContext";
 import { initialMenu, initialInventoryItems } from "../pages/Inventory/InventoryService";
 import { initialSettings } from "../pages/Settings/SettingsService";
 import { initialSalesHistory } from "../pages/Reports/ReportsService";
 import { initialRoles, initialStaff } from "../pages/Staff/StaffService";
 import { initialOrganization, initialBranches } from "../pages/Organization/OrganizationService";
 import { BUSINESS_TYPES, getDefaultModules } from "../config/businessTypes";
+import { businessTypesService } from "../services/api/businessTypes";
+import { formatCurrency } from "../utils/format";
 
 const AppContext = createContext();
 
@@ -43,7 +46,7 @@ export const AppProvider = ({ children }) => {
     const [settings, setSettings] = useState(initialSettings);
 
     // Sales History State
-    const [salesHistory, setSalesHistory] = useState(initialSalesHistory);
+    const [salesHistory, setSalesHistory] = useState([]);
 
     // Staff & Roles State
     const [rolesList, setRolesList] = useState(initialRoles);
@@ -62,9 +65,41 @@ export const AppProvider = ({ children }) => {
         return localStorage.getItem("pos_businessSubtype") || "fine_dining";
     });
 
+    const [businessTypeData, setBusinessTypeData] = useState(null);
+
+    const { isAuthenticated } = useAuth();
+
+    // Fetch full business type details when businessType changes
+    useEffect(() => {
+        const fetchTypeDetails = async () => {
+            // Guard: only fetch if authenticated and we have a potential ID
+            if (!isAuthenticated) return;
+            
+            if (businessType && businessType.length > 20) { // Check if it looks like a MongoDB ID
+                try {
+                    const res = await businessTypesService.getBusinessTypeById(businessType);
+                    setBusinessTypeData(res.data);
+                } catch (error) {
+                    console.error("Failed to fetch business type details:", error);
+                }
+            } else {
+                // Fallback for default state or static strings
+                setBusinessTypeData({
+                    features: {
+                        sellStockItems: true,
+                        sellManufacturedItems: true,
+                        sellTradeItems: true
+                    }
+                });
+            }
+        };
+        fetchTypeDetails();
+    }, [businessType, isAuthenticated]);
+
     // Branch Selection State - Persisted
     const [activeBranchId, setActiveBranchId] = useState(() => {
-        return localStorage.getItem("pos_activeBranchId") || null;
+        const stored = localStorage.getItem("pos_activeBranchId");
+        return (stored === "null" || stored === "undefined") ? null : stored;
     });
 
     const [enabledModules, setEnabledModules] = useState(() => {
@@ -76,9 +111,7 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         localStorage.setItem("pos_businessType", businessType);
         localStorage.setItem("pos_businessSubtype", businessSubtype);
-        if (activeBranchId) {
-            localStorage.setItem("pos_activeBranchId", activeBranchId);
-        }
+        localStorage.setItem("pos_activeBranchId", activeBranchId);
         // localStorage.setItem("pos_enabledModules", JSON.stringify(enabledModules));
     }, [businessType, businessSubtype, enabledModules, activeBranchId]);
 
@@ -106,6 +139,7 @@ export const AppProvider = ({ children }) => {
                 setBranches,
                 businessType,
                 setBusinessType,
+                businessTypeData,
                 businessSubtype,
                 setBusinessSubtype,
                 activeBranchId,
@@ -114,6 +148,7 @@ export const AppProvider = ({ children }) => {
                 setEnabledModules,
                 inventoryItems,
                 setInventoryItems,
+                formatCurrency,
             }}
         >
             {children}

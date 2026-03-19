@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 // Define themes with space for future additions
 export const themes = {
     light: {
+        mode: "light",
         // General
         background: "bg-indigo-900",
         cardBg: "bg-white",
@@ -68,6 +69,7 @@ export const themes = {
         linkHover: "hover:text-indigo-800",
     },
     dark: {
+        mode: "dark",
         // General
         background: "bg-gray-900",
         cardBg: "bg-gray-800",
@@ -131,8 +133,73 @@ export const themes = {
         // Links
         linkText: "text-indigo-400",
         linkHover: "hover:text-indigo-300",
+    },
+    ocean: {
+        mode: "dark",
+        // General
+        background: "bg-[#0a192f]",
+        cardBg: "bg-[#112240]",
+        textPrimary: "text-slate-100",
+        textSecondary: "text-blue-200",
+        textHeading: "text-white",
+        textMuted: "text-slate-400",
+        borderLight: "border-blue-900/50",
+
+        // Layout
+        pageBg: "bg-[#0a192f]",
+        surfaceBg: "bg-[#112240]",
+
+        // Table
+        tableHeaderBg: "bg-[#1d2d50]",
+        tableHeaderText: "text-blue-300",
+        tableRowHover: "hover:bg-blue-800/20",
+        tableBorder: "border-blue-900/50",
+
+        // Semantic Sections
+        sectionBg: "bg-[#1d2d50]/50",
+        sectionBorder: "border-blue-800/50",
+        infoBg: "bg-blue-900/30",
+        infoBorder: "border-blue-700/50",
+        infoText: "text-blue-300",
+        warningBg: "bg-yellow-900/20",
+        warningBorder: "border-yellow-700/50",
+        warningText: "text-yellow-400",
+        successBg: "bg-green-900/20",
+        successText: "text-green-400",
+
+        // Sidebar
+        sidebarBg: "bg-[#0a192f]",
+        sidebarText: "text-slate-300",
+        sidebarItemActiveBg: "bg-[#1d2d50]",
+        sidebarItemHoverBg: "hover:bg-[#112240]",
+        sidebarLogoBg: "bg-blue-600",
+        sidebarLogoText: "text-white",
+        sidebarLogoutText: "text-red-400",
+        sidebarLogoutHoverBg: "hover:bg-red-900/20",
+
+        // Icons
+        primaryIconBg: "bg-blue-900/50",
+        primaryIconText: "text-blue-400",
+
+        // Inputs
+        inputBg: "bg-[#1d2d50]",
+        inputBorder: "border-blue-800",
+        inputFocus: "focus:ring-blue-500",
+        inputText: "text-white",
+
+        // Buttons
+        buttonBg: "bg-blue-600",
+        buttonHoverBg: "hover:bg-blue-500",
+        buttonText: "text-white",
+
+        // Error
+        errorBg: "bg-red-900/20",
+        errorText: "text-red-400",
+
+        // Links
+        linkText: "text-blue-400",
+        linkHover: "hover:text-blue-300",
     }
-    // Future themes can be added here
 };
 
 const ThemeContext = createContext();
@@ -151,8 +218,14 @@ export const ThemeProvider = ({ children }) => {
 
     useEffect(() => {
         localStorage.setItem('app-theme', themeName);
-        // Optionally update body classes if needed globally
-        // document.body.className = themes[themeName].background;
+        // Update document class for Tailwind dark mode support
+        if (themeName === 'dark' || themeName === 'ocean') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+        } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+        }
     }, [themeName]);
 
     // Listen for system theme changes in real-time

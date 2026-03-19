@@ -11,6 +11,8 @@ const FullOrderSummaryModal = ({
     tableName,
     orderItems,
     calculateItemTotal,
+    calculateBillDetails,
+    settings,
     calculateTotal,
     onPrint,
 }) => {
@@ -56,9 +58,12 @@ const FullOrderSummaryModal = ({
                                         <span className="bg-indigo-100 text-indigo-700 font-black px-3 py-1 rounded-lg text-sm">
                                             {item.quantity}x
                                         </span>
-                                        <span className="font-bold text-lg text-gray-800">
-                                            {item.name}
-                                        </span>
+                                                <span className="font-bold text-gray-800">
+                                                    {item.name}
+                                                    <span className="ml-1 text-[10px] text-gray-400 font-medium">
+                                                        ({(item.taxPercent !== undefined && item.taxPercent !== null) ? item.taxPercent : (settings?.defaultTaxPercent || 0)}%)
+                                                    </span>
+                                                </span>
                                     </div>
                                     <div className="pl-12 mt-1 space-y-1">
                                         {item.selectedVariant && (
@@ -114,13 +119,34 @@ const FullOrderSummaryModal = ({
                             {(orderItems || []).length}
                         </span>
                     </div>
-                    <div className="flex justify-between items-center text-3xl font-black text-indigo-900">
-                        <span>Total Amount</span>
-                        <span>
-                            {/* Note: In real usage you might want to pass the calculated total object instead of recalculating */}
-                            {formatCurrency(calculateTotal({ items: orderItems }))}
-                        </span>
-                    </div>
+                    {(() => {
+                        const billDetails = calculateBillDetails(
+                            orderItems,
+                            { type: "flat", value: 0 },
+                            settings?.defaultTaxPercent || 0,
+                            false
+                        );
+
+                        return (
+                            <>
+                                {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
+                                    <div className="space-y-1">
+                                        <div className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Applied Offers</div>
+                                        {billDetails.appliedOffers.map((offer, oIdx) => (
+                                            <div key={oIdx} className="flex justify-between items-center text-sm text-green-600 font-medium bg-green-50 px-3 py-1.5 rounded-xl">
+                                                <span>{offer.name}</span>
+                                                <span>-{formatCurrency(offer.discount)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center text-3xl font-black text-indigo-900 pt-2 border-t border-dashed">
+                                    <span>Total Amount</span>
+                                    <span>{formatCurrency(billDetails.finalTotal)}</span>
+                                </div>
+                            </>
+                        );
+                    })()}
                     <div className="grid grid-cols-2 gap-4 pt-2">
                         <button
                             onClick={onClose}

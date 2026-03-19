@@ -14,6 +14,7 @@ export const MODULES = Object.freeze({
   STAFF: "staff",
   SERVICE: "service",
   SUPPLIER: "supplier",
+  PARTIES: "PARTIES", // Module for Suppliers + Customers (backend key)
   PURCHASE: "purchase",
 
   // Superadmin Only Modules
@@ -22,4 +23,6 @@ export const MODULES = Object.freeze({
   PLAN_MANAGEMENT: "plan_management",
   SUBSCRIPTION_MANAGEMENT: "subscription_management",
   TABLE_MANAGEMENT: "TABLE_MANAGEMENT",
+  OFFER_MANAGEMENT: "OFFER_MANAGEMENT",
+  DASHBOARD: "DASHBOARD",
 });

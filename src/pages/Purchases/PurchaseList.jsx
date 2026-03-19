@@ -5,13 +5,14 @@ import {
     CheckCircle, Clock, AlertCircle, X, Package, User, Building,
     FileText, Calculator, Save, ChevronDown, ArrowLeft, Truck,
     BadgeIndianRupee, TrendingUp, ReceiptText, XCircle, CheckCheck, CreditCard,
-    MapPin, Hash, Info
+    MapPin, Hash, Info, Printer
 } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
 import { PurchaseService } from "../../services/PurchaseService";
 import { SupplierService } from "../Suppliers/SupplierService";
-import { itemService, shopService, branchService } from "../../services/api";
+import api, { itemService, shopService, branchService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
+import { useApp } from "../../context/AppContext";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -37,18 +38,265 @@ const PAY_PILL = {
 const PurchaseDetailModal = ({ purchaseId, onClose }) => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [shopInfo, setShopInfo] = useState(null);
+    const { user } = useAuth();
     const { theme } = useTheme();
+    const { formatCurrency } = useApp();
 
     useEffect(() => {
-        PurchaseService.getPurchaseById(purchaseId)
-            .then(setData)
+        setLoading(true);
+        Promise.all([
+            PurchaseService.getPurchaseById(purchaseId),
+            shopService.getShopById(user.shop_id)
+        ])
+            .then(([purchaseData, shopData]) => {
+                setData(purchaseData);
+                setShopInfo(shopData);
+            })
             .catch(console.error)
             .finally(() => setLoading(false));
-    }, [purchaseId]);
+    }, [purchaseId, user.shop_id]);
 
     const purchase = data?.purchase;
     const items = data?.items || [];
     const payments = data?.payments || [];
+
+    const handlePrint = () => {
+        if (!purchase) return;
+
+        const formatAddress = (addr) => {
+            if (!addr) return '';
+            const parts = [
+                addr.line1,
+                addr.line2,
+                addr.city,
+                addr.state?.name || addr.state,
+                addr.pincode
+            ].filter(Boolean);
+            return parts.join(', ');
+        };
+
+        const html = `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Purchase Invoice - ${purchase.supplierInvoiceNumber || 'INV'}</title>
+    <style>
+      @page { size: A4; margin: 15mm; }
+      body { 
+        font-family: 'Inter', -apple-system, system-ui, sans-serif; 
+        padding: 0; 
+        color: #1a1a1a; 
+        line-height: 1.6;
+        background: #fff;
+      }
+      .container { max-width: 800px; margin: 0 auto; }
+      .header { 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: flex-start;
+        border-bottom: 2px solid #f0f0f0; 
+        padding-bottom: 30px; 
+        margin-bottom: 40px; 
+      }
+      .title-section h1 { 
+        font-size: 32px; 
+        font-weight: 900; 
+        letter-spacing: -0.5px; 
+        margin: 0;
+        color: #000;
+        text-transform: uppercase;
+      }
+      .meta-info { margin-top: 15px; font-size: 13px; color: #444; }
+      .meta-info div { margin-bottom: 4px; }
+      .meta-info strong { color: #000; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+
+      .address-grid { 
+        display: grid; 
+        grid-template-columns: 1fr 1fr; 
+        gap: 40px; 
+        margin-bottom: 50px; 
+      }
+      .address-box h3 { 
+        font-size: 11px; 
+        text-transform: uppercase; 
+        letter-spacing: 1.5px; 
+        color: #666; 
+        margin-bottom: 15px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 8px;
+      }
+      .address-content { font-size: 14px; }
+      .address-content strong { font-size: 18px; display: block; margin-bottom: 5px; color: #000; }
+      .address-detail { color: #444; margin-bottom: 2px; }
+
+      table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
+      th { 
+        text-align: left; 
+        font-size: 11px; 
+        text-transform: uppercase; 
+        letter-spacing: 1px; 
+        color: #666;
+        padding: 15px 10px;
+        border-bottom: 2px solid #1a1a1a;
+        background: #fafafa;
+      }
+      td { 
+        padding: 15px 10px; 
+        border-bottom: 1px solid #f0f0f0; 
+        font-size: 14px; 
+        vertical-align: top;
+      }
+      .item-name { font-weight: 600; color: #000; }
+      .item-code { font-size: 11px; color: #666; margin-top: 4px; }
+
+      .summary-section { 
+        display: flex; 
+        justify-content: flex-end; 
+      }
+      .totals-table { width: 300px; }
+      .total-row { 
+        display: flex; 
+        justify-content: space-between; 
+        padding: 10px 0; 
+        font-size: 14px; 
+        color: #444;
+      }
+      .total-row.grand { 
+        border-top: 2px solid #000; 
+        margin-top: 15px; 
+        padding-top: 20px; 
+        font-weight: 900; 
+        font-size: 22px; 
+        color: #000; 
+      }
+
+      .footer { 
+        margin-top: 100px; 
+        padding-top: 30px;
+        border-top: 1px solid #f0f0f0;
+        text-align: center; 
+        color: #999; 
+        font-size: 10px; 
+        text-transform: uppercase; 
+        letter-spacing: 2px;
+      }
+      
+      @media print {
+        body { padding: 0; }
+        .no-print { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div class="title-section">
+          <h1>Purchase Invoice</h1>
+          <div class="meta-info">
+            <div><strong>Date:</strong> ${new Date(purchase.invoiceDate || purchase.createdAt).toLocaleDateString()}</div>
+            <div><strong>Ref No:</strong> ${purchase.purchaseNumber || '—'}</div>
+            <div><strong>Supplier Inv:</strong> ${purchase.supplierInvoiceNumber || '—'}</div>
+            ${purchase.invoiceNumber ? `<div><strong>System Inv:</strong> ${purchase.invoiceNumber}</div>` : ''}
+          </div>
+        </div>
+        <div style="text-align: right;">
+          ${shopInfo?.logoUrl ? `<img src="${shopInfo.logoUrl.startsWith('http') ? shopInfo.logoUrl : (api.defaults.baseURL.replace(/\/api\/?$/, '') + shopInfo.logoUrl)}" style="max-height: 60px; margin-bottom: 10px;" />` : ''}
+          <div style="font-size: 18px; font-weight: 900;">${shopInfo?.name || 'Restaurant POS'}</div>
+        </div>
+      </div>
+
+      <div class="address-grid">
+        <div class="address-box">
+          <h3>Supplier Details</h3>
+          <div class="address-content">
+            <strong>${purchase.supplierId?.name || 'Unknown Supplier'}</strong>
+            <div class="address-detail">${formatAddress(purchase.supplierId?.address)}</div>
+            ${purchase.supplierId?.phone ? `<div class="address-detail">Ph: ${purchase.supplierId.phone}</div>` : ''}
+            ${purchase.supplierId?.email ? `<div class="address-detail">Email: ${purchase.supplierId.email}</div>` : ''}
+            ${purchase.supplierId?.taxNumber ? `<div class="address-detail">TAX ID: ${purchase.supplierId.taxNumber}</div>` : ''}
+          </div>
+        </div>
+        <div class="address-box">
+          <h3>Billed To (Branch)</h3>
+          <div class="address-content">
+            <strong>${purchase.branchId?.name || (shopInfo?.name || 'Main Branch')}</strong>
+            <div class="address-detail">${formatAddress(purchase.branchId?.address)}</div>
+            ${purchase.branchId?.address?.city ? `<div class="address-detail">${purchase.branchId.address.city}, ${purchase.branchId.address.state?.name || purchase.branchId.address.state || ''}</div>` : ''}
+            ${purchase.branchId?.taxProfile?.registrationNumber ? `<div class="address-detail">GST/TAX: ${purchase.branchId.taxProfile.registrationNumber}</div>` : ''}
+          </div>
+        </div>
+      </div>
+      
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 8%">#</th>
+            <th style="width: 42%">Item Description</th>
+            <th style="width: 12%; text-align: center;">Qty</th>
+            <th style="width: 18%; text-align: right;">Price</th>
+            <th style="width: 20%; text-align: right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map((it, idx) => `
+            <tr>
+              <td style="color:#888">${String(idx + 1).padStart(2, '0')}</td>
+              <td>
+                <div class="item-name">${it.itemId?.name || 'Unknown'}</div>
+                <div class="item-code">${it.itemId?.itemCode || ''}</div>
+              </td>
+              <td style="text-align: center;">${it.quantity}</td>
+              <td style="text-align: right;">${formatCurrency(it.purchasePrice)}</td>
+              <td style="text-align: right; font-weight: 600;">${formatCurrency(it.quantity * it.purchasePrice)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <div class="summary-section">
+        <div class="totals-table">
+          <div class="total-row">
+            <span>Subtotal</span>
+            <span>${formatCurrency(purchase.subtotal)}</span>
+          </div>
+          <div class="total-row">
+            <span>Tax (+)</span>
+            <span>${formatCurrency(purchase.taxTotal)}</span>
+          </div>
+          <div class="total-row">
+            <span>Discount (-)</span>
+            <span>${formatCurrency(purchase.discountTotal)}</span>
+          </div>
+          <div class="total-row grand">
+            <span>GRAND TOTAL</span>
+            <span>${formatCurrency(purchase.grandTotal)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        Supplier Invoice generated from Restaurant POS system behalf of ${shopInfo?.name || 'Restaurant'}
+      </div>
+    </div>
+    <script>
+      window.onload = () => {
+        window.print();
+        setTimeout(() => window.close(), 500);
+      };
+    </script>
+  </body>
+</html>
+        `;
+        const printWindow = window.open('', '_blank', 'width=900,height=900');
+        if (!printWindow) {
+            alert("Popup blocked. Please allow popups to print.");
+            return;
+        }
+        printWindow.document.write(html);
+        printWindow.document.close();
+    };
 
     const STATUS_COLOR = {
         CONFIRMED: "bg-emerald-100 text-emerald-700",
@@ -79,9 +327,19 @@ const PurchaseDetailModal = ({ purchaseId, onClose }) => {
                     </div>
                     <div className="flex items-center gap-3">
                         {purchase && (
-                            <span className={`px-4 py-1.5 rounded-full text-xs font-black ${STATUS_COLOR[purchase.status] || STATUS_COLOR.DRAFT}`}>
-                                {purchase.status}
-                            </span>
+                            <>
+                                <button
+                                    onClick={handlePrint}
+                                    className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-black transition-all border border-white/20"
+                                    title="Print Invoice"
+                                >
+                                    <Printer size={14} />
+                                    <span>PRINT</span>
+                                </button>
+                                <span className={`px-4 py-1.5 rounded-full text-xs font-black ${STATUS_COLOR[purchase.status] || STATUS_COLOR.DRAFT}`}>
+                                    {purchase.status}
+                                </span>
+                            </>
                         )}
                         <button onClick={onClose} className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
                             <X size={20} />
@@ -332,6 +590,7 @@ const PaymentModal = ({ purchase, onClose, onSuccess }) => {
 
 const PurchaseList = ({ hasPermissionFor }) => {
     const { user } = useAuth();
+    const { activeBranchId } = useApp();
     const { theme } = useTheme();
     const navigate = useNavigate();
     const [purchases, setPurchases] = useState([]);
@@ -365,7 +624,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                 const [suppRes, branchRes, itemRes] = await Promise.all([
                     SupplierService.getSuppliers(id),
                     branchService.getBranchesByShopId(id),
-                    itemService.getItems({ filters: { shopid: id, itemType: "STOCK" }, limit: 200 }),
+                    itemService.getItems({ filters: { shopId: id, itemType: "STOCK" }, limit: 200 }),
                 ]);
                 setSuppliers(suppRes);
                 setBranches(branchRes);
@@ -379,12 +638,14 @@ const PurchaseList = ({ hasPermissionFor }) => {
 
     useEffect(() => {
         if (shopId) loadPurchases();
-    }, [shopId]);
+    }, [shopId, activeBranchId]);
 
     const loadPurchases = async () => {
         setLoading(true);
         try {
-            const data = await PurchaseService.getPurchases({ shopId });
+            const params = { shopId };
+            if (activeBranchId) params.branchId = activeBranchId;
+            const data = await PurchaseService.getPurchases(params);
             setPurchases(Array.isArray(data) ? data : data.purchases || []);
         } catch (err) {
             console.error("Failed to load purchases", err);
@@ -485,6 +746,14 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         className="p-2 text-indigo-500 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all"
                         title="View details"
                     ><Eye size={15} /></button>
+                    {/* ✎ Edit — only for DRAFT */}
+                    {canManage && row.status === "DRAFT" && (
+                        <button
+                            onClick={() => navigate(`/purchases/edit/${row._id}`)}
+                            className="p-2 text-amber-500 bg-amber-50 hover:bg-amber-100 rounded-xl transition-all"
+                            title="Edit draft"
+                        ><Edit3 size={15} /></button>
+                    )}
                     {/* 💳 Pay — CONFIRMED with remaining balance */}
                     {canManage && row.status === "CONFIRMED" && row.balanceAmount > 0 && (
                         <button
@@ -551,7 +820,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                     <div>
                         <div className="flex items-center gap-3 mb-1">
-                            <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-100">
+                            <div className="p-3 bg-indigo-600 text-white rounded-2xl">
                                 <ShoppingCart size={26} />
                             </div>
                             <h1 className={`text-2xl md:text-3xl font-black uppercase tracking-tight ${theme.textHeading}`}>Purchases</h1>
@@ -574,7 +843,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         {canManage && (
                             <button
                                 onClick={() => navigate("/purchases/new")}
-                                className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-2xl shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3 group whitespace-nowrap"
+                                className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3 group whitespace-nowrap"
                             >
                                 <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
                                 NEW PURCHASE

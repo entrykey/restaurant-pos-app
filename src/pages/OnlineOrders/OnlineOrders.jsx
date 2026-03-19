@@ -1,4 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { Globe, Rocket } from 'lucide-react';
+import { useTheme } from "../../context/ThemeContext";
+
+/*
+import { useEffect, useState } from 'react';
 import { Globe, RefreshCw, ShoppingBag, Search, Filter, X, Phone, MapPin, Calendar, Clock, CreditCard, Tag, MessageSquare, Check, Trash2, User } from 'lucide-react';
 import OnlineOrderCard from '../../components/OnlineOrderCard';
 import { onlineOrdersService } from './OnlineOrdersService';
@@ -62,7 +67,6 @@ const OnlineOrders = ({
 
     return (
         <div className="p-4 md:p-8 h-full flex flex-col bg-gray-50/50">
-            {/* Header Section */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
@@ -106,7 +110,6 @@ const OnlineOrders = ({
                 </div>
             </div>
 
-            {/* Content Area */}
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                 {filteredOrders.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-12">
@@ -136,11 +139,9 @@ const OnlineOrders = ({
                 )}
             </div>
 
-            {/* Preview Modal */}
             {selectedOrder && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
                     <div className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
-                        {/* Modal Header */}
                         <div className={`p-8 flex justify-between items-center border-b ${selectedOrder.platform === 'Zomato' ? 'bg-red-50' :
                                 selectedOrder.platform === 'Swiggy' ? 'bg-orange-50' : 'bg-indigo-50'
                             }`}>
@@ -165,10 +166,8 @@ const OnlineOrders = ({
                             </button>
                         </div>
 
-                        {/* Modal Body */}
                         <div className="flex-1 overflow-y-auto p-8 space-y-8">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                {/* Customer Details */}
                                 <div className="space-y-6">
                                     <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em]">Customer Info</h4>
                                     <div className="space-y-4">
@@ -193,7 +192,6 @@ const OnlineOrders = ({
                                     </div>
                                 </div>
 
-                                {/* Order Meta */}
                                 <div className="space-y-6">
                                     <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em]">Order Status</h4>
                                     <div className="space-y-3">
@@ -221,7 +219,6 @@ const OnlineOrders = ({
                                 </div>
                             </div>
 
-                            {/* Items List */}
                             <div className="space-y-4">
                                 <h4 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em]">Ordered Items</h4>
                                 <div className="bg-gray-50 rounded-[32px] overflow-hidden border border-gray-100 text-sm">
@@ -272,7 +269,6 @@ const OnlineOrders = ({
                                 </div>
                             </div>
 
-                            {/* Special Note */}
                             {selectedOrder.note && (
                                 <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100 flex gap-4">
                                     <MessageSquare className="text-orange-400 shrink-0" size={24} />
@@ -284,7 +280,6 @@ const OnlineOrders = ({
                             )}
                         </div>
 
-                        {/* Modal Footer */}
                         <div className="p-8 bg-gray-50 border-t flex gap-4">
                             <button
                                 onClick={() => {
@@ -308,6 +303,44 @@ const OnlineOrders = ({
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
+*/
+
+const OnlineOrders = () => {
+    const { theme } = useTheme();
+
+    return (
+        <div className={`h-full flex flex-col items-center justify-center p-8 ${theme.pageBg} text-center`}>
+            <div className={`w-32 h-32 ${theme.surfaceBg} rounded-[40px] shadow-2xl flex items-center justify-center mb-8 border-4 ${theme.borderLight} animate-bounce duration-1000`}>
+                <Globe size={64} className="text-indigo-500 animate-pulse" />
+            </div>
+            
+            <div className="max-w-md space-y-4">
+                <div className={`inline-flex items-center gap-2 px-4 py-2 ${theme.surfaceBg} text-indigo-500 border ${theme.borderLight} rounded-full text-xs font-black uppercase tracking-[0.2em] mb-4`}>
+                    <Rocket size={14} /> Feature Coming Soon
+                </div>
+                
+                <h2 className={`text-4xl md:text-5xl font-black leading-tight ${theme.textHeading} tracking-tighter`}>
+                    Online Marketplace Integration
+                </h2>
+                
+                <p className={`text-lg font-bold ${theme.textSecondary} leading-relaxed`}>
+                    We're currently building deep integrations with <span className="text-red-500">Zomato</span>, <span className="text-orange-500">Swiggy</span>, and direct website ordering.
+                </p>
+
+                <div className={`mt-12 p-6 rounded-3xl border border-dashed ${theme.borderLight} ${theme.surfaceBg}`}>
+                    <p className={`text-sm font-black ${theme.textMuted} uppercase tracking-widest mb-4`}>Upcoming Channels</p>
+                    <div className="flex flex-wrap justify-center gap-4">
+                        {['Zomato', 'Swiggy', 'Website', 'WhatsApp'].map(platform => (
+                            <span key={platform} className={`px-4 py-2 ${theme.pageBg} ${theme.textPrimary} rounded-xl text-sm font-black shadow-sm border ${theme.borderLight}`}>
+                                {platform}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

@@ -5,8 +5,8 @@
 
 /* Global scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -14,18 +14,18 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.4);
+  background: rgba(156, 163, 175, 0.3);
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.7);
+  background: rgba(107, 114, 128, 0.5);
 }
 
 /* Custom scrollbar utility class */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 2.5px;
+  height: 2.5px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -41,7 +41,41 @@
   background: rgba(107, 114, 128, 0.8);
 }
 
+/* Global accent color for native controls */
+:root {
+  accent-color: #6366f1; /* indigo-500 */
+  --accent-color: #6366f1;
+}
+
+.dark {
+  --accent-color: #818cf8; /* indigo-400 */
+}
+
+/* Customize number input spin buttons (arrows) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+  width: 14px;
+  height: 20px;
+  background-color: var(--accent-color);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2L18.5 10H5.5L12 2ZM12 22L5.5 14H18.5L12 22Z'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: 10px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+input[type="number"]:hover::-webkit-inner-spin-button {
+  opacity: 1;
+  background-color: var(--accent-color);
+}
+
+
 /* Remove shadow from all native buttons across the app */
 button {
   box-shadow: none !important;
 }
+
