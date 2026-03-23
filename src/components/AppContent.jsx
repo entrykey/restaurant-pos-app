@@ -46,7 +46,11 @@ const AppContent = () => {
         billingStage, setBillingStage, billDiscount,
         setCouponCode, setCouponStatus, resetBillingState,
         calculateItemTotal, calculateTotal, calculateBillDetails,
-        fetchActiveOffers, offers
+        fetchActiveOffers, offers,
+        // New global exchange states
+        isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
+        originalOrderId, setOriginalOrderId, returnedItems, setReturnedItems,
+        resetExchange
     } = useOrder();
 
     const {
@@ -269,7 +273,9 @@ const AppContent = () => {
                 const { subtotal, taxTotal, total } = calculateBillDetails(
                     orderItems,
                     currentOrder.discount || billDiscount || { type: 'flat', value: 0 },
-                    settings?.defaultTaxPercent || 0
+                    settings?.defaultTaxPercent || 0,
+                    true, // autoRound
+                    isTakeaway ? exchangeCredit : 0
                 );
 
                 const payloadItems = orderItems.map(item => {
@@ -554,7 +560,9 @@ const AppContent = () => {
             const { subtotal, taxTotal, total } = calculateBillDetails(
                 orderItems,
                 currentOrder.discount || { type: 'flat', value: 0 },
-                settings?.defaultTaxPercent || 0
+                settings?.defaultTaxPercent || 0,
+                true, // autoRound
+                isTakeaway ? exchangeCredit : 0
             );
 
             const payloadItems = orderItems.map(item => {
@@ -588,6 +596,10 @@ const AppContent = () => {
                 discountTotal: currentOrder.discountTotal || 0,
                 taxTotal,
                 grandTotal: total,
+                exchangeCredit: exchangeCredit,
+                originalOrderId: originalOrderId,
+                isExchange: isExchange,
+                returnedItems: returnedItems,
                 createdBy: currentUser._id
             };
 
@@ -766,6 +778,10 @@ const AppContent = () => {
                     discountTotal: billDetails.discountAmount,
                     taxTotal: billDetails.taxAmount,
                     grandTotal: billDetails.finalTotal,
+                    exchangeCredit: exchangeCredit,
+                    originalOrderId: originalOrderId,
+                    isExchange: isExchange,
+                    returnedItems: returnedItems,
                     totalPaid: finalPaidAmount,
                     paymentStatus: paymentStatus,
                     orderStatus: 'COMPLETED',
@@ -816,6 +832,7 @@ const AppContent = () => {
             }
             setIsPaymentModalOpen(false);
             resetBillingState();
+            resetExchange();
             setTakeawayCustName("");
             setTakeawayCustPhone("");
             setOrderSearch("");
@@ -1043,6 +1060,8 @@ const AppContent = () => {
                 custPhone={takeawayCustPhone}
                 setCustPhone={setTakeawayCustPhone}
                 existingCustomerId={activeOrderCustomerId}
+                exchangeCredit={exchangeCredit}
+                originalOrderId={originalOrderId}
             />
 
             <ExpenseModal

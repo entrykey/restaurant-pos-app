@@ -49,28 +49,35 @@ const Reports = ({
     const [filterStartDate, setFilterStartDate] = useState(today);
     const [filterEndDate, setFilterEndDate] = useState(today);
     const [salesHistory, setSalesHistory] = useState([]);
+    const [expensesHistory, setExpensesHistory] = useState([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        const fetchSales = async () => {
+        const fetchData = async () => {
             if (!shopId) return;
-
             setLoading(true);
             try {
-                const response = await reportsService.getSalesReport({
+                const params = {
                     shopId,
                     branchId,
                     startDate: filterStartDate,
                     endDate: filterEndDate
-                });
-                setSalesHistory(response.data || response?.data?.data || []);
+                };
+                
+                const [salesRes, expensesRes] = await Promise.all([
+                    reportsService.getSalesReport(params),
+                    reportsService.getExpensesReport(params)
+                ]);
+
+                setSalesHistory(salesRes.data || salesRes?.data?.data || []);
+                setExpensesHistory(expensesRes.data || expensesRes?.data?.data || []);
             } catch (error) {
-                console.error("Failed to fetch sales history:", error);
+                console.error("Failed to fetch report data:", error);
             } finally {
                 setLoading(false);
             }
         };
-        fetchSales();
+        fetchData();
     }, [filterStartDate, filterEndDate, shopId, branchId]);
 
     const isWithinRange = (dateStr) => {
@@ -252,6 +259,15 @@ const Reports = ({
                 `${s.taxPercent}%`,
                 s.taxAmount
             ]);
+        } else if (reportCategory === "expenses") {
+            columns = ["Date", "Category", "Term", "Type", "Amount"];
+            rows = expensesHistory.map((e) => [
+                e.date,
+                e.category,
+                String(e.term || "").toUpperCase(),
+                e.type,
+                formatCurrency(e.amount)
+            ]);
         }
 
         if (!columns.length) return;
@@ -317,6 +333,7 @@ const Reports = ({
         { id: "table_report", label: "Table Revenue", icon: <LayoutDashboard size={16} /> },
         { id: "hourly", label: "Peak Hours", icon: <Clock size={16} /> },
         { id: "online_report", label: "Online Orders", icon: <Globe size={16} /> },
+        { id: "expenses", label: "Expense Ledger", icon: <DollarSign size={16} /> },
     ];
 
     return (
@@ -815,6 +832,67 @@ const Reports = ({
                                     ));
                                 })()}
                             </div>
+                        </div>
+                    )}
+
+                    {/* 10. EXPENSE LEDGER */}
+                    {reportCategory === "expenses" && (
+                        <div className="space-y-6">
+                            <div className="flex justify-between items-center border-b ${theme.borderLight} pb-4">
+                                <h3 className={`text-xl font-black ${theme.textHeading}`}>
+                                    Expense Ledger ({rangeLabel})
+                                </h3>
+                                <div className={`px-4 py-2 opacity-90 rounded-xl font-black text-sm ${expensesHistory.reduce((a, b) => a + Number(b.amount || 0), 0) < 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
+                                    Total: {formatCurrency(expensesHistory.reduce((a, b) => a + Number(b.amount || 0), 0))}
+                                </div>
+                            </div>
+                            
+                            <CommonTable
+                                columns={[
+                                    {
+                                        header: "Date/Type",
+                                        key: "date",
+                                        render: (val, row) => (
+                                            <div className="flex flex-col">
+                                                <span className="font-bold text-xs">{val}</span>
+                                                <span className={`text-[9px] uppercase font-black tracking-widest ${
+                                                    row.type === 'Fixed' ? 'text-indigo-500' :
+                                                    row.type === 'Purchase' ? 'text-blue-500' :
+                                                    row.type === 'Stock Add' ? 'text-cyan-500' :
+                                                    row.type === 'Stock Reduce' ? 'text-emerald-500' :
+                                                    'text-orange-500'
+                                                }`}>
+                                                    {row.type}
+                                                </span>
+                                            </div>
+                                        )
+                                    },
+                                    {
+                                        header: "Category",
+                                        key: "category",
+                                        className: "font-bold",
+                                        width: "40%"
+                                    },
+                                    {
+                                        header: "Billing Term",
+                                        key: "term",
+                                        className: "uppercase text-[10px] font-black tracking-widest opacity-60",
+                                        headerClassName: "text-center",
+                                        render: (v) => v?.toUpperCase()
+                                    },
+                                    {
+                                        header: "Amount",
+                                        key: "amount",
+                                        headerClassName: "text-right",
+                                        render: (value) => (
+                                            <div className={`text-right font-black ${value < 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                {formatCurrency(value)}
+                                            </div>
+                                        )
+                                    }
+                                ]}
+                                data={expensesHistory}
+                            />
                         </div>
                     )}
                 </div>

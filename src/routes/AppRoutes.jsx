@@ -41,6 +41,7 @@ import Dashboard from "../pages/Dashboard/Dashboard";
 import PayInList from "../pages/Dashboard/PayInList";
 import PayOutList from "../pages/Dashboard/PayOutList";
 import OperatingExpenses from "../pages/Dashboard/OperatingExpenses";
+import SalesList from "../pages/Dashboard/SalesList";
 
 const TableOrderWrapper = ({ setActiveTableId, setView, setIsTakeaway, children }) => {
   const { tableId } = useParams();
@@ -138,6 +139,11 @@ const AppRoutes = (props) => {
     setInventoryItems,
     businessTypeData,
     activeBranchId,
+    originalOrderId,
+    setOriginalOrderId,
+    returnedItems,
+    setReturnedItems,
+    resetTakeaway,
   } = props;
 
   const isWholesale = takeawayOrder?.orderType === "WHOLESALE";
@@ -198,7 +204,7 @@ const AppRoutes = (props) => {
     hasPermissionFor: safeHasPermissionFor,
     currentUser: currentUser || props.currentUser,
     menu: filteredMenu,
-    setMenu: props.setMenu,
+    setMenu: props.setMenu
   };
 
   return (
@@ -210,6 +216,14 @@ const AppRoutes = (props) => {
           element={
             <ProtectedRoute routeKey="DASHBOARD">
               <Dashboard hasPermissionFor={hasPermissionFor || props.hasPermissionFor} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/sales"
+          element={
+            <ProtectedRoute routeKey="DASHBOARD">
+              <SalesList />
             </ProtectedRoute>
           }
         />

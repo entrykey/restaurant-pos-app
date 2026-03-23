@@ -14,6 +14,7 @@ import Modal from '../../components/ui/Modal';
 import CommonSelect from '../../components/ui/CommonSelect';
 import BulkUploadModal from '../../components/modals/BulkUploadModal';
 import { Upload } from 'lucide-react';
+import StockAdjustmentModal from '../../components/modals/StockAdjustmentModal';
 
 const Inventory = ({
     menu,
@@ -61,6 +62,10 @@ const Inventory = ({
     const [usedCategories, setUsedCategories] = useState([]);
     const [selectedCategory, setSelectedCategory] = useState("ALL");
     const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+
+    // Stock Adjustment State
+    const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
+    const [selectedAdjustmentItem, setSelectedAdjustmentItem] = useState(null);
 
     // Reset page to 1 on tab, search or category change
     useEffect(() => {
@@ -133,7 +138,12 @@ const Inventory = ({
                 const map = {};
                 records.forEach(r => {
                     const id = r.itemId?._id || r.itemId;
-                    if (id) map[id] = r.quantityOnHand ?? 0;
+                    if (id) {
+                        map[id] = {
+                            qty: r.quantityOnHand ?? 0,
+                            damaged: r.damagedQuantity ?? 0
+                        };
+                    }
                 });
                 setStockMap(map);
             })
@@ -340,20 +350,43 @@ const Inventory = ({
             headerClassName: "text-center",
             className: "text-center",
             render: (id, item) => {
-                const qty = stockMap[id] ?? stockMap[item._id] ?? item.quantityOnHand ?? null;
+                const stock = stockMap[id] ?? stockMap[item._id] ?? null;
+                const qty = stock && typeof stock === 'object' ? stock.qty : (stock ?? item.quantityOnHand ?? null);
+                const damaged = stock && typeof stock === 'object' ? stock.damaged : 0;
+
                 const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
                 const low = qty !== null && qty <= min && min > 0;
-                if (qty === null) {
+                
+                if (qty === null && damaged === 0) {
                     return <span className="text-[11px] text-gray-300 font-bold">—</span>;
                 }
+
+                const handleStockClick = (e) => {
+                    e.stopPropagation();
+                    if (!canManage) return;
+                    setSelectedAdjustmentItem(item);
+                    setIsAdjustmentModalOpen(true);
+                };
+
                 return (
-                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border ${low
-                        ? "bg-red-50 text-red-600 border-red-200"
-                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        }`}>
-                        {low && <span title="Low stock">⚠️</span>}
-                        {qty}
-                        <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
+                    <div 
+                        className="flex flex-col items-center gap-1 cursor-pointer group/stock"
+                        onClick={handleStockClick}
+                        title={canManage ? "Click to adjust stock" : ""}
+                    >
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
+                            ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
+                            }`}>
+                            {low && <span title="Low stock">⚠️</span>}
+                            {qty}
+                            <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
+                        </div>
+                        {damaged > 0 && (
+                            <div className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
+                                {damaged} Damaged
+                            </div>
+                        )}
                     </div>
                 );
             }
@@ -595,6 +628,19 @@ const Inventory = ({
                 onClose={() => setIsBulkModalOpen(false)}
                 onSuccess={() => setRefreshTrigger(prev => prev + 1)}
                 activeTab={activeTab}
+            />
+
+            {/* Stock Adjustment Modal */}
+            <StockAdjustmentModal 
+                isOpen={isAdjustmentModalOpen}
+                onClose={() => {
+                    setIsAdjustmentModalOpen(false);
+                    setSelectedAdjustmentItem(null);
+                }}
+                item={selectedAdjustmentItem}
+                branchId={activeBranchId || (user.branchIds?.length ? user.branchIds[0] : null)}
+                onAdjustmentSuccess={() => setRefreshTrigger(prev => prev + 1)}
+                formatCurrency={formatCurrency}
             />
         </div>
     );

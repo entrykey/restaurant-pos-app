@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { dashboardService } from '../../services/api';
+import { PurchaseService } from '../../services/PurchaseService';
 import { formatCurrency } from '../../utils/format';
-import { ArrowLeft, Truck, ChevronDown, Calendar, Package, Receipt, ArrowRightCircle, Building } from 'lucide-react';
+import { ArrowLeft, Truck, ChevronDown, Calendar, Package, Receipt, ArrowRightCircle, Building, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PayOutSheet from '../../components/modals/PayOutSheet';
+import PurchaseReturnSheet from '../../components/modals/PurchaseReturnSheet';
 import HistoryTimeline from '../../components/HistoryTimeline';
 
 const PayOutList = () => {
@@ -14,9 +16,11 @@ const PayOutList = () => {
     const [activeTab, setActiveTab] = useState('pending');
     const [data, setData] = useState([]);
     const [historyData, setHistoryData] = useState([]);
+    const [returnsData, setReturnsData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedPurchase, setSelectedPurchase] = useState(null);
     const [isSheetOpen, setIsSheetOpen] = useState(false);
+    const [isReturnSheetOpen, setIsReturnSheetOpen] = useState(false);
     const [expandedSuppliers, setExpandedSuppliers] = useState({});
     const navigate = useNavigate();
 
@@ -27,9 +31,12 @@ const PayOutList = () => {
                 if (activeTab === 'pending') {
                     const result = await dashboardService.getPayOutList(user.shop_id);
                     setData(result);
-                } else {
+                } else if (activeTab === 'history') {
                     const result = await dashboardService.getPayOutHistory(user.shop_id);
                     setHistoryData(result);
+                } else if (activeTab === 'returns') {
+                    const result = await PurchaseService.getPurchaseReturns({ shopId: user.shop_id });
+                    setReturnsData(result);
                 }
             }
         } catch (error) {
@@ -122,6 +129,15 @@ const PayOutList = () => {
                 >
                     <Calendar size={18} /> Payment History
                 </button>
+                <button
+                    onClick={() => setActiveTab("returns")}
+                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "returns"
+                        ? `bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300`
+                        : `${theme.textSecondary} hover:opacity-80`
+                        }`}
+                >
+                    <RotateCcw size={18} /> Return History
+                </button>
             </div>
 
             <div className={`overflow-hidden rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg}`}>
@@ -136,11 +152,17 @@ const PayOutList = () => {
                                         <th className="p-6 text-right">Total Paid</th>
                                         <th className="p-6 text-right">Total Balance Due</th>
                                     </>
-                                ) : (
+                                ) : activeTab === 'history' ? (
                                     <>
                                         <th className="p-6 text-right">Invoice Date</th>
                                         <th className="p-6 text-right">Paid Date</th>
                                         <th className="p-6 text-right">Amount Paid</th>
+                                    </>
+                                ) : (
+                                    <>
+                                        <th className="p-6 text-right">Return Total</th>
+                                        <th className="p-6 text-right">Exchange Total</th>
+                                        <th className="p-6 text-right">Net Balance</th>
                                     </>
                                 )}
                                 <th className="p-6 text-center w-20">Action</th>
@@ -156,9 +178,9 @@ const PayOutList = () => {
                                         </div>
                                     </td>
                                 </tr>
-                            ) : (activeTab === 'pending' ? supplierList : historyData).length > 0 ? (
-                                (activeTab === 'pending' ? supplierList : historyData).map((group) => {
-                                    const key = group.id;
+                            ) : (activeTab === 'pending' ? supplierList : activeTab === 'history' ? historyData : returnsData).length > 0 ? (
+                                (activeTab === 'pending' ? supplierList : activeTab === 'history' ? historyData : returnsData).map((group) => {
+                                    const key = activeTab === 'returns' ? group._id : group.id;
                                     const isExpanded = expandedSuppliers[key];
 
                                     return (
@@ -197,7 +219,7 @@ const PayOutList = () => {
                                                             </p>
                                                         </td>
                                                     </>
-                                                ) : (
+                                                ) : activeTab === 'history' ? (
                                                     <>
                                                         <td className="p-6 text-right">
                                                             <p className={`text-sm font-black ${theme.textHeading}`}>{formatDate(group.date)}</p>
@@ -207,6 +229,20 @@ const PayOutList = () => {
                                                         </td>
                                                         <td className="p-6 text-right">
                                                             <p className={`text-lg font-black text-emerald-600 tracking-tight`}>{formatCurrency(group.totalPaid)}</p>
+                                                        </td>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <td className="p-6 text-right">
+                                                            <p className={`text-lg font-black text-orange-600 tracking-tight`}>{formatCurrency(group.totalReturnAmount)}</p>
+                                                        </td>
+                                                        <td className="p-6 text-right">
+                                                            <p className={`text-lg font-black text-indigo-600 tracking-tight`}>{formatCurrency(group.totalExchangeAmount)}</p>
+                                                        </td>
+                                                        <td className="p-6 text-right">
+                                                            <p className={`text-lg font-black tracking-tight ${group.netAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                                                {formatCurrency(group.netAmount)}
+                                                            </p>
                                                         </td>
                                                     </>
                                                 )}
@@ -226,6 +262,10 @@ const PayOutList = () => {
                                                                 onAction={(purchase) => {
                                                                     setSelectedPurchase(purchase);
                                                                     setIsSheetOpen(true);
+                                                                }}
+                                                                onReturn={(purchase) => {
+                                                                    setSelectedPurchase(purchase);
+                                                                    setIsReturnSheetOpen(true);
                                                                 }}
                                                                 events={(() => {
                                                                     const events = [];
@@ -289,6 +329,14 @@ const PayOutList = () => {
             <PayOutSheet
                 isOpen={isSheetOpen}
                 onClose={() => setIsSheetOpen(false)}
+                purchase={selectedPurchase}
+                onSuccess={() => {
+                    fetchData();
+                }}
+            />
+            <PurchaseReturnSheet
+                isOpen={isReturnSheetOpen}
+                onClose={() => setIsReturnSheetOpen(false)}
                 purchase={selectedPurchase}
                 onSuccess={() => {
                     fetchData();

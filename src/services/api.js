@@ -691,6 +691,15 @@ export const inventoryService = {
             console.error("Error fetching inventory levels:", error);
             throw error.response ? error.response.data : error;
         }
+    },
+    adjustInventory: async (payload) => {
+        try {
+            const response = await api.post('/inventory/adjust', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error adjusting inventory:", error);
+            throw error.response ? error.response.data : error;
+        }
     }
 };
 
@@ -794,6 +803,24 @@ export const orderService = {
             return response.data;
         } catch (error) {
             console.error("Error updating order status:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    createOrderReturn: async (payload) => {
+        try {
+            const response = await api.post('/orders/returns', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating order return:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getOrderReturns: async (params = {}) => {
+        try {
+            const response = await api.get('/orders/returns', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching order returns:", error);
             throw error.response ? error.response.data : error;
         }
     }
@@ -1089,6 +1116,15 @@ export const reportsService = {
             return response.data;
         } catch (error) {
             console.error("Error fetching sales report:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getExpensesReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/expenses', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching expenses report:", error);
             throw error.response ? error.response.data : error;
         }
     }

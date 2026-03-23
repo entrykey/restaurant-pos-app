@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
     Menu as MenuIcon,
     ShoppingCart,
@@ -20,6 +20,9 @@ import { useApp } from "../../context/AppContext";
 import { itemService } from "../../services/api";
 import { DEFAULT_ITEM_IMAGE, getBingImage } from "../../utils/getImage";
 import { useTheme } from "../../context/ThemeContext";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useOrder } from "../../context/OrderContext";
+import { useTakeaway } from "./TakeawayContext";
 
 const TakeawayOrder = ({
     isTakeaway,
@@ -51,11 +54,55 @@ const TakeawayOrder = ({
     currentUser,
     menu,
     setMenu,
-    offers = []
+    offers = [],
 }) => {
     const { theme, themeName } = useTheme();
     const { activeBranchId } = useApp();
+    const {
+        billingStage: billingStageContext, setBillingStage: setGlobalBillingStage, resetBillingState,
+        isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
+        originalOrderId, setOriginalOrderId, returnedItems, setReturnedItems,
+        resetExchange
+    } = useOrder();
+    const {
+        isTakeaway: isTakeawayContext, setIsTakeaway: setGlobalIsTakeaway, 
+        takeawayOrder: takeawayOrderContext, setTakeawayOrder: setTakeawayOrderContext,
+        takeawayCustName: takeawayCustNameContext, setTakeawayCustName: setTakeawayCustNameContext, 
+        takeawayCustPhone: takeawayCustPhoneContext, setTakeawayCustPhone: setTakeawayCustPhoneContext,
+        resetTakeaway
+    } = useTakeaway();
 
+    const location = useLocation();
+    const navigate = useNavigate();
+    const initRef = useRef(false);
+
+    // Effect to initialize exchange state from navigation state (fallback/initial)
+    useEffect(() => {
+        if (location.state?.isExchange && !initRef.current) {
+            initRef.current = true;
+            // Reset existing takeaway state for a clean exchange order
+            resetTakeaway();
+            
+            setIsExchange(true);
+            setExchangeCredit(location.state.creditAmount || 0);
+            setOriginalOrderId(location.state.originalOrderId);
+            if (location.state.returnedItems) {
+                setReturnedItems(location.state.returnedItems);
+            }
+            if (location.state.customer) {
+                setTakeawayCustName(location.state.customer.name || "");
+                setTakeawayCustPhone(location.state.customer.phone || "");
+            }
+
+            // Clear the state from location to prevent re-initialization on re-renders
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+    }, [location.state, setIsExchange, setExchangeCredit, setOriginalOrderId, setReturnedItems, setTakeawayCustName, setTakeawayCustPhone, resetTakeaway, navigate, location.pathname]);
+
+    const isWholesale = takeawayOrder?.orderType === "WHOLESALE";
+    const isDirectSale = takeawayOrder?.orderType === "DIRECT_SALE";
+
+    const title = isWholesale ? "Wholesale Order" : (isExchange ? "Exchange Order" : (isDirectSale ? "Direct Sale" : (isTakeaway ? "Takeaway Order" : "Dine-In Order")));
     const orderTypeLabels = {
         'DINE_IN': 'Dine-in Order',
         'TAKEAWAY': 'Takeaway Order',
@@ -415,7 +462,8 @@ const TakeawayOrder = ({
                                 currentOrder.items,
                                 { type: "flat", value: 0 },
                                 settings?.defaultTaxPercent || 0,
-                                false
+                                false,
+                                isTakeaway ? exchangeCredit : 0
                             );
 
                             return (
@@ -441,6 +489,13 @@ const TakeawayOrder = ({
                                         <span>Tax</span>
                                         <span className={theme.textPrimary}>{formatCurrency(billDetails.taxAmount)}</span>
                                     </div>
+
+                                    {isTakeaway && exchangeCredit > 0 && (
+                                        <div className={`flex justify-between items-center text-sm font-bold text-orange-600`}>
+                                            <span>Exchange Credit</span>
+                                            <span>-{formatCurrency(exchangeCredit)}</span>
+                                        </div>
+                                    )}
     
                                     <div className={`flex justify-between items-center text-2xl font-black ${theme.textHeading} pt-2 border-t border-dashed ${theme.borderLight}`}>
                                         <span>Total</span>

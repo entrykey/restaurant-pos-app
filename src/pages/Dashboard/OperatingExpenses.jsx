@@ -170,6 +170,7 @@ const OperatingExpenses = () => {
     };
 
     const totalDailyExpense = expenses.reduce((sum, exp) => {
+        if (exp.term === 'one time') return sum;
         const termDaysMap = {
             'daily': 1, 'monthly': 30, '2months': 60, '3months': 90, '6months': 180, 'yearly': 365
         };
@@ -331,7 +332,7 @@ const OperatingExpenses = () => {
 
                     {expenses.map((expense, idx) => (
                         <OperatingExpenseCard
-                            key={expense.category}
+                            key={expense._id || expense.category || idx}
                             {...expense}
                             isSaving={savingId === idx}
                             onUpdate={(updates) => handleUpdate(idx, updates)}

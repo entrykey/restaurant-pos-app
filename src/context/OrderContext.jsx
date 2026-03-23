@@ -22,6 +22,12 @@ export const OrderProvider = ({ children }) => {
     const [billingStage, setBillingStage] = useState("review"); // 'review' | 'payment'
     const [billDiscount, setBillDiscount] = useState({ type: "flat", value: 0 });
     const [isAutoRoundOff, setIsAutoRoundOff] = useState(true);
+    
+    // Exchange Flow State (Generalized for all modes)
+    const [isExchange, setIsExchange] = useState(false);
+    const [exchangeCredit, setExchangeCredit] = useState(0);
+    const [originalOrderId, setOriginalOrderId] = useState(null);
+    const [returnedItems, setReturnedItems] = useState([]);
 
     // Coupon State
     const [couponCode, setCouponCode] = useState("");
@@ -60,7 +66,8 @@ export const OrderProvider = ({ children }) => {
         orderItems,
         discount = { type: "flat", value: 0 },
         taxPercent = 5,
-        autoRound = true
+        autoRound = true,
+        exchangeCredit = 0
     ) => {
         if (!orderItems || orderItems.length === 0)
             return {
@@ -73,6 +80,7 @@ export const OrderProvider = ({ children }) => {
                 total: 0,
                 roundOff: 0,
                 finalTotal: 0,
+                exchangeCredit: exchangeCredit
             };
 
         const subtotal = orderItems.reduce(
@@ -80,10 +88,9 @@ export const OrderProvider = ({ children }) => {
             0
         );
 
-        // --- Start Offer Calculation ---
+        // ... existing offer logic ...
         let offerDiscountTotal = 0;
         const currentAppliedOffers = [];
-
         if (offers.length > 0) {
             offers.forEach(offer => {
                 const condition = offer.condition;
@@ -141,7 +148,6 @@ export const OrderProvider = ({ children }) => {
                 }
             });
         }
-        // --- End Offer Calculation ---
 
         let discountAmount = 0;
         if (discount.type === "flat") {
@@ -150,17 +156,12 @@ export const OrderProvider = ({ children }) => {
             discountAmount = (subtotal * discount.value) / 100;
         }
 
-        // Total discount = Manual/Coupon Discount + Offer Discount
         const totalDiscount = discountAmount + offerDiscountTotal;
-
-        // Cap discount at subtotal
         let finalDiscount = totalDiscount;
         if (finalDiscount > subtotal) finalDiscount = subtotal;
 
         const taxableAmount = subtotal - finalDiscount;
 
-        // If items carry their own taxPercent, compute tax per line.
-        // Otherwise fall back to the global taxPercent argument.
         const taxAmount = orderItems.reduce((acc, item) => {
             const lineTotal = calculateItemTotal(item);
             const lineRate = (item.taxPercent !== undefined && item.taxPercent !== null)
@@ -168,7 +169,10 @@ export const OrderProvider = ({ children }) => {
                 : taxPercent;
             return acc + (lineTotal * lineRate) / 100;
         }, 0);
-        const total = taxableAmount + taxAmount;
+
+        // Deduct exchange credit from total
+        const totalBeforeCredit = taxableAmount + taxAmount;
+        const total = totalBeforeCredit - exchangeCredit;
 
         let roundOff = 0;
         let finalTotal = total;
@@ -188,6 +192,7 @@ export const OrderProvider = ({ children }) => {
             total,
             roundOff,
             finalTotal,
+            exchangeCredit
         };
     };
 
@@ -220,11 +225,19 @@ export const OrderProvider = ({ children }) => {
         }
     };
 
+    const resetExchange = () => {
+        setIsExchange(false);
+        setExchangeCredit(0);
+        setOriginalOrderId(null);
+        setReturnedItems([]);
+    };
+
     const resetBillingState = () => {
         setBillingStage("review");
         setBillDiscount({ type: "flat", value: 0 });
         setCouponCode("");
         setCouponStatus(null);
+        setAppliedOffers([]);
     };
 
     return (
@@ -247,7 +260,17 @@ export const OrderProvider = ({ children }) => {
                 fetchActiveOffers,
                 offers,
                 COUPONS,
-                resetBillingState
+                resetBillingState,
+                // Exchange states
+                isExchange,
+                setIsExchange,
+                exchangeCredit,
+                setExchangeCredit,
+                originalOrderId,
+                setOriginalOrderId,
+                returnedItems,
+                setReturnedItems,
+                resetExchange
             }}
         >
             {children}

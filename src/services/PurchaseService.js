@@ -48,5 +48,15 @@ export const PurchaseService = {
             headers: { 'Content-Type': 'multipart/form-data' }
         });
         return response.data;
+    },
+
+    createPurchaseReturn: async (data) => {
+        const response = await api.post('/purchases/returns', data);
+        return response.data;
+    },
+
+    getPurchaseReturns: async (params) => {
+        const response = await api.get('/purchases/returns', { params });
+        return response.data;
     }
 };

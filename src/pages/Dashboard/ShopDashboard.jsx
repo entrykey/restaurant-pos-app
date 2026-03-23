@@ -39,7 +39,7 @@ const ShopDashboard = () => {
     }
 
     const stats = [
-        { label: 'Total Sales', value: formatCurrency(data?.totalSales || 0), icon: ShoppingBag, color: 'text-blue-600', bg: 'bg-blue-50' },
+        { label: 'Total Sales', value: formatCurrency(data?.totalSales || 0), icon: ShoppingBag, color: 'text-blue-600', bg: 'bg-blue-50', link: '/dashboard/sales' },
         { label: 'Today Profit', value: formatCurrency(data?.totalProfit || 0), icon: TrendingUp, color: (data?.totalProfit || 0) >= 0 ? 'text-green-600' : 'text-red-600', bg: (data?.totalProfit || 0) >= 0 ? 'bg-green-50' : 'bg-red-50', link: '/dashboard/operating-expenses' },
         { label: 'Pay In (Customers)', value: formatCurrency(data?.payIn || 0), icon: Users, color: 'text-orange-600', bg: 'bg-orange-50', link: '/dashboard/pay-in' },
         { label: 'Pay Out (Suppliers)', value: formatCurrency(data?.payOut || 0), icon: DollarSign, color: 'text-red-600', bg: 'bg-red-50', link: '/dashboard/pay-out' },

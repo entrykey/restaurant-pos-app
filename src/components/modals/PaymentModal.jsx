@@ -22,6 +22,8 @@ const PaymentModal = ({
     custPhone,
     setCustPhone,
     existingCustomerId,
+    exchangeCredit = 0,
+    originalOrderId = null
 }) => {
     const { theme } = useTheme();
     const {
@@ -102,7 +104,8 @@ const PaymentModal = ({
         orderItems,
         billDiscount,
         settings?.defaultTaxPercent || 5,
-        isAutoRoundOff
+        isAutoRoundOff,
+        exchangeCredit
     );
 
     return (
@@ -407,6 +410,12 @@ const PaymentModal = ({
                             <div className={`flex justify-between ${theme.textMuted} text-xs italic`}>
                                 <span>Round Off</span>
                                 <span>{formatCurrency(billDetails.roundOff)}</span>
+                            </div>
+                        )}
+                        {exchangeCredit > 0 && (
+                            <div className="flex justify-between text-orange-600 text-sm font-black border-t border-dashed mt-2 pt-2">
+                                <span>Exchange Credit</span>
+                                <span>-{formatCurrency(exchangeCredit)}</span>
                             </div>
                         )}
                         <div className={`flex justify-between text-2xl font-black ${theme.textHeading} pt-4 border-t ${theme.borderLight} mt-2`}>

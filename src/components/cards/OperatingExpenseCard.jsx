@@ -20,7 +20,8 @@ const OperatingExpenseCard = ({
         { value: '2months', label: '2 Months' },
         { value: '3months', label: '3 Months' },
         { value: '6months', label: '6 Months' },
-        { value: 'yearly', label: 'Yearly' }
+        { value: 'yearly', label: 'Yearly' },
+        { value: 'one time', label: 'One Time' }
     ];
 
     const termDaysMap = {
@@ -29,10 +30,11 @@ const OperatingExpenseCard = ({
         '2months': 60,
         '3months': 90,
         '6months': 180,
-        'yearly': 365
+        'yearly': 365,
+        'one time': 0
     };
 
-    const perDay = amount / (termDaysMap[term] || 30);
+    const perDay = term === 'one time' ? 0 : amount / (termDaysMap[term] || 30);
 
     return (
         <div className={`${theme.surfaceBg} p-6 rounded-[32px] border ${theme.borderLight} shadow-sm space-y-6 flex flex-col`}>

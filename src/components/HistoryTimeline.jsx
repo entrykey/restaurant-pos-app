@@ -1,4 +1,4 @@
-import { Package, Receipt, Calendar, Wallet, ArrowRightCircle } from 'lucide-react';
+import { Package, Receipt, Calendar, Wallet, ArrowRightCircle, RotateCcw } from 'lucide-react';
 import { formatDate, formatCurrency } from '../utils/format';
 import { useTheme } from '../context/ThemeContext';
 
@@ -20,7 +20,7 @@ import { useTheme } from '../context/ThemeContext';
  *   }
  * @param {Function} onAction - Callback for the 'Collect' button: (order) => void
  */
-const HistoryTimeline = ({ events = [], onAction }) => {
+const HistoryTimeline = ({ events = [], onAction, onReturn }) => {
     const { theme } = useTheme();
 
     if (!events || events.length === 0) {
@@ -83,28 +83,44 @@ const HistoryTimeline = ({ events = [], onAction }) => {
                                         </p>
                                     </div>
 
-                                    {event.type === 'PURCHASE' && event.balance > 0 && (
-                                        <div className={`pt-3 border-t ${theme.borderLight} flex items-center gap-4`}>
-                                            <div className="text-right">
-                                                <p className="text-[10px] font-bold text-orange-400 uppercase tracking-wider">Remaining</p>
-                                                <p className="font-black text-orange-600">{formatCurrency(event.balance)}</p>
-                                            </div>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onAction && onAction(event.order);
-                                                }}
-                                                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl text-sm font-black transition-all shadow-lg"
-                                            >
-                                                <Wallet size={16} />
-                                                Collect
-                                            </button>
+                                    {event.type === 'PURCHASE' && (
+                                        <div className={`pt-3 border-t ${theme.borderLight} flex items-center gap-2`}>
+                                            {event.balance > 0 ? (
+                                                <>
+                                                    <div className="text-right mr-2">
+                                                        <p className="text-[10px] font-bold text-orange-400 uppercase tracking-wider">Remaining</p>
+                                                        <p className="font-black text-orange-600">{formatCurrency(event.balance)}</p>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onAction && onAction(event.order);
+                                                        }}
+                                                        className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl text-xs font-black transition-all shadow-lg"
+                                                    >
+                                                        <Wallet size={14} />
+                                                        Collect
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <span className={`flex items-center gap-1 font-black text-[10px] uppercase px-2 py-1 rounded-full border ${theme.mode === 'dark' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-900/50' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+                                                    <ArrowRightCircle size={12} /> Paid
+                                                </span>
+                                            )}
+                                            
+                                            {onReturn && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onReturn(event.order);
+                                                    }}
+                                                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all border ${theme.mode === 'dark' ? 'bg-orange-900/20 text-orange-400 border-orange-900/50 hover:bg-orange-900/40' : 'bg-orange-50 text-orange-600 border-orange-100 hover:bg-orange-100'}`}
+                                                >
+                                                    <RotateCcw size={14} />
+                                                    Return
+                                                </button>
+                                            )}
                                         </div>
-                                    )}
-                                    {event.type === 'PURCHASE' && event.balance <= 0 && (
-                                        <span className={`flex items-center gap-1 font-black text-xs uppercase px-3 py-1 rounded-full border ${theme.mode === 'dark' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-900/50' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                                            <ArrowRightCircle size={14} /> Full Paid
-                                        </span>
                                     )}
                                 </div>
                             </div>
