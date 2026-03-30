@@ -7,6 +7,7 @@ import { MODULES } from '../../constants/modules';
 import { shopService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useApp } from '../../context/AppContext';
 
 const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEmbedded }) => {
     const [suppliers, setSuppliers] = useState([]);
@@ -16,7 +17,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const [editingSupplier, setEditingSupplier] = useState(null);
     const { user } = useAuth();
     const { theme } = useTheme();
-    const [shopId, setShopId] = useState(null);
+    const { currentShopId } = useApp();
 
     const [formData, setFormData] = useState({
         name: "",
@@ -38,32 +39,17 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const canDelete = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "delete") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
 
     useEffect(() => {
-        const fetchShopId = async () => {
-            if (user) {
-                try {
-                    const userId = user.id || user._id;
-                    const shopData = await shopService.getShopDataByUserId(userId);
-                    const id = shopData.shop?._id || shopData.organization?._id || shopData._id;
-                    setShopId(id);
-                } catch (error) {
-                    console.error("Error fetching shop ID:", error);
-                }
-            }
-        };
-        fetchShopId();
-    }, [user]);
-
-    useEffect(() => {
-        if (shopId) {
+        if (currentShopId) {
             loadSuppliers();
         }
-    }, [shopId]);
+    }, [currentShopId]);
+
 
     const loadSuppliers = async (search = "") => {
-        if (!shopId) return;
+        if (!currentShopId) return;
         setLoading(true);
         try {
-            const data = await SupplierService.getSuppliers(shopId, search);
+            const data = await SupplierService.getSuppliers(currentShopId, search);
             setSuppliers(data);
         } catch (error) {
             console.error("Failed to load suppliers", error);
@@ -73,13 +59,13 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     };
 
     useEffect(() => {
-        if (shopId) {
+        if (currentShopId) {
             const delayDebounceFn = setTimeout(() => {
                 loadSuppliers(searchTerm);
             }, 500);
             return () => clearTimeout(delayDebounceFn);
         }
-    }, [shopId, searchTerm]);
+    }, [currentShopId, searchTerm]);
 
     const handleOpenModal = (supplier = null) => {
         if (supplier) {
@@ -108,7 +94,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
             if (editingSupplier) {
                 await SupplierService.updateSupplier(editingSupplier._id || editingSupplier.id, formData);
             } else {
-                await SupplierService.addSupplier({ ...formData, shopId });
+                await SupplierService.addSupplier({ ...formData, shopId: currentShopId });
             }
             setIsModalOpen(false);
             await loadSuppliers(searchTerm);
@@ -116,6 +102,17 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
             alert("Failed to save supplier: " + (error.message || "Unknown error"));
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleToggleStatus = async (item) => {
+        if (!canEdit) return;
+        const newStatus = item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+        try {
+            await SupplierService.updateSupplier(item._id || item.id, { ...item, status: newStatus });
+            await loadSuppliers(searchTerm);
+        } catch (error) {
+            alert("Failed to update status: " + (error.message || "Unknown error"));
         }
     };
 
@@ -163,11 +160,17 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         {
             header: "Status",
             key: "status",
-            render: (value) => (
-                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${value === "ACTIVE" ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-500"
-                    }`}>
-                    {value}
-                </span>
+            render: (value, item) => (
+                <button
+                    onClick={(e) => { e.stopPropagation(); handleToggleStatus(item); }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${value === 'ACTIVE' ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+                        }`}
+                >
+                    <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${value === 'ACTIVE' ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                    />
+                </button>
             )
         }
     ];
@@ -190,7 +193,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                     )}
                     {canDelete && (
                         <button
-                            onClick={() => handleDelete(item.id)}
+                            onClick={() => handleDelete(item._id || item.id)}
                             className={`p-2 transition-colors rounded-xl ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white`}
                         >
                             <Trash2 size={16} />
@@ -304,26 +307,15 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Contact Person *</label>
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Contact Person</label>
                                     <input
-                                        required
                                         className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={formData.contactPerson}
                                         onChange={e => setFormData({ ...formData, contactPerson: e.target.value })}
-                                        placeholder="Full Name"
+                                        placeholder="Full Name (Optional)"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Status</label>
-                                    <select
-                                        className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
-                                        value={formData.status}
-                                        onChange={e => setFormData({ ...formData, status: e.target.value })}
-                                    >
-                                        <option value="ACTIVE">Active</option>
-                                        <option value="INACTIVE">Inactive</option>
-                                    </select>
-                                </div>
+                                {/* Status removed as requested - handled in table toggle */}
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Phone Number *</label>
                                     <div className="relative">

@@ -1,20 +1,14 @@
 import React, { useState } from "react";
 import {
     Building2,
-    Plus,
-    Edit3,
-    MapPin,
-    Save,
-    CreditCard,
-    Check,
-    Sparkles,
-    Loader2,
+    Edit3, Trash2, Plus, MapPin, CreditCard, ChevronDown, CheckCircle, Smartphone, Globe, AlertTriangle, ArrowRight, Save, X, Search, LogOut,
+    Loader2, Sparkles, Check
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
-import AlertDialog from "../../components/ui/AlertDialog";
+import SubscriptionNoticeModal from "../../components/modals/SubscriptionNoticeModal";
 
 import Modal from "../../components/ui/Modal";
 import { ROUTE_ACCESS, MODULES } from "../../config/permissionStructure";
@@ -25,13 +19,16 @@ import {
     CURRENCIES,
     SUBSCRIPTION_PLANS,
     fetchOrganizationData,
-    startTrial,
     saveBranch,
     deleteBranch,
     fetchLocationByPincode,
     fetchCurrentLocation,
 } from "./OrganizationService";
+import * as organizationService from './OrganizationService';
 import { shopService } from "../../services/api";
+import { subscriptionService } from '../../services/api/subscriptions';
+import { toast } from 'react-hot-toast';
+
 
 const emptyBranch = (organizationId) => ({
     id: null,
@@ -69,6 +66,7 @@ const Organization = ({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [trialLoading, setTrialLoading] = useState(null);
+    const [planLoading, setPlanLoading] = useState(false);
     const [isLocationLoading, setIsLocationLoading] = useState(false);
 
     const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
@@ -79,9 +77,52 @@ const Organization = ({
     const [originalOrg, setOriginalOrg] = useState(null);
     const [isDirty, setIsDirty] = useState(false);
 
-    const [alertConfig, setAlertConfig] = useState({ isOpen: false, type: "info", title: "", message: "" });
-    const closeAlert = () => setAlertConfig(prev => ({ ...prev, isOpen: false }));
-    const showAlert = (type, title, message) => setAlertConfig({ isOpen: true, type, title, message });
+    const [isSubscriptionNoticeOpen, setIsSubscriptionNoticeOpen] = useState(false);
+    
+    const confirmToast = (message, onConfirm, onCancel = () => { }) => {
+        toast.custom((t) => (
+            <div className={`
+                ${themeName === 'dark' ? 'bg-slate-900 border-indigo-500/10' : 'bg-white border-slate-100'} 
+                p-8 rounded-[40px] shadow-2xl border-4 max-w-md w-full 
+                transition-all duration-500 transform 
+                ${t.visible ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-12'}
+            `}>
+                <div className="flex flex-col gap-8">
+                    <div className="flex items-start gap-5">
+                        <div className={`p-4 rounded-[24px] shrink-0 ${themeName === 'dark' ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                            <Sparkles size={28} className="animate-pulse" />
+                        </div>
+                        <div className="space-y-1.5">
+                            <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${themeName === 'dark' ? 'text-indigo-400/60' : 'text-indigo-600/60'}`}>
+                                Action Required
+                            </p>
+                            <h3 className={`text-xl font-black tracking-tight leading-tight ${themeName === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                                {message}
+                            </h3>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                        <button
+                            className={`flex-1 py-5 rounded-[22px] font-black text-[11px] uppercase tracking-widest transition-all active:scale-90 ${themeName === 'dark'
+                                    ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900'
+                                }`}
+                            onClick={() => { toast.dismiss(t.id); onCancel(); }}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            className="flex-1 py-5 rounded-[22px] bg-indigo-600 text-white font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 shadow-2xl shadow-indigo-600/30 active:scale-95 transition-all text-center"
+                            onClick={() => { toast.dismiss(t.id); onConfirm(); }}
+                        >
+                            Yes, proceed
+                        </button>
+                    </div>
+                </div>
+            </div>
+        ), { duration: Infinity, position: 'top-center' });
+    };
 
     // Shop switching state
     const [userShops, setUserShops] = useState([]);
@@ -97,7 +138,7 @@ const Organization = ({
             try {
                 // Defaulting to "in" for India if country is India, else try to detect or default
                 const countryCode = branchForm.address?.country?.toLowerCase() === 'india' ? 'in' : 'ae';
-                const locationData = await fetchLocationByPincode(countryCode, pincode);
+                const locationData = await organizationService.fetchLocationByPincode(countryCode, pincode);
 
                 if (locationData && locationData.places && locationData.places.length > 0) {
                     const place = locationData.places[0];
@@ -125,7 +166,7 @@ const Organization = ({
             navigator.geolocation.getCurrentPosition(async (position) => {
                 const { latitude, longitude } = position.coords;
                 try {
-                    const addressData = await fetchCurrentLocation(latitude, longitude);
+                    const addressData = await organizationService.fetchCurrentLocation(latitude, longitude);
                     if (addressData && addressData.address) {
                         const addr = addressData.address;
                         setBranchForm(prev => ({
@@ -142,18 +183,17 @@ const Organization = ({
                     }
                 } catch (error) {
                     console.error("Failed to fetch current location address", error);
-                    alert("Failed to fetch address from location.");
-                    showAlert("error", "Location Error", "Failed to fetch address from location.");
+                    toast.error("Failed to fetch address from location.");
                 } finally {
                     setIsLocationLoading(false);
                 }
             }, (error) => {
                 console.error("Geolocation error:", error);
                 setIsLocationLoading(false);
-                showAlert("error", "Access Denied", "Location access denied or unavailable.");
+                toast.error("Location access denied or unavailable.");
             });
         } else {
-            showAlert("error", "Not Supported", "Geolocation is not supported by this browser.");
+            toast.error("Geolocation is not supported by this browser.");
         }
     };
 
@@ -179,7 +219,7 @@ const Organization = ({
 
             // We no longer pass targetShopId, because getShopDataByUserId in the backend 
             // has been fixed to automatically prioritize the user's active shop_id from the context.
-            const data = await fetchOrganizationData(userId);
+            const data = await organizationService.fetchOrganizationData(userId);
             console.log("Organization: Data fetched successfully:", data);
 
             if (data.organization) {
@@ -255,10 +295,10 @@ const Organization = ({
             // Fetch new shop data and populate the UI in-place
             await loadData(newShopId);
 
-            showAlert("success", "Switched Shop", "Successfully switched context to new shop.");
+            toast.success("Successfully switched context to new shop.");
         } catch (error) {
             console.error("Failed to switch shop:", error);
-            showAlert("error", "Switch Failed", error.message || "Failed to switch shop.");
+            toast.error(error.message || "Failed to switch shop.");
         } finally {
             setIsSwitchingShop(false);
         }
@@ -274,32 +314,68 @@ const Organization = ({
                 ownerEmail: organization.ownerEmail,
             };
             await shopService.updateShop(organization.id, updatePayload);
-            showAlert("success", "Changes Saved", "Organization details updated successfully.");
+            toast.success("Organization details updated successfully.");
             setOriginalOrg(organization);
             setIsDirty(false);
         } catch (error) {
             console.error("Failed to update organization:", error);
-            showAlert("error", "Update Failed", error.message || "Failed to update organization");
+            toast.error(error.message || "Failed to update organization");
         } finally {
             setIsSaving(false);
         }
     };
 
-    const handleStartTrial = async (plan) => {
-        if (!organization?.id) return;
-        setTrialLoading(plan.id);
-        try {
-            await startTrial(organization.id, plan.id);
-            // Refresh data to show active subscription
-            await loadData();
-            await loadData();
-            showAlert("success", "Trial Started", `Successfully started ${plan.trialDurationDays} day trial for ${plan.name}!`);
-        } catch (error) {
-            console.error("Failed to start trial:", error);
-            showAlert("error", "Trial Failed", "Failed to start trial: " + (error.message || "Unknown error"));
-        } finally {
-            setTrialLoading(null);
+    const handleStartTrial = (plan) => {
+        confirmToast(`Start your ${plan.trialDurationDays} day trial for the ${plan.name} plan?`, async () => {
+            setTrialLoading(plan.id);
+            try {
+                await shopService.updateShop(organization.id, { 
+                    startTrial: true, 
+                    plan_id: plan.id 
+                });
+                toast.success(`Trial started! Enjoy ${plan.name} for ${plan.trialDurationDays} days.`);
+                await loadData();
+            } catch (error) {
+                console.error("Failed to start trial:", error);
+                toast.error("Failed to start trial: " + (error.message || "Unknown error"));
+            } finally {
+                setTrialLoading(null);
+            }
+        });
+    };
+
+    const handlePlanChange = (plan) => {
+        const isCurrent = organization?.subscriptionPlanId === plan.id;
+        const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
+        const actionText = isCurrent ? (isExpired ? "renew" : "standardize") : "upgrade to";
+
+        confirmToast(`Are you sure you want to ${actionText} the ${plan.name} plan?`, async () => {
+            setPlanLoading(true);
+            try {
+                await subscriptionService.createSubscription({
+                    shop_id: organization.id,
+                    plan_id: plan.id,
+                    billing_cycle: 'monthly'
+                });
+                toast.success(`Successfully ${isCurrent ? "renewed" : "upgraded to"} ${plan.name} plan!`);
+                localStorage.removeItem('subscription_notified');
+                await loadData();
+            } catch (error) {
+                console.error("Failed to change plan:", error);
+                toast.error(error.message || "Failed to change plan");
+            } finally {
+                setPlanLoading(false);
+            }
+        });
+    };
+
+    const checkSubscriptionAndOpen = (openModalFn) => {
+        const isOwner = user?.isOwner || user?.roles?.some(r => r.name === 'Owner' || r.name === 'Admin');
+        if (!user?.isSuperAdmin && !isOwner && !user?.subscription?.active) {
+            setIsSubscriptionNoticeOpen(true);
+            return;
         }
+        openModalFn();
     };
 
     const openAddBranch = () => {
@@ -325,34 +401,37 @@ const Organization = ({
             await loadData();
             setIsBranchModalOpen(false);
             setBranchForm(emptyBranch(organization?.id));
-            showAlert("success", "Branch Saved", "Branch saved successfully.");
+            toast.success("Branch saved successfully.");
         } catch (error) {
             console.error("Failed to save branch:", error);
             // setError(error.message || "Failed to save branch"); // Optional: keep inline error or use alert? Alert is better for 403
             const errMsg = error.response?.data?.message || error.message || "Failed to save branch";
-            showAlert("error", "Save Failed", errMsg);
+            toast.error(errMsg);
         }
     };
 
-    const handleDisableBranch = async (branch) => {
+    const handleDisableBranch = (branch) => {
         const newStatus = branch.status === BRANCH_STATUS.ACTIVE ? BRANCH_STATUS.INACTIVE : BRANCH_STATUS.ACTIVE;
-        if (!window.confirm(`Are you sure you want to ${branch.status === BRANCH_STATUS.ACTIVE ? "disable" : "enable"} this branch?`)) return;
+        const actionText = branch.status === BRANCH_STATUS.ACTIVE ? "disable" : "enable";
 
-        try {
-            const updatedBranch = { ...branch, status: newStatus };
-            await saveBranch(updatedBranch);
-            await loadData();
-        } catch (error) {
-            console.error("Failed to update branch status:", error);
-            setError(error.message);
-        }
+        confirmToast(`Are you sure you want to ${actionText} this branch?`, async () => {
+            try {
+                const updatedBranch = { ...branch, status: newStatus };
+                await saveBranch(updatedBranch);
+                await loadData();
+                toast.success(`Branch ${actionText}d successfully.`);
+            } catch (error) {
+                console.error("Failed to update branch status:", error);
+                toast.error(error.message || `Failed to ${actionText} branch`);
+            }
+        });
     };
 
     const branchColumns = [
         { header: "Branch Name", key: "name", render: (v) => <span className="font-bold text-gray-800 dark:text-gray-200">{v}</span> },
         { header: "City", key: "address", render: (addr) => addr?.city || "—" },
-        { header: "State", key: "address", render: (addr) => addr?.state || "—" },
-        { header: "Country", key: "address", render: (addr) => addr?.country || "—" },
+        { header: "State", key: "address", render: (addr) => (typeof addr?.state === 'object' ? addr.state?.name : addr?.state) || "—" },
+        { header: "Country", key: "address", render: (addr) => (typeof addr?.country === 'object' ? addr.country?.name : addr?.country) || "—" },
         {
             header: "Status",
             key: "status",
@@ -426,11 +505,11 @@ const Organization = ({
             if (logoUrl) {
                 setOrganization(prev => ({ ...prev, logoUrl }));
             }
-            showAlert("success", "Logo Updated", "Shop logo updated successfully.");
+            toast.success("Shop logo updated successfully.");
         } catch (error) {
             console.error("Failed to upload logo:", error);
             const msg = error.message || error?.response?.data?.message || "Failed to upload logo";
-            showAlert("error", "Upload Failed", msg);
+            toast.error(msg);
         } finally {
             setLogoUploading(false);
         }
@@ -656,8 +735,13 @@ const Organization = ({
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {plans.map((plan) => {
                             const isCurrent = organization?.subscriptionPlanId === plan.id;
+                            const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
+                            const isTrialPlan = organization?.isTrial;
                             const isTrialLoading = trialLoading === plan.id;
                             const showStartTrial = !organization?.subscriptionPlanId && plan.hasTrial;
+                            
+                            // Let users upgrade/renew if current plan is expired or is just a trial
+                            const canUpgradeNow = !isCurrent || isExpired || isTrialPlan;
 
                             return (
                                 <div
@@ -690,7 +774,7 @@ const Organization = ({
                                         ))}
                                     </ul>
 
-                                    {isCurrent ? (
+                                    {isCurrent && !isExpired && !isTrialPlan ? (
                                         <button
                                             disabled
                                             className={`w-full py-2.5 rounded-xl font-bold cursor-default ${themeName === 'dark' ? 'bg-slate-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`}
@@ -710,14 +794,14 @@ const Organization = ({
                                         </button>
                                     ) : (
                                         <button
-                                            onClick={() => canEditOrg && setOrganization({ ...organization, subscriptionPlanId: plan.id })}
+                                            onClick={() => canEditOrg && handlePlanChange(plan)}
                                             disabled={!canEditOrg}
                                             className={`w-full py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${plan.highlighted
                                                 ? `bg-indigo-600 text-white hover:bg-indigo-700 ${themeName === 'dark' ? '' : 'shadow-lg shadow-indigo-200'}`
                                                 : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
                                                 }`}
                                         >
-                                            Upgrade
+                                            {isCurrent ? (isExpired ? "Renew Plan" : "Move to Paid") : "Upgrade"}
                                         </button>
                                     )}
                                 </div>
@@ -734,7 +818,7 @@ const Organization = ({
                         </h3>
                         {canCreateBranch && (
                             <button
-                                onClick={openAddBranch}
+                                onClick={() => checkSubscriptionAndOpen(openAddBranch)}
                                 className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2"
                             >
                                 <Plus size={20} /> Add Branch
@@ -937,12 +1021,11 @@ const Organization = ({
                 </div>
             </Modal>
 
-            <AlertDialog
-                isOpen={alertConfig.isOpen}
-                onClose={closeAlert}
-                title={alertConfig.title}
-                message={alertConfig.message}
-                type={alertConfig.type}
+            <SubscriptionNoticeModal
+                isOpen={isSubscriptionNoticeOpen}
+                onClose={() => setIsSubscriptionNoticeOpen(false)}
+                user={user}
+                isStaff={!(user?.isOwner || user?.roles?.some(r => r.name === 'Owner' || r.name === 'Admin'))}
             />
         </div>
     );

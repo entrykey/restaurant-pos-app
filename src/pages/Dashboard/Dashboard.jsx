@@ -2,13 +2,23 @@ import React from 'react';
 import { usePermission } from '../../auth/usePermission';
 import { ACTIONS } from '../../constants/actions';
 import OwnerDashboard from '../OwnerDashboard/OwnerDashboard';
+import SuperAdminDashboard from '../SuperAdminDashboard/SuperAdminDashboard';
 import ShopDashboard from './ShopDashboard';
 import StaffDashboard from '../Staff/StaffDashboard';
 
 import { MODULES } from '../../constants/modules';
+import { useAuth } from '../../context/AuthContext';
 
 const Dashboard = () => {
     const { can } = usePermission();
+    const { user } = useAuth();
+
+    const isSuperAdmin = user?.isSuperAdmin === true || user?.role === 'superadmin' || user?.role?.name === 'superadmin';
+
+    // Check if the user is a super admin (PRIORITY)
+    if (isSuperAdmin) {
+        return <SuperAdminDashboard />;
+    }
 
     // Check if the user has OWNER.DASHBOARD permission
     const isOwner = can(MODULES.DASHBOARD, ACTIONS.OWNER_DASHBOARD) || can("DASHBOARD", ACTIONS.OWNER_DASHBOARD);

@@ -241,7 +241,12 @@ export function printBill({
       <div class="sm">
         <div class="row"><span class="muted">Subtotal</span><span>${escapeHtml(formatCurrency(totals?.subtotal ?? 0))}</span></div>
         ${totals?.discountAmount ? `<div class="row"><span class="muted">Discount</span><span>- ${escapeHtml(formatCurrency(totals.discountAmount))}</span></div>` : ""}
-        <div class="row"><span class="muted">Tax</span><span>${escapeHtml(formatCurrency(totals?.taxAmount ?? 0))}</span></div>
+        <div class="row"><span class="muted text-xs">Tax</span><span>${escapeHtml(formatCurrency(totals?.taxAmount ?? 0))}</span></div>
+        
+        ${totals?.taxBreakdown && totals.taxBreakdown.cgst > 0 ? `<div class="row tiny muted" style="padding-left: 10px;"><span>CGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.cgst))}</span></div>` : ""}
+        ${totals?.taxBreakdown && totals.taxBreakdown.sgst > 0 ? `<div class="row tiny muted" style="padding-left: 10px;"><span>SGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.sgst))}</span></div>` : ""}
+        ${totals?.taxBreakdown && totals.taxBreakdown.igst > 0 ? `<div class="row tiny muted" style="padding-left: 10px;"><span>IGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.igst))}</span></div>` : ""}
+
         ${totals?.roundOff ? `<div class="row"><span class="muted">Round off</span><span>${escapeHtml(formatCurrency(totals.roundOff))}</span></div>` : ""}
         <div class="row md bold"><span>Total</span><span>${escapeHtml(formatCurrency(totals?.finalTotal ?? 0))}</span></div>
       </div>
@@ -352,6 +357,11 @@ export function printBillA4({
             <div class="row"><span>Subtotal</span><span>${escapeHtml(formatCurrency(totals?.subtotal ?? 0))}</span></div>
             ${(totals?.discountAmount ?? 0) ? `<div class="row"><span>Discount</span><span>- ${escapeHtml(formatCurrency(totals.discountAmount))}</span></div>` : ""}
             <div class="row"><span>Tax</span><span>${escapeHtml(formatCurrency(totals?.taxAmount ?? 0))}</span></div>
+            
+            ${totals?.taxBreakdown && totals.taxBreakdown.cgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>CGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.cgst))}</span></div>` : ""}
+            ${totals?.taxBreakdown && totals.taxBreakdown.sgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>SGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.sgst))}</span></div>` : ""}
+            ${totals?.taxBreakdown && totals.taxBreakdown.igst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>IGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.igst))}</span></div>` : ""}
+
             <div class="row grand"><span>Grand Total</span><span>${escapeHtml(formatCurrency(totals?.finalTotal ?? 0))}</span></div>
           </div>
         </div>

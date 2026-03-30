@@ -22,6 +22,7 @@ export const STAFF_DELETE = "staff.delete";
 export const STAFF_DASHBOARD = "STAFF.DASHBOARD";
 export const ATTENDANCE_POLICIES = "ATTENDANCE.POLICIES";
 export const ATTENDANCE_LOGS = "ATTENDANCE.LOGS";
+export const ATTENDANCE_MANAGE = "ATTENDANCE.MANAGE";
 
 // Supplier module (under PARTIES)
 export const SUPPLIER_VIEW = "supplier.view";
@@ -122,4 +123,5 @@ export const ACTIONS = Object.freeze({
   POS_DINING_TAKEAWAY,
   POS_DINING_JOINTABLES,
   RESERVATION_CREATING,
+  ATTENDANCE_MANAGE,
 });

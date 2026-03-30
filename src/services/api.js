@@ -355,8 +355,18 @@ export const employeeService = {
             console.error("Error updating employee:", error);
             throw error.response ? error.response.data : error;
         }
+    },
+    getPotentialManagers: async (shopId) => {
+        try {
+            const response = await api.get(`/employees/shop/${shopId}/potential-managers`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching potential managers:", error);
+            throw error.response ? error.response.data : error;
+        }
     }
 };
+
 
 export const roleService = {
     getRoleById: async (id) => {
@@ -486,6 +496,74 @@ export const settingService = {
             throw error.response ? error.response.data : error;
         }
     },
+};
+
+export const payrollService = {
+    getSettings: async (shopId) => {
+        try {
+            const response = await api.get(`/shop-expenses/${shopId}/payroll/settings`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching payroll settings:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    saveSettings: async (shopId, payload) => {
+        try {
+            const response = await api.post(`/shop-expenses/${shopId}/payroll/settings`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error saving payroll settings:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getPayroll: async (month, shopId) => {
+        try {
+            const response = await api.get('/payroll', { 
+                params: { month, shopId } 
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching payroll:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    generatePayroll: async (month, shopId) => {
+        try {
+            const response = await api.post('/payroll/generate', { month, shopId });
+            return response.data;
+        } catch (error) {
+            console.error("Error generating payroll:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateStatus: async (id, status) => {
+        try {
+            const response = await api.put(`/payroll/${id}/status`, { status });
+            return response.data;
+        } catch (error) {
+            console.error("Error updating payroll status:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deletePayroll: async (id) => {
+        try {
+            const response = await api.delete(`/payroll/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting payroll:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getMySalary: async () => {
+        try {
+            const response = await api.get('/payroll/my');
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching my salary:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
 };
 
 export const attributeService = {
@@ -1106,6 +1184,33 @@ export const attendanceService = {
             console.error("Error updating attendance log:", error);
             throw error.response ? error.response.data : error;
         }
+    },
+    getMyLogs: async (params = {}) => {
+        try {
+            const response = await api.get('/attendance/logs/my-logs', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching my attendance logs:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    requestCorrection: async (id, reason) => {
+        try {
+            const response = await api.post(`/attendance/logs/${id}/request-correction`, { reason });
+            return response.data;
+        } catch (error) {
+            console.error("Error requesting attendance correction:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    approveCorrection: async (id, payload) => {
+        try {
+            const response = await api.post(`/attendance/logs/${id}/approve-correction`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error approving attendance correction:", error);
+            throw error.response ? error.response.data : error;
+        }
     }
 };
 
@@ -1127,14 +1232,59 @@ export const reportsService = {
             console.error("Error fetching expenses report:", error);
             throw error.response ? error.response.data : error;
         }
+    },
+    getPerformanceReport: async (params = {}) => {
+        try {
+            const response = await api.get('/employees/performance-report', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching performance report:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getCustomerReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/customers', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching customer report:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getSupplierReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/suppliers', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching supplier report:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getPartyStatement: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/party-statement', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching party statement:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getPartyItems: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/party-items', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching party items:", error);
+            throw error.response ? error.response.data : error;
+        }
     }
 };
 
 export default api;
 export const taxService = {
-    getTaxes: async (branchId) => {
+    getTaxes: async (params = {}) => {
         try {
-            const response = await api.get('/taxes', { params: { branchId } });
+            const response = await api.get('/taxes', { params });
             return response.data;
         } catch (error) {
             console.error("Error fetching taxes:", error);
@@ -1165,6 +1315,54 @@ export const taxService = {
             return response.data;
         } catch (error) {
             console.error("Error deleting tax:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
+export const leaveService = {
+    applyLeave: async (payload) => {
+        try {
+            const response = await api.post('/leaves/apply', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error applying leave:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getMyLeaves: async () => {
+        try {
+            const response = await api.get('/leaves/my');
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching my leaves:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getAllLeaves: async (params = {}) => {
+        try {
+            const response = await api.get('/leaves/all', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching all leaves:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    reviewLeave: async (leaveId, payload) => {
+        try {
+            const response = await api.put(`/leaves/${leaveId}/review`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error reviewing leave:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteLeave: async (leaveId) => {
+        try {
+            const response = await api.delete(`/leaves/${leaveId}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting leave:", error);
             throw error.response ? error.response.data : error;
         }
     }

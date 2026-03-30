@@ -5,10 +5,12 @@ import { categoryService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
+import { useApp } from "../../context/AppContext";
 
 const CategorySettings = () => {
     const { user } = useAuth();
     const { theme } = useTheme();
+    const { currentShopId } = useApp();
     const [categories, setCategories] = useState([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState(null);
@@ -20,14 +22,14 @@ const CategorySettings = () => {
     });
 
     useEffect(() => {
-        if (user?.shop_id) {
+        if (currentShopId) {
             fetchData();
         }
-    }, [user?.shop_id]);
+    }, [currentShopId]);
 
     const fetchData = async () => {
         try {
-            const data = await categoryService.getCategories({ shopId: user.shop_id });
+            const data = await categoryService.getCategories({ shopId: currentShopId });
             setCategories(data);
         } catch (error) {
             toast.error("Failed to fetch categories");
@@ -62,7 +64,7 @@ const CategorySettings = () => {
             } else {
                 await categoryService.createCategory({
                     ...formData,
-                    shopId: user.shop_id
+                    shopId: currentShopId
                 });
                 toast.success("Category created successfully");
             }

@@ -28,7 +28,7 @@ export const ALL_FIELDS = {
     mrp: { key: "mrp", label: "MRP", type: "number", section: "Pricing" },
 
     // Tax
-    tax_percent: { key: "taxPercent", label: "Item Tax %", type: "number", section: "Tax" },
+    tax_percent: { key: "taxPercent", label: "Item Tax %", type: "select", section: "Tax" },
     hsn_sac_code: { key: "hsnSacCode", label: "HSN / SAC Code", type: "text", section: "Tax" },
 
     // Stock Settings

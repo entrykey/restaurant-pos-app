@@ -67,7 +67,9 @@ export const OrderProvider = ({ children }) => {
         discount = { type: "flat", value: 0 },
         taxPercent = 5,
         autoRound = true,
-        exchangeCredit = 0
+        exchangeCredit = 0,
+        branchStateCode = null,
+        customerStateCode = null
     ) => {
         if (!orderItems || orderItems.length === 0)
             return {
@@ -77,14 +79,22 @@ export const OrderProvider = ({ children }) => {
                 appliedOffers: [],
                 taxableAmount: 0,
                 taxAmount: 0,
+                taxBreakdown: { cgst: 0, sgst: 0, igst: 0 },
                 total: 0,
                 roundOff: 0,
                 finalTotal: 0,
                 exchangeCredit: exchangeCredit
             };
 
+        const getBaseLineTotal = (i) => {
+            const lineTotal = calculateItemTotal(i);
+            const rate = (i.taxPercent !== undefined && i.taxPercent !== null) ? Number(i.taxPercent) : taxPercent;
+            const isExclusive = i.isExclusiveTax !== undefined ? i.isExclusiveTax : false;
+            return isExclusive ? lineTotal : lineTotal / (1 + rate / 100);
+        };
+
         const subtotal = orderItems.reduce(
-            (acc, i) => acc + calculateItemTotal(i),
+            (acc, i) => acc + getBaseLineTotal(i),
             0
         );
 
@@ -106,7 +116,7 @@ export const OrderProvider = ({ children }) => {
 
                     if (totalQty >= (condition.minQuantity || 1)) {
                         isApplicable = true;
-                        const itemsAmount = matchingItems.reduce((acc, i) => acc + calculateItemTotal(i), 0);
+                        const itemsAmount = matchingItems.reduce((acc, i) => acc + getBaseLineTotal(i), 0);
 
                         if (reward.rewardType === "PERCENT_DISCOUNT") {
                             potentialDiscount = (itemsAmount * reward.discountPercent) / 100;
@@ -120,7 +130,7 @@ export const OrderProvider = ({ children }) => {
 
                     if (totalQty >= (condition.minQuantity || 1)) {
                         isApplicable = true;
-                        const itemsAmount = matchingItems.reduce((acc, i) => acc + calculateItemTotal(i), 0);
+                        const itemsAmount = matchingItems.reduce((acc, i) => acc + getBaseLineTotal(i), 0);
 
                         if (reward.rewardType === "PERCENT_DISCOUNT") {
                             potentialDiscount = (itemsAmount * reward.discountPercent) / 100;
@@ -162,16 +172,54 @@ export const OrderProvider = ({ children }) => {
 
         const taxableAmount = subtotal - finalDiscount;
 
-        const taxAmount = orderItems.reduce((acc, item) => {
+        // GST Logic: Compare states
+        const isIntraState = !branchStateCode || !customerStateCode || branchStateCode === customerStateCode;
+
+        const taxBreakdown = { cgst: 0, sgst: 0, igst: 0 };
+
+        const totalTaxAmount = orderItems.reduce((acc, item) => {
             const lineTotal = calculateItemTotal(item);
             const lineRate = (item.taxPercent !== undefined && item.taxPercent !== null)
                 ? Number(item.taxPercent)
                 : taxPercent;
-            return acc + (lineTotal * lineRate) / 100;
+            const isExclusive = item.isExclusiveTax !== undefined ? item.isExclusiveTax : false;
+
+            let itemTax = 0;
+            if (isExclusive) {
+                itemTax = (lineTotal * lineRate) / 100;
+            } else {
+                const baseLine = lineTotal / (1 + lineRate / 100);
+                itemTax = (lineTotal - baseLine);
+            }
+
+            // Split tax based on components if taxSystem is GST
+            // For now, if components are not provided per item, we split 50/50 for CGST/SGST if Intra-state
+            if (item.taxSystem === 'GST' || true) { // Defaulting to splitting logic if it's likely GST
+                if (isIntraState) {
+                    // Split actual calculated tax into CGST and SGST
+                    // We use the components from the tax object if available
+                    const cgstRate = item.components?.cgst;
+                    const sgstRate = item.components?.sgst;
+                    
+                    if (cgstRate !== undefined && sgstRate !== undefined && (cgstRate + sgstRate) > 0) {
+                        const totalCompRate = cgstRate + sgstRate;
+                        taxBreakdown.cgst += (itemTax * cgstRate) / totalCompRate;
+                        taxBreakdown.sgst += (itemTax * sgstRate) / totalCompRate;
+                    } else {
+                        // fallback to 50/50 split
+                        taxBreakdown.cgst += itemTax / 2;
+                        taxBreakdown.sgst += itemTax / 2;
+                    }
+                } else {
+                    taxBreakdown.igst += itemTax;
+                }
+            }
+
+            return acc + itemTax;
         }, 0);
 
         // Deduct exchange credit from total
-        const totalBeforeCredit = taxableAmount + taxAmount;
+        const totalBeforeCredit = taxableAmount + totalTaxAmount;
         const total = totalBeforeCredit - exchangeCredit;
 
         let roundOff = 0;
@@ -188,7 +236,8 @@ export const OrderProvider = ({ children }) => {
             offerDiscountTotal,
             appliedOffers: currentAppliedOffers,
             taxableAmount,
-            taxAmount,
+            taxAmount: totalTaxAmount,
+            taxBreakdown,
             total,
             roundOff,
             finalTotal,

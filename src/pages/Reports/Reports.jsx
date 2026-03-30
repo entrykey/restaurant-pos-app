@@ -11,17 +11,21 @@ import {
     LayoutDashboard,
     Clock,
     Globe,
-    DollarSign,
-    Zap
+    Banknote,
+    Zap,
+    Users,
+    ChevronRight,
+    Search
 } from 'lucide-react';
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from '../../components/CommonTable';
-import { formatCurrency } from '../../utils/format';
 import DatePicker from "../../components/ui/DatePicker";
+import CommonSelect from "../../components/ui/CommonSelect";
 
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { usePermission } from "../../auth/usePermission";
 import api, { reportsService } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { printCustomHtml, escapeHtml } from "../../utils/print";
 
@@ -42,7 +46,9 @@ const Reports = ({
     branchId
 }) => {
     const { theme, themeName } = useTheme();
-    const { organization, branches } = useApp();
+    const { organization, branches, currentShopId, activeBranchId, formatCurrency } = useApp();
+    const currencyRaw = organization?.defaultCurrency || 'USD';
+    const currency = typeof currencyRaw === 'object' ? (currencyRaw.code || 'USD') : currencyRaw;
     const { can } = usePermission();
     const [reportCategory, setReportCategory] = useState("sales");
     const today = new Date().toISOString().split("T")[0];
@@ -50,27 +56,74 @@ const Reports = ({
     const [filterEndDate, setFilterEndDate] = useState(today);
     const [salesHistory, setSalesHistory] = useState([]);
     const [expensesHistory, setExpensesHistory] = useState([]);
+    const [performanceReport, setPerformanceReport] = useState([]);
+    const [customerReport, setCustomerReport] = useState([]);
+    const [supplierReport, setSupplierReport] = useState([]);
+    const [partyTab, setPartyTab] = useState("customers");
+    const [selectedParty, setSelectedParty] = useState(null); // { id, name, type }
+    const [partyStatement, setPartyStatement] = useState([]);
+    const [partyItems, setPartyItems] = useState([]);
     const [loading, setLoading] = useState(false);
+    const resolvedShopId = shopId || currentShopId;
+    
+    const { user } = useAuth();
+    const isGlobalUser = user?.allBranches || user?.isOwner || user?.isSuperAdmin || user?.roles?.some(r => r.name === 'shop_user' || r.name === 'owner');
+    const permittedBranchIds = user?.branchIds || [];
+    const availableBranches = isGlobalUser 
+        ? branches 
+        : branches.filter(b => permittedBranchIds.includes(String(b._id || b.id)));
+
+    const [reportBranchFilter, setReportBranchFilter] = useState(
+        availableBranches.length === 1 ? String(availableBranches[0]._id || availableBranches[0].id) : "all"
+    );
+
+    const unwrapApiData = (payload) => payload?.data || payload || [];
+
+    // Sync filter if branch list changes and we are a single-branch user
+    useEffect(() => {
+        if (availableBranches.length === 1 && reportBranchFilter === "all") {
+            const onlyBranchId = String(availableBranches[0]._id || availableBranches[0].id);
+            if (onlyBranchId) {
+                setReportBranchFilter(onlyBranchId);
+            }
+        }
+    }, [availableBranches, reportBranchFilter]);
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!shopId) return;
+            console.log("DEBUG_REPORTS_FETCH_DATA_START:", { resolvedShopId, reportBranchFilter, filterStartDate, filterEndDate });
+            if (!resolvedShopId) {
+                console.warn("DEBUG_REPORTS_FETCH_DATA_MISSING_SHOPID");
+                return;
+            }
             setLoading(true);
             try {
                 const params = {
-                    shopId,
-                    branchId,
+                    shopId: resolvedShopId,
+                    branchId: reportBranchFilter,
                     startDate: filterStartDate,
                     endDate: filterEndDate
                 };
-                
-                const [salesRes, expensesRes] = await Promise.all([
-                    reportsService.getSalesReport(params),
-                    reportsService.getExpensesReport(params)
-                ]);
 
-                setSalesHistory(salesRes.data || salesRes?.data?.data || []);
-                setExpensesHistory(expensesRes.data || expensesRes?.data?.data || []);
+                const [salesRes, expensesRes, perfRes, custRes, suppRes] = await Promise.all([
+                    reportsService.getSalesReport(params),
+                    reportsService.getExpensesReport(params),
+                    reportsService.getPerformanceReport(params),
+                    reportsService.getCustomerReport(params),
+                    reportsService.getSupplierReport(params)
+                ]);
+                console.log("DEBUG_REPORTS_DATA_RESPONSES:", {
+                    sales: salesRes.data,
+                    expenses: expensesRes.data,
+                    customers: custRes.data,
+                    suppliers: suppRes.data
+                });
+
+                setSalesHistory(unwrapApiData(salesRes));
+                setExpensesHistory(unwrapApiData(expensesRes));
+                setPerformanceReport(unwrapApiData(perfRes));
+                setCustomerReport(unwrapApiData(custRes));
+                setSupplierReport(unwrapApiData(suppRes));
             } catch (error) {
                 console.error("Failed to fetch report data:", error);
             } finally {
@@ -78,7 +131,30 @@ const Reports = ({
             }
         };
         fetchData();
-    }, [filterStartDate, filterEndDate, shopId, branchId]);
+    }, [filterStartDate, filterEndDate, resolvedShopId, reportBranchFilter]);
+
+    useEffect(() => {
+        const fetchPartyDetails = async () => {
+            if (!selectedParty) return;
+            try {
+                const params = {
+                    partyId: selectedParty.id,
+                    type: selectedParty.type,
+                    startDate: filterStartDate,
+                    endDate: filterEndDate
+                };
+                const [statRes, itemRes] = await Promise.all([
+                    reportsService.getPartyStatement(params),
+                    reportsService.getPartyItems(params)
+                ]);
+                setPartyStatement(unwrapApiData(statRes));
+                setPartyItems(unwrapApiData(itemRes));
+            } catch (err) {
+                console.error("Failed to fetch party details:", err);
+            }
+        };
+        fetchPartyDetails();
+    }, [selectedParty, filterStartDate, filterEndDate]);
 
     const isWithinRange = (dateStr) => {
         if (!dateStr) return false;
@@ -173,19 +249,16 @@ const Reports = ({
                 return [method, count, total];
             });
         } else if (reportCategory === "staff_report") {
-            columns = ["Staff Name", "Orders", "Total Sales"];
-            rows = staffList
-                .filter((s) => s.role !== "Admin")
-                .map((s) => {
-                    const staffSales = salesHistory.filter(
-                        (sale) => isWithinRange(sale.date) && sale.waiterName === s.name
-                    );
-                    return [
-                        s.name,
-                        staffSales.length,
-                        staffSales.reduce((sum, sale) => sum + sale.amount, 0)
-                    ];
-                });
+            columns = ["Staff Name", "Orders", "Sales Collect", "KOTs", "Served", "Cash", "Purchases"];
+            rows = performanceReport.map((p) => [
+                p.employeeName,
+                p.stats.orders,
+                formatCurrency(p.stats.sales, currency),
+                p.stats.kots,
+                p.stats.served,
+                formatCurrency(p.stats.cash, currency),
+                p.stats.purchases
+            ]);
         } else if (reportCategory === "table_report") {
             columns = ["Table", "Orders", "Revenue"];
             rows = tables.map((t) => {
@@ -232,33 +305,39 @@ const Reports = ({
                 stats.sales
             ]);
         } else if (reportCategory === "tax") {
-            const taxStats = {};
+            const percentGroups = {};
             salesHistory
                 .filter((s) => isWithinRange(s.date))
                 .forEach((sale) => {
                     const items = sale.items || [];
                     items.forEach((item) => {
-                        const taxP = (item.taxPercent !== undefined && item.taxPercent !== null && item.taxPercent !== 0) 
+                        const taxP = (item.taxPercent !== undefined && item.taxPercent !== null) 
                             ? Number(item.taxPercent) 
                             : (settings?.defaultTaxPercent || 0);
+                        const system = item.taxSystem || "GST";
+                        const groupKey = `${system} ${taxP}%`;
                         
-                        const itemTax = item.taxAmount || (((item.price || 0) * item.quantity * taxP) / 100);
-                        
-                        const key = `${item.name}-${taxP}`;
-                        if (!taxStats[key]) {
-                            taxStats[key] = { name: item.name, taxPercent: taxP, qty: 0, taxAmount: 0 };
+                        if (!percentGroups[groupKey]) {
+                            percentGroups[groupKey] = { label: groupKey, items: {}, total: 0 };
                         }
-                        taxStats[key].qty += item.quantity;
-                        taxStats[key].taxAmount += (itemTax || 0);
+                        
+                        const itemKey = item.name;
+                        if (!percentGroups[groupKey].items[itemKey]) {
+                            percentGroups[groupKey].items[itemKey] = { name: item.name, qty: 0, taxAmount: 0 };
+                        }
+                        
+                        percentGroups[groupKey].items[itemKey].qty += (item.quantity || 0);
+                        percentGroups[groupKey].items[itemKey].taxAmount += (item.taxAmount || 0);
                     });
                 });
-            columns = ["Item Name", "Qty", "Tax %", "Tax Collected"];
-            rows = Object.values(taxStats).map((s) => [
-                s.name,
-                s.qty,
-                `${s.taxPercent}%`,
-                s.taxAmount
-            ]);
+            
+            columns = ["Tax Slab", "Item Name", "Qty Sold", "Tax Collected"];
+            rows = [];
+            Object.keys(percentGroups).sort().forEach(slab => {
+                Object.values(percentGroups[slab].items).forEach(item => {
+                    rows.push([slab, item.name, item.qty, item.taxAmount]);
+                });
+            });
         } else if (reportCategory === "expenses") {
             columns = ["Date", "Category", "Term", "Type", "Amount"];
             rows = expensesHistory.map((e) => [
@@ -266,7 +345,7 @@ const Reports = ({
                 e.category,
                 String(e.term || "").toUpperCase(),
                 e.type,
-                formatCurrency(e.amount)
+                formatCurrency(e.amount, currency)
             ]);
         }
 
@@ -333,7 +412,8 @@ const Reports = ({
         { id: "table_report", label: "Table Revenue", icon: <LayoutDashboard size={16} /> },
         { id: "hourly", label: "Peak Hours", icon: <Clock size={16} /> },
         { id: "online_report", label: "Online Orders", icon: <Globe size={16} /> },
-        { id: "expenses", label: "Expense Ledger", icon: <DollarSign size={16} /> },
+        { id: "expenses", label: "Expense Ledger", icon: <Banknote size={16} /> },
+        { id: "parties", label: "Parties Report", icon: <Users size={16} /> },
     ];
 
     return (
@@ -358,6 +438,19 @@ const Reports = ({
                             placeholder="To date"
                         />
                     </div>
+                    {availableBranches.length > 1 && (
+                        <div className="w-48 z-50">
+                            <CommonSelect
+                                options={[
+                                    { label: "All Branches", value: "all" },
+                                    ...availableBranches.map(b => ({ label: b.name, value: b._id || b.id }))
+                                ]}
+                                value={reportBranchFilter}
+                                onChange={(val) => setReportBranchFilter(val)}
+                                placeholder="Select Branch"
+                            />
+                        </div>
+                    )}
                     <button
                         onClick={handleExport}
                         className={`inline-flex items-center gap-2 px-4 py-3 ${theme.buttonBg} ${theme.buttonText} rounded-2xl shadow-sm text-sm font-bold ${theme.buttonHoverBg}`}
@@ -408,7 +501,8 @@ const Reports = ({
                                         {formatCurrency(
                                             salesHistory
                                                 .filter((s) => isWithinRange(s.date))
-                                                .reduce((a, b) => a + b.amount, 0)
+                                                .reduce((a, b) => a + b.amount, 0),
+                                            currency
                                         )}
                                     </p>
                                 </div>
@@ -427,13 +521,19 @@ const Reports = ({
                                                     .filter((s) => isWithinRange(s.date))
                                                     .reduce((a, b) => a + b.amount, 0) /
                                                 salesHistory.filter((s) => isWithinRange(s.date)).length
-                                                : 0
+                                                : 0,
+                                            currency
                                         )}
                                     </p>
                                 </div>
                             </div>
                             <CommonTable
                                 columns={[
+                                    ...(reportBranchFilter === "all" ? [{
+                                        header: "Branch",
+                                        key: "branchName",
+                                        className: `text-xs font-bold ${theme.textSecondary}`
+                                    }] : []),
                                     {
                                         header: "Sales Invoice",
                                         key: "invoiceNumber",
@@ -471,7 +571,7 @@ const Reports = ({
                                         key: "amount",
                                         headerClassName: "text-right",
                                         className: "text-right font-black text-indigo-600",
-                                        render: (value) => formatCurrency(value)
+                                        render: (value) => formatCurrency(value, currency)
                                     }
                                 ]}
                                 data={salesHistory.filter((s) => isWithinRange(s.date))}
@@ -505,14 +605,14 @@ const Reports = ({
                                         key: "revenue",
                                         headerClassName: "text-right",
                                         className: "text-right font-bold text-indigo-600",
-                                        render: (value) => formatCurrency(value)
+                                        render: (value) => formatCurrency(value, currency)
                                     },
                                     {
                                         header: "Profit",
                                         key: "profit",
                                         headerClassName: "text-right",
                                         className: "text-right font-bold text-emerald-600",
-                                        render: (value) => formatCurrency(value)
+                                        render: (value) => formatCurrency(value, currency)
                                     }
                                 ]}
                                 data={(() => {
@@ -559,7 +659,7 @@ const Reports = ({
                                     return Object.entries(catStats).map(([cat, revenue]) => (
                                         <div key={cat} className={`p-4 border ${theme.borderLight} rounded-2xl flex justify-between items-center hover:shadow-md transition-all`}>
                                             <span className={`font-bold ${theme.textSecondary}`}>{cat}</span>
-                                            <span className="font-black text-indigo-600 text-lg">{formatCurrency(revenue)}</span>
+                                            <span className="font-black text-indigo-600 text-lg">{formatCurrency(revenue, currency)}</span>
                                         </div>
                                     ));
                                 })()}
@@ -591,14 +691,14 @@ const Reports = ({
                                                             ? (themeName === 'dark' ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-100 text-indigo-600")
                                                             : (themeName === 'dark' ? "bg-blue-900/40 text-blue-400" : "bg-blue-100 text-blue-600")
                                                 }`}>
-                                                    {method === "Cash" ? <DollarSign size={20} /> : method === "UPI" ? <Zap size={20} /> : <CreditCard size={20} />}
+                                                    {method === "Cash" ? <Banknote size={20} /> : method === "UPI" ? <Zap size={20} /> : <CreditCard size={20} />}
                                                 </div>
                                                 <div>
                                                     <p className={`font-bold ${theme.textPrimary}`}>{method}</p>
                                                     <p className={`text-xs ${theme.textMuted}`}>{count} Transactions</p>
                                                 </div>
                                             </div>
-                                            <p className={`text-xl font-black ${theme.textPrimary}`}>{formatCurrency(total)}</p>
+                                            <p className={`text-xl font-black ${theme.textPrimary}`}>{formatCurrency(total, currency)}</p>
                                         </div>
                                     );
                                 })}
@@ -608,71 +708,126 @@ const Reports = ({
 
                     {/* 5. TAX REPORT */}
                     {reportCategory === "tax" && (
-                        <div className="space-y-6">
+                        <div className="space-y-8">
                             <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
                                 Tax / GST Report
                             </h3>
-                            <div className={`p-6 ${theme.infoBg} rounded-3xl border ${theme.infoBorder} text-center`}>
-                                <p className={`text-sm font-bold ${theme.infoText} opacity-70 uppercase tracking-widest`}>Total Tax Collected</p>
-                                <p className={`text-4xl font-black ${theme.infoText} mt-2`}>
+
+                            <div className={`p-8 ${theme.infoBg} rounded-[32px] border ${theme.infoBorder} text-center shadow-lg shadow-indigo-100/50`}>
+                                <p className={`text-sm font-bold ${theme.infoText} opacity-70 uppercase tracking-[0.2em]`}>Total Tax Collected</p>
+                                <p className={`text-5xl font-black ${theme.infoText} mt-2`}>
                                     {formatCurrency(
                                         salesHistory
                                             .filter((s) => isWithinRange(s.date))
-                                            .reduce((sum, s) => sum + (s.taxAmount || 0), 0)
+                                            .reduce((sum, s) => sum + (s.taxAmount || 0), 0),
+                                        currency
                                     )}
                                 </p>
                             </div>
 
                             <div className="space-y-4">
-                                <h4 className={`font-bold ${theme.textSecondary}`}>Item-wise Tax Split-up</h4>
-                                <CommonTable
-                                    columns={[
-                                        { header: "Item Name", key: "name", className: `font-bold ${theme.textPrimary}` },
-                                        { 
-                                            header: "Qty", 
-                                            key: "qty", 
-                                            headerClassName: "text-center",
-                                            className: "text-center font-bold" 
-                                        },
-                                        { 
-                                            header: "Tax %", 
-                                            key: "taxPercent", 
-                                            headerClassName: "text-center",
-                                            className: "text-center font-bold text-indigo-600", 
-                                            render: (v) => `${v}%` 
-                                        },
-                                        {
-                                            header: "Tax Collected",
-                                            key: "taxAmount",
-                                            headerClassName: "text-right",
-                                            className: `text-right font-black ${theme.textPrimary}`,
-                                            render: (value) => formatCurrency(value)
-                                        }
-                                    ]}
-                                    data={(() => {
-                                        const taxStats = {};
+                                <h4 className={`text-sm font-black ${theme.textSecondary} uppercase tracking-widest`}>Tax Summary by Branch & Profile</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {(() => {
+                                        const profileStats = {};
                                         salesHistory
                                             .filter((s) => isWithinRange(s.date))
                                             .forEach((sale) => {
+                                                const branch = sale.branchName || "Main Branch";
                                                 const items = sale.items || [];
-                                                items.forEach((item) => {
-                                                    const taxP = (item.taxPercent !== undefined && item.taxPercent !== null && item.taxPercent !== 0) 
-                                                        ? Number(item.taxPercent) 
-                                                        : (settings?.defaultTaxPercent || 0);
-                                                    
-                                                    const itemTax = item.taxAmount || (((item.price || 0) * item.quantity * taxP) / 100);
-                                                    
-                                                    const key = `${item.name}-${taxP}`;
-                                                    if (!taxStats[key]) {
-                                                        taxStats[key] = { name: item.name, taxPercent: taxP, qty: 0, taxAmount: 0 };
-                                                    }
-                                                    taxStats[key].qty += item.quantity;
-                                                    taxStats[key].taxAmount += (itemTax || 0);
+                                                items.forEach(item => {
+                                                    const system = item.taxSystem || "GST";
+                                                    const key = `${branch}|${system}`;
+                                                    if (!profileStats[key]) profileStats[key] = { branch, system, amount: 0 };
+                                                    profileStats[key].amount += (item.taxAmount || 0);
                                                 });
                                             });
-                                        return Object.values(taxStats);
+                                        
+                                        const sortedStats = Object.values(profileStats).sort((a, b) => b.amount - a.amount);
+                                        
+                                        if (sortedStats.length === 0) return <div className={`p-4 ${theme.inputBg} rounded-2xl text-center ${theme.textMuted} font-bold`}>No tax data found for this period</div>;
+
+                                        return sortedStats.map((stat, idx) => (
+                                            <div key={idx} className={`p-5 ${theme.surfaceBg} border-2 ${theme.borderLight} rounded-3xl shadow-sm hover:shadow-md transition-all flex flex-col gap-1`}>
+                                                <div className="flex justify-between items-start">
+                                                    <span className={`text-[10px] font-black uppercase tracking-wider text-indigo-500 bg-indigo-50 px-2 py-1 rounded-lg`}>{stat.system}</span>
+                                                    <span className={`text-[10px] font-bold ${theme.textMuted}`}>{stat.branch}</span>
+                                                </div>
+                                                <span className={`text-2xl font-black ${theme.textPrimary} mt-2`}>{formatCurrency(stat.amount, currency)}</span>
+                                            </div>
+                                        ));
                                     })()}
-                                />
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <h4 className={`text-sm font-black ${theme.textSecondary} uppercase tracking-widest`}>Tax Percentage Breakdown</h4>
+                                {(() => {
+                                    const percentGroups = {};
+                                    salesHistory
+                                        .filter((s) => isWithinRange(s.date))
+                                        .forEach((sale) => {
+                                            const items = sale.items || [];
+                                            items.forEach((item) => {
+                                                const taxP = (item.taxPercent !== undefined && item.taxPercent !== null) 
+                                                    ? Number(item.taxPercent) 
+                                                    : (settings?.defaultTaxPercent || 0);
+                                                const system = item.taxSystem || "GST";
+                                                const groupKey = `${system} ${taxP}%`;
+                                                
+                                                if (!percentGroups[groupKey]) {
+                                                    percentGroups[groupKey] = { label: groupKey, items: {}, total: 0 };
+                                                }
+                                                
+                                                const itemKey = item.name;
+                                                if (!percentGroups[groupKey].items[itemKey]) {
+                                                    percentGroups[groupKey].items[itemKey] = { name: item.name, qty: 0, taxAmount: 0 };
+                                                }
+                                                
+                                                percentGroups[groupKey].items[itemKey].qty += (item.quantity || 0);
+                                                percentGroups[groupKey].items[itemKey].taxAmount += (item.taxAmount || 0);
+                                                percentGroups[groupKey].total += (item.taxAmount || 0);
+                                            });
+                                        });
+
+                                    const sortedGroups = Object.keys(percentGroups).sort();
+
+                                    return sortedGroups.map((groupKey) => (
+                                        <div key={groupKey} className={`${theme.pageBg} rounded-[32px] border ${theme.borderLight} overflow-hidden shadow-sm`}>
+                                            <div className={`px-6 py-4 ${theme.surfaceBg} border-b ${theme.borderLight} flex justify-between items-center`}>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white">
+                                                        <Receipt size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <h5 className={`font-black ${theme.textHeading}`}>{groupKey}</h5>
+                                                        <p className={`text-[10px] font-bold ${theme.textMuted} uppercase`}>Collection for this slab</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-lg font-black text-indigo-600">{formatCurrency(percentGroups[groupKey].total, currency)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="p-2">
+                                                <CommonTable
+                                                    columns={[
+                                                        { header: "Item Name", key: "name", className: `font-bold ${theme.textPrimary}` },
+                                                        { header: "Quantity", key: "qty", headerClassName: "text-center", className: "text-center font-bold" },
+                                                        { 
+                                                            header: "Tax Collected", 
+                                                            key: "taxAmount", 
+                                                            headerClassName: "text-right", 
+                                                            className: "text-right font-black text-emerald-600",
+                                                            render: (v) => formatCurrency(v, currency)
+                                                        }
+                                                    ]}
+                                                    data={Object.values(percentGroups[groupKey].items).sort((a,b) => b.taxAmount - a.taxAmount)}
+                                                    className="border-none shadow-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    ));
+                                })()}
                             </div>
                         </div>
                     )}
@@ -685,34 +840,51 @@ const Reports = ({
                             </h3>
                             <CommonTable
                                 columns={[
-                                    { header: "Staff Name", key: "name", className: `font-bold ${theme.textPrimary}` },
+                                    { header: "Staff Name", key: "employeeName", className: `font-bold ${theme.textPrimary}` },
                                     { 
                                         header: "Orders", 
-                                        key: "orders", 
+                                        key: "stats.orders", 
                                         headerClassName: "text-center",
-                                        className: "text-center font-bold text-indigo-600" 
+                                        className: "text-center font-bold",
+                                        render: (_, row) => row.stats.orders
                                     },
                                     {
-                                        header: "Total Sales",
-                                        key: "sales",
+                                        header: "Orders Value",
+                                        key: "stats.sales",
                                         headerClassName: "text-right",
-                                        className: `text-right font-black ${theme.textPrimary}`,
-                                        render: (value) => formatCurrency(value)
+                                        className: `text-right font-bold text-indigo-600`,
+                                        render: (_, row) => formatCurrency(row.stats.sales, currency)
+                                    },
+                                    { 
+                                        header: "KOTs", 
+                                        key: "stats.kots", 
+                                        headerClassName: "text-center",
+                                        className: "text-center font-bold",
+                                        render: (_, row) => row.stats.kots
+                                    },
+                                    { 
+                                        header: "Served", 
+                                        key: "stats.served", 
+                                        headerClassName: "text-center",
+                                        className: "text-center font-bold",
+                                        render: (_, row) => row.stats.served
+                                    },
+                                    {
+                                        header: "Cash Coll.",
+                                        key: "stats.cash",
+                                        headerClassName: "text-right",
+                                        className: `text-right font-bold text-emerald-600`,
+                                        render: (_, row) => formatCurrency(row.stats.cash)
+                                    },
+                                    { 
+                                        header: "Purchases", 
+                                        key: "stats.purchases", 
+                                        headerClassName: "text-center",
+                                        className: "text-center font-bold",
+                                        render: (_, row) => row.stats.purchases
                                     }
                                 ]}
-                                data={staffList
-                                    .filter((s) => s.role !== "Admin")
-                                    .map((s) => {
-                                        const staffSales = salesHistory.filter(
-                                            (sale) => isWithinRange(sale.date) && sale.waiterName === s.name
-                                        );
-                                        return {
-                                            id: s.id,
-                                            name: s.name,
-                                            orders: staffSales.length,
-                                            sales: staffSales.reduce((sum, sale) => sum + sale.amount, 0)
-                                        };
-                                    })}
+                                data={performanceReport}
                             />
                         </div>
                     )}
@@ -849,6 +1021,11 @@ const Reports = ({
                             
                             <CommonTable
                                 columns={[
+                                    ...(reportBranchFilter === "all" ? [{
+                                        header: "Branch",
+                                        key: "branchName",
+                                        className: `text-xs font-bold ${theme.textSecondary}`
+                                    }] : []),
                                     {
                                         header: "Date/Type",
                                         key: "date",
@@ -858,6 +1035,7 @@ const Reports = ({
                                                 <span className={`text-[9px] uppercase font-black tracking-widest ${
                                                     row.type === 'Fixed' ? 'text-indigo-500' :
                                                     row.type === 'Purchase' ? 'text-blue-500' :
+                                                    row.type === 'Payroll' ? 'text-rose-500' :
                                                     row.type === 'Stock Add' ? 'text-cyan-500' :
                                                     row.type === 'Stock Reduce' ? 'text-emerald-500' :
                                                     'text-orange-500'
@@ -893,6 +1071,128 @@ const Reports = ({
                                 ]}
                                 data={expensesHistory}
                             />
+                        </div>
+                    )}
+
+                    {/* 11. PARTIES REPORT */}
+                    {reportCategory === "parties" && (
+                        <div className="space-y-6">
+                            {!selectedParty ? (
+                                <>
+                                    <div className={`flex justify-between items-center border-b ${theme.borderLight} pb-4`}>
+                                        <h3 className={`text-xl font-black ${theme.textHeading}`}>Parties Reports</h3>
+                                        <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-2xl">
+                                            <button 
+                                                onClick={() => setPartyTab("customers")}
+                                                className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${partyTab === "customers" ? `${theme.buttonBg} ${theme.buttonText} shadow-lg` : theme.textMuted}`}
+                                            >
+                                                Customers
+                                            </button>
+                                            <button 
+                                                onClick={() => setPartyTab("suppliers")}
+                                                className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${partyTab === "suppliers" ? `${theme.buttonBg} ${theme.buttonText} shadow-lg` : theme.textMuted}`}
+                                            >
+                                                Suppliers
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {partyTab === "customers" ? (
+                                        <CommonTable
+                                            columns={[
+                                                { header: "Customer", key: "name", className: `font-bold ${theme.textPrimary}` },
+                                                { header: "Orders", key: "stats.orders", className: "text-center font-bold", render: (_, r) => r.stats.orders },
+                                                { header: "Revenue", key: "stats.revenue", className: "text-right font-black text-indigo-600", render: (_, r) => formatCurrency(r.stats.revenue) },
+                                                { header: "Profit", key: "stats.profit", className: "text-right font-black text-emerald-600", render: (_, r) => formatCurrency(r.stats.profit) },
+                                                {
+                                                    header: "Action",
+                                                    key: "id",
+                                                    className: "text-right",
+                                                    render: (id, r) => (
+                                                        <button 
+                                                            onClick={() => setSelectedParty({ id: r.id, name: r.name, type: 'customer' })}
+                                                            className={`inline-flex items-center gap-1 text-xs font-black uppercase tracking-tighter text-indigo-600 hover:underline`}
+                                                        >
+                                                            View <ChevronRight size={14} />
+                                                        </button>
+                                                    )
+                                                }
+                                            ]}
+                                            data={customerReport}
+                                        />
+                                    ) : (
+                                        <CommonTable
+                                            columns={[
+                                                { header: "Supplier", key: "name", className: `font-bold ${theme.textPrimary}` },
+                                                { header: "Last Invoice", key: "stats.lastInvoiceNumber", className: "font-mono text-xs font-bold text-center", render: (_, r) => r?.stats?.lastInvoiceNumber || "N/A" },
+                                                { header: "Bills", key: "stats.invoices", className: "text-center font-bold", render: (_, r) => r.stats.invoices },
+                                                { header: "Purchases", key: "stats.totalPurchases", className: "text-right font-black text-blue-600", render: (_, r) => formatCurrency(r.stats.totalPurchases) },
+                                                { header: "Balance", key: "stats.balance", className: "text-right font-black text-red-600", render: (_, r) => formatCurrency(r.stats.balance) },
+                                                {
+                                                    header: "Action",
+                                                    key: "id",
+                                                    className: "text-right",
+                                                    render: (id, r) => (
+                                                        <button 
+                                                            onClick={() => setSelectedParty({ id: r.id, name: r.name, type: 'supplier' })}
+                                                            className={`inline-flex items-center gap-1 text-xs font-black uppercase tracking-tighter text-indigo-600 hover:underline`}
+                                                        >
+                                                            View <ChevronRight size={14} />
+                                                        </button>
+                                                    )
+                                                }
+                                            ]}
+                                            data={supplierReport}
+                                        />
+                                    )}
+                                </>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className={`flex items-center justify-between border-b ${theme.borderLight} pb-4`}>
+                                        <button 
+                                            onClick={() => setSelectedParty(null)}
+                                            className={`text-xs font-black uppercase tracking-widest ${theme.textMuted} hover:${theme.textPrimary} flex items-center gap-1`}
+                                        >
+                                            <ChevronRight size={16} className="rotate-180" /> Summary
+                                        </button>
+                                        <h3 className={`text-xl font-black ${theme.textHeading}`}>{selectedParty.name}</h3>
+                                        <div className={`px-4 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${selectedParty.type === 'customer' ? 'bg-indigo-100 text-indigo-600' : 'bg-blue-100 text-blue-600'}`}>{selectedParty.type}</div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        <div className="lg:col-span-2 space-y-4">
+                                            <h4 className={`text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>Ledger</h4>
+                                            <CommonTable
+                                                columns={[
+                                                    { header: "Date", key: "date", render: (v) => new Date(v).toLocaleDateString() },
+                                                    { header: "Reference", key: "reference", className: "font-mono text-xs" },
+                                                    { header: "Type", key: "type", className: "text-[10px] font-black" },
+                                                    { header: "Total", key: "total", className: "text-right font-bold", render: (v) => formatCurrency(v) },
+                                                    { header: "Paid", key: "paid", className: "text-right font-bold text-green-600", render: (v) => formatCurrency(v) },
+                                                    { header: "Balance", key: "balance", className: "text-right font-black text-red-600", render: (v) => formatCurrency(v) },
+                                                ]}
+                                                data={partyStatement}
+                                            />
+                                        </div>
+                                        <div className="space-y-4">
+                                            <h4 className={`text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>Products</h4>
+                                            <div className={`p-4 rounded-3xl border ${theme.borderLight} divide-y ${theme.borderLight}`}>
+                                                {partyItems.length > 0 ? partyItems.map(item => (
+                                                    <div key={item._id || item.id} className="py-3 first:pt-0 last:pb-0">
+                                                        <div className="flex justify-between items-start">
+                                                            <span className={`text-sm font-bold ${theme.textPrimary}`}>{item.name}</span>
+                                                            <span className={`text-xs font-black text-indigo-600`}>{item.totalQty}</span>
+                                                        </div>
+                                                        <div className={`text-[10px] font-medium ${theme.textMuted} mt-1`}>Val: {formatCurrency(item.totalValue)}</div>
+                                                    </div>
+                                                )) : (
+                                                    <p className={`text-xs font-bold ${theme.textMuted} text-center py-6`}>No data</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

@@ -1,5 +1,10 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap');
+
+* {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
 .App {
-  font-family: sans-serif;
   text-align: center;
 }
 
@@ -24,21 +29,22 @@
 
 /* Custom scrollbar utility class */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 2.5px;
-  height: 2.5px;
+  width: 10px;
+  height: 10px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.5);
+  background: rgba(156, 163, 175, 0.6);
   border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.8);
+  background: rgba(107, 114, 128, 0.9);
 }
 
 /* Global accent color for native controls */
@@ -50,6 +56,15 @@
 .dark {
   --accent-color: #818cf8; /* indigo-400 */
 }
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.7);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 
 /* Customize number input spin buttons (arrows) */
 input[type="number"]::-webkit-inner-spin-button,

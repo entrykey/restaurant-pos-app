@@ -122,6 +122,7 @@ export const ROUTE_ACCESS = Object.freeze({
   OFFERS: { module: MODULES.OFFER_MANAGEMENT, resource: "OFFER", action: "view" },
   ATTENDANCE_POLICIES: { module: MODULES.STAFF, resource: "ATTENDANCE", action: "POLICIES" },
   ATTENDANCE_LOGS: { module: MODULES.STAFF, resource: "ATTENDANCE", action: "LOGS" },
+  PAYROLL_SETTINGS: { module: MODULES.SETTINGS, resource: "PAYROLL", action: "SETTINGS" },
 });
 
 /** Optional: page-level "manage" for sections that have edit/delete (e.g. staff.staff.manage) */

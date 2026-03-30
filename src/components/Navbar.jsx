@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight } from "lucide-react";
 import BusinessTypeModal from "./BusinessTypeModal";
 import { branchService } from "../services/api";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
+import { notificationService } from "../services/notificationService";
 
 const Navbar = ({
     currentUser,
@@ -17,36 +19,44 @@ const Navbar = ({
     enabledModules,
     onBusinessTypeChange,
 }) => {
-    const { activeBranchId, setActiveBranchId } = useApp();
+    const { activeBranchId, setActiveBranchId, branches, currentShopId } = useApp();
     const { theme } = useTheme();
     const [isBusinessTypeModalOpen, setIsBusinessTypeModalOpen] = useState(false);
-    const [userBranches, setUserBranches] = useState([]);
+    const [notifications, setNotifications] = useState([]);
+    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
-    // Initialize Active Branch and Fetch Branches
+    // Initial fetch of notifications
     useEffect(() => {
-        const fetchBranches = async () => {
-            try {
-                const branches = await branchService.getAllowedBranches();
-                setUserBranches(branches || []);
+        if (currentShopId) {
+            refreshNotifications();
+            // Polling for new notifications every 5 minutes (or use websockets later)
+            const interval = setInterval(refreshNotifications, 5 * 60 * 1000);
+            return () => clearInterval(interval);
+        }
+    }, [currentShopId, activeBranchId]);
 
-                // If only one branch, ensure it's selected
-                if (branches.length === 1) {
-                    if (activeBranchId !== branches[0]._id) {
-                        setActiveBranchId(branches[0]._id);
-                    }
-                } else if (branches.length > 1) {
-                    // Check if current activeBranchId is still valid in the new list
-                    const isValid = branches.find(b => b._id === activeBranchId);
-                    if (!activeBranchId || !isValid) {
-                        setActiveBranchId(branches[0]._id);
-                    }
-                }
-            } catch (error) {
-                console.error("Failed to fetch branches for navbar", error);
-            }
-        };
-        fetchBranches();
-    }, [currentUser, activeBranchId, setActiveBranchId]);
+    const refreshNotifications = async () => {
+        const data = await notificationService.fetchNotifications(currentShopId, activeBranchId);
+        setNotifications(data || []);
+    };
+
+    const handleMarkAllRead = async () => {
+        const success = await notificationService.markAllRead(currentShopId, activeBranchId);
+        if (success) {
+            setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        }
+    };
+
+    // Handle Browser Notifications Permission
+    const requestNotificationPermission = async () => {
+        const granted = await notificationService.requestPermission();
+        if (granted) {
+            notificationService.notify("Notifications Enabled!", {
+                body: "FilePe will now show you live order alerts and reminders."
+            });
+        }
+    };
+
     return (
         <div className={`h-16 ${theme.cardBg} border-b ${theme.borderLight} px-4 md:px-8 flex items-center justify-between shrink-0 w-full`}>
             <div className="flex items-center gap-4 md:gap-6">
@@ -65,22 +75,40 @@ const Navbar = ({
                         {currentUser?.role}: {currentUser?.phone}
                     </span>
                 </div>
-
-                {/* Branch Selector (Only if multiple branches or is owner, and NOT superadmin/system role) */}
-                {userBranches.length > 0 && !currentUser?.isSuperAdmin && !currentUser?.roles?.some(r => r.isSystemRole) && (
-                    <div className={`flex items-center gap-2 ${theme.inputBg} px-3 py-1.5 rounded-xl border ${theme.inputBorder}`}>
-                        <MapPin size={16} className={theme.textSecondary} />
-                        <select
-                            value={activeBranchId || ""}
-                            onChange={(e) => setActiveBranchId(e.target.value)}
-                            className={`bg-transparent text-xs font-bold ${theme.textPrimary} outline-none cursor-pointer`}
-                        >
-                            {userBranches.map(branch => (
-                                <option key={branch._id} value={branch._id}>
-                                    {branch.name}
-                                </option>
-                            ))}
-                        </select>
+                {/* Branch Selector - Hidden for SuperAdmin, Owner, System Roles, and Single Branch Users */}
+                {branches.length > 1 && !currentUser?.isSuperAdmin && !currentUser?.isOwner && !currentUser?.roles?.some(r => r.isSystemRole) && (
+                    <div className="relative group">
+                        <div className={`flex items-center gap-2 ${theme.inputBg} px-3 py-2 rounded-xl border ${theme.inputBorder} cursor-pointer hover:opacity-80 transition-all`}>
+                            <MapPin size={16} className={theme.primaryIconText} />
+                            <span className={`text-xs font-bold ${theme.textPrimary}`}>
+                                {branches.find(b => String(b._id || b.id) === String(activeBranchId))?.name || "Select Branch"}
+                            </span>
+                            <ChevronRight size={14} className={`${theme.textMuted} group-hover:rotate-90 transition-transform`} />
+                        </div>
+                        
+                        {/* Dropdown Menu */}
+                        <div className={`absolute top-full left-0 mt-2 w-56 ${theme.surfaceBg} rounded-2xl shadow-2xl border ${theme.borderLight} py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[110] translate-y-2 group-hover:translate-y-0`}>
+                            <div className={`px-4 py-2 border-b ${theme.borderLight} mb-1`}>
+                                <h5 className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Switch Branch</h5>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto no-scrollbar">
+                                {branches.map(branch => (
+                                    <button
+                                        key={branch._id || branch.id}
+                                        onClick={() => setActiveBranchId(branch._id || branch.id)}
+                                        className={`w-full text-left px-4 py-2.5 text-xs font-bold transition-colors flex items-center justify-between
+                                            ${String(activeBranchId) === String(branch._id || branch.id) 
+                                                ? `${theme.primaryIconBg} ${theme.primaryIconText}` 
+                                                : `${theme.textPrimary} ${theme.tableRowHover}`}`}
+                                    >
+                                        {branch.name}
+                                        {String(activeBranchId) === String(branch._id || branch.id) && (
+                                            <span className={`w-1.5 h-1.5 ${theme.mode === 'light' ? 'bg-indigo-600' : 'bg-current'} rounded-full`}></span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -124,6 +152,89 @@ const Navbar = ({
                         </div>
                     </>
                 )}
+
+                {/* Notification Bell */}
+                <div className="relative group p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-all cursor-pointer">
+                    <Bell size={20} className={theme.textSecondary} onClick={() => {
+                        requestNotificationPermission();
+                        setIsNotificationsOpen(!isNotificationsOpen);
+                    }} />
+                    {(notifications.filter(n => !n.isRead).length > 0 || (currentUser?.subscription && !currentUser?.subscription?.active)) && (
+                         <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-900 group-hover:scale-110 transition-transform"></span>
+                    )}
+                    
+                    {/* Dropdown */}
+                    <div className={`absolute top-full right-0 mt-2 w-80 ${theme.surfaceBg} rounded-2xl shadow-2xl border ${theme.borderLight} p-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] scale-95 group-hover:scale-100`}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h4 className={`text-sm font-black ${theme.textHeading} uppercase tracking-tight`}>Notifications</h4>
+                            {notifications.some(n => !n.isRead) ? (
+                                <button onClick={handleMarkAllRead} className={`text-[10px] font-black uppercase tracking-widest ${theme.linkText} hover:${theme.linkHover}`}>Mark All Read</button>
+                            ) : (
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${theme.primaryIconBg} ${theme.primaryIconText}`}>Clear</span>
+                            )}
+                        </div>
+                        <div className="space-y-3 max-h-96 overflow-y-auto no-scrollbar">
+                            {/* Standard Welcome Notification */}
+                            {notifications.length === 0 && (
+                                <div className={`group/item flex gap-3 items-start p-3 rounded-2xl ${theme.infoBg} border ${theme.infoBorder} hover:scale-[1.02] transition-all cursor-default`}>
+                                    <div className={`p-1.5 rounded-lg ${theme.infoBg} text-blue-500`}>
+                                        <Info size={14} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className={`text-[11px] font-bold ${theme.textPrimary} leading-relaxed`}>
+                                            Welcome to FilePe! Enable browser notifications for live alerts.
+                                        </p>
+                                        <span className={`text-[9px] font-medium ${theme.textMuted} mt-1 block`}>System</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Server fetched notifications */}
+                            {notifications.map((n, idx) => (
+                                <Link 
+                                    to={n.actionUrl || "#"} 
+                                    key={n._id || idx} 
+                                    onClick={() => !n.isRead && notificationService.markAsRead(n._id)}
+                                    className={`group/item flex gap-3 items-start p-3 rounded-2xl ${n.isRead ? theme.cardBg : theme.infoBg} border ${n.isRead ? theme.borderLight : theme.infoBorder} hover:scale-[1.02] transition-all cursor-pointer block no-underline`}
+                                >
+                                    <div className={`p-1.5 rounded-lg ${n.type === 'LOW_STOCK' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                        {n.type === 'LOW_STOCK' ? <AlertTriangle size={14} /> : <Info size={14} />}
+                                    </div>
+                                    <div className="flex-1 text-left">
+                                        <h5 className={`text-[11px] font-black ${theme.textHeading} mb-0.5`}>{n.title}</h5>
+                                        <p className={`text-[10px] font-bold ${theme.textSecondary} leading-relaxed`}>{n.message}</p>
+                                        <span className={`text-[9px] font-medium ${theme.textMuted} mt-1 block flex items-center gap-2`}>
+                                           {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                           {!n.isRead && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>}
+                                        </span>
+                                    </div>
+                                </Link>
+                            ))}
+
+                            {/* Subscription Warning */}
+                            {currentUser?.subscription && !currentUser?.subscription?.active && (
+                                <div className="flex gap-3 items-start p-3 rounded-2xl bg-red-500/10 border border-red-500/20 hover:scale-[1.02] transition-all">
+                                    <div className="p-1.5 rounded-lg bg-red-500/20 text-red-500">
+                                        <AlertTriangle size={14} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className={`text-[11px] font-bold ${theme.textPrimary} leading-relaxed`}>
+                                            {currentUser?.isOwner ? "Action Required: Your shop plan is inactive. Please subscribe." : "Shop plan inactive. Some features may be restricted."}
+                                        </p>
+                                        <span className="text-[9px] font-medium text-red-400 mt-1 block font-black uppercase tracking-tighter">Urgent</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className={`mt-4 pt-3 border-t ${theme.borderLight} flex justify-center`}>
+                            <button className={`w-full py-2 text-[10px] font-black uppercase tracking-widest ${theme.textMuted} hover:${theme.textPrimary} transition-colors`}>
+                                View Activity History
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div className={`${theme.textHeading} font-black tracking-tighter text-lg md:text-xl`}>
                     {shopName}
                 </div>

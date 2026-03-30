@@ -24,7 +24,12 @@ import {
     Grid3X3,
     LayoutDashboard,
     Users,
-    Boxes
+    UserCheck,
+    UserPlus,
+    Boxes,
+    Zap,
+    ClipboardList,
+    Wallet
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
@@ -88,10 +93,24 @@ const Sidebar = ({
             if (!result.includes('PARTIES')) result.push('PARTIES');
         }
 
-        // Always ensure DASHBOARD is first if user has permission
-        if (allowedByPermission.includes('DASHBOARD') && !result.includes('DASHBOARD')) {
-            result = ['DASHBOARD', ...result];
-        }
+        // Always ensure employee modules (DASHBOARD, MYATTENDANCE, MYLEAVES, MYSALARY) are included if user has permission
+        ['DASHBOARD', 'MYATTENDANCE', 'MYLEAVES', 'MYSALARY'].forEach(mod => {
+            if (allowedByPermission.includes(mod) && !result.includes(mod)) {
+                // Keep Dashboard first, others follow
+                if (mod === 'DASHBOARD') {
+                    result = ['DASHBOARD', ...result];
+                } else {
+                    // Find correct insertion point: after Dashboard/existing employee modules
+                    result.splice(result.includes('DASHBOARD') ? 1 : 0, 0, mod);
+                }
+            }
+        });
+
+        // Ensure proper order for employee modules if they came in different order
+        const order = ['DASHBOARD', 'MYATTENDANCE', 'MYLEAVES', 'MYSALARY'];
+        const others = result.filter(m => !order.includes(m));
+        const foundOrder = order.filter(m => result.includes(m));
+        result = [...foundOrder, ...others];
 
         return result;
     }, [businessType, businessSubtype, enabledModules, can, canModule]);
@@ -163,10 +182,20 @@ const Sidebar = ({
             onClick: () => { setView("staff"); navigate("/staff"); closeMobile(); },
             isActive: view === "staff"
         },
-        STAFF_DASHBOARD: {
-            icon: Users, label: "Staff Dashboard",
-            onClick: () => { setView("staff-dashboard"); navigate("/staff-dashboard"); closeMobile(); },
-            isActive: view === "staff-dashboard"
+        MYATTENDANCE: {
+            icon: CalendarCheck, label: "My Attendance",
+            onClick: () => { setView("my-attendance"); navigate("/my-attendance"); closeMobile(); },
+            isActive: view === "my-attendance"
+        },
+        MYLEAVES: {
+            icon: ClipboardList, label: "My Leaves",
+            onClick: () => { setView("my-leaves"); navigate("/my-leaves"); closeMobile(); },
+            isActive: view === "my-leaves"
+        },
+        MYSALARY: {
+            icon: Wallet, label: "My Salary",
+            onClick: () => { setView("my-salary"); navigate("/my-salary"); closeMobile(); },
+            isActive: view === "my-salary"
         },
         ORGANIZATION: {
             icon: Building2, label: "Organization",
@@ -204,9 +233,14 @@ const Sidebar = ({
             isActive: view === "shop-management"
         },
         PLAN_MANAGEMENT: {
-            icon: Briefcase, label: "Plan Management",
+            icon: Zap, label: "Plan Management",
             onClick: () => { setView("plan-management"); navigate("/plan-management"); closeMobile(); },
             isActive: view === "plan-management"
+        },
+        CLIENT_MANAGEMENT: {
+            icon: UserPlus, label: "Client Management",
+            onClick: () => { setView("client-management"); navigate("/client-management"); closeMobile(); },
+            isActive: view === "client-management"
         },
         SUBSCRIPTION_MANAGEMENT: {
             icon: CreditCard, label: "Subscriptions",
@@ -287,7 +321,7 @@ const Sidebar = ({
                 {/* Mobile header (close + logo) */}
                 <div className="md:hidden w-full px-4 flex items-center justify-between mb-6">
                     <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-2xl ${theme.sidebarLogoBg} ${theme.sidebarLogoText}`}>
-                        D
+                        F
                     </div>
                     <button
                         type="button"
@@ -300,12 +334,15 @@ const Sidebar = ({
                 </div>
 
                 {/* Desktop logo */}
-                <div className={`hidden md:flex items-center ${isExpanded ? 'justify-start px-8 gap-4' : 'justify-center'} w-full mb-8`}>
-                    <div className={`shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-2xl ${theme.sidebarLogoBg} ${theme.sidebarLogoText}`}>
-                        D
+                <div 
+                    onClick={() => { setView("dashboard"); navigate("/dashboard"); closeMobile(); }}
+                    className={`hidden md:flex items-center cursor-pointer hover:opacity-80 transition-all active:scale-95 ${isExpanded ? 'justify-start px-8 gap-4' : 'justify-center'} w-full mb-8`}
+                >
+                    <div className={`shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-2xl ${theme.sidebarLogoBg} ${theme.sidebarLogoText} shadow-lg shadow-indigo-600/10`}>
+                        F
                     </div>
                     <span className={`font-black tracking-tight text-xl overflow-hidden transition-all duration-300 whitespace-nowrap ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-0 opacity-0'}`}>
-                        Dine POS
+                        FilePe
                     </span>
                 </div>
 
@@ -313,6 +350,42 @@ const Sidebar = ({
                 <div className="flex-1 w-full overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col items-center">
                     {moduleList.map(moduleKey => renderNavButton(MODULE_CONFIG[moduleKey], moduleKey))}
                 </div>
+
+                {/* Subscription Status Block */}
+                {!user?.isSuperAdmin && user?.shop_id && (
+                    <div className={`mt-4 w-full px-4 mb-4 transition-all duration-300 ${isExpanded ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden'}`}>
+
+                        <div className={`p-4 rounded-3xl border ${user?.subscription?.active ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                                <CreditCard size={14} className={user?.subscription?.active ? 'text-emerald-500' : 'text-red-500'} />
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${user?.subscription?.active ? 'text-emerald-600' : 'text-red-600'}`}>
+                                    {user?.subscription?.active ? `${user?.subscription?.plan} PLAN` : 'NO ACTIVE PLAN'}
+                                </span>
+                            </div>
+                            
+                            {/* Subscription Actions */}
+                            {!user?.subscription?.active ? (
+                                user?.isOwner ? (
+                                    <button 
+                                        onClick={() => navigate('/organization')} 
+                                        className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-[10px] font-black transition-all shadow-lg shadow-red-500/20"
+                                    >
+                                        SUBSCRIBE NOW
+                                    </button>
+                                ) : (
+                                    <div className="text-[9px] font-bold text-red-500/70 leading-tight">
+                                        Please contact owner to renew the plan.
+                                    </div>
+                                )
+                            ) : (
+                                <div className="text-[9px] font-bold text-emerald-600/70">
+                                    Ends: {new Date(user?.subscription?.endDate).toLocaleDateString()}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
 
                 {/* Footer (Logout) */}
                 <div className={`mt-auto w-full flex flex-col pt-4 ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:items-center'}`}>

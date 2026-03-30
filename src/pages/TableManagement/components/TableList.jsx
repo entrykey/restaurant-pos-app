@@ -115,9 +115,14 @@ const TableList = ({ triggerCreate, onResetCreate }) => {
             key: 'diningCategoryId',
             render: (val, row) => {
                 const category = val?.name ? val : categories.find(c => c._id === (val?._id || val));
+                const isAC = (category?.environment || row.diningCategoryId?.environment) === 'AC';
                 return (
-                    <span className="px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 rounded-md">
-                        {category?.name || 'Unknown'} ({(category?.environment || row.diningCategoryId?.environment) === 'AC' ? 'AC' : 'Non-AC'})
+                    <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl shadow-sm border ${
+                        isAC 
+                        ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' 
+                        : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700'
+                    }`}>
+                        {category?.name || 'Unknown'} <span className="opacity-50 mx-1">·</span> {isAC ? 'AC' : 'Non-AC'}
                     </span>
                 );
             }

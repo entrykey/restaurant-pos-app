@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Plus, X, ChevronDown, ChevronUp } from "lucide-react";
+import { ShieldCheck, Loader2, Plus, X, ChevronDown, ChevronUp, Clock, AlertCircle, Calendar, RefreshCw, Wallet } from "lucide-react";
+import toast from "react-hot-toast";
 import CommonTable from "../../components/CommonTable";
 import { PERMISSIONS } from "./StaffService";
+import PayrollManagement from "./PayrollManagement";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
+import CommonSelect from "../../components/ui/CommonSelect";
 import { useAuth } from "../../context/AuthContext";
 import { roleService, shopService, branchService, subscriptionService, employeeService, attendanceService } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import SubscriptionNoticeModal from "../../components/modals/SubscriptionNoticeModal";
+import AttendanceCorrectionModal from "../../components/modals/AttendanceCorrectionModal";
+import LeaveReviewModal from "../../components/modals/LeaveReviewModal";
+import { leaveService } from "../../services/api";
+import { useApp } from "../../context/AppContext";
 
 const Staff = ({
     staffList, // Legacy prop, can be ignored or removed later
@@ -15,6 +23,7 @@ const Staff = ({
     hasPermissionFor,
 }) => {
     const { theme } = useTheme();
+    const { activeBranchId } = useApp();
     const [activeStaffTab, setActiveStaffTab] = useState("staff");
 
     // Employee State
@@ -39,6 +48,12 @@ const Staff = ({
     const [attendanceEmployeeId, setAttendanceEmployeeId] = useState("");
     const [attendanceStartDate, setAttendanceStartDate] = useState("");
     const [attendanceEndDate, setAttendanceEndDate] = useState("");
+
+    const [allLeaves, setAllLeaves] = useState([]);
+    const [isLeavesLoading, setIsLeavesLoading] = useState(false);
+    const [selectedLeave, setSelectedLeave] = useState(null);
+    const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+    const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
 
     const [isCreatePolicyOpen, setIsCreatePolicyOpen] = useState(false);
     const [policyForm, setPolicyForm] = useState({
@@ -70,22 +85,32 @@ const Staff = ({
         priority: 0
     });
 
+    const [availablePolicies, setAvailablePolicies] = useState([]);
+
     // Create Role Dialog State
     const [isCreateRoleOpen, setIsCreateRoleOpen] = useState(false);
     const [newRoleName, setNewRoleName] = useState("");
-    const [isBranchUser, setIsBranchUser] = useState(false); // For Role Creation
+    const [newRoleCode, setNewRoleCode] = useState("");
+    const [newRoleScope, setNewRoleScope] = useState("SHOP");
+    const [newRoleDescription, setNewRoleDescription] = useState("");
     const [branches, setBranches] = useState([]);
-    const [selectedBranches, setSelectedBranches] = useState([]); // For Role Creation
     const [availablePermissions, setAvailablePermissions] = useState([]);
     const [selectedPermissions, setSelectedPermissions] = useState({});
     const [expandedModules, setExpandedModules] = useState({});
     const [isLoadingData, setIsLoadingData] = useState(false);
 
-    // Safely check if the user has STAFF.VIEW.ALL
-    // Depending on how permissions are structured in the user object (array vs object)
-    const hasViewAllStaff = user?.isSuperAdmin || (Array.isArray(user?.permissions)
+    // Safely check if the user has STAFF.VIEW.ALL or is an owner/superadmin
+    const hasViewAllStaff = user?.isSuperAdmin || user?.isOwner || (Array.isArray(user?.permissions)
         ? user.permissions.includes("STAFF.VIEW.ALL")
         : Object.values(user?.permissions || {}).flat().includes("STAFF.VIEW.ALL"));
+
+    const canManageLeaves = user?.isSuperAdmin || user?.isOwner || (Array.isArray(user?.permissions)
+        ? user.permissions.includes("MANAGE.EMPLOYEELEAVES")
+        : Object.values(user?.permissions || {}).flat().includes("MANAGE.EMPLOYEELEAVES"));
+
+    const canManageSalary = user?.isSuperAdmin || user?.isOwner || (Array.isArray(user?.permissions)
+        ? user.permissions.includes("MANAGE.EMPLOYEESALARY")
+        : Object.values(user?.permissions || {}).flat().includes("MANAGE.EMPLOYEESALARY"));
 
     const [ownerShops, setOwnerShops] = useState([]);
     const [formShopId, setFormShopId] = useState(null);
@@ -93,6 +118,7 @@ const Staff = ({
 
     useEffect(() => {
         if (hasViewAllStaff && user) {
+
             const fetchShops = async () => {
                 try {
                     const shops = await shopService.getShopsByOwner(user.id || user._id);
@@ -109,8 +135,9 @@ const Staff = ({
     const [isEditRoleOpen, setIsEditRoleOpen] = useState(false);
     const [editingRole, setEditingRole] = useState(null);
     const [editRoleName, setEditRoleName] = useState("");
-    const [editIsBranchUser, setEditIsBranchUser] = useState(false);
-    const [editSelectedBranches, setEditSelectedBranches] = useState([]);
+    const [editRoleCode, setEditRoleCode] = useState("");
+    const [editRoleScope, setEditRoleScope] = useState("SHOP");
+    const [editRoleDescription, setEditRoleDescription] = useState("");
     const [editSelectedPermissions, setEditSelectedPermissions] = useState({});
     const [editExpandedModules, setEditExpandedModules] = useState({});
 
@@ -123,10 +150,13 @@ const Staff = ({
         password: "",
         roleId: "",
         designation: "",
+        reportingTo: "",
+        attendancePolicyId: "",
+        salary: { amount: "", period: "monthly" },
         address: { line1: "", city: "", state: "", pincode: "" }
     });
-    const [userSelectedBranches, setUserSelectedBranches] = useState([]); // For Employee Creation (if role is branch user)
-    const [selectedRoleIsBranchUser, setSelectedRoleIsBranchUser] = useState(false);
+    const [userSelectedBranchIds, setUserSelectedBranchIds] = useState([]);
+    const [userAllBranches, setUserAllBranches] = useState(true);
 
     // Edit Employee Dialog State
     const [isEditEmployeeOpen, setIsEditEmployeeOpen] = useState(false);
@@ -137,11 +167,33 @@ const Staff = ({
         phone: "",
         roleId: "",
         designation: "",
+        reportingTo: "",
+        attendancePolicyId: "",
         address: { line1: "", city: "", state: "", pincode: "" },
+        salary: { amount: "", period: "monthly" },
         status: "ACTIVE"
     });
-    const [editUserSelectedBranches, setEditUserSelectedBranches] = useState([]);
-    const [editRoleIsBranchUser, setEditRoleIsBranchUser] = useState(false);
+    const [editUserSelectedBranchIds, setEditUserSelectedBranchIds] = useState([]);
+    const [editUserAllBranches, setEditUserAllBranches] = useState(false);
+    const [isSubscriptionNoticeOpen, setIsSubscriptionNoticeOpen] = useState(false);
+    const [potentialManagers, setPotentialManagers] = useState([]);
+    const [isManagersLoading, setIsManagersLoading] = useState(false);
+
+    const checkSubscriptionAndOpen = (openModalFn) => {
+        // Only block staff members. Let owners pass as they might need to manage other subscribed shops
+        // or take action to restore their subscription.
+        const isOwnerByRole = user?.roles?.some(r => {
+            const roleName = (r?.name || "").toLowerCase();
+            return roleName === 'owner' || roleName === 'admin';
+        });
+        const isOwner = user?.isOwner || isOwnerByRole || user?.isSuperAdmin;
+
+        if (!user?.isSuperAdmin && !isOwner && !user?.subscription?.active) {
+            setIsSubscriptionNoticeOpen(true);
+            return;
+        }
+        openModalFn();
+    };
 
     useEffect(() => {
         const fetchShopId = async () => {
@@ -220,8 +272,8 @@ const Staff = ({
         if ((isCreateRoleOpen || isEditRoleOpen || isCreateEmployeeOpen || isCreatePolicyOpen || isAssignPolicyOpen || activeStaffTab === "attendance_logs" || activeStaffTab === "attendance_policies") && targetShop) {
             const fetchBranches = async () => {
                 try {
-                    const data = await branchService.getBranchesByShopId(targetShop);
-                    setBranches(data);
+                    const data = await branchService.getAllowedBranches();
+                    setBranches(data || []);
                 } catch (error) {
                     console.error("Error fetching branches:", error);
                 }
@@ -229,6 +281,44 @@ const Staff = ({
             fetchBranches();
         }
     }, [isCreateRoleOpen, isEditRoleOpen, isCreateEmployeeOpen, isCreatePolicyOpen, isAssignPolicyOpen, activeStaffTab, formShopId, shopId]);
+
+    // Fetch Potential Managers for Reporting To
+    useEffect(() => {
+        const targetShop = formShopId || shopId;
+        if ((isCreateEmployeeOpen || isEditEmployeeOpen) && targetShop) {
+            const fetchManagers = async () => {
+                setIsManagersLoading(true);
+                try {
+                    const data = await employeeService.getPotentialManagers(targetShop);
+                    setPotentialManagers(data);
+                } catch (error) {
+                    console.error("Error fetching potential managers:", error);
+                } finally {
+                    setIsManagersLoading(false);
+                }
+            };
+            fetchManagers();
+        }
+    }, [isCreateEmployeeOpen, isEditEmployeeOpen, formShopId, shopId]);
+
+    // Fetch Attendance Policies for Employee Dialogs
+    useEffect(() => {
+        const targetShop = formShopId || shopId;
+        if ((isCreateEmployeeOpen || isEditEmployeeOpen) && targetShop) {
+            const fetchPolicies = async () => {
+                try {
+                    const data = await attendanceService.getPolicies({ shopId: targetShop });
+                    setAvailablePolicies(data || []);
+                } catch (error) {
+                    console.error("Error fetching available policies:", error);
+                }
+            };
+            fetchPolicies();
+        }
+    }, [isCreateEmployeeOpen, isEditEmployeeOpen, formShopId, shopId]);
+
+
+    const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
     const refreshAttendanceData = async () => {
         if (!shopId) return;
@@ -263,11 +353,71 @@ const Staff = ({
                 endDate: attendanceEndDate || undefined
             });
             setAttendanceLogs(logs || []);
+            const pending = (logs || []).filter(l => l.correctionRequest?.status === 'PENDING').length;
+            setPendingRequestsCount(pending);
         } catch (err) {
             console.error("Failed to fetch attendance logs:", err);
             setAttendanceError(err?.message || "Failed to load attendance logs");
         } finally {
             setIsAttendanceLoading(false);
+        }
+    };
+
+    const fetchAllLeaves = async () => {
+        if (!shopId) return;
+        setIsLeavesLoading(true);
+        try {
+            const data = await leaveService.getAllLeaves();
+            setAllLeaves(data || []);
+            setPendingLeavesCount((data || []).filter(l => l.status === 'PENDING').length);
+        } catch (err) {
+            console.error("Failed to fetch all leaves:", err);
+            toast.error("Failed to load leaves");
+        } finally {
+            setIsLeavesLoading(false);
+        }
+    };
+
+    const handleApproveLeave = async (id, response) => {
+        try {
+            await leaveService.reviewLeave(id, { status: 'APPROVED', managerResponse: response });
+            toast.success("Leave approved");
+            fetchAllLeaves();
+        } catch (err) {
+            toast.error(err?.message || "Failed to approve leave");
+            throw err;
+        }
+    };
+
+    const handleRejectLeave = async (id, response) => {
+        try {
+            await leaveService.reviewLeave(id, { status: 'REJECTED', managerResponse: response });
+            toast.success("Leave rejected");
+            fetchAllLeaves();
+        } catch (err) {
+            toast.error(err?.message || "Failed to reject leave");
+            throw err;
+        }
+    };
+
+    useEffect(() => {
+        if (activeStaffTab === "employee_leaves") {
+            fetchAllLeaves();
+        }
+    }, [activeStaffTab, shopId]);
+
+
+    const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
+    const [selectedLogForCorrection, setSelectedLogForCorrection] = useState(null);
+
+    const handleCorrectionAction = async (logId, status, rejectionReason = "") => {
+        try {
+            await attendanceService.approveCorrection(logId, { status, rejectionReason });
+            await refreshAttendanceLogs();
+            toast.success(`Correction ${status.toLowerCase()} successful`);
+        } catch (err) {
+            console.error("Failed to process correction:", err);
+            toast.error(err?.message || "Failed to process correction");
         }
     };
 
@@ -319,12 +469,6 @@ const Staff = ({
 
 
     // --- Role Creation Handlers ---
-    const handleBranchSelection = (branchId) => {
-        setSelectedBranches(prev =>
-            prev.includes(branchId) ? prev.filter(id => id !== branchId) : [...prev, branchId]
-        );
-    };
-
     const toggleModuleExpand = (moduleId) => {
         setExpandedModules(prev => ({ ...prev, [moduleId]: !prev[moduleId] }));
     };
@@ -346,29 +490,29 @@ const Staff = ({
 
     const handleCreateRole = async () => {
         if (!newRoleName.trim()) { alert("Please enter a role name"); return; }
-        if (isBranchUser && selectedBranches.length === 0) { alert("Please select at least one branch for a branch user"); return; }
+        if (!newRoleCode.trim()) { alert("Please enter a unique role code"); return; }
 
-        // Filter selected permissions against available permissions to ensure only allowed ones are sent
+        // Filter selected permissions against available permissions
         const allowedModuleIds = new Set(availablePermissions.map(am => String(am.moduleId)));
 
         const permissionsPayload = Object.entries(selectedPermissions)
             .filter(([module, perms]) => allowedModuleIds.has(String(module)) && perms.length > 0)
             .map(([module, perms]) => {
-                // Also filter permissions within the module
                 const allowedPermIds = new Set(availablePermissions.find(am => String(am.moduleId) === String(module))?.permissions.map(p => String(p.permissionId)) || []);
                 return {
-                    module,
-                    permissions: perms.filter(p => allowedPermIds.has(String(p)))
+                    moduleId: module,
+                    actions: perms.filter(p => allowedPermIds.has(String(p)))
                 };
             })
-            .filter(entry => entry.permissions.length > 0);
+            .filter(entry => entry.actions.length > 0);
 
         const targetShop = formShopId || shopId;
         const payload = {
             name: newRoleName,
+            code: newRoleCode.toUpperCase(),
             shopId: targetShop,
-            isBranchUser,
-            allowedBranches: isBranchUser ? selectedBranches : [],
+            scope: newRoleScope,
+            description: newRoleDescription,
             permissions: permissionsPayload,
             isSystemRole: false
         };
@@ -376,7 +520,7 @@ const Staff = ({
         try {
             await roleService.createRole(payload);
             setIsCreateRoleOpen(false);
-            setNewRoleName(""); setIsBranchUser(false); setSelectedBranches([]); setSelectedPermissions({});
+            setNewRoleName(""); setNewRoleCode(""); setNewRoleScope("SHOP"); setNewRoleDescription(""); setSelectedPermissions({});
             const userId = user?.id || user?._id;
             const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
             setRoles(fetchedRoles);
@@ -392,20 +536,21 @@ const Staff = ({
         if (!role) return;
         setEditingRole(role);
         setEditRoleName(role.name || "");
-        setEditIsBranchUser(Boolean(role.isBranchUser));
-        setEditSelectedBranches(Array.isArray(role.allowedBranches) ? role.allowedBranches.map(b => b?._id || b) : []);
+        setEditRoleCode(role.code || "");
+        setEditRoleScope(role.scope || "SHOP");
+        setEditRoleDescription(role.description || "");
 
-        // role.permissions is array of { module, permissions: [...] }
+        // role.permissions is array of { moduleId, actions: [...] }
         const permsMap = (role.permissions || []).reduce((acc, entry) => {
-            const moduleId = entry?.module?._id || entry?.module;
+            const moduleId = entry?.moduleId?._id || entry?.moduleId;
             if (!moduleId) return acc;
-            const permIds = (entry.permissions || []).map(p => p?._id || p).filter(Boolean);
-            acc[String(moduleId)] = permIds.map(String);
+            const actionIds = (entry.actions || []).map(p => p?._id || p).filter(Boolean);
+            acc[String(moduleId)] = actionIds.map(String);
             return acc;
         }, {});
         setEditSelectedPermissions(permsMap);
         setEditExpandedModules({});
-        setAvailablePermissions([]); // Clear before fetching new ones
+        setAvailablePermissions([]);
         setFormShopId(role.shopId?._id || role.shopId || shopId);
         setIsEditRoleOpen(true);
     };
@@ -429,37 +574,31 @@ const Staff = ({
         setEditSelectedPermissions(prev => ({ ...prev, [moduleId]: isChecked ? allPermissionIds : [] }));
     };
 
-    const handleEditBranchSelection = (branchId) => {
-        setEditSelectedBranches(prev =>
-            prev.includes(branchId) ? prev.filter(id => id !== branchId) : [...prev, branchId]
-        );
-    };
-
     const handleUpdateRole = async () => {
         if (!editingRole) return;
         if (!editRoleName.trim()) { alert("Please enter a role name"); return; }
-        if (editIsBranchUser && editSelectedBranches.length === 0) { alert("Please select at least one branch for a branch user"); return; }
+        if (!editRoleCode.trim()) { alert("Please enter a role code"); return; }
 
-        // Filter selected permissions against available permissions to ensure only allowed ones are sent
+        // Filter selected permissions against available permissions
         const allowedModuleIds = new Set(availablePermissions.map(am => String(am.moduleId)));
 
         const permissionsPayload = Object.entries(editSelectedPermissions)
             .filter(([module, perms]) => allowedModuleIds.has(String(module)) && Array.isArray(perms) && perms.length > 0)
             .map(([module, perms]) => {
-                // Also filter permissions within the module
                 const allowedPermIds = new Set(availablePermissions.find(am => String(am.moduleId) === String(module))?.permissions.map(p => String(p.permissionId)) || []);
                 return {
-                    module,
-                    permissions: perms.filter(p => allowedPermIds.has(String(p)))
+                    moduleId: module,
+                    actions: perms.filter(p => allowedPermIds.has(String(p)))
                 };
             })
-            .filter(entry => entry.permissions.length > 0);
+            .filter(entry => entry.actions.length > 0);
 
         const payload = {
             name: editRoleName,
+            code: editRoleCode.toUpperCase(),
             shopId: editingRole.shopId?._id || editingRole.shopId,
-            isBranchUser: editIsBranchUser,
-            allowedBranches: editIsBranchUser ? editSelectedBranches : [],
+            scope: editRoleScope,
+            description: editRoleDescription,
             permissions: permissionsPayload,
         };
 
@@ -484,33 +623,10 @@ const Staff = ({
     // --- Employee Creation Handlers ---
     const handleEmpDataChange = (field, value) => {
         setNewEmpData(prev => ({ ...prev, [field]: value }));
-
-        if (field === 'roleId') {
-            const role = roles.find(r => r._id === value || r.id === value);
-            const isBranchRole = !!role?.isBranchUser;
-            setSelectedRoleIsBranchUser(isBranchRole);
-
-            if (!isBranchRole) {
-                setUserSelectedBranches([]);
-                return;
-            }
-
-            // If role is branch user, preselect branches based on role.allowedBranches:
-            const roleAllowed = (role?.allowedBranches || []).map(b => b?._id || b);
-            if (roleAllowed.length === 1) {
-                setUserSelectedBranches([roleAllowed[0]]);
-            } else if (roleAllowed.length > 1) {
-                // default: no branches pre-selected; user must pick subset
-                setUserSelectedBranches([]);
-            } else {
-                // role has no restriction; user must choose from all shop branches
-                setUserSelectedBranches([]);
-            }
-        }
     };
 
     const handleUserBranchSelection = (branchId) => {
-        setUserSelectedBranches(prev =>
+        setUserSelectedBranchIds(prev =>
             prev.includes(branchId) ? prev.filter(id => id !== branchId) : [...prev, branchId]
         );
     };
@@ -520,8 +636,8 @@ const Staff = ({
             alert("Please fill in all required fields (Name, Email, Phone, Role)");
             return;
         }
-        if (selectedRoleIsBranchUser && userSelectedBranches.length === 0) {
-            alert("This role requires selecting at least one branch.");
+        if (!userAllBranches && userSelectedBranchIds.length === 0) {
+            alert("Please select at least one branch or enable 'Full Shop Access'.");
             return;
         }
 
@@ -529,14 +645,32 @@ const Staff = ({
         const payload = {
             ...newEmpData,
             shopId: targetShop,
-            allowedBranches: selectedRoleIsBranchUser ? userSelectedBranches : []
+            branchIds: userSelectedBranchIds,
+            allBranches: userAllBranches
         };
 
         try {
-            await employeeService.create(payload);
+            const res = await employeeService.create(payload);
+            const createdEmployee = res.data?.employee || res.employee || res;
+            const newEmployeeId = createdEmployee._id || createdEmployee.id;
+
+            // Handle Attendance Policy Assignment
+            if (newEmpData.attendancePolicyId && newEmployeeId) {
+                try {
+                    await attendanceService.createAssignment({
+                        employeeId: newEmployeeId,
+                        policyId: newEmpData.attendancePolicyId,
+                        effectiveFrom: new Date().toISOString().split("T")[0],
+                        priority: 0
+                    });
+                } catch (assignError) {
+                    console.error("Failed to assign policy to new employee:", assignError);
+                }
+            }
+
             setIsCreateEmployeeOpen(false);
-            setNewEmpData({ name: "", email: "", phone: "", password: "", roleId: "", designation: "", address: { line1: "", city: "", state: "", pincode: "" } });
-            setUserSelectedBranches([]);
+            setNewEmpData({ name: "", email: "", phone: "", password: "", roleId: "", designation: "", reportingTo: "", attendancePolicyId: "", address: { line1: "", city: "", state: "", pincode: "" } });
+            setUserSelectedBranchIds([]);
             // Refresh employees
             const userId = user?.id || user?._id;
             const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId);
@@ -557,28 +691,47 @@ const Staff = ({
             name: u.name || "",
             email: u.email || "",
             phone: u.phone || "",
-            roleId: employee.roleId?._id || employee.roleId || "",
+            roleId: (employee.mapping?.roleId?._id || employee.mapping?.roleId || employee.roleId?._id || employee.roleId || ""),
             designation: employee.designation || "",
+            reportingTo: (employee.reportingTo?._id || employee.reportingTo || ""),
             address: employee.address || { line1: "", city: "", state: "", pincode: "" },
-            status: employee.status || "ACTIVE"
+            status: u.status || employee.status || "ACTIVE",
+            attendancePolicyId: "", // Default to empty, will fetch below
+            salary: { 
+                amount: employee.salary?.amount || "", 
+                period: employee.salary?.period || "monthly" 
+            }
         });
-        setEditUserSelectedBranches(employee.allowedBranches || []);
-        setEditRoleIsBranchUser(employee.roleId?.isBranchUser || false);
+
+        // Try to fetch existing assignment
+        const fetchCurrentAssignment = async () => {
+            try {
+                const employeeId = employee._id || employee.id;
+                const assignments = await attendanceService.getAssignments({ employeeId });
+                if (assignments && assignments.length > 0) {
+                    const latest = assignments[0];
+                    setEditEmpData(prev => ({ ...prev, attendancePolicyId: latest.policyId?._id || latest.policyId || "" }));
+                }
+            } catch (error) {
+                console.error("Error fetching assignment for employee:", error);
+            }
+        };
+        fetchCurrentAssignment();
+
+
+        const branchIds = (employee.mapping?.branchIds || employee.allowedBranches || []).map(b => b?._id || b);
+        setEditUserSelectedBranchIds(branchIds);
+        setEditUserAllBranches(!!employee.mapping?.allBranches);
         setFormShopId(employee.shopId?._id || employee.shopId || shopId);
         setIsEditEmployeeOpen(true);
     };
 
     const handleEditEmpDataChange = (field, value) => {
         setEditEmpData(prev => ({ ...prev, [field]: value }));
-        if (field === 'roleId') {
-            const role = roles.find(r => r._id === value || r.id === value);
-            setEditRoleIsBranchUser(role?.isBranchUser || false);
-            if (!role?.isBranchUser) setEditUserSelectedBranches([]);
-        }
     };
 
     const handleEditUserBranchSelection = (branchId) => {
-        setEditUserSelectedBranches(prev =>
+        setEditUserSelectedBranchIds(prev =>
             prev.includes(branchId) ? prev.filter(id => id !== branchId) : [...prev, branchId]
         );
     };
@@ -589,19 +742,49 @@ const Staff = ({
             alert("Please fill in all required fields (Name, Email, Phone, Role)");
             return;
         }
-        if (editRoleIsBranchUser && editUserSelectedBranches.length === 0) {
-            alert("This role requires selecting at least one branch.");
+        if (!editUserAllBranches && editUserSelectedBranchIds.length === 0) {
+            alert("Please select at least one branch or enable 'Full Shop Access'.");
             return;
         }
 
         const payload = {
             ...editEmpData,
-            allowedBranches: editRoleIsBranchUser ? editUserSelectedBranches : []
+            branchIds: editUserSelectedBranchIds,
+            allBranches: editUserAllBranches
         };
 
         try {
-            const empId = editingEmployee._id || editingEmployee.id;
-            await employeeService.update(empId, payload);
+            const employeeId = editingEmployee._id || editingEmployee.id;
+            await employeeService.update(employeeId, payload);
+
+            // Handle Attendance Policy Assignment (Update or Create)
+            if (editEmpData.attendancePolicyId) {
+                try {
+                    const existing = await attendanceService.getAssignments({ employeeId });
+                    if (existing && existing.length > 0) {
+                        const latest = existing[0];
+                        if (latest.policyId?._id !== editEmpData.attendancePolicyId && latest.policyId !== editEmpData.attendancePolicyId) {
+                            await attendanceService.deleteAssignment(latest._id);
+                            await attendanceService.createAssignment({
+                                employeeId,
+                                policyId: editEmpData.attendancePolicyId,
+                                effectiveFrom: new Date().toISOString().split("T")[0],
+                                priority: 0
+                            });
+                        }
+                    } else {
+                        await attendanceService.createAssignment({
+                            employeeId,
+                            policyId: editEmpData.attendancePolicyId,
+                            effectiveFrom: new Date().toISOString().split("T")[0],
+                            priority: 0
+                        });
+                    }
+                } catch (assignError) {
+                    console.error("Failed to update policy assignment:", assignError);
+                }
+            }
+
             setIsEditEmployeeOpen(false);
             setEditingEmployee(null);
             // Refresh employees
@@ -613,6 +796,7 @@ const Staff = ({
             console.error("Error updating employee:", error);
             alert("Failed to update employee: " + (error.message || "Unknown error"));
         }
+
     };
 
 
@@ -651,19 +835,19 @@ const Staff = ({
                 <div className="flex gap-3">
                     {activeStaffTab === "staff" ? (
                         <button
-                            onClick={() => { setIsCreateEmployeeOpen(true); setFormShopId(shopId); }}
+                            onClick={() => checkSubscriptionAndOpen(() => { setIsCreateEmployeeOpen(true); setFormShopId(shopId); })}
                             className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
                         >
                             <Plus size={20} /> Add Employee
                         </button>
                     ) : activeStaffTab === "roles" ? (
                         <button
-                            onClick={() => {
+                            onClick={() => checkSubscriptionAndOpen(() => {
                                 setSelectedPermissions({});
                                 setExpandedModules({});
                                 setFormShopId(shopId);
                                 setIsCreateRoleOpen(true);
-                            }}
+                            })}
                             className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
                         >
                             <Plus size={20} /> Add Role
@@ -715,9 +899,35 @@ const Staff = ({
                     {canViewLogs && (
                         <button
                             onClick={() => setActiveStaffTab("attendance_logs")}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeStaffTab === "attendance_logs" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative ${activeStaffTab === "attendance_logs" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                         >
                             <ShieldCheck size={18} /> Attendance Logs
+                            {pendingRequestsCount > 0 && (
+                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white dark:border-gray-800 animate-bounce">
+                                    {pendingRequestsCount}
+                                </span>
+                            )}
+                        </button>
+                    )}
+                    {canManageLeaves && (
+                        <button
+                            onClick={() => setActiveStaffTab("employee_leaves")}
+                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative ${activeStaffTab === "employee_leaves" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                        >
+                            <Calendar size={18} /> Employee Leaves
+                            {pendingLeavesCount > 0 && (
+                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white dark:border-gray-800 animate-pulse">
+                                    {pendingLeavesCount}
+                                </span>
+                            )}
+                        </button>
+                    )}
+                    {canManageSalary && (
+                        <button
+                            onClick={() => setActiveStaffTab("payroll")}
+                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative ${activeStaffTab === "payroll" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                        >
+                            <Wallet size={18} /> Payroll
                         </button>
                     )}
                 </div>
@@ -725,16 +935,16 @@ const Staff = ({
                 {hasViewAllStaff && ownerShops.length > 0 && (
                     <div className="flex items-center gap-3">
                         <span className={`text-sm font-bold ${theme.textSecondary}`}>Filter by Shop:</span>
-                        <select
+                        <CommonSelect
+                            options={ownerShops}
                             value={filterShopId}
-                            onChange={(e) => setFilterShopId(e.target.value)}
-                            className={`p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-bold shadow-sm min-w-[200px]`}
-                        >
-                            <option value="">All Shops</option>
-                            {ownerShops.map(s => (
-                                <option key={s._id} value={s._id}>{s.name}</option>
-                            ))}
-                        </select>
+                            onChange={(val) => setFilterShopId(val)}
+                            placeholder="All Shops"
+                            labelKey="name"
+                            valueKey="_id"
+                            className="min-w-[200px]"
+                        />
+
                     </div>
                 )}
             </div>
@@ -758,9 +968,25 @@ const Staff = ({
                                 {
                                     header: "Role",
                                     key: "roleId.name",
-                                    render: (val, item) => (
+                                    render: (_, item) => (
                                         <span className={`${theme.buttonBg} ${theme.buttonText} px-3 py-1 rounded-full text-xs font-bold uppercase`}>
-                                            {item.roleId?.name || val}
+                                            {item.mapping?.roleId?.name || item.roleId?.name || "N/A"}
+                                        </span>
+                                    )
+                                },
+                                {
+                                    header: "Reports To",
+                                    key: "reportingTo.name",
+                                    className: theme.textSecondary,
+                                    render: (_, item) => item.reportingTo?.name || "None"
+                                },
+
+                                {
+                                    header: "Branch Access",
+                                    key: "mapping.branchIds",
+                                    render: (_, item) => (
+                                        <span className={`text-xs font-bold ${theme.textSecondary}`}>
+                                            {item.mapping?.allBranches ? "FULL SHOP" : `${item.mapping?.branchIds?.length || 0} BRANCHES`}
                                         </span>
                                     )
                                 },
@@ -813,7 +1039,29 @@ const Staff = ({
                         <CommonTable
                             columns={[
                                 ...(hasViewAllStaff ? [{ header: "Shop", key: "shopId.name", className: `font-bold text-xs ${theme.textSecondary}`, render: (_, item) => item.shopId?.name || "N/A" }] : []),
-                                { header: "Role Name", key: "name", className: `font-bold ${theme.textPrimary}` },
+                                {
+                                    header: "Role Name",
+                                    key: "name",
+                                    className: `font-bold ${theme.textPrimary}`,
+                                    render: (val, item) => (
+                                        <div className="flex flex-col">
+                                            <span>{val}</span>
+                                            <span className="text-[10px] font-mono opacity-50">{item.code}</span>
+                                        </div>
+                                    )
+                                },
+                                {
+                                    header: "Scope",
+                                    key: "scope",
+                                    render: (scope) => (
+                                        <span className={`px-2 py-1 rounded text-[10px] font-black tracking-widest ${scope === 'GLOBAL' ? 'bg-amber-100 text-amber-700' :
+                                                scope === 'SHOP' ? 'bg-emerald-100 text-emerald-700' :
+                                                    'bg-sky-100 text-sky-700'
+                                            }`}>
+                                            {scope || 'SHOP'}
+                                        </span>
+                                    )
+                                },
                                 {
                                     header: "Type",
                                     key: "isSystemRole",
@@ -861,16 +1109,15 @@ const Staff = ({
                     <div className="flex flex-col md:flex-row gap-4 items-start md:items-end justify-between">
                         <div className="flex flex-col gap-2">
                             <label className={`text-sm font-bold ${theme.textSecondary}`}>Branch</label>
-                            <select
+                            <CommonSelect
+                                options={branches}
                                 value={attendanceBranchId}
-                                onChange={(e) => setAttendanceBranchId(e.target.value)}
-                                className={`p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-bold min-w-[220px]`}
-                            >
-                                <option value="">All Branches</option>
-                                {branches.map((b) => (
-                                    <option key={b._id} value={b._id}>{b.name}</option>
-                                ))}
-                            </select>
+                                onChange={(val) => setAttendanceBranchId(val)}
+                                placeholder="All Branches"
+                                labelKey="name"
+                                valueKey="_id"
+                                className="min-w-[220px]"
+                            />
                         </div>
                         <div className="flex gap-3">
                             <button
@@ -998,37 +1245,33 @@ const Staff = ({
                         />
                     </div>
                 </div>
-            ) : (
+            ) : activeStaffTab === "attendance_logs" ? (
                 <div className={`${theme.surfaceBg} rounded-2xl p-4 md:p-6 shadow-sm border ${theme.borderLight}`}>
                     <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end justify-between">
                         <div className="flex flex-wrap gap-4">
                             <div className="flex flex-col gap-2">
                                 <label className={`text-sm font-bold ${theme.textSecondary}`}>Branch</label>
-                                <select
+                                <CommonSelect
+                                    options={branches}
                                     value={attendanceBranchId}
-                                    onChange={(e) => setAttendanceBranchId(e.target.value)}
-                                    className={`p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-bold min-w-[220px]`}
-                                >
-                                    <option value="">All Branches</option>
-                                    {branches.map((b) => (
-                                        <option key={b._id} value={b._id}>{b.name}</option>
-                                    ))}
-                                </select>
+                                    onChange={(val) => setAttendanceBranchId(val)}
+                                    placeholder="All Branches"
+                                    labelKey="name"
+                                    valueKey="_id"
+                                    className="min-w-[220px]"
+                                />
                             </div>
                             <div className="flex flex-col gap-2">
                                 <label className={`text-sm font-bold ${theme.textSecondary}`}>Employee</label>
-                                <select
+                                <CommonSelect
+                                    options={employees.map(e => ({ ...e, displayName: `${e.userId?.name || "Employee"} (${e.employeeCode || e._id})` }))}
                                     value={attendanceEmployeeId}
-                                    onChange={(e) => setAttendanceEmployeeId(e.target.value)}
-                                    className={`p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-bold min-w-[260px]`}
-                                >
-                                    <option value="">All Employees</option>
-                                    {employees.map((e) => (
-                                        <option key={e._id || e.id} value={e._id || e.id}>
-                                            {e.userId?.name || "Employee"} ({e.employeeCode || e._id})
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(val) => setAttendanceEmployeeId(val)}
+                                    placeholder="All Employees"
+                                    labelKey="displayName"
+                                    valueKey="_id"
+                                    className="min-w-[260px]"
+                                />
                             </div>
                             <div className="flex flex-col gap-2">
                                 <label className={`text-sm font-bold ${theme.textSecondary}`}>Start</label>
@@ -1148,13 +1391,157 @@ const Staff = ({
                                             )}
                                         </div>
                                     )
+                                },
+                                 {
+                                    header: "Correction",
+                                    key: "correctionRequest",
+                                    render: (_, l) => {
+                                        if (!l.correctionRequest || !l.correctionRequest.status) return null;
+                                        const req = l.correctionRequest;
+                                        return (
+                                            <div className="flex flex-col gap-1.5 py-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                                                        req.status === 'PENDING' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-sm' :
+                                                        req.status === 'APPROVED' ? 'bg-green-100 text-green-700 border border-green-200' :
+                                                        'bg-red-100 text-red-700 border border-red-200'
+                                                    }`}>
+                                                        {req.status}
+                                                    </span>
+                                                    {req.status === 'PENDING' && (
+                                                        <button 
+                                                            onClick={() => {
+                                                                setSelectedLogForCorrection(l);
+                                                                setIsCorrectionModalOpen(true);
+                                                            }}
+                                                            className={`text-[9px] font-black ${theme.primaryIconText} hover:scale-105 transition-transform uppercase tracking-wider flex items-center gap-1 bg-white/50 dark:bg-black/20 px-2 py-0.5 rounded-lg border border-indigo-500/20`}
+                                                        >
+                                                            <Clock size={10} /> Review Fix
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <p className={`text-[10px] italic ${theme.textSecondary} max-w-[140px] line-clamp-2 leading-tight`} title={req.reason}>
+                                                    &quot;{req.reason}&quot;
+                                                </p>
+                                            </div>
+                                        );
+                                    }
                                 }
                             ]}
                             data={attendanceLogs}
                         />
                     </div>
                 </div>
-            )}
+            ) : activeStaffTab === "employee_leaves" ? (
+                <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                        <div>
+                            <h2 className={`text-4xl font-black tracking-tight ${theme.textHeading} mb-2`}>Employee Leaves</h2>
+                            <p className={`${theme.textSecondary} font-bold flex items-center gap-2 uppercase tracking-widest text-[10px]`}>
+                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Review and manage time-off requests
+                            </p>
+                        </div>
+                        <button 
+                            onClick={fetchAllLeaves}
+                            className={`p-4 rounded-[2rem] ${theme.surfaceBg} ${theme.textSecondary} border ${theme.borderLight} hover:shadow-xl transition-all active:scale-95 group`}
+                        >
+                            <RefreshCw size={22} className={isLeavesLoading ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"} />
+                        </button>
+                    </div>
+
+                    <div className={`${theme.surfaceBg} rounded-[3rem] shadow-2xl shadow-indigo-500/5 border ${theme.borderLight} overflow-hidden`}>
+                        <CommonTable 
+                            columns={[
+                                { 
+                                    header: "Employee", 
+                                    key: "employeeId",
+                                    render: (emp) => (
+                                        <div className="flex flex-col">
+                                            <span className={`font-bold ${theme.textPrimary}`}>{emp?.userId?.name || "N/A"}</span>
+                                            <span className={`text-[10px] uppercase font-black text-gray-400`}>{emp?.employeeCode}</span>
+                                        </div>
+                                    )
+                                },
+                                { 
+                                    header: "Duration", 
+                                    key: "startDate",
+                                    render: (_, l) => (
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className={`text-xs font-black ${theme.textPrimary}`}>
+                                                {new Date(l.startDate).toLocaleDateString()} to {new Date(l.endDate).toLocaleDateString()}
+                                            </span>
+                                            <span className={`text-[11px] font-bold text-indigo-500`}>
+                                                {l.totalDays} {l.totalDays > 1 ? 'Days' : 'Day'}
+                                            </span>
+                                        </div>
+                                    )
+                                },
+                                { 
+                                    header: "Type", 
+                                    key: "leaveType",
+                                    render: (val) => (
+                                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-100/50 text-indigo-700`}>
+                                            {val}
+                                        </span>
+                                    )
+                                },
+                                { 
+                                    header: "Status", 
+                                    key: "status",
+                                    render: (val) => (
+                                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                            val === 'APPROVED' ? 'bg-green-100 text-green-700' :
+                                            val === 'PENDING' ? 'bg-blue-100 text-blue-700' :
+                                            'bg-red-100 text-red-700'
+                                        }`}>
+                                            {val}
+                                        </span>
+                                    )
+                                },
+                                {
+                                    header: "Action",
+                                    key: "_id",
+                                    render: (_, l) => (
+                                        l.status === 'PENDING' ? (
+                                            <button 
+                                                onClick={() => {
+                                                    setSelectedLeave(l);
+                                                    setIsLeaveModalOpen(true);
+                                                }}
+                                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white bg-indigo-500 hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20`}
+                                            >
+                                                Review
+                                            </button>
+                                        ) : (
+                                            <div className="text-[10px] italic text-gray-400 font-bold max-w-[150px] truncate" title={l.managerResponse}>
+                                                {l.managerResponse || "Processed"}
+                                            </div>
+                                        )
+                                    )
+                                }
+                            ]}
+                            data={allLeaves}
+                        />
+                    </div>
+
+                    <LeaveReviewModal 
+                        isOpen={isLeaveModalOpen}
+                        onClose={() => setIsLeaveModalOpen(false)}
+                        leave={selectedLeave}
+                        onApprove={handleApproveLeave}
+                        onReject={handleRejectLeave}
+                    />
+                </div>
+            ) : null}
+
+            {activeStaffTab === "payroll" ? (
+                <PayrollManagement 
+                    theme={theme} 
+                    shopId={formShopId || shopId} 
+                    canManageSalary={canManageSalary} 
+                />
+            ) : null}
+
 
             {/* Create Policy Modal */}
             {isCreatePolicyOpen && (
@@ -1170,29 +1557,30 @@ const Staff = ({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Branch</label>
-                                    <select
+                                    <CommonSelect
+                                        options={branches}
                                         value={policyForm.branchId}
-                                        onChange={(e) => setPolicyForm((p) => ({ ...p, branchId: e.target.value }))}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                    >
-                                        <option value="">Shop-wide</option>
-                                        {branches.map((b) => (
-                                            <option key={b._id} value={b._id}>{b.name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => setPolicyForm((p) => ({ ...p, branchId: val }))}
+                                        placeholder="Shop-wide"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                    />
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Policy Type</label>
-                                    <select
+                                    <CommonSelect
+                                        options={[
+                                            { label: 'SHIFT', value: 'SHIFT' },
+                                            { label: 'HOURLY', value: 'HOURLY' },
+                                            { label: 'FLEXIBLE', value: 'FLEXIBLE' },
+                                            { label: 'REMOTE', value: 'REMOTE' }
+                                        ]}
                                         value={policyForm.policyType}
-                                        onChange={(e) => setPolicyForm((p) => ({ ...p, policyType: e.target.value }))}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                    >
-                                        <option value="SHIFT">SHIFT</option>
-                                        <option value="HOURLY">HOURLY</option>
-                                        <option value="FLEXIBLE">FLEXIBLE</option>
-                                        <option value="REMOTE">REMOTE</option>
-                                    </select>
+                                        onChange={(val) => setPolicyForm((p) => ({ ...p, policyType: val }))}
+                                        placeholder="Select Type"
+                                        labelKey="label"
+                                        valueKey="value"
+                                    />
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Name *</label>
@@ -1290,18 +1678,15 @@ const Staff = ({
                         <div className="p-6 overflow-y-auto flex-1 space-y-4">
                             <div>
                                 <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Employee *</label>
-                                <select
+                                <CommonSelect
+                                    options={employees.map(e => ({ ...e, displayName: `${e.userId?.name || "Employee"} (${e.employeeCode || e._id})` }))}
                                     value={assignForm.employeeId}
-                                    onChange={(e) => setAssignForm((p) => ({ ...p, employeeId: e.target.value }))}
-                                    className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                >
-                                    <option value="">Select Employee</option>
-                                    {employees.map((e) => (
-                                        <option key={e._id || e.id} value={e._id || e.id}>
-                                            {e.userId?.name || "Employee"} ({e.employeeCode || e._id})
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(val) => setAssignForm((p) => ({ ...p, employeeId: val }))}
+                                    placeholder="Select Employee"
+                                    labelKey="displayName"
+                                    valueKey="_id"
+                                    required={true}
+                                />
                             </div>
                             <div>
                                 <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Effective From *</label>
@@ -1315,16 +1700,15 @@ const Staff = ({
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Branch (optional)</label>
-                                    <select
+                                    <CommonSelect
+                                        options={branches}
                                         value={assignForm.branchId}
-                                        onChange={(e) => setAssignForm((p) => ({ ...p, branchId: e.target.value }))}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                    >
-                                        <option value="">Any</option>
-                                        {branches.map((b) => (
-                                            <option key={b._id} value={b._id}>{b.name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => setAssignForm((p) => ({ ...p, branchId: val }))}
+                                        placeholder="Any Branch"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                    />
+
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Priority</label>
@@ -1397,37 +1781,41 @@ const Staff = ({
                                             placeholder="e.g. Senior Shift Manager"
                                         />
                                     </div>
-                                    <div className={`flex items-start gap-3 ${theme.inputBg} p-3 rounded-xl border ${theme.inputBorder}`}>
-                                        <input
-                                            type="checkbox"
-                                            id="editBranchUser"
-                                            checked={editIsBranchUser}
-                                            onChange={(e) => setEditIsBranchUser(e.target.checked)}
-                                            className={`w-5 h-5 mt-0.5 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
-                                        />
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label htmlFor="editBranchUser" className={`block text-sm font-bold ${theme.textPrimary} cursor-pointer`}>Restrict to Specific Branches</label>
-                                            <p className={`text-xs ${theme.textSecondary} mt-1`}>If checked, this role will only be available in selected branches. Uncheck to make it available in all branches.</p>
+                                            <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role Code (Unique)</label>
+                                            <input
+                                                value={editRoleCode}
+                                                onChange={(e) => setEditRoleCode(e.target.value.toUpperCase().replace(/\s/g, '_'))}
+                                                className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-mono`}
+                                                placeholder="e.g. MANAGER_ADMIN"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Scope</label>
+                                            <CommonSelect
+                                                options={[
+                                                    { label: 'FULL SHOP', value: 'SHOP' },
+                                                    { label: 'BRANCH LEVEL', value: 'BRANCH' }
+                                                ]}
+                                                value={editRoleScope}
+                                                onChange={(val) => setEditRoleScope(val)}
+                                                placeholder="Select Scope"
+                                                labelKey="label"
+                                                valueKey="value"
+                                            />
+
                                         </div>
                                     </div>
-                                    {editIsBranchUser && (
-                                        <div className="space-y-2 animate-fadeIn">
-                                            <label className={`block text-sm font-bold ${theme.textPrimary}`}>Select Allowed Branches</label>
-                                            <div className={`border ${theme.borderLight} rounded-xl p-3 max-h-40 overflow-y-auto space-y-2 ${theme.pageBg}`}>
-                                                {branches.length > 0 ? branches.map(branch => (
-                                                    <div key={branch._id} className="flex items-center gap-2">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={editSelectedBranches.includes(branch._id)}
-                                                            onChange={() => handleEditBranchSelection(branch._id)}
-                                                            className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
-                                                        />
-                                                        <span className={`text-sm ${theme.textPrimary}`}>{branch.name}</span>
-                                                    </div>
-                                                )) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <div>
+                                        <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Description</label>
+                                        <input
+                                            value={editRoleDescription}
+                                            onChange={(e) => setEditRoleDescription(e.target.value)}
+                                            className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
+                                            placeholder="Optional description"
+                                        />
+                                    </div>
                                     <div>
                                         <label className={`block text-sm font-bold ${theme.textPrimary} mb-2`}>Assign Permissions</label>
                                         <div className={`border ${theme.borderLight} rounded-xl divide-y ${theme.borderLight} overflow-hidden`}>
@@ -1440,7 +1828,7 @@ const Staff = ({
 
                                                 return (
                                                     <div key={moduleId} className={theme.surfaceBg}>
-                                                        <div 
+                                                        <div
                                                             className={`p-3 flex items-center justify-between transition-colors ${theme.sectionBg} hover:opacity-80 cursor-pointer select-none`}
                                                             onClick={() => toggleEditModuleExpand(moduleId)}
                                                         >
@@ -1468,7 +1856,7 @@ const Staff = ({
                                                                         <input
                                                                             type="checkbox"
                                                                             checked={(editSelectedPermissions[moduleId] || []).includes(String(perm.permissionId))}
-                                                                            onChange={() => {}}
+                                                                            onChange={() => { }}
                                                                             className={`w-4 h-4 mt-1 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
                                                                         />
                                                                         <div>
@@ -1518,15 +1906,14 @@ const Staff = ({
                             {hasViewAllStaff && ownerShops.length > 0 && (
                                 <div className="mb-2">
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Assigned Shop</label>
-                                    <select
+                                    <CommonSelect
+                                        options={ownerShops}
                                         value={formShopId || shopId || ""}
-                                        onChange={(e) => setFormShopId(e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                    >
-                                        {ownerShops.map(s => (
-                                            <option key={s._id} value={s._id}>{s.name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => setFormShopId(val)}
+                                        placeholder="Select Shop"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                    />
                                 </div>
                             )}
 
@@ -1543,37 +1930,40 @@ const Staff = ({
                                             placeholder="e.g. Senior Shift Manager"
                                         />
                                     </div>
-                                    <div className={`flex items-start gap-3 ${theme.inputBg} p-3 rounded-xl border ${theme.inputBorder}`}>
-                                        <input
-                                            type="checkbox"
-                                            id="branchUser"
-                                            checked={isBranchUser}
-                                            onChange={(e) => setIsBranchUser(e.target.checked)}
-                                            className={`w-5 h-5 mt-0.5 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
-                                        />
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label htmlFor="branchUser" className={`block text-sm font-bold ${theme.textPrimary} cursor-pointer`}>Restrict to Specific Branches</label>
-                                            <p className={`text-xs ${theme.textSecondary} mt-1`}>If checked, this role will only be available in selected branches. Uncheck to make it available in all branches.</p>
+                                            <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role Code (Unique)</label>
+                                            <input
+                                                value={newRoleCode}
+                                                onChange={(e) => setNewRoleCode(e.target.value.toUpperCase().replace(/\s/g, '_'))}
+                                                className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-mono`}
+                                                placeholder="e.g. MANAGER_ADMIN"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Scope</label>
+                                            <CommonSelect
+                                                options={[
+                                                    { label: 'FULL SHOP', value: 'SHOP' },
+                                                    { label: 'BRANCH LEVEL', value: 'BRANCH' }
+                                                ]}
+                                                value={newRoleScope}
+                                                onChange={(val) => setNewRoleScope(val)}
+                                                placeholder="Select Scope"
+                                                labelKey="label"
+                                                valueKey="value"
+                                            />
                                         </div>
                                     </div>
-                                    {isBranchUser && (
-                                        <div className="space-y-2 animate-fadeIn">
-                                            <label className={`block text-sm font-bold ${theme.textPrimary}`}>Select Allowed Branches</label>
-                                            <div className={`border ${theme.borderLight} rounded-xl p-3 max-h-40 overflow-y-auto space-y-2 ${theme.pageBg}`}>
-                                                {branches.length > 0 ? branches.map(branch => (
-                                                    <div key={branch._id} className="flex items-center gap-2">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={selectedBranches.includes(branch._id)}
-                                                            onChange={() => handleBranchSelection(branch._id)}
-                                                            className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
-                                                        />
-                                                        <span className={`text-sm ${theme.textPrimary}`}>{branch.name}</span>
-                                                    </div>
-                                                )) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <div>
+                                        <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Description</label>
+                                        <input
+                                            value={newRoleDescription}
+                                            onChange={(e) => setNewRoleDescription(e.target.value)}
+                                            className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
+                                            placeholder="Optional description"
+                                        />
+                                    </div>
                                     <div>
                                         <label className={`block text-sm font-bold ${theme.textPrimary} mb-2`}>Assign Permissions</label>
                                         <div className={`border ${theme.borderLight} rounded-xl divide-y ${theme.borderLight} overflow-hidden`}>
@@ -1586,7 +1976,7 @@ const Staff = ({
 
                                                 return (
                                                     <div key={moduleId} className={theme.surfaceBg}>
-                                                        <div 
+                                                        <div
                                                             className={`p-3 flex items-center justify-between transition-colors ${theme.sectionBg} hover:opacity-80 cursor-pointer select-none`}
                                                             onClick={() => toggleModuleExpand(moduleId)}
                                                         >
@@ -1614,7 +2004,7 @@ const Staff = ({
                                                                         <input
                                                                             type="checkbox"
                                                                             checked={(selectedPermissions[moduleId] || []).includes(perm.permissionId)}
-                                                                            onChange={() => {}}
+                                                                            onChange={() => { }}
                                                                             className={`w-4 h-4 mt-1 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
                                                                         />
                                                                         <div>
@@ -1659,15 +2049,15 @@ const Staff = ({
                             {hasViewAllStaff && ownerShops.length > 0 && (
                                 <div className="mb-2">
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Assigned Shop</label>
-                                    <select
+                                    <CommonSelect
+                                        options={ownerShops}
                                         value={formShopId || shopId || ""}
-                                        onChange={(e) => setFormShopId(e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                    >
-                                        {ownerShops.map(s => (
-                                            <option key={s._id} value={s._id}>{s.name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => setFormShopId(val)}
+                                        placeholder="Select Shop"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                    />
+
                                 </div>
                             )}
 
@@ -1710,16 +2100,71 @@ const Staff = ({
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role *</label>
-                                    <select
+                                    <CommonSelect
+                                        options={roles}
                                         value={newEmpData.roleId}
-                                        onChange={(e) => handleEmpDataChange("roleId", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                    >
-                                        <option value="">Select Role</option>
-                                        {roles.map(r => (
-                                            <option key={r._id || r.id} value={r._id || r.id}>{r.name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => handleEmpDataChange("roleId", val)}
+                                        placeholder="Select Role"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                        required={true}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Reporting To</label>
+                                    <CommonSelect
+                                        options={potentialManagers}
+                                        value={newEmpData.reportingTo}
+                                        onChange={(val) => handleEmpDataChange("reportingTo", val)}
+                                        placeholder="Select Manager"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                        renderOption={(opt) => (
+                                            <div className="flex flex-col">
+                                                <div className={`font-black ${theme.textPrimary}`}>{opt.name}</div>
+                                                <div className={`text-[10px] font-bold ${theme.textSecondary} uppercase tracking-widest`}>
+                                                    {opt.isOwner ? 'Owner' : (opt.roleName || 'Staff')}
+                                                </div>
+                                            </div>
+                                        )}
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Salary Info *</label>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1 relative">
+                                            <input
+                                                type="number"
+                                                value={newEmpData.salary.amount}
+                                                onChange={(e) => handleEmpDataChange("salary", { ...newEmpData.salary, amount: e.target.value })}
+                                                className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
+                                                placeholder="Enter amount"
+                                            />
+                                        </div>
+                                        <div className="w-1/3">
+                                            <CommonSelect
+                                                options={[
+                                                    { label: 'Monthly', value: 'monthly' },
+                                                    { label: 'Daily', value: 'daily' }
+                                                ]}
+                                                value={newEmpData.salary.period}
+                                                onChange={(val) => handleEmpDataChange("salary", { ...newEmpData.salary, period: val })}
+                                                labelKey="label"
+                                                valueKey="value"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Attendance Policy</label>
+                                    <CommonSelect
+                                        options={availablePolicies}
+                                        value={newEmpData.attendancePolicyId}
+                                        onChange={(val) => handleEmpDataChange("attendancePolicyId", val)}
+                                        placeholder="Assign Policy"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                    />
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Password</label>
@@ -1733,43 +2178,37 @@ const Staff = ({
                                 </div>
                             </div>
 
-                            {selectedRoleIsBranchUser && (() => {
-                                const role = roles.find(r => r._id === newEmpData.roleId || r.id === newEmpData.roleId);
-                                const roleAllowed = (role?.allowedBranches || []).map(b => b?._id || b);
-                                const hasSingleRoleBranch = roleAllowed.length === 1;
 
-                                // Branch options are either restricted to role.allowedBranches, or all shop branches when none set on role
-                                const branchOptions = roleAllowed.length > 0
-                                    ? branches.filter(b => roleAllowed.includes(b._id))
-                                    : branches;
+                            <div className={`space-y-4 p-4 rounded-xl border ${theme.inputBorder} ${theme.inputBg}`}>
+                                <h4 className={`text-sm font-black uppercase tracking-wider ${theme.textHeading} flex items-center gap-2`}>
+                                    <ShieldCheck size={16} className={theme.primaryIconText} /> Branch Access
+                                </h4>
 
-                                if (hasSingleRoleBranch) {
-                                    const onlyBranch = branches.find(b => String(b._id) === String(roleAllowed[0]));
-                                    return (
-                                        <div className={`space-y-2 animate-fadeIn ${theme.warningBg} p-4 rounded-xl border ${theme.warningBorder}`}>
-                                            <label className={`block text-sm font-bold ${theme.textPrimary}`}>Branch Access</label>
-                                            <p className={`text-xs ${theme.warningText}`}>
-                                                This role is restricted to a single branch:&nbsp;
-                                                <span className="font-bold">
-                                                    {onlyBranch?.name || "Selected Branch"}
-                                                </span>.
-                                            </p>
-                                        </div>
-                                    );
-                                }
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="checkbox"
+                                        id="allBranchesToggle"
+                                        checked={userAllBranches}
+                                        onChange={(e) => {
+                                            setUserAllBranches(e.target.checked);
+                                            if (e.target.checked) setUserSelectedBranchIds([]);
+                                        }}
+                                        className={`w-5 h-5 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
+                                    />
+                                    <label htmlFor="allBranchesToggle" className={`text-sm font-bold ${theme.textPrimary} cursor-pointer`}>
+                                        Full Shop Access (All Branches)
+                                    </label>
+                                </div>
 
-                                return (
-                                    <div className={`space-y-2 animate-fadeIn ${theme.warningBg} p-4 rounded-xl border ${theme.warningBorder}`}>
-                                        <label className={`block text-sm font-bold ${theme.textPrimary}`}>Select Allowed Branches (Required)</label>
-                                        <p className={`text-xs ${theme.warningText} mb-2`}>
-                                            This role is restricted to specific branches. Please select which branches this employee can access.
-                                        </p>
+                                {!userAllBranches && (
+                                    <div className="animate-fadeIn space-y-2">
+                                        <label className={`block text-xs font-bold ${theme.textSecondary}`}>Select Accessible Branches</label>
                                         <div className={`border ${theme.inputBorder} rounded-xl p-3 max-h-40 overflow-y-auto space-y-2 ${theme.surfaceBg}`}>
-                                            {branchOptions.length > 0 ? branchOptions.map(branch => (
+                                            {branches.length > 0 ? branches.map(branch => (
                                                 <div key={branch._id} className="flex items-center gap-2">
                                                     <input
                                                         type="checkbox"
-                                                        checked={userSelectedBranches.includes(branch._id)}
+                                                        checked={userSelectedBranchIds.includes(branch._id)}
                                                         onChange={() => handleUserBranchSelection(branch._id)}
                                                         className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
                                                     />
@@ -1778,8 +2217,8 @@ const Staff = ({
                                             )) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
                                         </div>
                                     </div>
-                                );
-                            })()}
+                                )}
+                            </div>
 
                             <div>
                                 <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Address</label>
@@ -1862,48 +2301,130 @@ const Staff = ({
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role *</label>
-                                    <select
+                                    <CommonSelect
+                                        options={roles}
                                         value={editEmpData.roleId}
-                                        onChange={(e) => handleEditEmpDataChange("roleId", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                    >
-                                        <option value="">Select Role</option>
-                                        {roles.map(r => (
-                                            <option key={r._id || r.id} value={r._id || r.id}>{r.name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => handleEditEmpDataChange("roleId", val)}
+                                        placeholder="Select Role"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                        required={true}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Reporting To</label>
+                                    <CommonSelect
+                                        options={potentialManagers}
+                                        value={editEmpData.reportingTo}
+                                        onChange={(val) => handleEditEmpDataChange("reportingTo", val)}
+                                        placeholder="Select Manager"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                        renderOption={(opt) => (
+                                            <div className="flex flex-col">
+                                                <div className={`font-black ${theme.textPrimary}`}>{opt.name}</div>
+                                                <div className={`text-[10px] font-bold ${theme.textSecondary} uppercase tracking-widest`}>
+                                                    {opt.isOwner ? 'Owner' : (opt.roleName || 'Staff')}
+                                                </div>
+                                            </div>
+                                        )}
+                                    />
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Status</label>
-                                    <select
+                                    <CommonSelect
+                                        options={[
+                                            { label: 'Active', value: 'ACTIVE' },
+                                            { label: 'Inactive', value: 'INACTIVE' },
+                                            { label: 'On Leave', value: 'ON_LEAVE' }
+                                        ]}
                                         value={editEmpData.status}
-                                        onChange={(e) => handleEditEmpDataChange("status", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                    >
-                                        <option value="ACTIVE">ACTIVE</option>
-                                        <option value="INACTIVE">INACTIVE</option>
-                                    </select>
+                                        onChange={(val) => handleEditEmpDataChange("status", val)}
+                                        placeholder="Select Status"
+                                        labelKey="label"
+                                        valueKey="value"
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Salary Info *</label>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1 relative">
+                                            <input
+                                                type="number"
+                                                value={editEmpData.salary.amount}
+                                                onChange={(e) => handleEditEmpDataChange("salary", { ...editEmpData.salary, amount: e.target.value })}
+                                                className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
+                                                placeholder="Enter amount"
+                                            />
+                                        </div>
+                                        <div className="w-1/3">
+                                            <CommonSelect
+                                                options={[
+                                                    { label: 'Monthly', value: 'monthly' },
+                                                    { label: 'Daily', value: 'daily' }
+                                                ]}
+                                                value={editEmpData.salary.period}
+                                                onChange={(val) => handleEditEmpDataChange("salary", { ...editEmpData.salary, period: val })}
+                                                labelKey="label"
+                                                valueKey="value"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Attendance Policy</label>
+                                    <CommonSelect
+                                        options={availablePolicies}
+                                        value={editEmpData.attendancePolicyId}
+                                        onChange={(val) => handleEditEmpDataChange("attendancePolicyId", val)}
+                                        placeholder="Assign Policy"
+                                        labelKey="name"
+                                        valueKey="_id"
+                                    />
                                 </div>
                             </div>
 
-                            {editRoleIsBranchUser && (
-                                <div className={`space-y-2 animate-fadeIn ${theme.warningBg} p-4 rounded-xl border ${theme.warningBorder}`}>
-                                    <label className={`block text-sm font-bold ${theme.textPrimary}`}>Select Allowed Branches (Required)</label>
-                                    <div className={`border ${theme.inputBorder} rounded-xl p-3 max-h-40 overflow-y-auto space-y-2 ${theme.surfaceBg}`}>
-                                        {branches.length > 0 ? branches.map(branch => (
-                                            <div key={branch._id} className="flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={editUserSelectedBranches.includes(branch._id)}
-                                                    onChange={() => handleEditUserBranchSelection(branch._id)}
-                                                    className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
-                                                />
-                                                <span className={`text-sm ${theme.textPrimary}`}>{branch.name}</span>
-                                            </div>
-                                        )) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
-                                    </div>
+
+                            <div className={`space-y-4 p-4 rounded-xl border ${theme.inputBorder} ${theme.inputBg}`}>
+                                <h4 className={`text-sm font-black uppercase tracking-wider ${theme.textHeading} flex items-center gap-2`}>
+                                    <ShieldCheck size={16} className={theme.primaryIconText} /> Branch Access
+                                </h4>
+
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="checkbox"
+                                        id="editAllBranchesToggle"
+                                        checked={editUserAllBranches}
+                                        onChange={(e) => {
+                                            setEditUserAllBranches(e.target.checked);
+                                            if (e.target.checked) setEditUserSelectedBranchIds([]);
+                                        }}
+                                        className={`w-5 h-5 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
+                                    />
+                                    <label htmlFor="editAllBranchesToggle" className={`text-sm font-bold ${theme.textPrimary} cursor-pointer`}>
+                                        Full Shop Access (All Branches)
+                                    </label>
                                 </div>
-                            )}
+
+                                {!editUserAllBranches && (
+                                    <div className="animate-fadeIn space-y-2">
+                                        <label className={`block text-xs font-bold ${theme.textSecondary}`}>Select Accessible Branches</label>
+                                        <div className={`border ${theme.inputBorder} rounded-xl p-3 max-h-40 overflow-y-auto space-y-2 ${theme.surfaceBg}`}>
+                                            {branches.length > 0 ? branches.map(branch => (
+                                                <div key={branch._id} className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={editUserSelectedBranchIds.includes(branch._id)}
+                                                        onChange={() => handleEditUserBranchSelection(branch._id)}
+                                                        className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
+                                                    />
+                                                    <span className={`text-sm ${theme.textPrimary}`}>{branch.name}</span>
+                                                </div>
+                                            )) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
                             <div>
                                 <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Address</label>
@@ -1936,6 +2457,19 @@ const Staff = ({
                     </div>
                 </div>
             )}
+            <SubscriptionNoticeModal
+                isOpen={isSubscriptionNoticeOpen}
+                onClose={() => setIsSubscriptionNoticeOpen(false)}
+                user={user}
+                isStaff={!(user?.isOwner || user?.isSuperAdmin || user?.roles?.some(r => ['owner', 'admin'].includes((r?.name || "").toLowerCase())))}
+            />
+            <AttendanceCorrectionModal 
+                isOpen={isCorrectionModalOpen}
+                onClose={() => setIsCorrectionModalOpen(false)}
+                log={selectedLogForCorrection}
+                onApprove={(id) => handleCorrectionAction(id, 'APPROVED')}
+                onReject={(id, reason) => handleCorrectionAction(id, 'REJECTED', reason)}
+            />
         </div>
     );
 };

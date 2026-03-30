@@ -28,15 +28,7 @@ export const AppProvider = ({ children }) => {
     const [activeMenuCategory, setActiveMenuCategory] = useState("All");
 
     // Expenses State
-    const [expenses, setExpenses] = useState([
-        {
-            id: 1,
-            title: "Vegetable Supply",
-            amount: 1200,
-            date: "2023-10-25",
-            category: "Supplies",
-        },
-    ]);
+    const [expenses, setExpenses] = useState([]);
 
     const addExpense = (expense) => {
         setExpenses((prev) => [...prev, expense]);
@@ -67,7 +59,16 @@ export const AppProvider = ({ children }) => {
 
     const [businessTypeData, setBusinessTypeData] = useState(null);
 
-    const { isAuthenticated } = useAuth();
+    // Branch Selection State - Persisted
+    const [activeBranchId, setActiveBranchId] = useState(() => {
+        const stored = localStorage.getItem("pos_activeBranchId");
+        return (stored === "null" || stored === "undefined") ? null : stored;
+    });
+
+    const { isAuthenticated, user } = useAuth();
+
+    const getSafeId = (id) => (id === "null" || id === "undefined" || !id) ? null : id;
+    const currentShopId = getSafeId(user?.shop_id || user?.shopId) || getSafeId(organization?.id || organization?._id) || (branches.find(b => String(b.id || b._id) === String(activeBranchId))?.organizationId) || null;
 
     // Fetch full business type details when businessType changes
     useEffect(() => {
@@ -75,7 +76,7 @@ export const AppProvider = ({ children }) => {
             // Guard: only fetch if authenticated and we have a potential ID
             if (!isAuthenticated) return;
             
-            if (businessType && businessType.length > 20) { // Check if it looks like a MongoDB ID
+            if (businessType && businessType.length > 0) {
                 try {
                     const res = await businessTypesService.getBusinessTypeById(businessType);
                     setBusinessTypeData(res.data);
@@ -83,7 +84,7 @@ export const AppProvider = ({ children }) => {
                     console.error("Failed to fetch business type details:", error);
                 }
             } else {
-                // Fallback for default state or static strings
+                // Fallback for default state
                 setBusinessTypeData({
                     features: {
                         sellStockItems: true,
@@ -96,11 +97,7 @@ export const AppProvider = ({ children }) => {
         fetchTypeDetails();
     }, [businessType, isAuthenticated]);
 
-    // Branch Selection State - Persisted
-    const [activeBranchId, setActiveBranchId] = useState(() => {
-        const stored = localStorage.getItem("pos_activeBranchId");
-        return (stored === "null" || stored === "undefined") ? null : stored;
-    });
+    // End branch selection state
 
     const [enabledModules, setEnabledModules] = useState(() => {
         // const stored = localStorage.getItem("pos_enabledModules");
@@ -114,6 +111,35 @@ export const AppProvider = ({ children }) => {
         localStorage.setItem("pos_activeBranchId", activeBranchId);
         // localStorage.setItem("pos_enabledModules", JSON.stringify(enabledModules));
     }, [businessType, businessSubtype, enabledModules, activeBranchId]);
+
+    // Sync business type from organization data when it loads
+    useEffect(() => {
+        if (organization?.businessType && organization.businessType !== businessType) {
+            setBusinessType(organization.businessType);
+        }
+    }, [organization?.businessType, businessType]);
+
+    // Fetch allowed branches globally
+    useEffect(() => {
+        const fetchBranches = async () => {
+            if (isAuthenticated) {
+                try {
+                    const { branchService } = await import("../services/api");
+                    const data = await branchService.getAllowedBranches();
+                    setBranches(data || []);
+                    
+                    // Optional: auto-select first branch if none selected
+                    if (!activeBranchId && data && data.length > 0) {
+                        const firstBranchId = data[0]._id || data[0].id;
+                        setActiveBranchId(firstBranchId);
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch branches globally:", error);
+                }
+            }
+        };
+        fetchBranches();
+    }, [isAuthenticated]);
 
     return (
         <AppContext.Provider
@@ -148,7 +174,12 @@ export const AppProvider = ({ children }) => {
                 setEnabledModules,
                 inventoryItems,
                 setInventoryItems,
-                formatCurrency,
+                currentShopId,
+                formatCurrency: (value, currency) => {
+                    const codeRaw = (currency || organization?.defaultCurrency || 'USD');
+                    const finalCode = (typeof codeRaw === 'object' && codeRaw !== null) ? (codeRaw.code || codeRaw.id || 'USD') : codeRaw;
+                    return formatCurrency(value, finalCode);
+                },
             }}
         >
             {children}

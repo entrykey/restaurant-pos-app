@@ -11,8 +11,8 @@ const SUPER_ADMIN_MODULES = [
   "plan_management",
   "subscription_management",
   "settings",
-
-
+  "client_management",
+  "DASHBOARD",
 ];
 
 export const hasPermission = (user, module, action) => {

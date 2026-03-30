@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, User, Smartphone, Calendar, Wrench, ShieldCheck, Box, DollarSign } from "lucide-react";
+import { ArrowLeft, User, Smartphone, Calendar, Wrench, ShieldCheck, Box, Banknote } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
+import { useApp } from "../../context/AppContext";
+import { formatCurrency } from "../../utils/format";
 
 // Mock Data
 const MOCK_DATA = {
@@ -25,6 +27,8 @@ const MOCK_DATA = {
 
 const ServiceDetails = ({ hasPermissionFor }) => {
     const { theme, themeName } = useTheme();
+    const { organization } = useApp();
+    const currency = organization?.defaultCurrency || 'USD';
     const { id } = useParams();
     const service = MOCK_DATA; // In real app, fetch based on ID
 
@@ -139,24 +143,24 @@ const ServiceDetails = ({ hasPermissionFor }) => {
                     {/* Cost Summary */}
                     <div className={`${theme.surfaceBg} rounded-xl shadow-sm border ${theme.borderLight} p-4`}>
                         <h3 className={`font-semibold ${theme.textHeading} mb-4 flex items-center gap-2`}>
-                            <DollarSign className="w-4 h-4" /> Billing
+                            <Banknote className="w-4 h-4" /> Billing
                         </h3>
                         <div className="space-y-2 text-sm">
                             <div className={`flex justify-between ${theme.textPrimary}`}>
                                 <span>Service Charges</span>
-                                <span>$0.00</span>
+                                <span>{formatCurrency(0, currency)}</span>
                             </div>
                             <div className={`flex justify-between ${theme.textPrimary}`}>
                                 <span>Spare Parts</span>
-                                <span>$0.00</span>
+                                <span>{formatCurrency(0, currency)}</span>
                             </div>
                             <div className={`flex justify-between ${theme.textSecondary}`}>
                                 <span>Tax</span>
-                                <span>$0.00</span>
+                                <span>{formatCurrency(0, currency)}</span>
                             </div>
                             <div className={`border-t ${theme.borderLight} pt-2 mt-2 flex justify-between font-bold ${theme.textHeading} text-base`}>
                                 <span>Total</span>
-                                <span>$0.00</span>
+                                <span>{formatCurrency(0, currency)}</span>
                             </div>
                         </div>
                         <button className={`w-full mt-6 py-2 ${theme.successBg} ${theme.successText} rounded-lg font-medium hover:opacity-80 transition-colors shadow-sm`}>

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import ProtectedRoute from "../components/ProtectedRoute";
 import {
@@ -17,8 +17,9 @@ import Inventory from "../pages/Inventory/Inventory";
 import ProductPage from "../pages/Inventory/ProductPage";
 import Reports from "../pages/Reports/Reports";
 import Settings from "../pages/Settings/Settings";
-import Staff from "../pages/Staff/Staff";
 import StaffDashboard from "../pages/Staff/StaffDashboard";
+import MyAttendance from "../pages/Staff/MyAttendance";
+import MyLeaves from "../pages/Staff/MyLeaves";
 import Organization from "../pages/Organization/Organization";
 import OfferList from "../pages/Offers/OfferList";
 import OfferForm from "../pages/Offers/OfferForm";
@@ -33,6 +34,7 @@ import PurchaseList from "../pages/Purchases/PurchaseList";
 import PurchasePage from "../pages/Purchases/PurchasePage";
 import BusinessTypesPage from "../pages/BusinessTypes/BusinessTypes";
 import ShopManagementPage from "../pages/ShopManagement";
+import ClientManagementPage from "../pages/ClientManagement/ClientManagement";
 import PlanManagementPage from "../pages/PlanManagement";
 import SubscriptionManagementPage from "../pages/SubscriptionManagement/SubscriptionManagement";
 import TableManagement from "../pages/TableManagement/TableManagement";
@@ -42,6 +44,10 @@ import PayInList from "../pages/Dashboard/PayInList";
 import PayOutList from "../pages/Dashboard/PayOutList";
 import OperatingExpenses from "../pages/Dashboard/OperatingExpenses";
 import SalesList from "../pages/Dashboard/SalesList";
+
+
+const Staff = lazy(() => import("../pages/Staff/Staff"));
+const MySalary = lazy(() => import("../pages/Staff/MySalary"));
 
 const TableOrderWrapper = ({ setActiveTableId, setView, setIsTakeaway, children }) => {
   const { tableId } = useParams();
@@ -149,26 +155,13 @@ const AppRoutes = (props) => {
   const isWholesale = takeawayOrder?.orderType === "WHOLESALE";
   const isDirectSale = takeawayOrder?.orderType === "DIRECT_SALE";
 
-  const sellStock = businessTypeData?.features?.sellStockItems ?? true;
-  const sellManufactured = businessTypeData?.features?.sellManufacturedItems ?? true;
-  const sellTrade = businessTypeData?.features?.sellTradeItems ?? false;
+  // Use props.menu as the primary source of truth for POS items.
+  // AppContent handles the hydration and filtering based on business features.
+  let filteredMenu = props.menu || [];
 
-  const stockItems = (inventoryItems || []).filter((i) => i.itemType === "STOCK");
-  const tradeItems = (inventoryItems || []).filter((i) => i.itemType === "TRADE");
-  const manufacturedItems = props.menu || [];
-
-  // Determine what to show in the POS menu
-  let filteredMenu = [];
-  if (sellStock) filteredMenu = [...filteredMenu, ...stockItems];
-  if (sellManufactured) filteredMenu = [...filteredMenu, ...manufacturedItems];
-  if (sellTrade) filteredMenu = [...filteredMenu, ...tradeItems];
-
-  // Specific override for Wholesale: usually only stock, 
-  // but if superadmin said "only manufactured", then wholesale should show manufactured?
-  // Let's stick to the features flags as the primary source.
+  // Specific override for Wholesale: usually only stock
   if (isWholesale) {
-    filteredMenu = stockItems; // Wholesale is traditionally stock
-    if (!sellStock && sellManufactured) filteredMenu = manufacturedItems; // Fallback if stock is disabled
+    filteredMenu = (inventoryItems || []).filter(i => i.itemType === "STOCK");
   }
 
   const safeHasPermission = typeof hasPermission === "function" ? hasPermission : (typeof props.hasPermission === "function" ? props.hasPermission : () => false);
@@ -208,7 +201,7 @@ const AppRoutes = (props) => {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="min-h-full flex flex-col">
       <Routes>
         {/* Generic Dashboard Route */}
         <Route
@@ -525,14 +518,42 @@ const AppRoutes = (props) => {
           path="/staff"
           element={
             <ProtectedRoute routeKey="STAFF">
-              <Staff
-                staffList={staffList}
-                setStaffList={props.setStaffList}
-                rolesList={props.rolesList}
-                setRolesList={props.setRolesList}
-                hasPermission={hasPermission || props.hasPermission}
-                hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
-              />
+              <Suspense fallback={<div>Loading...</div>}>
+                <Staff
+                  staffList={staffList}
+                  setStaffList={props.setStaffList}
+                  rolesList={props.rolesList}
+                  setRolesList={props.setRolesList}
+                  hasPermission={hasPermission || props.hasPermission}
+                  hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
+                />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-attendance"
+          element={
+            <ProtectedRoute routeKey="MYATTENDANCE">
+              <MyAttendance />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-leaves"
+          element={
+            <ProtectedRoute routeKey="MYLEAVES">
+              <MyLeaves />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-salary"
+          element={
+            <ProtectedRoute routeKey="MYSALARY">
+              <Suspense fallback={<div>Loading...</div>}>
+                <MySalary />
+              </Suspense>
             </ProtectedRoute>
           }
         />
@@ -655,6 +676,16 @@ const AppRoutes = (props) => {
           }
         />
 
+        {/* Client Management (SuperAdmin Only) */}
+        <Route
+          path="/client-management"
+          element={
+            <ProtectedRoute routeKey="CLIENT_MANAGEMENT">
+              <ClientManagementPage />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Plan Management (SuperAdmin Only) */}
         <Route
           path="/plan-management"
@@ -751,6 +782,9 @@ const AppRoutes = (props) => {
               {view === "plan-management" && (
                 <Navigate to="/plan-management" replace />
               )}
+              {view === "client-management" && (
+                <Navigate to="/client-management" replace />
+              )}
               {view === "table-management" && (
                 <Navigate to="/table-management" replace />
               )}
@@ -760,7 +794,10 @@ const AppRoutes = (props) => {
               {view === "owner-dashboard" && (
                 <Navigate to="/owner-dashboard" replace />
               )}
-              {view !== "dashboard" && view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "parties" && view !== "service" && view !== "purchases" && view !== "business-types" && view !== "shop-management" && view !== "plan-management" && view !== "table-management" && view !== "owner-dashboard" && view !== "offers" && props.children}
+              {view === "my-salary" && (
+                <Navigate to="/my-salary" replace />
+              )}
+              {view !== "dashboard" && view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "parties" && view !== "service" && view !== "purchases" && view !== "business-types" && view !== "shop-management" && view !== "client-management" && view !== "plan-management" && view !== "table-management" && view !== "owner-dashboard" && view !== "offers" && props.children}
             </>
           }
         />

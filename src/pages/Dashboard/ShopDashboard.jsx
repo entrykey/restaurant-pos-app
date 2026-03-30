@@ -2,16 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { dashboardService } from '../../services/api';
-import { TrendingUp, TrendingDown, DollarSign, Users, ShoppingBag, ArrowRight } from 'lucide-react';
-import { formatCurrency } from '../../utils/format';
+import { TrendingUp, TrendingDown, Banknote, Users, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useApp } from '../../context/AppContext';
 
 const ShopDashboard = () => {
     const { user } = useAuth();
     const { theme } = useTheme();
+    const { organization, formatCurrency } = useApp();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
+
+    // Remove local currency variable as context formatCurrency handles it
 
     useEffect(() => {
         const fetchDashboard = async () => {
@@ -42,11 +45,12 @@ const ShopDashboard = () => {
         { label: 'Total Sales', value: formatCurrency(data?.totalSales || 0), icon: ShoppingBag, color: 'text-blue-600', bg: 'bg-blue-50', link: '/dashboard/sales' },
         { label: 'Today Profit', value: formatCurrency(data?.totalProfit || 0), icon: TrendingUp, color: (data?.totalProfit || 0) >= 0 ? 'text-green-600' : 'text-red-600', bg: (data?.totalProfit || 0) >= 0 ? 'bg-green-50' : 'bg-red-50', link: '/dashboard/operating-expenses' },
         { label: 'Pay In (Customers)', value: formatCurrency(data?.payIn || 0), icon: Users, color: 'text-orange-600', bg: 'bg-orange-50', link: '/dashboard/pay-in' },
-        { label: 'Pay Out (Suppliers)', value: formatCurrency(data?.payOut || 0), icon: DollarSign, color: 'text-red-600', bg: 'bg-red-50', link: '/dashboard/pay-out' },
+        { label: 'Pay Out (Suppliers)', value: formatCurrency(data?.payOut || 0), icon: Banknote, color: 'text-red-600', bg: 'bg-red-50', link: '/dashboard/pay-out' },
     ];
 
     return (
-        <div className="p-8 space-y-8 w-full h-full overflow-y-auto custom-scrollbar animate-in fade-in duration-500">
+        <div className="p-8 pb-12 space-y-8 w-full animate-in fade-in duration-500">
+
             <div>
                 <h1 className={`text-3xl font-black ${theme.textHeading}`}>Shop Dashboard</h1>
                 <p className={`${theme.textMuted} mt-1`}>Consolidated overview across all branches</p>

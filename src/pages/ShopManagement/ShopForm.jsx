@@ -3,6 +3,7 @@ import { ArrowLeft, Save, Building2, User, FileText, Settings2 } from 'lucide-re
 import { shopService } from '../../services/api/shops';
 import { businessTypesService } from '../../services/api/businessTypes';
 import { useTheme } from '../../context/ThemeContext';
+import CommonSelect from '../../components/ui/CommonSelect';
 
 const ShopForm = ({ shopToEdit, onBack }) => {
     const { theme } = useTheme();
@@ -190,32 +191,25 @@ const ShopForm = ({ shopToEdit, onBack }) => {
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Business Type *</label>
-                                <select
-                                    name="businessType"
+                                <CommonSelect
+                                    options={businessTypes.map(t => ({ ...t, label: t.displayString || t.name, value: t._id }))}
                                     value={formData.businessType}
-                                    onChange={handleTypeChange}
+                                    onChange={(val) => {
+                                        setFormData(prev => ({ ...prev, businessType: val, subType: '' }));
+                                        fetchSubtypes(val);
+                                    }}
+                                    placeholder="-- Select Type --"
                                     required
-                                    className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
-                                >
-                                    <option value="">Select Type</option>
-                                    {businessTypes.map(t => (
-                                        <option key={t._id} value={t._id}>{t.displayString || t.name}</option>
-                                    ))}
-                                </select>
+                                />
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Sub Type</label>
-                                <select
-                                    name="subType"
+                                <CommonSelect
+                                    options={subtypes.map(s => ({ ...s, label: s.displayString || s.name, value: s._id }))}
                                     value={formData.subType}
-                                    onChange={handleChange}
-                                    className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
-                                >
-                                    <option value="">Select Subtype</option>
-                                    {subtypes.map(s => (
-                                        <option key={s._id} value={s._id}>{s.displayString || s.name}</option>
-                                    ))}
-                                </select>
+                                    onChange={(val) => setFormData(prev => ({ ...prev, subType: val }))}
+                                    placeholder="-- Select Sub Type --"
+                                />
                             </div>
                         </div>
                     </div>

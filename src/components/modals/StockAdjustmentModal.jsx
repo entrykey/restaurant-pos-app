@@ -4,9 +4,12 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { inventoryService } from '../../services/api';
 import { shopExpenseService } from '../../services/api/shopExpenses';
+import { useApp } from '../../context/AppContext';
 
-const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuccess, formatCurrency }) => {
+const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuccess, formatCurrency: propFormatCurrency }) => {
     const { theme } = useTheme();
+    const { organization, formatCurrency } = useApp();
+    const currency = organization?.defaultCurrency || 'USD';
     const [adjustmentType, setAdjustmentType] = useState('ADD'); // 'ADD' or 'SUBTRACT'
     const [quantity, setQuantity] = useState('');
     const [price, setPrice] = useState('');
@@ -143,7 +146,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                             <span className="text-red-500 mr-1">*</span> At Price
                         </label>
                         <div className="relative group">
-                            <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-black group-focus-within:text-blue-500 transition-colors ${theme.textMuted}`}>₹</span>
+                            <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-black group-focus-within:text-blue-500 transition-colors ${theme.textMuted}`}>{currency === 'INR' ? '₹' : (currency === 'USD' ? '$' : currency)}</span>
                             <input
                                 type="number"
                                 required

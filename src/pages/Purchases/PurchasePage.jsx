@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Tag, ChevronDown, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera } from "lucide-react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Tag, ChevronDown, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera, AlertCircle } from "lucide-react";
+import { useNavigate, useParams, useLocation, Link } from "react-router-dom";
 import { PurchaseService } from "../../services/PurchaseService";
 import { SupplierService } from "../Suppliers/SupplierService";
 import api, { itemService, branchService, shopService, taxService } from "../../services/api";
@@ -12,6 +12,7 @@ import Modal from "../../components/ui/Modal";
 import DatePicker from "../../components/ui/DatePicker";
 import CommonSelect from "../../components/ui/CommonSelect";
 import InvoiceScannerModal from "../../components/modals/InvoiceScannerModal";
+import { findBestStockMatch, normalizeScannedProductName } from "../../utils/invoiceItemMatch";
 import { toast } from "react-hot-toast";
 import {
     TAX_SYSTEMS,
@@ -42,14 +43,15 @@ const PurchasePage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { activeBranchId, formatCurrency, businessTypeData } = useApp();
+    const { activeBranchId, formatCurrency, businessTypeData, branches, currentShopId } = useApp();
     const { theme } = useTheme();
+    const location = useLocation();
     const isEditing = !!id;
 
     // --- State ---
     const [loading, setLoading] = useState(false);
     const [suppliers, setSuppliers] = useState([]);
-    const [branches, setBranches] = useState([]);
+    // Removed local branches state, using from useApp
     const [stockItems, setStockItems] = useState([]);
     const [shopInfo, setShopInfo] = useState(null);
     const [shopTaxes, setShopTaxes] = useState([]);
@@ -95,6 +97,9 @@ const PurchasePage = () => {
     const [branchForm, setBranchForm] = useState(emptyBranch(null));
     const [isLocationLoading, setIsLocationLoading] = useState(false);
     const [productPrefillData, setProductPrefillData] = useState(null);
+    const [editNote, setEditNote] = useState("");
+    /** Last successful invoice scan payload (OCR output + synced ids) for review / support */
+    const [lastScannedInvoice, setLastScannedInvoice] = useState(null);
 
     const [barcodePrintDialog, setBarcodePrintDialog] = useState({
         isOpen: false,
@@ -157,33 +162,54 @@ const PurchasePage = () => {
     };
 
     useEffect(() => {
-        if (user?.shop_id) {
-            fetchInitialData();
+        if (user && (user.shop_id || currentShopId)) {
+            fetchInitialData(activeBranchId);
         }
         if (isEditing) {
             loadPurchase();
+        } else if (activeBranchId) {
+            // Sync branchId with active branch if not editing an existing purchase
+            setFormData(prev => ({
+                ...prev,
+                branchId: activeBranchId
+            }));
         }
-    }, [user?.shop_id, id, activeBranchId, formData.branchId]);
+    }, [user?.shop_id, id, activeBranchId, currentShopId]);
+
+    // Handle restoration of state and auto-addition of new products when returning from full-page view
+    useEffect(() => {
+        if (location.state?.returnState) {
+            setFormData(location.state.returnState);
+            // Clear location state to avoid re-triggering on unrelated renders
+            window.history.replaceState({ ...location.state, returnState: null }, '');
+        }
+        if (location.state?.newProduct) {
+            handleAddItem(location.state.newProduct);
+            // Clear location state to avoid re-triggering
+            window.history.replaceState({ ...location.state, newProduct: null }, '');
+        }
+    }, [location.state]);
 
     const fetchInitialData = async (branchIdArg) => {
         try {
             const branchId = branchIdArg || formData.branchId || activeBranchId;
-            const [suppliersData, branchesData, shopData, itemsRes, taxesRes] = await Promise.all([
-                SupplierService.getSuppliers(user.shop_id),
-                branchService.getBranchesByShopId(user.shop_id),
-                shopService.getShopById(user.shop_id),
+            console.log("FETCH_INITIAL_DATA_FOR_BRANCH:", branchId);
+            const [suppliersData, shopData, itemsRes, taxesRes] = await Promise.all([
+                SupplierService.getSuppliers(currentShopId),
+                shopService.getShopById(currentShopId),
                 itemService.getItems({
                     filters: {
-                        shopId: user.shop_id,
-                        itemType: { $in: ["STOCK", "TRADE"] },
+                        shopId: currentShopId,
+                        itemType: ["STOCK", "TRADE"],
                         branchId: branchId || undefined
                     },
                     limit: 100
                 }),
-                taxService.getTaxes(branchId)
+                taxService.getTaxes({ branchId })
             ]);
+            console.log("PURCHASE_ENTRY_ITEMS_FETCHED:", itemsRes.data?.length || 0, itemsRes.data);
+            console.log("PURCHASE_ENTRY_SUPPLIERS_FETCHED:", suppliersData?.length || 0, suppliersData);
             setSuppliers(suppliersData);
-            setBranches(branchesData);
             setShopInfo(shopData);
             setStockItems(itemsRes.data || []);
             setShopTaxes(taxesRes.filter(t => t.isActive !== false));
@@ -225,11 +251,19 @@ const PurchasePage = () => {
     // --- Calculations ---
     const { subtotal, taxTotal } = useMemo(() => {
         return formData.items.reduce((acc, it) => {
-            acc.subtotal += (it.quantity * it.purchasePrice);
-            acc.taxTotal += (it.taxAmount || 0);
+            const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
+            const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+
+            if (isExclusive) {
+                acc.subtotal += (it.quantity * it.purchasePrice);
+                acc.taxTotal += (it.taxAmount || 0);
+            } else {
+                acc.subtotal += (it.quantity * it.purchasePrice) - (it.taxAmount || 0);
+                acc.taxTotal += (it.taxAmount || 0);
+            }
             return acc;
         }, { subtotal: 0, taxTotal: 0 });
-    }, [formData.items]);
+    }, [formData.items, shopTaxes]);
 
     useEffect(() => {
         setFormData(prev => {
@@ -270,8 +304,16 @@ const PurchasePage = () => {
             existingBarcode: item.barcode || "",
             // For IMEI / serial-tracked items we may want per-unit barcode generation
             hasIndividualBarcode: item.tracking?.serialTracking || false,
+            taxId: item.taxId || null,
             taxPercent: item.taxPercent || 0,
-            taxAmount: (item.pricing?.purchasePrice || 0) * (item.taxPercent || 0) / 100
+            taxAmount: (() => {
+                const taxObj = item.taxId ? shopTaxes.find(t => t._id === item.taxId) : shopTaxes.find(t => t.percentage === Number(item.taxPercent || 0));
+                const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+                const p = item.pricing?.purchasePrice || 0;
+                const r = item.taxPercent || 0;
+                if (!r) return 0;
+                return isExclusive ? (p * r) / 100 : p - (p / (1 + r / 100));
+            })()
         };
 
         setFormData(prev => ({
@@ -285,7 +327,7 @@ const PurchasePage = () => {
     const handleProductDialogClose = async (newProduct) => {
         setIsProductModalOpen(false);
         setProductPrefillData(null);
-        
+
         if (newProduct && (newProduct._id || newProduct.id) && newProduct.name) {
             try {
                 // Refresh stock items list to get the full item details
@@ -327,8 +369,9 @@ const PurchasePage = () => {
 
 
     const handleDataExtracted = (data) => {
+        const needNewSupplier = !data.supplierId && data.supplierName;
         // Handle Supplier Missing
-        if (!data.supplierId && data.supplierName) {
+        if (needNewSupplier) {
             setSupplierFormData(prev => ({
                 ...prev,
                 name: data.supplierName
@@ -337,16 +380,20 @@ const PurchasePage = () => {
             toast.info(`Supplier "${data.supplierName}" not found. Please create it.`);
         }
 
+        const preferTrade = !!businessTypeData?.features?.sellTradeItems;
+        let firstNewProductPrefill = null;
+        const defaultTaxPercent = shopTaxes.length
+            ? (shopTaxes.find((t) => t.isActive !== false)?.percentage ?? shopTaxes[0]?.percentage ?? 0)
+            : 0;
+
         setFormData(prev => {
             const updatedItems = [...prev.items];
-            
+
             // Try to match and add items
             data.items.forEach(extractedItem => {
-                // Try to find matching stock item by name
-                const match = stockItems.find(it => 
-                    it.name.toLowerCase().includes(extractedItem.name.toLowerCase()) ||
-                    extractedItem.name.toLowerCase().includes(it.name.toLowerCase())
-                );
+                const match = extractedItem.name
+                    ? findBestStockMatch(extractedItem.name, stockItems, { preferTrade })
+                    : null;
 
                 if (match) {
                     // Avoid duplicate entry of same itemId
@@ -360,8 +407,18 @@ const PurchasePage = () => {
                             purchasePrice: extractedItem.purchasePrice || match.pricing?.purchasePrice || 0,
                             sellingPrice: match.pricing?.sellingPrice || 0,
                             mrp: match.pricing?.mrp || 0,
+                            taxId: match.taxId || null,
                             taxPercent: match.taxPercent || 0,
-                            taxAmount: (extractedItem.purchasePrice || match.pricing?.purchasePrice || 0) * (match.taxPercent || 0) / 100,
+                            taxAmount: (() => {
+                                const taxObj = match.taxId ? shopTaxes.find(t => t._id === match.taxId) : shopTaxes.find(t => t.percentage === Number(match.taxPercent || 0));
+                                const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+                                const p = extractedItem.purchasePrice || match.pricing?.purchasePrice || 0;
+                                const q = extractedItem.quantity || 1;
+                                const r = match.taxPercent || 0;
+                                const lineTotal = p * q;
+                                if (!r) return 0;
+                                return (lineTotal * r) / 100;
+                            })(),
                             batchTracking: match.tracking?.batchTracking || false,
                             expiryTracking: match.tracking?.expiryTracking || false,
                             existingBarcode: match.barcode || "",
@@ -371,17 +428,58 @@ const PurchasePage = () => {
                         alreadyExists.quantity += (extractedItem.quantity || 0);
                     }
                 } else if (extractedItem.name) {
+                    const suggestedType = preferTrade ? "TRADE" : "STOCK";
+                    const displayName = normalizeScannedProductName(extractedItem.name) || extractedItem.name;
+                    const lineTax =
+                        extractedItem.taxPercent != null && extractedItem.taxPercent !== ""
+                            ? Number(extractedItem.taxPercent)
+                            : defaultTaxPercent;
                     // Add as a "Pending/New" item that needs to be created
                     updatedItems.push({
                         itemId: `new_${Date.now()}_${Math.random()}`,
-                        name: extractedItem.name,
+                        name: displayName,
                         itemCode: "PENDING",
                         quantity: extractedItem.quantity || 1,
                         purchasePrice: extractedItem.purchasePrice || 0,
                         isNew: true,
-                        taxPercent: 0,
-                        taxAmount: 0
+                        taxPercent: lineTax,
+                        taxAmount: (() => {
+                            const taxObj = shopTaxes.find(t => t.percentage === Number(lineTax || 0));
+                            const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+                            const p = extractedItem.purchasePrice || 0;
+                            const q = extractedItem.quantity || 1;
+                            const r = Number(lineTax) || 0;
+                            const lineTotal = p * q;
+                            if (!r) return 0;
+                            return isExclusive ? (lineTotal * r) / 100 : lineTotal - (lineTotal / (1 + r / 100));
+                        })(),
+                        hsnCode: extractedItem.hsnCode || "",
+                        mrp: extractedItem.mrp,
+                        scanDescription: extractedItem.name,
+                        scanSerialNo: extractedItem.serialNo,
+                        scanExtracted: {
+                            rawName: extractedItem.name,
+                            displayName,
+                            quantity: extractedItem.quantity,
+                            purchasePrice: extractedItem.purchasePrice,
+                            hsnCode: extractedItem.hsnCode || "",
+                            mrp: extractedItem.mrp,
+                            serialNo: extractedItem.serialNo,
+                            suggestedItemType: suggestedType,
+                            taxPercent: lineTax
+                        }
                     });
+                    if (!firstNewProductPrefill) {
+                        firstNewProductPrefill = {
+                            name: displayName,
+                            description: extractedItem.name,
+                            purchasePrice: extractedItem.purchasePrice || 0,
+                            mrp: extractedItem.mrp ?? extractedItem.purchasePrice ?? 0,
+                            hsnSacCode: extractedItem.hsnCode || "",
+                            itemType: suggestedType,
+                            taxPercent: lineTax
+                        };
+                    }
                 }
             });
 
@@ -393,7 +491,7 @@ const PurchasePage = () => {
                     if (!isNaN(d.getTime())) {
                         validDate = d.toISOString().split('T')[0];
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
 
             return {
@@ -404,9 +502,20 @@ const PurchasePage = () => {
                 items: updatedItems
             };
         });
-        
+
+        setLastScannedInvoice({
+            ...data,
+            preferTrade,
+            syncedAt: new Date().toISOString()
+        });
+
         if (data.supplierName) setSupplierSearch(data.supplierName);
         toast.success("Invoice scanned and synced! Please review the details.");
+
+        if (firstNewProductPrefill && !needNewSupplier) {
+            setProductPrefillData(firstNewProductPrefill);
+            setIsProductModalOpen(true);
+        }
     };
 
     const handleRemoveItem = (index) => {
@@ -417,22 +526,47 @@ const PurchasePage = () => {
     };
 
     const handleItemChange = async (index, field, value) => {
-        const updatedItems = [...formData.items];
-        updatedItems[index][field] = value;
-
-        // Recalculate taxAmount if price or taxPercent changes
-        if (field === 'purchasePrice' || field === 'taxPercent' || field === 'quantity') {
-            const row = updatedItems[index];
-            row.taxAmount = (row.quantity * row.purchasePrice * row.taxPercent) / 100;
+        let updatedItems = [...formData.items];
+        
+        if (typeof field === 'object') {
+            updatedItems[index] = { ...updatedItems[index], ...field };
+        } else {
+            updatedItems[index][field] = value;
         }
 
-        setFormData(prev => ({ ...prev, items: updatedItems }));
+        const needsRecalc = typeof field === 'object' 
+            ? ('purchasePrice' in field || 'taxPercent' in field || 'quantity' in field || 'taxId' in field)
+            : (field === 'purchasePrice' || field === 'taxPercent' || field === 'quantity' || field === 'taxId');
 
+        // Recalculate taxAmount if price or taxPercent changes
+        if (needsRecalc) {
+            const row = updatedItems[index];
+            const p = row.purchasePrice || 0;
+            const r = row.taxPercent || 0;
+            const q = row.quantity || 0;
+            const lineTotal = p * q;
+            if (!r) {
+                row.taxAmount = 0;
+            } else {
+                row.taxAmount = (lineTotal * r) / 100;
+            }
+        }
+
+        setFormData(prev => ({ 
+            ...prev, 
+            items: prev.items.map((it, i) => i === index ? updatedItems[index] : it) 
+        }));
+
+        const isTaxPercentChanged = typeof field === 'object' ? ('taxPercent' in field) : (field === 'taxPercent');
+        
         // If taxPercent is changed, update product master
-        if (field === 'taxPercent') {
+        if (isTaxPercentChanged) {
             try {
                 const row = updatedItems[index];
-                await itemService.updateItem(row.itemId, { taxPercent: value });
+                await itemService.updateItem(row.itemId, { 
+                    taxPercent: typeof field === 'object' ? field.taxPercent : value,
+                    taxId: row.taxId || null
+                });
                 toast.success(`Tax updated for ${row.name}`);
             } catch (error) {
                 console.error("Failed to update product tax percentage:", error);
@@ -630,7 +764,11 @@ const PurchasePage = () => {
               </td>
               <td style="text-align: center;">${it.quantity}</td>
               <td style="text-align: right;">${formatCurrency(it.purchasePrice)}</td>
-              <td style="text-align: right; font-weight: 600;">${formatCurrency(it.quantity * it.purchasePrice)}</td>
+              <td style="text-align: right; font-weight: 600;">${(() => {
+                  const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
+                  const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+                  return formatCurrency(isExclusive ? (it.quantity * it.purchasePrice) + (it.taxAmount || 0) : (it.quantity * it.purchasePrice));
+              })()}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -681,6 +819,20 @@ const PurchasePage = () => {
 
     const handleSubmit = async (e, shouldPrint = false) => {
         if (e && e.preventDefault) e.preventDefault();
+
+        const finalShopId = currentShopId || user?.shop_id;
+        if (!finalShopId) {
+            toast.error("Shop session has expired. Please refresh.");
+            return;
+        }
+        if (!formData.supplierId) {
+            toast.error("Supplier is required.");
+            return;
+        }
+        if (!formData.branchId) {
+            toast.error("Branch is required.");
+            return;
+        }
         if (formData.items.length === 0) {
             toast.error("Please add at least one item.");
             return;
@@ -698,6 +850,12 @@ const PurchasePage = () => {
             }
         }
 
+        // Validation: If editing a confirmed purchase, editNote is required
+        if (isEditing && (formData.status === 'CONFIRMED' || formData.paidAmount > 0) && !editNote.trim()) {
+            toast.error("Please provide a reason for editing this confirmed purchase.");
+            return;
+        }
+
         setLoading(true);
         try {
             const itemsWithTotal = formData.items.map(it => ({
@@ -708,7 +866,8 @@ const PurchasePage = () => {
             const payload = {
                 ...formData,
                 items: itemsWithTotal,
-                shopId: user.shop_id,
+                shopId: finalShopId,
+                editNote: editNote || undefined,
             };
             let savedPurchase;
             if (isEditing) {
@@ -724,7 +883,8 @@ const PurchasePage = () => {
             navigate("/purchases");
         } catch (error) {
             console.error("Save error:", error);
-            toast.error(error.message || "Failed to save purchase");
+            const serverMsg = error.response?.data?.message;
+            toast.error(serverMsg || error.message || "Failed to save purchase");
         } finally {
             setLoading(false);
         }
@@ -745,16 +905,28 @@ const PurchasePage = () => {
 
     const handleSaveSupplier = async (e) => {
         e.preventDefault();
-        if (!user?.shop_id) return;
+        const shopId = user?.shop_id || currentShopId;
+        if (!shopId) {
+            toast.error("Shop session is not fully loaded. Please refresh.");
+            return;
+        }
         setSavingSupplier(true);
         try {
             const created = await SupplierService.addSupplier({
-                ...supplierFormData,
-                shopId: user.shop_id
+                name: supplierFormData.name,
+                contactPerson: supplierFormData.contactPerson,
+                phone: supplierFormData.phone,
+                email: supplierFormData.email,
+                taxNumber: supplierFormData.taxId,
+                status: supplierFormData.status,
+                address: {
+                    line1: supplierFormData.address
+                },
+                shopId: currentShopId
             });
 
             // Refresh supplier list
-            const suppliersData = await SupplierService.getSuppliers(user.shop_id);
+            const suppliersData = await SupplierService.getSuppliers(shopId);
             setSuppliers(suppliersData);
 
             // If API returns created supplier, preselect it
@@ -767,7 +939,16 @@ const PurchasePage = () => {
             }
 
             setIsSupplierModalOpen(false);
-            setSupplierSearch("");
+            setSupplierSearch(created?.name || "");
+            setSupplierFormData({
+                name: "",
+                contactPerson: "",
+                phone: "",
+                email: "",
+                address: "",
+                taxId: "",
+                status: "ACTIVE"
+            });
         } catch (error) {
             console.error("Failed to save supplier:", error);
             toast.error(error.message || "Failed to save supplier");
@@ -787,12 +968,15 @@ const PurchasePage = () => {
 
     const handleSaveBranch = async (e) => {
         e.preventDefault();
-        if (!user?.shop_id) return;
+        const shopId = user?.shop_id || currentShopId;
+        if (!shopId) return;
         setSavingBranch(true);
         try {
             const created = await saveBranch(branchForm);
-            const branchesData = await branchService.getBranchesByShopId(user.shop_id);
-            setBranches(branchesData);
+            // branches should be updated via AppContext if handled globally, 
+            // but since PurchasePage was managing its own, we might need to refresh AppContext's branches.
+            // For now, let's assume branches from useApp is synced.
+            // If useApp's branches doesn't auto-refresh, we might need a setBranches from useApp.
 
             const createdId = created._id || created.id || created.branchId || created.data?._id || created.data?.branchId || created.data?.id;
             if (createdId) {
@@ -1089,15 +1273,15 @@ const PurchasePage = () => {
                         <button
                             type="button"
                             onClick={() => setIsScannerOpen(true)}
-                            className={`flex items-center gap-2 px-6 py-4 rounded-[20px] font-black transition-all shadow-xl active:scale-95 group overflow-hidden relative ${theme.mode === 'dark' 
-                                ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-600/20' 
+                            className={`flex items-center gap-2 px-6 py-4 rounded-[20px] font-black transition-all shadow-xl active:scale-95 group overflow-hidden relative ${theme.mode === 'dark'
+                                ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-600/20'
                                 : 'bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100'}`}
                         >
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
                             <Camera size={20} className="group-hover:rotate-12 transition-transform" />
                             <div className="flex flex-col items-start leading-none text-left">
                                 <span className="text-[11px] tracking-tight">UPLOAD & SCAN</span>
-                                <span className="text-[8px] opacity-60 tracking-widest font-bold">POWERED BY FIVEPE AI</span>
+                                <span className="text-[8px] opacity-60 tracking-widest font-bold">POWERED BY FILEPE AI</span>
                             </div>
                         </button>
                     )}
@@ -1154,7 +1338,7 @@ const PurchasePage = () => {
                                                             {supplier?.address && (
                                                                 <div className="flex items-start gap-2 text-[11px] font-bold text-gray-500 dark:text-gray-400">
                                                                     <MapPin size={12} className="mt-0.5 text-indigo-400 shrink-0" />
-                                                                    <span className="leading-relaxed">{supplier.address}</span>
+                                                                    <span className="leading-relaxed">{typeof supplier.address === 'object' ? supplier.address.line1 : supplier.address}</span>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1235,12 +1419,12 @@ const PurchasePage = () => {
 
                             <div className="space-y-3">
                                 <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
-                                    <Building size={12} /> Branch *
+                                    <Building size={12} /> Bill to / Branch *
                                 </label>
                                 <div className="relative">
                                     {formData.branchId ? (
                                         (() => {
-                                            const branch = branches.find(b => b._id === formData.branchId);
+                                            const branch = branches.find(b => b._id === formData.branchId || b.id === formData.branchId);
                                             return (
                                                 <div className={`p-6 rounded-3xl border-2 border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-900/10 relative group transition-all`}>
                                                     <button
@@ -1310,6 +1494,8 @@ const PurchasePage = () => {
                                                                 }));
                                                                 setBranchSearch(branch.name);
                                                                 setShowBranchResults(false);
+                                                                // Fetch items and taxes for the newly selected branch
+                                                                fetchInitialData(branch._id);
                                                             }}
                                                             className={`w-full p-4 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between group transition-colors`}
                                                         >
@@ -1353,14 +1539,13 @@ const PurchasePage = () => {
                             <div className="flex flex-col gap-6">
                                 <div className="space-y-3">
                                     <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
-                                        <FileText size={12} /> Invoice No *
+                                        <FileText size={12} /> Original Invoice No
                                     </label>
                                     <input
-                                        required
                                         className={`w-full p-4 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-black ${theme.inputBg} ${theme.textPrimary}`}
                                         value={formData.supplierInvoiceNumber}
                                         onChange={e => setFormData({ ...formData, supplierInvoiceNumber: e.target.value })}
-                                        placeholder="INV/2024/001"
+                                        placeholder="INV/2024/001 (Optional)"
                                     />
                                 </div>
 
@@ -1429,30 +1614,30 @@ const PurchasePage = () => {
                         </div>
 
                         {/* Items Table */}
-                        <div className="overflow-x-auto min-h-[200px]">
+                        <div className="overflow-x-auto no-scrollbar max-h-[400px] overflow-y-auto relative">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className={`text-[10px] font-black uppercase tracking-widest border-b ${theme.textMuted} ${theme.borderLight}`}>
-                                        <th className="py-4 px-2">#</th>
-                                        <th className="py-4 px-2">Item Description</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2`}>#</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2`}>Item Description</th>
                                         {businessTypeData?.features?.sellTradeItems && (
-                                            <th className="py-4 px-2 w-24">Item Type</th>
+                                            <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-24`}>Item Type</th>
                                         )}
-                                        <th className="py-4 px-2 w-24">Qty</th>
-                                        <th className="py-4 px-2 w-28">Purchase Price</th>
-                                        <th className="py-4 px-2 w-28">Selling Price</th>
-                                        <th className="py-4 px-2 w-28">MRP</th>
-                                        <th className="py-4 px-2 w-28">Margin (%)</th>
-                                        <th className="py-4 px-2 w-28">Batch / Exp</th>
-                                        <th className="py-4 px-2 w-48">Barcode / Print</th>
-                                        <th className="py-4 px-2 w-28">Tax (%)</th>
-                                        <th className="py-4 px-2 text-right">Total</th>
-                                        <th className="py-4 px-2 text-right w-12"></th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-24`}>Qty</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Purchase Price</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Selling Price</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>MRP</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Margin (%)</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Batch / Exp</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-48`}>Barcode / Print</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Tax (%)</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 text-right`}>Total</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 text-right w-12`}></th>
                                     </tr>
                                 </thead>
                                 <tbody className={`divide-y ${theme.borderLight.replace('border-', 'divide-')} ${theme.textPrimary}`}>
                                     {formData.items.map((it, idx) => (
-                                        <tr key={it.itemId} className="group hover:opacity-80 transition-opacity">
+                                        <tr key={it.itemId} className="group hover:opacity-80 transition-opacity relative" style={{ zIndex: 1000 - idx }}>
                                             <td className={`py-5 px-2 font-bold ${theme.textMuted}`}>{idx + 1}</td>
                                             <td className="py-5 px-2">
                                                 <div className="flex items-center gap-2">
@@ -1464,13 +1649,18 @@ const PurchasePage = () => {
                                                 <div className="flex items-center justify-between mt-1">
                                                     <div className={`text-[10px] font-bold ${theme.textSecondary}`}>{it.itemCode}</div>
                                                     {it.isNew && (
-                                                        <button 
+                                                        <button
                                                             type="button"
                                                             onClick={() => {
+                                                                const se = it.scanExtracted || {};
                                                                 setProductPrefillData({
-                                                                    name: it.name,
-                                                                    purchasePrice: it.purchasePrice,
-                                                                    itemType: businessTypeData?.features?.sellTradeItems ? "TRADE" : "STOCK"
+                                                                    name: se.displayName || it.name,
+                                                                    description: se.rawName || it.scanDescription || it.name,
+                                                                    purchasePrice: se.purchasePrice ?? it.purchasePrice,
+                                                                    mrp: se.mrp ?? it.mrp ?? it.purchasePrice,
+                                                                    hsnSacCode: se.hsnCode || it.hsnCode || "",
+                                                                    itemType: se.suggestedItemType || (businessTypeData?.features?.sellTradeItems ? "TRADE" : "STOCK"),
+                                                                    taxPercent: it.taxPercent ?? (shopTaxes.find((t) => t.isActive !== false)?.percentage ?? shopTaxes[0]?.percentage ?? 0)
                                                                 });
                                                                 setIsProductModalOpen(true);
                                                             }}
@@ -1608,19 +1798,34 @@ const PurchasePage = () => {
                                                 </div>
                                             </td>
                                             <td className="py-5 px-2">
-                                                <select
-                                                    value={it.taxPercent || 0}
-                                                    onChange={e => handleItemChange(idx, 'taxPercent', parseFloat(e.target.value))}
-                                                    className={`w-full p-2 rounded-lg font-black border border-transparent focus:border-indigo-400 outline-none ${theme.inputBg} ${theme.textPrimary}`}
-                                                >
-                                                    <option value="0">0%</option>
-                                                    {shopTaxes.map(t => (
-                                                        <option key={t._id} value={t.percentage}>{t.name} ({t.percentage}%)</option>
-                                                    ))}
-                                                </select>
+                                                <CommonSelect
+                                                    options={[
+                                                        { label: "0%", value: "0" },
+                                                        ...shopTaxes.map(t => {
+                                                            const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
+                                                            return { label: `${t.name} (${t.percentage}% - ${typeStr})`, value: String(t._id) };
+                                                        })
+                                                    ]}
+                                                    value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
+                                                    onChange={(val) => {
+                                                        if (val === "0" || val === 0) {
+                                                            handleItemChange(idx, { taxId: null, taxPercent: 0 });
+                                                        } else {
+                                                            const selectedTax = shopTaxes.find(t => t._id === val);
+                                                            if (selectedTax) {
+                                                                handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage });
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="w-full text-sm font-bold min-w-[150px]"
+                                                />
                                             </td>
                                             <td className="py-5 px-2 text-right font-black">
-                                                {formatCurrency((it.quantity * it.purchasePrice) + (it.taxAmount || 0))}
+                                                {(() => {
+                                                    const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
+                                                    const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+                                                    return formatCurrency(isExclusive ? (it.quantity * it.purchasePrice) + (it.taxAmount || 0) : (it.quantity * it.purchasePrice));
+                                                })()}
                                             </td>
                                             <td className="py-5 px-2 text-right">
                                                 <button
@@ -1656,6 +1861,28 @@ const PurchasePage = () => {
                                 placeholder="Any additional information about this purchase..."
                                 className={`w-full min-h-[140px] p-6 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none transition-all font-bold resize-none ${theme.inputBg} ${theme.textPrimary}`}
                             />
+
+                            {/* --- Audit Note for Edits --- */}
+                            {isEditing && (
+                                <div className={`mt-6 p-6 rounded-[32px] border-2 border-dashed ${theme.mode === 'dark' ? 'bg-amber-500/5 border-amber-500/20' : 'bg-amber-50 border-amber-200'} space-y-4`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-xl ${theme.mode === 'dark' ? 'bg-amber-500/20 text-amber-500' : 'bg-amber-500 text-white'}`}>
+                                            <Info size={18} />
+                                        </div>
+                                        <div>
+                                            <label className={`text-[10px] font-black uppercase tracking-widest block ${theme.mode === 'dark' ? 'text-amber-400' : 'text-amber-600'}`}>Edit Reason (Internal Audit)</label>
+                                            <p className={`text-[9px] font-bold ${theme.mode === 'dark' ? 'text-amber-500/60' : 'text-amber-600/60'}`}>Mandatory for tracking changes to confirmed stock</p>
+                                        </div>
+                                    </div>
+                                    <textarea
+                                        required
+                                        value={editNote}
+                                        onChange={e => setEditNote(e.target.value)}
+                                        placeholder="e.g. Corrected item quantity, price adjustment, or wrong supplier selected..."
+                                        className={`w-full min-h-[100px] p-4 rounded-2xl border-2 border-transparent focus:border-amber-500 outline-none transition-all font-bold resize-none ${theme.mode === 'dark' ? 'bg-black/20 text-white' : 'bg-white text-gray-800 shadow-sm'}`}
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* Summary Column */}
@@ -1927,7 +2154,7 @@ const PurchasePage = () => {
                                     );
                                 })}
                             </div>
-                            
+
                             <div className="flex gap-2 pt-2">
                                 <button
                                     type="button"
@@ -1961,7 +2188,7 @@ const PurchasePage = () => {
                         </div>
 
                         {/* The Actual Label Mockup */}
-                        <div 
+                        <div
                             style={{ width: `${barcodePrintDialog.labelWidth}mm`, minHeight: `${barcodePrintDialog.labelHeight}mm` }}
                             className={`bg-white text-black p-[2mm] shadow-2xl rounded-sm text-center flex flex-col items-center justify-center border border-gray-200 transition-all`}
                         >
@@ -2026,13 +2253,14 @@ const PurchasePage = () => {
             </Modal>
 
             {/* AI Scanner Modal */}
-            <InvoiceScannerModal 
+            <InvoiceScannerModal
                 isOpen={isScannerOpen}
                 onClose={() => setIsScannerOpen(false)}
                 onDataExtracted={handleDataExtracted}
                 theme={theme}
                 suppliers={suppliers}
                 stockItems={stockItems}
+                businessTypeData={businessTypeData}
             />
 
             {/* Product Modal */}
@@ -2045,12 +2273,16 @@ const PurchasePage = () => {
                         >
                             <X size={24} />
                         </button>
-                        <div className="flex-1 overflow-y-auto w-full relative">
+                        <div className="flex-1 w-full relative overflow-hidden">
                             <ProductPage
                                 asDialog={true}
                                 onClose={handleProductDialogClose}
                                 fixedBranchId={formData.branchId || activeBranchId}
                                 prefillData={productPrefillData}
+                                sourcePage="purchase"
+                                activeTabOverride={productPrefillData?.itemType === "TRADE" ? "trade" : "raw"}
+                                returnState={formData}
+                                returnUrl={location.pathname}
                             />
                         </div>
                     </div>

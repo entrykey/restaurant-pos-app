@@ -2,6 +2,7 @@ import React from "react";
 import { X, ShoppingBag, Edit3, Printer } from "lucide-react";
 import Modal from "../ui/Modal";
 import { formatCurrency } from "../../utils/format";
+import { useApp } from "../../context/AppContext";
 
 const FullOrderSummaryModal = ({
     isOpen,
@@ -16,6 +17,11 @@ const FullOrderSummaryModal = ({
     calculateTotal,
     onPrint,
 }) => {
+    const { activeBranchId, branches } = useApp();
+    const activeBranch = branches.find(b => b._id === activeBranchId);
+    const branchStateCode = activeBranch?.address?.state?.code;
+    const [customerStateCode, setCustomerStateCode] = React.useState(null);
+
     if (!isOpen) return null;
 
     return (
@@ -124,7 +130,10 @@ const FullOrderSummaryModal = ({
                             orderItems,
                             { type: "flat", value: 0 },
                             settings?.defaultTaxPercent || 0,
-                            false
+                            false,
+                            0,
+                            branchStateCode,
+                            customerStateCode
                         );
 
                         return (
@@ -140,6 +149,38 @@ const FullOrderSummaryModal = ({
                                         ))}
                                     </div>
                                 )}
+
+                                <div className="space-y-1 py-2 border-t border-dashed border-gray-200">
+                                    <div className="flex justify-between items-center text-sm text-gray-500">
+                                        <span>Subtotal</span>
+                                        <span className="font-bold">{formatCurrency(billDetails.subtotal)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm text-gray-500">
+                                        <span>Tax</span>
+                                        <span className="font-bold">{formatCurrency(billDetails.taxAmount)}</span>
+                                    </div>
+                                    
+                                    {billDetails.taxBreakdown && (billDetails.taxBreakdown.cgst > 0 || billDetails.taxBreakdown.sgst > 0) && (
+                                        <div className="pl-4 space-y-1">
+                                            <div className="flex justify-between items-center text-[10px] text-gray-400 font-black uppercase tracking-widest">
+                                                <span>CGST</span>
+                                                <span>{formatCurrency(billDetails.taxBreakdown.cgst)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-[10px] text-gray-400 font-black uppercase tracking-widest">
+                                                <span>SGST</span>
+                                                <span>{formatCurrency(billDetails.taxBreakdown.sgst)}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {billDetails.taxBreakdown && billDetails.taxBreakdown.igst > 0 && (
+                                        <div className="pl-4">
+                                            <div className="flex justify-between items-center text-[10px] text-gray-400 font-black uppercase tracking-widest">
+                                                <span>IGST</span>
+                                                <span>{formatCurrency(billDetails.taxBreakdown.igst)}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex justify-between items-center text-3xl font-black text-indigo-900 pt-2 border-t border-dashed">
                                     <span>Total Amount</span>
                                     <span>{formatCurrency(billDetails.finalTotal)}</span>

@@ -3,6 +3,7 @@ import { Save, AlertCircle, Settings2, X, CheckSquare, Square, Package, Shopping
 import { useTheme } from "../../context/ThemeContext";
 import { businessTypesService } from "../../services/api/businessTypes";
 import { MODULE_TEXT_KEYS } from "../../config/moduleTextKeys";
+import CommonSelect from '../../components/ui/CommonSelect';
 
 const AVAILABLE_ICONS = [
     { name: 'Default', icon: LayoutDashboard },
@@ -233,31 +234,23 @@ const CapabilitiesTab = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     <div>
                         <label className={`block text-xs font-black uppercase tracking-wider mb-2 ${theme.textMuted}`}>Select Business Type</label>
-                        <select
+                        <CommonSelect
+                            options={types.map(t => ({ label: t.displayString, value: t._id }))}
                             value={selectedType}
-                            onChange={e => setSelectedType(e.target.value)}
-                            className={`w-full p-3 rounded-xl border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} outline-none focus:border-indigo-500 font-bold appearance-none transition-all`}
-                        >
-                            <option value="" disabled>-- Select Type --</option>
-                            {types.map(t => (
-                                <option key={t._id} value={t._id}>{t.displayString}</option>
-                            ))}
-                        </select>
+                            onChange={(val) => setSelectedType(val)}
+                            placeholder="-- Select Type --"
+                        />
                     </div>
 
                     <div>
                         <label className={`block text-xs font-black uppercase tracking-wider mb-2 ${theme.textMuted}`}>Select Sub Type</label>
-                        <select
+                        <CommonSelect
+                            options={availableSubTypes.map(s => ({ label: s.displayString, value: s._id }))}
                             value={selectedSubType}
-                            onChange={e => setSelectedSubType(e.target.value)}
+                            onChange={(val) => setSelectedSubType(val)}
+                            placeholder="-- Select Sub Type --"
                             disabled={!selectedType || availableSubTypes.length === 0}
-                            className={`w-full p-3 rounded-xl border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} outline-none focus:border-indigo-500 font-bold appearance-none transition-all disabled:opacity-50`}
-                        >
-                            <option value="" disabled>-- Select Sub Type --</option>
-                            {availableSubTypes.map(s => (
-                                <option key={s._id} value={s._id}>{s.displayString}</option>
-                            ))}
-                        </select>
+                        />
                     </div>
                 </div>
 

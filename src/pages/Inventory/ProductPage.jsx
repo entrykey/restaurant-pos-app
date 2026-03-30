@@ -11,21 +11,28 @@ import { toast } from 'react-hot-toast';
 import DatePicker from '../../components/ui/DatePicker';
 import CommonSelect from '../../components/ui/CommonSelect';
 
-const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialog, onClose, fixedBranchId, prefillData, activeTabOverride }) => {
+const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialog, onClose, fixedBranchId, prefillData, activeTabOverride, id: propId, sourcePage: propSourcePage, returnState: propReturnState, returnUrl: propReturnUrl }) => {
     const { user } = useAuth();
-    const { activeBranchId } = useApp();
+    const { activeBranchId, branches, organization, currentShopId, businessTypeData } = useApp();
     const { theme } = useTheme();
     const navigate = useNavigate();
-    const { id } = useParams();
+    const { id: paramId } = useParams();
     const location = useLocation();
+    const id = propId || paramId;
 
     const isEditing = id ? Boolean(id) : false;
     const searchParams = new URLSearchParams(location.search);
-    const activeTab = activeTabOverride || (asDialog ? 'raw' : (searchParams.get('tab') || 'menu')); 
+    const initialTab = activeTabOverride || (asDialog ? 'raw' : (searchParams.get('tab') || 'menu')); 
+    const [currentTab, setCurrentTab] = useState(location.state?.currentTab || initialTab);
+    const sourcePage = propSourcePage || location.state?.sourcePage;
+    const returnUrl = propReturnUrl || location.state?.returnUrl || (asDialog ? location.pathname : null);
+    const returnState = propReturnState || location.state?.returnState || null;
+    
+    const activeTab = currentTab;
     const showRecipe = activeTab === 'menu';
 
-    const [isLoading, setIsLoading] = useState(isEditing);
-    const [formData, setFormData] = useState({});
+    const [isLoading, setIsLoading] = useState(isEditing && !location.state?.formData);
+    const [formData, setFormData] = useState(location.state?.formData || {});
     const [errors, setErrors] = useState({});
     const [isGSTApplicable, setIsGSTApplicable] = useState(true);
     const [branchTaxSystem, setBranchTaxSystem] = useState('');
@@ -36,15 +43,20 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     const [categories, setCategories] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [stockItems, setStockItems] = useState([]);
-    const [itemAttributes, setItemAttributes] = useState({});
-    const [ingredients, setIngredients] = useState([]);
+    const [itemAttributes, setItemAttributes] = useState(location.state?.itemAttributes || {});
+    const [ingredients, setIngredients] = useState(location.state?.ingredients || []);
     const [shopTaxes, setShopTaxes] = useState([]);
     const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState("");
     const [isCategorySaving, setIsCategorySaving] = useState(false);
-    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(location.state?.showAdvanced || false);
 
-    const CORE_FIELD_KEYS = ["name", "category_id", "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type"];
+    const [currentBusinessType, setCurrentBusinessType] = useState(null);
+    const [currentBusinessSubType, setCurrentBusinessSubType] = useState(null);
+
+    const CORE_FIELD_KEYS = asDialog 
+        ? ["name", "category_id", "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type"]
+        : ["name", "category_id", "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type"];
 
     // Determine visible fields based on activeTab
     const getVisibleFields = () => {
@@ -73,13 +85,31 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         if (!isGSTApplicable) {
             fields = fields.filter(f => f !== 'hsn_sac_code');
         }
-        return fields;
+        // Remove stock_applicable as it's now automated based on min_stock_alert
+        return fields.filter(k => k !== 'stock_applicable');
     };
     const visibleFields = getVisibleFields();
+    
+    // Sync state from location.state if it exists (for transition from modal to page)
+    useEffect(() => {
+        if (location.state?.formData) {
+            setFormData(prev => ({ ...prev, ...location.state.formData }));
+            if (location.state.ingredients) setIngredients(location.state.ingredients);
+            if (location.state.itemAttributes) setItemAttributes(location.state.itemAttributes);
+        }
+        if (location.state?.currentTab) {
+            setCurrentTab(location.state.currentTab);
+        }
+    }, [location.state]);
 
     useEffect(() => {
         const fetchItemData = async () => {
             if (!isEditing || !id) return;
+            
+            // If we have data in state from modal navigation, skip fetching
+            if (location.state?.formData && (String(location.state.formData._id) === String(id) || String(location.state.formData.id) === String(id))) {
+                return;
+            }
             try {
                 const full = await itemService.getItemById(id);
                 if (full) {
@@ -113,6 +143,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         serialTracking: full.tracking?.serialTracking ?? full.serialTracking ?? false,
                         weightBased: full.weightBased ?? false,
                         taxPercent: full.taxPercent ?? 0,
+                        taxId: full.taxId || "",
                     };
                     setFormData(flat);
                     setItemAttributes(normalizedAttributes);
@@ -134,15 +165,19 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
  
     useEffect(() => {
         if (!isEditing && prefillData) {
+            const pp = prefillData.purchasePrice ?? 0;
+            const mrp = prefillData.mrp ?? pp;
+            const sp = prefillData.sellingPrice ?? pp;
+            const tp = prefillData.taxPercent;
             setFormData(prev => ({
                 ...prev,
                 name: prefillData.name || "",
-                pricing: {
-                    ...prev.pricing,
-                    purchasePrice: prefillData.purchasePrice || 0,
-                    sellingPrice: prefillData.purchasePrice || 0,
-                    mrp: prefillData.purchasePrice || 0
-                },
+                description: prefillData.description || prefillData.name || "",
+                purchasePrice: pp,
+                sellingPrice: sp,
+                mrp,
+                hsnSacCode: prefillData.hsnSacCode || "",
+                ...(tp !== undefined && tp !== null && tp !== "" ? { taxPercent: Number(tp) } : {}),
                 itemType: prefillData.itemType || "STOCK",
                 status: "ACTIVE"
             }));
@@ -156,11 +191,13 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 let businessTypeId = null;
                 let businessSubTypeId = null;
 
-                if (user?.shop_id) {
+                if (currentShopId) {
                     try {
-                        const shop = await shopService.getShopById(user.shop_id);
+                        const shop = await shopService.getShopById(currentShopId);
                         businessTypeId = shop?.businessType?._id || shop?.businessType;
                         businessSubTypeId = shop?.subType?._id || shop?.subType;
+                        setCurrentBusinessType(businessTypeId);
+                        setCurrentBusinessSubType(businessSubTypeId);
                     } catch (error) {
                         console.error("Failed to fetch shop data:", error);
                     }
@@ -175,9 +212,9 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 const promises = [
                     attributeService.getAttributes(params),
                     unitService.getUnits(),
-                    categoryService.getCategories({ shopId: user?.shop_id }),
-                    SupplierService.getSuppliers(user?.shop_id),
-                    taxService.getTaxes(branchIdToUse || activeBranchId)
+                    categoryService.getCategories({ shopId: currentShopId }),
+                    SupplierService.getSuppliers(currentShopId),
+                    taxService.getTaxes({ branchId: branchIdToUse || activeBranchId })
                 ];
 
                 const results = await Promise.all(promises);
@@ -187,9 +224,9 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 const suppliersRes = results[3];
                 const taxesRes = results[4];
 
-                if (branchIdToUse && user?.shop_id) {
+                if (branchIdToUse && currentShopId) {
                     try {
-                        const branchesData = await branchService.getBranchesByShopId(user.shop_id);
+                        const branchesData = await branchService.getBranchesByShopId(currentShopId);
                         const currBranch = branchesData.find(b => String(b._id) === String(branchIdToUse));
                         if (currBranch && currBranch.taxProfile && currBranch.taxProfile.taxSystem) {
                             const system = currBranch.taxProfile.taxSystem;
@@ -218,12 +255,12 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         };
 
         const fetchStockItems = async () => {
-            if (showRecipe && user?.shop_id) {
+            if (showRecipe && currentShopId) {
                 try {
                     const response = await itemService.getItems({
                         limit: 1000,
                         filters: {
-                            shopId: user.shop_id,
+                            shopId: currentShopId,
                             branchId: activeBranchId || undefined,
                             itemType: "STOCK"
                         }
@@ -237,7 +274,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         fetchAttributesAndUnits();
         fetchStockItems();
-    }, [user?.shop_id, activeBranchId, showRecipe]);
+    }, [currentShopId, activeBranchId, showRecipe]);
 
 
     // Recipe / Ingredients State
@@ -261,7 +298,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         } else if (fieldKey === "unit_id") {
             options = units.map(u => ({ label: u.name || u.code, value: u._id }));
         } else if (fieldKey === "tax_percent") {
-            options = shopTaxes.map(t => ({ label: `${t.name} (${t.percentage}%)`, value: t.percentage }));
+            options = shopTaxes.map(t => {
+                const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
+                return { label: `${t.name} (${t.percentage}% - ${typeStr})`, value: t._id };
+            });
         }
 
         acc[section].push({ 
@@ -274,6 +314,15 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     }, {});
 
     const handleChange = (fieldKey, value) => {
+        if (fieldKey === "tax_percent") {
+            const selectedTax = shopTaxes.find(t => t._id === value);
+            setFormData(prev => ({
+                ...prev,
+                taxId: value || "",
+                taxPercent: selectedTax ? selectedTax.percentage : 0
+            }));
+            return;
+        }
         setFormData(prev => ({
             ...prev,
             [ALL_FIELDS[fieldKey].key]: value
@@ -368,10 +417,14 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         const { ingredients: _, ...cleanFormData } = formData;
 
+        const currentBranchId = fixedBranchId || activeBranchId || (user?.branchIds && user.branchIds.length > 0 ? user.branchIds[0] : formData.branchId);
+
+        const minStock = parseFloat(formData.minStockAlert) || 0;
+
         const payload = {
             ...cleanFormData,
-            shopId: user?.shop_id,
-            branchId: fixedBranchId || activeBranchId || (user?.branchIds && user.branchIds.length > 0 ? user.branchIds[0] : formData.branchId),
+            shopId: currentShopId,
+            branchId: currentBranchId,
             itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
             pricing: {
                 purchasePrice: parseFloat(formData.purchasePrice || 0),
@@ -379,8 +432,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 mrp: parseFloat(formData.mrp || 0)
             },
             stockSettings: {
-                stockApplicable: formData.stockApplicable ?? true,
-                minStockAlert: parseFloat(formData.minStockAlert || 0),
+                stockApplicable: minStock > 0, // Automate stock_applicable based on minStockAlert
+                minStockAlert: minStock,
                 allowNegativeStock: false
             },
             tracking: {
@@ -421,6 +474,14 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
             if (asDialog && onClose) {
                 onClose(newItem);
+            } else if (sourcePage === 'purchase' || returnUrl) {
+                // Return to source page with the new product and original state
+                navigate(returnUrl || '/purchases/new', { 
+                    state: { 
+                        returnState: returnState,
+                        newProduct: newItem 
+                    } 
+                });
             } else {
                 navigate('/inventory');
             }
@@ -467,30 +528,95 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         ? `Edit ${activeTab === 'menu' ? 'Manufactured Item' : (activeTab === 'raw' ? 'Stock Item' : 'Trade Item')}`
         : `Add New ${activeTab === 'menu' ? 'Manufactured Item' : (activeTab === 'raw' ? 'Stock Item' : 'Trade Item')}`;
 
-    return (
-        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
-            {/* Breadcrumb Navigation */}
-            {!asDialog && (
-                <div className={`flex items-center gap-2 mb-6 ${theme.textMuted} text-sm font-bold`}>
-                    <Link to="/inventory" className={`hover:${theme.textPrimary} flex items-center gap-1 transition-colors`}>
-                        <ArrowLeft size={16} />
-                        Inventory
-                    </Link>
-                    <ChevronRight size={16} />
-                    <span className={theme.textPrimary}>{title}</span>
-                </div>
-            )}
+    const handleKeyDown = (e) => {
+        // If the event was already handled (e.g. by a select toggle), don't move focus
+        if (e.defaultPrevented) return;
 
-            <div className={`w-full`}>
-                <div className="flex justify-between items-center mb-8 border-b pb-6 border-gray-100 dark:border-gray-800">
+        // Handle Enter key for navigation
+        if (e.key === 'Enter') {
+            const active = document.activeElement;
+            const tagName = active.tagName.toLowerCase();
+            
+            // Don't intercept Enter on buttons or textareas
+            if (['button', 'textarea'].includes(tagName)) return;
+            
+            // If it's a search input inside a select, allow default behavior (the select's handleSearchKeyDown will handle Enter/navigation)
+            if (active.placeholder === 'Search...') return;
+
+            // Find all eligible focusable elements
+            const selector = 'input:not([type="hidden"]), select, [tabindex="0"]';
+            const focusables = Array.from(document.querySelectorAll(selector)).filter(el => {
+                const style = window.getComputedStyle(el);
+                return !el.disabled && el.tabIndex !== -1 && style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+            });
+            
+            const index = focusables.indexOf(active);
+            if (index > -1 && index < focusables.length - 1) {
+                e.preventDefault();
+                const next = focusables[index + 1];
+                next.focus();
+
+                // If next is a select, open it
+                if (next.classList.contains('common-select-trigger')) {
+                    next.click();
+                }
+            }
+        }
+    };
+
+    return (
+        <div 
+            className={`flex flex-col ${asDialog ? "h-full max-h-screen" : "h-full"} ${theme.pageBg} overflow-hidden`}
+            onKeyDown={handleKeyDown}
+        >
+            {/* Header Section */}
+            <div className={`p-6 md:px-8 border-b ${theme.borderLight} ${theme.surfaceBg} z-10 sticky top-0`}>
+                {/* Breadcrumb Navigation - Only for full page */}
+                {!asDialog && (
+                    <div className={`flex items-center gap-2 mb-6 ${theme.textMuted} text-sm font-bold`}>
+                        <Link to="/inventory" className={`hover:${theme.textPrimary} flex items-center gap-1 transition-colors`}>
+                            <ArrowLeft size={16} />
+                            Inventory
+                        </Link>
+                        <ChevronRight size={16} />
+                        <span className={theme.textPrimary}>{title}</span>
+                    </div>
+                )}
+
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-gray-100 dark:border-gray-800 gap-6">
                     <div>
-                        <h3 className={`text-3xl font-black ${theme.textHeading}`}>{title}</h3>
-                        <p className={`text-sm mt-1 ${theme.textMuted}`}>
+                        <h3 className={`text-2xl font-black ${theme.textHeading}`}>{title}</h3>
+                        <p className={`text-xs mt-1 ${theme.textMuted}`}>
                             Fill in the details below to {isEditing ? 'update' : 'create'} this {activeTab === 'menu' ? 'manufactured item' : (activeTab === 'raw' ? 'stock item' : 'trade item')}.
                         </p>
                     </div>
-                </div>
 
+                    {/* ITEM TYPE SWITCHER */}
+                    {!isEditing && sourcePage === 'purchase' && businessTypeData?.features?.sellTradeItems !== false && (
+                        <div className={`flex p-1 rounded-2xl shadow-sm border ${theme.borderLight} ${theme.surfaceBg}`}>
+                            <button
+                                onClick={() => setCurrentTab('raw')}
+                                className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'raw' 
+                                    ? 'bg-orange-500 text-white shadow-lg shadow-orange-200 dark:shadow-orange-900/20' 
+                                    : `${theme.textMuted} hover:opacity-70`}`}
+                            >
+                                <Plus size={16} /> Stock Item
+                            </button>
+                            <button
+                                onClick={() => setCurrentTab('trade')}
+                                className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'trade' 
+                                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20' 
+                                    : `${theme.textMuted} hover:opacity-70`}`}
+                            >
+                                <Package size={16} /> Trade Item
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className={`flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar`}>
                 <div className="space-y-12">
                     {/* CORE FIELDS SECTION */}
                     <div>
@@ -511,8 +637,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                     options = categories.map(c => ({ label: c.name, value: c._id }));
                                 } else if (fieldKey === 'unit_id') {
                                     options = units.map(u => ({ label: u.name, value: u._id }));
-                                } else if (fieldKey === 'tax_id') {
-                                    options = shopTaxes.map(t => ({ label: t.name, value: t._id || t.name }));
+                                } else if (fieldKey === 'tax_percent') {
+                                    options = shopTaxes.map(t => {
+                                        const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
+                                        return { label: `${t.name} (${t.percentage}% - ${typeStr})`, value: t._id };
+                                    });
                                 } else if (fieldKey === 'item_type') {
                                     options = field.options || ["STOCK", "SERVICE", "MANUFACTURED"];
                                 }
@@ -526,7 +655,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                         {field.type === 'select' ? (
                                             <CommonSelect
                                                 options={options}
-                                                value={formData[field.key] || field.defaultValue || ""}
+                                                value={fieldKey === 'tax_percent' ? (formData.taxId || (formData.taxPercent ? shopTaxes.find(t => t.percentage === formData.taxPercent)?._id : "")) : (formData[field.key] || field.defaultValue || "")}
                                                 onChange={(val) => handleChange(fieldKey, val)}
                                                 placeholder={`Select ${field.label}...`}
                                                 className="w-full"
@@ -569,8 +698,19 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 if (asDialog) {
                                     // If asDialog is true, navigate to full edit page instead of expanding inline
                                     const path = isEditing ? `/inventory/edit/${id}` : '/inventory/new';
-                                    navigate(`${path}?tab=${activeTab}`);
-                                    if(onClose) onClose();
+                                    navigate(`${path}?tab=${activeTab}`, { 
+                                        state: { 
+                                            formData, 
+                                            ingredients, 
+                                            itemAttributes,
+                                            showAdvanced: true,
+                                            sourcePage,
+                                            returnUrl,
+                                            returnState,
+                                            currentTab
+                                        } 
+                                    });
+                                    // if(onClose) onClose(); // Removed to allow clean navigation state transfer
                                 } else {
                                     setShowAdvanced(!showAdvanced);
                                 }
@@ -584,8 +724,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         {showAdvanced && (
                             <div className="space-y-12 animate-in slide-in-from-top-4 duration-300">
                                 {Object.entries(groupedFields).map(([section, fields]) => {
-                                    // Filter fields that are NOT in CORE_FIELD_KEYS and are in the current section
-                                    const advancedFieldsInSection = fields.filter(f => !CORE_FIELD_KEYS.includes(f.originalKey));
+                                    // Filter fields that are NOT in CORE_FIELD_KEYS and filter redundant tax_id duplicate
+                                    const advancedFieldsInSection = fields.filter(f => !CORE_FIELD_KEYS.includes(f.originalKey) && f.originalKey !== 'tax_id');
                                     
                                     if (advancedFieldsInSection.length === 0) return null;
 
@@ -604,7 +744,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     } else if (field.originalKey === 'unit_id') {
                                                         options = units.map(u => ({ label: u.name, value: u._id }));
                                                     } else if (field.originalKey === 'tax_id') {
-                                                        options = shopTaxes.map(t => ({ label: t.name, value: t._id || t.name }));
+                                                        options = shopTaxes.map(t => {
+                                                            const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
+                                                            return { label: `${t.name} (${t.percentage}% - ${typeStr})`, value: t._id || t.name };
+                                                        });
                                                     } else if (field.originalKey === 'item_type') {
                                                         options = field.options || ["STOCK", "SERVICE", "MANUFACTURED"];
                                                     }
@@ -618,7 +761,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                             {field.type === 'select' ? (
                                                                 <CommonSelect
                                                                     options={options}
-                                                                    value={formData[field.key] || field.defaultValue || ""}
+                                                                    value={field.originalKey === 'tax_percent' ? (formData.taxId || (formData.taxPercent ? shopTaxes.find(t => t.percentage === formData.taxPercent)?._id : "")) : (formData[field.key] || field.defaultValue || "")}
                                                                     onChange={(val) => handleChange(field.originalKey, val)}
                                                                     placeholder={`Select ${field.label}...`}
                                                                     className="w-full"
@@ -669,27 +812,47 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     </div>
 
                     {/* DYNAMIC ATTRIBUTES SECTION */}
-                    {dynamicAttributes.length > 0 && (
-                        <div>
-                            <div className="flex items-center gap-4 mb-2">
-                                <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Item Attributes</h4>
-                                <div className={`flex-1 h-px ${theme.borderLight}`}></div>
-                            </div>
-                            <p className={`text-sm ${theme.textMuted} mb-8`}>
-                                Dynamic attributes based on your business type/subtype.
-                            </p>
+                    {(() => {
+                        const filteredAttrs = dynamicAttributes.filter(attr => {
+                            // 1. Filter by Business Type (if both current shop's BT and attribute's BTs are available)
+                            if (attr.businessTypes?.length > 0) {
+                                if (!currentBusinessType) return false;
+                                const attrBTIds = attr.businessTypes.map(bt => String(bt._id || bt));
+                                if (!attrBTIds.includes(String(currentBusinessType))) return false;
+                            }
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                {dynamicAttributes.filter(attr => {
-                                    if (!attr.categoryDependent) return true;
-                                    const selectedCategoryId = formData.categoryId;
-                                    const attrCategoryId = attr.categoryId?._id || attr.categoryId;
-                                    return selectedCategoryId === attrCategoryId;
-                                }).map(attr => (
-                                    <div key={attr.code} className="flex flex-col gap-2">
-                                        <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest block ml-1`}>
-                                            {attr.name} {attr.required && <span className="text-red-500">*</span>}
-                                        </label>
+                            // 1b. Filter by Business Sub-Type (if set on attribute)
+                            if (attr.businessSubTypes?.length > 0) {
+                                if (!currentBusinessSubType) return false;
+                                const attrBSTIds = attr.businessSubTypes.map(bst => String(bst._id || bst));
+                                if (!attrBSTIds.includes(String(currentBusinessSubType))) return false;
+                            }
+
+                            // 2. Filter by Category (if attribute is categoryDependent)
+                            if (!attr.categoryDependent) return true;
+                            const selectedCategoryId = formData.categoryId;
+                            const attrCategoryId = attr.categoryId?._id || attr.categoryId;
+                            return selectedCategoryId === attrCategoryId;
+                        });
+
+                        if (filteredAttrs.length === 0) return null;
+
+                        return (
+                            <div className="mt-8">
+                                <div className="flex items-center gap-4 mb-2">
+                                    <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Item Attributes</h4>
+                                    <div className={`flex-1 h-px ${theme.borderLight}`}></div>
+                                </div>
+                                <p className={`text-sm ${theme.textMuted} mb-8`}>
+                                    Dynamic attributes based on your business type/subtype.
+                                </p>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                    {filteredAttrs.map(attr => (
+                                        <div key={attr._id || attr.code} className="flex flex-col gap-2">
+                                            <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest block ml-1`}>
+                                                {attr.name} {attr.required && <span className="text-red-500">*</span>}
+                                            </label>
 
                                         <div className="flex gap-2">
                                             {attr.dataType === 'SELECT' ? (
@@ -744,10 +907,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                             )}
                                         </div>
                                     </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* NEW RECIPE SECTION */}
                     {showRecipe && (
@@ -841,23 +1005,25 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         </div>
                     )}
                 </div>
-
-                <div className={`flex gap-4 pt-8 mt-12 border-t ${theme.borderLight}`}>
-                    <button
-                        onClick={() => asDialog && onClose ? onClose() : navigate('/inventory')}
-                        className={`flex-1 py-5 font-black ${theme.textSecondary} hover:${theme.textPrimary} transition-colors border-2 ${theme.borderLight} rounded-[24px]`}
-                    >
-                        {asDialog ? "Cancel" : "Discard"}
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        className={`flex-2 w-2/3 py-5 ${theme.buttonBg} ${theme.buttonText} rounded-[24px] font-black shadow-xl shadow-indigo-100/10 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-2 text-lg`}
-                    >
-                        <Save size={24} />
-                        {isEditing ? "Update Product" : "Save Product"}
-                    </button>
-                </div>
             </div>
+
+            {/* Sticky Footer */}
+            <div className={`flex gap-4 p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 sticky bottom-0`}>
+                <button
+                    onClick={() => asDialog && onClose ? onClose() : navigate('/inventory')}
+                    className={`flex-1 py-4 font-black ${theme.textSecondary} hover:${theme.textPrimary} transition-colors border-2 ${theme.borderLight} rounded-[24px]`}
+                >
+                    {asDialog ? "Cancel" : "Discard"}
+                </button>
+                <button
+                    onClick={handleSubmit}
+                    className={`flex-2 w-2/3 py-4 ${theme.buttonBg} ${theme.buttonText} rounded-[24px] font-black shadow-xl shadow-indigo-100/10 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-2 text-lg`}
+                >
+                    <Save size={24} />
+                    {isEditing ? "Update Product" : "Save Product"}
+                </button>
+            </div>
+
 
             {/* Create Category Modal */}
             {isCategoryModalOpen && (

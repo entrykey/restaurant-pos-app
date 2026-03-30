@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { X, Upload, Camera, FileText, Search, Plus, Trash2, Save, Calendar } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { PurchaseService } from '../../services/PurchaseService';
+import { findBestStockMatch } from '../../utils/invoiceItemMatch';
 
 const STORAGE_KEY = 'invoice_patterns';
 
-const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, suppliers, stockItems }) => {
+const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, suppliers, stockItems, businessTypeData }) => {
     const [image, setImage] = useState(null);
     const [preview, setPreview] = useState(null);
+    const [isPdfPreview, setIsPdfPreview] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [extractedData, setExtractedData] = useState({
         invoiceNumber: "",
@@ -15,16 +17,23 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
         supplierName: "",
         items: []
     });
+    const [rawOcrText, setRawOcrText] = useState("");
     const [step, setStep] = useState(1); // 1: Upload, 2: Process, 3: Mapping/Verification
 
-    const handleImageUpload = (e) => {
+    const preferTrade = !!businessTypeData?.features?.sellTradeItems;
+
+    const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (file) {
+            const pdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+            setIsPdfPreview(pdf);
             setImage(file);
             setPreview(URL.createObjectURL(file));
+            setRawOcrText("");
             setStep(2);
             processWithBackend(file);
         }
+        e.target.value = '';
     };
 
     const processWithBackend = async (file) => {
@@ -35,6 +44,7 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
 
             if (response.success && response.extracted_data) {
                 const data = response.extracted_data;
+                if (response.raw_text) setRawOcrText(response.raw_text);
                 
                 // Try to find matching supplier from local list
                 const localSupplier = suppliers.find(s => 
@@ -55,7 +65,7 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
             }
         } catch (error) {
             console.error("OCR Error:", error);
-            toast.error(error.message || "Failed to process image. Make sure the Python OCR service is running.");
+            toast.error(error.message || "Failed to process file. Ensure the Python OCR service is running (pip install pymupdf for PDF).");
             setStep(1);
         } finally {
             setIsProcessing(false);
@@ -79,7 +89,7 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
     };
 
     const handleConfirm = () => {
-        onDataExtracted(extractedData);
+        onDataExtracted({ ...extractedData, rawOcrText });
         onClose();
     };
 
@@ -92,7 +102,7 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
                 {/* Header */}
                 <div className={`p-6 border-b ${theme.borderLight} flex items-center justify-between`}>
                     <div>
-                        <h2 className={`text-xl font-black uppercase tracking-tight ${theme.textHeading}`}>FivePe AI Scanner</h2>
+                        <h2 className={`text-xl font-black uppercase tracking-tight ${theme.textHeading}`}>FilePe AI Scanner</h2>
                         <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${theme.textMuted}`}>Intelligent invoice data extraction</p>
                     </div>
                     <button onClick={onClose} className={`p-2 hover:${theme.inputBg.replace('bg-', 'bg-')} rounded-full transition-colors ${theme.textMuted}`}>
@@ -109,14 +119,15 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
                             </div>
                             <div className="text-center space-y-2">
                                 <h3 className={`text-lg font-black uppercase ${theme.textPrimary}`}>Upload invoices and auto-fill your POS in seconds</h3>
-                                <p className={`text-xs font-bold ${theme.textSecondary}`}>Intelligent data extraction powered by FivePe AI</p>
+                                <p className={`text-xs font-bold ${theme.textSecondary}`}>Intelligent data extraction powered by FilePe AI</p>
                             </div>
                             <label className="cursor-pointer group">
-                                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                                <input type="file" accept="image/*,.pdf,application/pdf" onChange={handleFileUpload} className="hidden" />
                                 <div className="px-12 py-4 rounded-[20px] bg-indigo-600 text-white font-black uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-500/20 group-hover:scale-105 active:scale-95 transition-all flex items-center gap-3">
-                                    <Camera size={18} /> Upload & Scan
+                                    <Camera size={18} /> Upload image or PDF
                                 </div>
                             </label>
+                            <p className={`text-[10px] font-bold ${theme.textMuted}`}>PNG, JPG, or PDF (first pages scanned)</p>
                         </div>
                     )}
 
@@ -130,7 +141,7 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
                                 </div>
                             </div>
                             <div className="text-center space-y-2 animate-pulse">
-                                <h3 className={`text-lg font-black uppercase ${theme.textPrimary}`}>FivePe AI is scanning...</h3>
+                                <h3 className={`text-lg font-black uppercase ${theme.textPrimary}`}>FilePe AI is scanning...</h3>
                                 <p className={`text-xs font-bold ${theme.textSecondary}`}>Intelligent structured data extraction in progress.</p>
                             </div>
                         </div>
@@ -140,9 +151,13 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
                         <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 {/* Left: Preview */}
-                                <div className={`rounded-[30px] border ${theme.borderLight} overflow-hidden ${theme.mode === 'dark' ? 'bg-black/20' : 'bg-gray-900/10'} relative`}>
-                                    <img src={preview} alt="Invoice" className="w-full h-auto opacity-80" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                                <div className={`rounded-[30px] border ${theme.borderLight} overflow-hidden ${theme.mode === 'dark' ? 'bg-black/20' : 'bg-gray-900/10'} relative min-h-[200px]`}>
+                                    {isPdfPreview && preview ? (
+                                        <embed src={`${preview}#view=FitH`} type="application/pdf" title="Invoice PDF" className="w-full h-[min(420px,55vh)] opacity-90" />
+                                    ) : (
+                                        <img src={preview} alt="Invoice" className="w-full h-auto opacity-80" />
+                                    )}
+                                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
                                 </div>
 
                                 {/* Right: Extracted Fields */}
@@ -218,10 +233,9 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
                                 </div>
                                 <div className="space-y-2">
                                     {extractedData.items.map((it, idx) => {
-                                        const match = stockItems.find(s => 
-                                            s.name.toLowerCase().includes(it.name.toLowerCase()) ||
-                                            it.name.toLowerCase().includes(s.name.toLowerCase())
-                                        );
+                                        const match = it.name
+                                            ? findBestStockMatch(it.name, stockItems, { preferTrade })
+                                            : null;
 
                                         return (
                                             <div key={idx} className={`p-4 rounded-2xl border ${theme.borderLight} ${theme.inputBg} flex items-center gap-4 animate-in slide-in-from-left duration-200 relative`}>
@@ -297,7 +311,13 @@ const InvoiceScannerModal = ({ isOpen, onClose, onDataExtracted, theme, supplier
                     <div className={`p-8 border-t ${theme.borderLight} flex flex-col md:flex-row gap-4`}>
                         <div className="flex gap-4 flex-1">
                             <button 
-                                onClick={() => setStep(1)}
+                                type="button"
+                                onClick={() => {
+                                    setStep(1);
+                                    setPreview(null);
+                                    setImage(null);
+                                    setIsPdfPreview(false);
+                                }}
                                 className={`flex-1 py-4 rounded-3xl font-black transition-all border-2 ${theme.borderLight} ${theme.textSecondary} ${theme.mode === 'dark' ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}
                             >
                                 RESCAN

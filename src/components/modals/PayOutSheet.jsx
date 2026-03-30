@@ -5,9 +5,12 @@ import {
 import { formatCurrency } from "../../utils/format";
 import { PurchaseService } from "../../services/PurchaseService";
 import { useTheme } from "../../context/ThemeContext";
+import { useApp } from "../../context/AppContext";
 
 const PayOutSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
     const { theme } = useTheme();
+    const { formatCurrency, organization } = useApp();
+    const currency = organization?.defaultCurrency || 'USD';
     const [selectedMethod, setSelectedMethod] = useState(null);
     const [amount, setAmount] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -142,7 +145,7 @@ const PayOutSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
                                 )}
                             </label>
                             <div className="relative">
-                                <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-bold text-lg ${theme.textMuted}`}>₹</span>
+                                <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-bold text-lg ${theme.textMuted}`}>{currency === 'INR' ? '₹' : (currency === 'USD' ? '$' : currency)}</span>
                                 <input
                                     type="number"
                                     value={amount}

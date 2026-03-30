@@ -105,11 +105,18 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
         {
             header: 'Environment',
             key: 'environment',
-            render: (val) => (
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${val === 'AC' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
-                    {val === 'AC' ? 'AC' : 'Non-AC'}
-                </span>
-            )
+            render: (val) => {
+                const isAC = val === 'AC';
+                return (
+                    <span className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm border ${
+                        isAC 
+                        ? 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800' 
+                        : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700'
+                    }`}>
+                        {isAC ? 'AC Room' : 'Non-AC Area'}
+                    </span>
+                );
+            }
         },
         {
             header: 'Active',

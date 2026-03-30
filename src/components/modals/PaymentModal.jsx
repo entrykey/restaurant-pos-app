@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { X, Tag, CreditCard, Banknote, Smartphone, Receipt, CheckCircle2, ChevronLeft } from "lucide-react";
+import { X, Tag, CreditCard, Banknote, Smartphone, Receipt, CheckCircle2, ChevronLeft, Plus, Trash2 } from "lucide-react";
 import { formatCurrency } from "../../utils/format";
 import { useOrder } from "../../context/OrderContext";
 import { customerService } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import { useApp } from "../../context/AppContext";
 
 const PaymentModal = ({
     isOpen,
@@ -39,9 +40,19 @@ const PaymentModal = ({
         calculateBillDetails,
         applyCoupon
     } = useOrder();
+    const { activeBranchId, branches } = useApp();
+    const activeBranch = branches.find(b => b._id === activeBranchId);
+    const branchStateCode = activeBranch?.address?.state?.code;
+    const [customerStateCode, setCustomerStateCode] = useState(null);
 
-    const [selectedMethod, setSelectedMethod] = useState(null);
-    const [cashGiven, setCashGiven] = useState("");
+    useEffect(() => {
+        if (isOpen && (existingCustomerId || custPhone)) {
+            // Try to find customer state code if possible
+            // This could be an API call or passed in
+        }
+    }, [isOpen, existingCustomerId, custPhone]);
+
+    const [selectedPayments, setSelectedPayments] = useState([]); // Array of { method: {id, label, icon, color}, amount: number, ref: string }
     const [printFormat, setPrintFormat] = useState("thermal"); // thermal | a4
 
     // Local state for customer details to prevent parent AppContent re-renders on every keystroke
@@ -58,55 +69,68 @@ const PaymentModal = ({
             setSearchPerformed(false);
             setNoCustomerFound(false);
             setPrintFormat("thermal");
+            setSelectedPayments([]); // Reset on open
         }
     }, [isOpen, custName, custPhone]);
 
-    useEffect(() => {
-        const searchCustomer = async () => {
-            if (localCustPhone && localCustPhone.length >= 4) {
-                setIsSearchingCustomer(true);
-                setSearchPerformed(true);
-                try {
-                    const customers = await customerService.getCustomers({ search: localCustPhone });
-                    if (customers && customers.length > 0) {
-                        // Find an exact match or just use the first close match
-                        const match = customers.find(c => c.phone === localCustPhone) || customers[0];
-                        if (match) {
-                            setLocalCustName(match.name);
-                            setNoCustomerFound(false);
-                        } else {
-                            setNoCustomerFound(true);
-                        }
-                    } else {
-                        setNoCustomerFound(true);
-                    }
-                } catch (error) {
-                    console.error("Error searching customes:", error);
-                    setNoCustomerFound(true);
-                } finally {
-                    setIsSearchingCustomer(false);
-                }
-            } else {
-                setSearchPerformed(false);
-                setNoCustomerFound(false);
-            }
-        };
-
-        const timeoutId = setTimeout(searchCustomer, 500); // 500ms debounce
-        return () => clearTimeout(timeoutId);
-    }, [localCustPhone]);
-
-
+    // Handle early return after hooks
     if (!isOpen) return null;
 
-    // Calculate bill details
+    // Derived Data
     const billDetails = calculateBillDetails(
         orderItems,
         billDiscount,
         settings?.defaultTaxPercent || 5,
         isAutoRoundOff,
-        exchangeCredit
+        exchangeCredit,
+        branchStateCode,
+        customerStateCode
     );
+
+    // Helper: Get remaining balance
+    const getRemainingBalance = () => {
+        const paid = selectedPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+        return Math.max(0, billDetails.finalTotal - paid);
+    };
+
+    const remainingBalance = getRemainingBalance();
+
+    const PAYMENT_METHODS = [
+        { id: "cash", label: "Cash", icon: Banknote, color: "text-green-600 bg-green-50" },
+        { id: "card", label: "Card", icon: CreditCard, color: "text-blue-600 bg-blue-50" },
+        { id: "upi", label: "UPI", icon: Smartphone, color: "text-orange-600 bg-orange-50" },
+        { id: "other", label: "Other", icon: Receipt, color: "text-gray-600 bg-gray-100" },
+    ];
+
+    const addPaymentMethod = (method) => {
+        const balance = getRemainingBalance();
+        if (balance <= 0) return;
+        
+        setSelectedPayments(prev => [
+            ...prev,
+            { method, amount: balance, ref: "" }
+        ]);
+    };
+
+    const removePaymentMethod = (index) => {
+        setSelectedPayments(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const updatePaymentAmount = (index, value) => {
+        setSelectedPayments(prev => {
+            const next = [...prev];
+            next[index].amount = value;
+            return next;
+        });
+    };
+
+    const updatePaymentRef = (index, value) => {
+        setSelectedPayments(prev => {
+            const next = [...prev];
+            next[index].ref = value;
+            return next;
+        });
+    };
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
@@ -115,18 +139,15 @@ const PaymentModal = ({
                 <div className={`p-6 ${theme.pageBg} border-b ${theme.borderLight} flex justify-between items-center`}>
                     <div>
                         <h3 className={`text-2xl font-black ${theme.textHeading}`}>
-                            {selectedMethod ? "Confirm Payment" : (billingStage === "review" ? "Review Bill" : "Payment Method")}
+                            {selectedPayments.length > 0 ? "Confirm Payment" : (billingStage === "review" ? "Review Bill" : "Payment Method")}
                         </h3>
                         <p className={`text-sm ${theme.textMuted}`}>
                             {isTakeaway ? "Takeaway" : (tableName ? `Table ${tableName}` : `Table ${activeTableId}`)}
                         </p>
                     </div>
-                    {selectedMethod ? (
+                    {selectedPayments.length > 0 ? (
                         <button
-                            onClick={() => {
-                                setSelectedMethod(null);
-                                setCashGiven("");
-                            }}
+                            onClick={() => setSelectedPayments([])}
                             className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
                         >
                             <ChevronLeft size={20} />
@@ -225,17 +246,80 @@ const PaymentModal = ({
 
                     {billingStage === "payment" && (
                         <div className="space-y-6">
-                            {!selectedMethod ? (
+                            {/* --- COMBINED PAYMENT UI --- */}
+                            {selectedPayments.length > 0 && (
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                        <span className={`text-xs font-black ${theme.textMuted} uppercase tracking-widest`}>Added Payments</span>
+                                        <div className={`px-3 py-1 rounded-full text-[10px] font-black ${remainingBalance > 0 ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600"}`}>
+                                            {remainingBalance > 0 ? `Unpaid: ${formatCurrency(remainingBalance)}` : "Fully Covered"}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="space-y-3">
+                                        {selectedPayments.map((p, idx) => (
+                                            <div key={idx} className={`p-4 rounded-3xl border ${theme.borderLight} ${theme.surfaceBg} shadow-sm relative group`}>
+                                                <button 
+                                                    onClick={() => removePaymentMethod(idx)}
+                                                    className="absolute -top-2 -right-2 p-1.5 bg-red-50 text-red-500 rounded-full border border-red-100 shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`p-3 rounded-2xl ${p.method.color}`}>
+                                                        <p.method.icon size={20} />
+                                                    </div>
+                                                    <div className="flex-1 grid grid-cols-2 gap-3">
+                                                        <div className="space-y-1">
+                                                            <label className="text-[9px] font-black text-gray-400 tracking-widest uppercase">{p.method.label} Amount</label>
+                                                            <input
+                                                                type="number"
+                                                                value={p.amount}
+                                                                onChange={(e) => updatePaymentAmount(idx, e.target.value)}
+                                                                className={`w-full p-2 bg-gray-50 rounded-xl border-2 border-transparent focus:border-indigo-400 outline-none font-black text-lg text-indigo-600`}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[9px] font-black text-gray-400 tracking-widest uppercase">Ref. (Optional)</label>
+                                                            <input
+                                                                placeholder="Txn ID..."
+                                                                value={p.ref}
+                                                                onChange={(e) => updatePaymentRef(idx, e.target.value)}
+                                                                className={`w-full p-2 bg-gray-50 rounded-xl border-2 border-transparent focus:border-indigo-400 outline-none font-bold text-sm`}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {remainingBalance > 0 && (
+                                            <div className="pt-2 border-t border-dashed border-gray-100">
+                                                <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase text-center">Add another method for the remaining {formatCurrency(remainingBalance)}</p>
+                                                <div className="flex justify-center gap-3">
+                                                    {PAYMENT_METHODS.map((m) => (
+                                                        <button
+                                                            key={m.id}
+                                                            onClick={() => addPaymentMethod(m)}
+                                                            className={`p-3 rounded-2xl border ${theme.borderLight} hover:border-indigo-200 hover:bg-white transition-all flex items-center gap-2 group`}
+                                                        >
+                                                            <m.icon size={16} className={m.color.split(' ')[0]} />
+                                                            <span className="text-xs font-black text-gray-500 group-hover:text-indigo-600 uppercase tracking-tight">{m.label}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {selectedPayments.length === 0 && (
                                 <div className="grid grid-cols-2 gap-4">
-                                    {[
-                                        { id: "cash", label: "Cash", icon: Banknote, color: "text-green-600 bg-green-50" },
-                                        { id: "card", label: "Card", icon: CreditCard, color: "text-blue-600 bg-blue-50" },
-                                        { id: "upi", label: "UPI", icon: Smartphone, color: "text-orange-600 bg-orange-50" },
-                                        { id: "other", label: "Other", icon: Receipt, color: "text-gray-600 bg-gray-100" },
-                                    ].map((method) => (
+                                    {PAYMENT_METHODS.map((method) => (
                                         <button
                                             key={method.id}
-                                            onClick={() => setSelectedMethod(method)}
+                                            onClick={() => addPaymentMethod(method)}
                                             className={`p-6 rounded-3xl border-2 border-transparent hover:border-indigo-100 hover:shadow-lg transition-all flex flex-col items-center gap-3 ${method.color}`}
                                         >
                                             <method.icon size={32} />
@@ -243,137 +327,124 @@ const PaymentModal = ({
                                         </button>
                                     ))}
                                 </div>
-                            ) : (
-                                <div className="bg-indigo-50 p-8 rounded-[32px] border border-indigo-100 flex flex-col items-center text-center space-y-4">
-                                    <div className={`p-4 rounded-full bg-white shadow-sm text-indigo-600`}>
-                                        <selectedMethod.icon size={48} />
-                                    </div>
-                                    <div>
-                                        <h4 className="text-xl font-black text-gray-800">Confirm {selectedMethod.label} Payment</h4>
-                                        <p className="text-sm text-gray-500 mt-1">Are you sure you want to finalize the order with this payment method?</p>
-                                    </div>
-                                    <div className="w-full pt-4 space-y-3">
-                                        <div className="flex flex-col gap-2 w-full text-left">
-                                            <label className={`text-sm font-bold ${theme.textSecondary}`}>
-                                                {selectedMethod.id === 'cash' ? "Cash Given Amount" : "Paid Amount"}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                value={cashGiven}
-                                                onChange={(e) => setCashGiven(e.target.value)}
-                                                className={`w-full p-4 rounded-2xl border ${theme.borderLight} outline-none focus:ring-2 focus:ring-indigo-500 font-bold ${theme.inputBg} ${theme.textPrimary} text-lg`}
-                                                placeholder={selectedMethod.id === 'cash' ? "Enter cash given" : "Enter amount paid"}
-                                            />
-                                            {selectedMethod.id === 'cash' && cashGiven && Number(cashGiven) >= billDetails.finalTotal && (
-                                                <div className="flex justify-between items-center bg-green-50 p-4 rounded-2xl border border-green-100 mt-2">
-                                                    <span className="text-sm font-bold text-green-700">Balance to return:</span>
-                                                    <span className="text-xl font-black text-green-800">
-                                                        {formatCurrency(Number(cashGiven) - billDetails.finalTotal)}
-                                                    </span>
-                                                </div>
-                                            )}
-                                            {/* Credit Validation Note */}
-                                            {cashGiven && Number(cashGiven) < billDetails.finalTotal && (
-                                                <div className="space-y-4 mt-2">
-                                                    <div className={`p-4 rounded-2xl border ${(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ? "bg-orange-50 border-orange-100" : "bg-red-50 border-red-100"}`}>
-                                                        {!(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ? (
-                                                            <p className="text-xs font-bold text-red-500">
-                                                                Credit payments are disabled. Please enter the full amount.
-                                                            </p>
-                                                        ) : !(billDetails.customerId || existingCustomerId) ? (
-                                                            <div className="space-y-3">
-                                                                <p className="text-xs font-bold text-orange-600">
-                                                                    Customer information is required for credit/partial payments.
-                                                                </p>
-                                                                <div className="space-y-4">
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[10px] uppercase font-black text-orange-400 flex justify-between items-center">
-                                                                            <span>Phone *</span>
-                                                                            {isSearchingCustomer && <span className="text-[8px] italic animate-pulse">Searching...</span>}
-                                                                        </label>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={localCustPhone}
-                                                                            onChange={(e) => setLocalCustPhone(e.target.value)}
-                                                                            placeholder="Search by Number"
-                                                                            className="w-full p-3 rounded-xl border border-orange-200 outline-none focus:ring-2 focus:ring-orange-400 font-bold"
-                                                                        />
-                                                                    </div>
-                                                                    <div className="space-y-1">
-                                                                        <label className="text-[10px] uppercase font-black text-orange-400">Cust. Name *</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={localCustName}
-                                                                            onChange={(e) => setLocalCustName(e.target.value)}
-                                                                            placeholder="Enter Name"
-                                                                            className="w-full p-3 rounded-xl border border-orange-200 outline-none focus:ring-2 focus:ring-orange-400 font-bold"
-                                                                        />
-                                                                        {searchPerformed && noCustomerFound && !isSearchingCustomer && (
-                                                                            <p className="text-[10px] text-orange-600 font-bold mt-1 italic">
-                                                                                No customer found for this number. Please enter name to create new.
-                                                                            </p>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
+                            )}
 
-                                                                {localCustName?.trim() && localCustPhone?.trim() && (
-                                                                    <p className="text-xs font-bold text-orange-600 mt-2">
-                                                                        Remaining {formatCurrency(billDetails.finalTotal - Number(cashGiven))} will be kept as customer credit.
+                            {/* --- CREDIT / CUSTOMER VALIDATION --- */}
+                            {selectedPayments.length > 0 && (
+                                <div className="space-y-4">
+                                    {remainingBalance > 0 && (
+                                        <div className="space-y-4">
+                                            <div className={`p-4 rounded-2xl border ${(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ? "bg-orange-50 border-orange-100" : "bg-red-50 border-red-100"}`}>
+                                                {!(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ? (
+                                                    <p className="text-xs font-bold text-red-500">
+                                                        Credit payments are disabled. Please enter the full amount.
+                                                    </p>
+                                                ) : !(billDetails.customerId || existingCustomerId) ? (
+                                                    <div className="space-y-3">
+                                                        <p className="text-xs font-bold text-orange-600">
+                                                            Customer information is required for credit/partial payments.
+                                                        </p>
+                                                        <div className="space-y-4">
+                                                            <div className="space-y-1">
+                                                                <label className="text-[10px] uppercase font-black text-orange-400 flex justify-between items-center">
+                                                                    <span>Phone *</span>
+                                                                    {isSearchingCustomer && <span className="text-[8px] italic animate-pulse">Searching...</span>}
+                                                                </label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={localCustPhone}
+                                                                    onChange={(e) => setLocalCustPhone(e.target.value)}
+                                                                    placeholder="Search by Number"
+                                                                    className="w-full p-3 rounded-xl border border-orange-200 outline-none focus:ring-2 focus:ring-orange-400 font-bold"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[10px] uppercase font-black text-orange-400">Cust. Name *</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={localCustName}
+                                                                    onChange={(e) => setLocalCustName(e.target.value)}
+                                                                    placeholder="Enter Name"
+                                                                    className="w-full p-3 rounded-xl border border-orange-200 outline-none focus:ring-2 focus:ring-orange-400 font-bold"
+                                                                />
+                                                                {searchPerformed && noCustomerFound && !isSearchingCustomer && (
+                                                                    <p className="text-[10px] text-orange-600 font-bold mt-1 italic">
+                                                                        No customer found for this number. Please enter name to create new.
                                                                     </p>
                                                                 )}
                                                             </div>
-                                                        ) : (
-                                                            <p className="text-xs font-bold text-orange-600">
-                                                                Remaining {formatCurrency(billDetails.finalTotal - Number(cashGiven))} will be kept as customer credit.
+                                                        </div>
+
+                                                        {localCustName?.trim() && localCustPhone?.trim() && (
+                                                            <p className="text-xs font-bold text-orange-600 mt-2">
+                                                                Remaining {formatCurrency(remainingBalance)} will be kept as customer credit.
                                                             </p>
                                                         )}
                                                     </div>
-                                                </div>
-                                            )}
+                                                ) : (
+                                                    <p className="text-xs font-bold text-orange-600">
+                                                        Remaining {formatCurrency(remainingBalance)} will be kept as customer credit.
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
+                                    )}
 
-                                        <button
-                                            onClick={() => {
-                                                // Validate Customer details on credit/partial payment
-                                                if (selectedMethod.id === 'cash' && cashGiven && Number(cashGiven) < billDetails.finalTotal) {
-                                                    if (!localCustName.trim() || !localCustPhone.trim()) {
-                                                        // Fallback logic check if customerId or activeTableId makes this unnecessary
-                                                        if (!billDetails.customerId && !existingCustomerId) {
-                                                            alert("Customer Name and Phone are required for partial/credit payments.");
-                                                            return;
-                                                        }
+                                    <button
+                                        onClick={() => {
+                                            // Validate Customer details on credit/partial payment
+                                            if (remainingBalance > 0) {
+                                                if (!localCustName.trim() || !localCustPhone.trim()) {
+                                                    if (!billDetails.customerId && !existingCustomerId) {
+                                                        alert("Customer Name and Phone are required for partial/credit payments.");
+                                                        return;
                                                     }
                                                 }
-
-                                                // Update taking parent context right before finalizing
-                                                setCustName(localCustName);
-                                                setCustPhone(localCustPhone);
-
-                                                onFinalizePayment(selectedMethod.id, billDetails, Number(cashGiven), localCustName, localCustPhone);
-                                            }}
-                                            disabled={
-                                                !cashGiven ||
-                                                (Number(cashGiven) < billDetails.finalTotal && (
-                                                    !(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ||
-                                                    (!billDetails.customerId && !localCustName?.trim() && !existingCustomerId) ||
-                                                    (!billDetails.customerId && !localCustPhone?.trim() && !existingCustomerId)
-                                                ))
                                             }
-                                            className={`w-full py-4 rounded-2xl text-white font-black text-lg transition-all flex items-center justify-center gap-2 ${cashGiven && Number(cashGiven) >= billDetails.finalTotal ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                                        >
-                                            <CheckCircle2 size={20} />
-                                            {cashGiven && Number(cashGiven) < billDetails.finalTotal ? "Confirm Partial Payment" : "Confirm & Complete"}
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setSelectedMethod(null);
-                                                setCashGiven("");
-                                            }}
-                                            className={`w-full py-4 ${theme.surfaceBg} ${theme.textMuted} border ${theme.borderLight} rounded-2xl font-bold hover:${theme.pageBg} transition-all`}
-                                        >
-                                            Change Method
-                                        </button>
-                                    </div>
+
+                                            // Prepare combined payment payload
+                                            const totalPaidAmount = selectedPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+                                            const paymentsPayload = selectedPayments.map(p => ({
+                                                paymentMethod: p.method.id.toUpperCase(),
+                                                amount: Number(p.amount),
+                                                referenceNumber: p.ref
+                                            }));
+
+                                            // Update taking parent context right before finalizing
+                                            setCustName(localCustName);
+                                            setCustPhone(localCustPhone);
+
+                                            // Call onFinalize with the first payment method as fallback but pass full payments array if possible
+                                            // The backend now supports "payments" array
+                                            onFinalizePayment(
+                                                selectedPayments[0].method.id, 
+                                                billDetails, 
+                                                totalPaidAmount, 
+                                                localCustName, 
+                                                localCustPhone,
+                                                paymentsPayload // Pass entire payload
+                                            );
+                                        }}
+                                        disabled={
+                                            selectedPayments.length === 0 ||
+                                            (remainingBalance > 0 && (
+                                                !(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ||
+                                                (!billDetails.customerId && !localCustName?.trim() && !existingCustomerId) ||
+                                                (!billDetails.customerId && !localCustPhone?.trim() && !existingCustomerId)
+                                            ))
+                                        }
+                                        className={`w-full py-4 rounded-2xl text-white font-black text-lg transition-all flex items-center justify-center gap-2 ${remainingBalance <= 0 ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                                    >
+                                        <CheckCircle2 size={20} />
+                                        {remainingBalance > 0 ? "Confirm Partial Payment" : "Confirm & Complete"}
+                                    </button>
+                                    
+                                    <button
+                                        onClick={() => setSelectedPayments([])}
+                                        className={`w-full py-4 ${theme.surfaceBg} ${theme.textMuted} border ${theme.borderLight} rounded-2xl font-bold hover:${theme.pageBg} transition-all`}
+                                    >
+                                        Back to Methods
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -406,6 +477,27 @@ const PaymentModal = ({
                             <span>Tax</span>
                             <span className={theme.textPrimary}>{formatCurrency(billDetails.taxAmount)}</span>
                         </div>
+                        
+                        {billDetails.taxBreakdown && (billDetails.taxBreakdown.cgst > 0 || billDetails.taxBreakdown.sgst > 0) && (
+                            <div className="pl-4 space-y-1">
+                                <div className={`flex justify-between ${theme.textMuted} text-[10px] uppercase font-bold`}>
+                                    <span>CGST</span>
+                                    <span>{formatCurrency(billDetails.taxBreakdown.cgst)}</span>
+                                </div>
+                                <div className={`flex justify-between ${theme.textMuted} text-[10px] uppercase font-bold`}>
+                                    <span>SGST</span>
+                                    <span>{formatCurrency(billDetails.taxBreakdown.sgst)}</span>
+                                </div>
+                            </div>
+                        )}
+                        {billDetails.taxBreakdown && billDetails.taxBreakdown.igst > 0 && (
+                            <div className="pl-4">
+                                <div className={`flex justify-between ${theme.textMuted} text-[10px] uppercase font-bold`}>
+                                    <span>IGST</span>
+                                    <span>{formatCurrency(billDetails.taxBreakdown.igst)}</span>
+                                </div>
+                            </div>
+                        )}
                         {billDetails.roundOff !== 0 && (
                             <div className={`flex justify-between ${theme.textMuted} text-xs italic`}>
                                 <span>Round Off</span>
@@ -446,8 +538,7 @@ const PaymentModal = ({
                                 type="button"
                                 onClick={() => {
                                     setBillingStage("payment");
-                                    setSelectedMethod(null);
-                                    setCashGiven("");
+                                    setSelectedPayments([]);
                                 }}
                                 className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg shadow-xl hover:bg-indigo-700 flex justify-between px-6 items-center"
                             >
@@ -472,12 +563,11 @@ const PaymentModal = ({
                                 </div>
                             </div>
                         </div>
-                    ) : !selectedMethod && (
+                    ) : selectedPayments.length === 0 && (
                         <button
                             onClick={() => {
                                 setBillingStage("review");
-                                setSelectedMethod(null);
-                                setCashGiven("");
+                                setSelectedPayments([]);
                             }}
                             className={`w-full py-4 ${theme.surfaceBg} ${theme.textMuted} border-2 ${theme.borderLight} rounded-2xl font-bold hover:${theme.pageBg}`}
                         >

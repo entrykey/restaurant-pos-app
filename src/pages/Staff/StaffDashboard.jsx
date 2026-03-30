@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Clock, MapPin, CheckCircle2, LogIn, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Clock, MapPin, CheckCircle2, LogIn, LogOut, Calendar, ChevronRight } from "lucide-react";
+import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { usePermission } from "../../auth/usePermission";
 import { attendanceService, branchService, employeeService, shopService } from "../../services/api";
+import CommonSelect from "../../components/ui/CommonSelect";
+import CommonDialog from "../../components/modals/CommonDialog";
 
 const StaffDashboard = () => {
     const { user } = useAuth();
     const { theme } = useTheme();
+    const navigate = useNavigate();
 
     const [shopId, setShopId] = useState(null);
     const [branches, setBranches] = useState([]);
@@ -16,6 +21,7 @@ const StaffDashboard = () => {
     const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
     const [loading, setLoading] = useState(false);
     const [lastLog, setLastLog] = useState(null);
+    const [recentLogs, setRecentLogs] = useState([]);
     const [error, setError] = useState("");
 
     const { can } = usePermission();
@@ -56,29 +62,37 @@ const StaffDashboard = () => {
     }, []);
 
     // Load employees for the shop and try to auto-pick current user's employee record
+    // For self-service dashboard, we lock the employee to the current user and the branch to their primary branch.
     useEffect(() => {
-        const loadEmployees = async () => {
-            if (!shopId) return;
+
+        const loadEmployeeAndBranch = async () => {
+            if (!shopId || !currentUserId) return;
             try {
                 const staff = await employeeService.getEmployeesByShopId(shopId, false);
+                const ownEmp = (staff || []).find((e) => {
+                    const u = e.userId || {};
+                    return (u._id || u.id) === currentUserId;
+                });
+
                 setEmployees(staff || []);
 
-                // If not a manager, keep it locked to current user
-                if ((!selectedEmployeeId || !isManager) && currentUserId) {
-                    const ownEmp = (staff || []).find((e) => {
-                        const u = e.userId || {};
-                        return (u._id || u.id) === currentUserId;
-                    });
-                    if (ownEmp) {
-                        setSelectedEmployeeId(ownEmp._id || ownEmp.id);
+                if (ownEmp) {
+                    setSelectedEmployeeId(ownEmp._id || ownEmp.id);
+                    // If the employee has a primary branch, use it. Otherwise, rely on the first loaded branch.
+                    if (ownEmp.branchId) {
+                        setSelectedBranchId(ownEmp.branchId);
                     }
+                } else {
+                    console.warn("Current user does not have an employee record in this shop.");
+                    setError("No employee record found for your user. Please contact support.");
                 }
             } catch (err) {
-                console.error("Failed to load employees for staff dashboard:", err);
+                console.error("Failed to load employee data for staff dashboard:", err);
+                setError("Failed to load your employee data. Please try again.");
             }
         };
-        loadEmployees();
-    }, [shopId, currentUserId, selectedEmployeeId, isManager]);
+        loadEmployeeAndBranch();
+    }, [shopId, currentUserId]); // Dependencies are shopId and currentUserId to ensure it runs when these are available.
 
     const selectedEmployee = useMemo(
         () => employees.find((e) => (e._id || e.id) === selectedEmployeeId),
@@ -160,6 +174,24 @@ const StaffDashboard = () => {
         fetchTodayLog();
     }, [selectedEmployeeId, selectedBranchId]);
 
+    // Fetch recent 3 attendance records
+    useEffect(() => {
+        const fetchRecentLogs = async () => {
+            if (!selectedEmployeeId) return;
+            try {
+                // Fetch for a wider range but limit display
+                const logs = await attendanceService.getLogs({
+                    employeeId: selectedEmployeeId,
+                    limit: 10 // Request enough to pick 3
+                });
+                setRecentLogs(logs?.slice(0, 4).filter(l => l._id !== lastLog?._id) || []);
+            } catch (err) {
+                console.error("Failed to fetch recent logs:", err);
+            }
+        };
+        fetchRecentLogs();
+    }, [selectedEmployeeId, lastLog]);
+
     const performPunch = async (type) => {
         if (!selectedBranchId || !selectedEmployeeId) {
             alert("Please select Branch and Employee first.");
@@ -204,6 +236,36 @@ const StaffDashboard = () => {
         }
     };
 
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [selectedLogId, setSelectedLogId] = useState(null);
+
+    const handleRequestCorrection = (logId) => {
+        setSelectedLogId(logId);
+        setIsDialogOpen(true);
+    };
+
+    const confirmCorrectionRequest = async (reason) => {
+        if (!reason || !selectedLogId) return;
+        setLoading(true);
+        try {
+            await attendanceService.requestCorrection(selectedLogId, reason);
+            const today = new Date().toLocaleDateString('en-CA');
+            const logs = await attendanceService.getLogs({
+                employeeId: selectedEmployeeId,
+                branchId: selectedBranchId,
+                startDate: today,
+                endDate: today
+            });
+            if (logs && logs.length > 0) setLastLog(logs[0]);
+            toast.success("Correction request submitted!");
+        } catch (err) {
+            console.error("Correction request failed:", err);
+            toast.error(err?.message || "Failed to submit request");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const friendlyDate = (iso) => {
         if (!iso) return "-";
         const d = new Date(iso);
@@ -223,7 +285,7 @@ const StaffDashboard = () => {
                 </p>
             </div>
 
-            <div className="grid gap-6 max-w-4xl">
+            <div className="grid gap-6 w-full">
                 <div className={`${theme.surfaceBg} rounded-3xl shadow-lg border ${theme.borderLight} p-6 md:p-8`}>
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
                         <div>
@@ -234,40 +296,7 @@ const StaffDashboard = () => {
                                 {selectedEmployee?.userId?.name || user?.name || "Select Employee"}
                             </div>
                         </div>
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            <div className="flex flex-col">
-                                <span className={`text-xs font-bold ${theme.textSecondary}`}>Branch</span>
-                                <select
-                                    value={selectedBranchId}
-                                    onChange={(e) => setSelectedBranchId(e.target.value)}
-                                    disabled={!isManager && branches.length <= 1}
-                                    className={`mt-1 p-2.5 rounded-xl border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} outline-none ${theme.inputFocus} text-sm font-bold min-w-[180px] disabled:opacity-70 disabled:cursor-not-allowed`}
-                                >
-                                    <option value="">Select Branch</option>
-                                    {branches.map((b) => (
-                                        <option key={b._id} value={b._id}>
-                                            {b.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex flex-col">
-                                <span className={`text-xs font-bold ${theme.textSecondary}`}>Employee</span>
-                                <select
-                                    value={selectedEmployeeId}
-                                    onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                                    disabled={!isManager}
-                                    className={`mt-1 p-2.5 rounded-xl border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} outline-none ${theme.inputFocus} text-sm font-bold min-w-[200px] disabled:opacity-70 disabled:cursor-not-allowed`}
-                                >
-                                    <option value="">Select Employee</option>
-                                    {employees.map((e) => (
-                                        <option key={e._id || e.id} value={e._id || e.id}>
-                                            {e.userId?.name || "Employee"} ({e.employeeCode || e._id})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
+                        {/* Selectors removed as per user request: attendance is global and self-service only */}
                     </div>
 
                     <div className="grid md:grid-cols-4 gap-4 mb-6">
@@ -352,7 +381,139 @@ const StaffDashboard = () => {
                         </div>
                     </div>
                 </div>
+
+                <div className={`${theme.surfaceBg} rounded-3xl shadow-lg border ${theme.borderLight} p-6 md:p-8`}>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className={`text-xs font-black uppercase tracking-widest ${theme.textSecondary} flex items-center gap-2`}>
+                            <Clock size={14} className={theme.primaryIconText} /> Recent Attendance History
+                        </div>
+                        <button 
+                            onClick={() => navigate('/my-attendance')}
+                            className={`text-xs font-bold ${theme.primaryIconText} hover:underline`}
+                        >
+                            View Full History
+                        </button>
+                    </div>
+
+                    <div className="space-y-3">
+                        {recentLogs.length > 0 ? recentLogs.slice(0, 3).map((log, idx) => (
+                            <div 
+                                key={log._id || idx}
+                                className={`flex items-center justify-between p-4 rounded-2xl border ${theme.sectionBorder} ${theme.sectionBg} hover:shadow-md transition-shadow`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${theme.primaryIconBg} ${theme.primaryIconText}`}>
+                                        <CheckCircle2 size={20} />
+                                    </div>
+                                    <div>
+                                        <div className={`text-sm font-black ${theme.textPrimary}`}>
+                                            {new Date(log.checkInAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                        </div>
+                                        <div className={`text-[11px] font-bold ${theme.textSecondary} uppercase tracking-tight`}>
+                                            {log.branchId?.name || "Main Branch"}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className={`text-sm font-bold ${theme.textPrimary}`}>
+                                        {new Date(log.checkInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {log.checkOutAt ? new Date(log.checkOutAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
+                                    </div>
+                                    {(() => {
+                                        const hasRequest = !!log.correctionRequest?.status;
+                                        const reqStatus = log.correctionRequest?.status;
+                                        const isMispunch = (log.status === 'MISPUNCH' || (!log.checkOutAt && new Date(log.checkInAt).toLocaleDateString() !== new Date().toLocaleDateString())) && reqStatus !== 'APPROVED';
+                                        
+                                        const isInProgress = !log.checkOutAt && !isMispunch && !hasRequest;
+                                        const durationText = log.workMinutes ? `${Math.floor(log.workMinutes / 60)}h ${log.workMinutes % 60}m` : (isInProgress ? 'In Progress' : (reqStatus === 'APPROVED' ? 'Fixed' : 'Mispunch'));
+                                        const statusColor = (log.workMinutes > 0 || reqStatus === 'APPROVED') ? 'text-green-500' : (isMispunch ? 'text-red-500' : 'text-amber-500');
+
+                                        return (
+                                            <>
+                                                <div className={`text-[11px] font-black ${statusColor}`}>
+                                                    {durationText}
+                                                </div>
+                                                
+                                                {hasRequest ? (
+                                                    <div className="flex flex-col items-end gap-1 mt-1">
+                                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                                                            reqStatus === 'PENDING' ? 'bg-indigo-100 text-indigo-700' :
+                                                            reqStatus === 'APPROVED' ? 'bg-green-100 text-green-700' :
+                                                            'bg-red-100 text-red-700'
+                                                        }`}>
+                                                            {reqStatus}
+                                                        </span>
+                                                        {reqStatus === 'APPROVED' && (
+                                                            <div className="text-[9px] font-bold text-gray-400 italic">
+                                                                Fixed by Manager
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : isMispunch && (
+                                                    <div className="flex flex-col items-end gap-1 mt-1">
+                                                        <div className="text-[9px] bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded-full font-black mt-1 inline-block uppercase tracking-wider">
+                                                            Mispunched
+                                                        </div>
+                                                        <button 
+                                                            onClick={() => handleRequestCorrection(log._id)}
+                                                            className="text-[10px] font-black text-blue-600 hover:underline"
+                                                        >
+                                                            Request Correction
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                    <div className="flex flex-col items-end gap-0.5 mt-1">
+                                        {log.checkInAddress && (
+                                            <div className={`text-[9px] ${theme.textSecondary} italic max-w-[220px] line-clamp-1`}>
+                                                In: {log.checkInAddress}
+                                            </div>
+                                        )}
+                                        {log.checkOutAddress && (
+                                            <div className={`text-[9px] ${theme.textSecondary} italic max-w-[220px] line-clamp-1`}>
+                                                Out: {log.checkOutAddress}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )) : (
+                            <div className={`text-center py-6 text-sm ${theme.textSecondary} italic font-bold`}>
+                                No recent logs found.
+                            </div>
+                        )}
+                    </div>
+                </div>
+                {/* My Leaves Quick Link */}
+                <div className={`${theme.surfaceBg} rounded-3xl shadow-lg border ${theme.borderLight} p-6 md:p-8 flex items-center justify-between group cursor-pointer hover:shadow-xl transition-all active:scale-95 mb-4`}
+                    onClick={() => navigate('/my-leaves')}
+                >
+                    <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 group-hover:scale-110 transition-transform`}>
+                            <Calendar size={24} />
+                        </div>
+                        <div>
+                            <div className={`text-sm font-black ${theme.textPrimary}`}>My Leaves</div>
+                            <div className={`text-[11px] font-bold ${theme.textSecondary} uppercase tracking-widest`}>Apply and Track Leaves</div>
+                        </div>
+                    </div>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${theme.primaryIconBg} ${theme.primaryIconText} opacity-100 transition-opacity`}>
+                        <ChevronRight size={18} />
+                    </div>
+                </div>
             </div>
+
+            <CommonDialog 
+                isOpen={isDialogOpen}
+                onClose={() => setIsDialogOpen(false)}
+                onConfirm={confirmCorrectionRequest}
+                title="Correction Request"
+                message="Tell us why your attendance needs fixing (e.g., forgot to punch out). Your manager will review this request."
+                type="prompt"
+                placeholder="Reason for correction request..."
+                confirmText="Submit Request"
+            />
         </div>
     );
 };

@@ -92,13 +92,19 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
       ownerEmail: data.shop.ownerEmail || data.shop.user_id?.email || "",
       ownerContact: data.shop.ownerContact || "",
       logoUrl: data.shop.logoUrl || null,
-      defaultCountry: data.branches.find(b => b.isMainBranch)?.address?.country?.code || "IN",
-      defaultCurrency: data.branches.find(b => b.isMainBranch)?.currency || "INR",
+      defaultCountry: data.branches.find(b => b.isMainBranch)?.address?.country?.code || data.branches.find(b => b.isMainBranch)?.address?.country || "IN",
+      defaultCurrency: data.branches.find(b => b.isMainBranch)?.currency?.code || data.branches.find(b => b.isMainBranch)?.currency || "INR",
       defaultTaxSystem: data.branches.find(b => b.isMainBranch)?.taxProfile?.taxSystem || TAX_SYSTEMS.GST,
       // If data.plan is null, set subscriptionPlanId to null so UI knows no plan is active
       subscriptionPlanId: data.plan ? data.plan._id : null,
-      planName: data.plan ? data.plan.name : "No Active Plan",
-      planPriceLabel: data.plan ? (data.plan.currency === 'INR' ? '₹' : data.plan.currency) + " " + data.plan.pricing?.find(p => p.cycle === 'monthly')?.price + "/mo" : "Subscribe to use"
+      subscriptionStatus: data.subscription?.status || 'inactive',
+      isTrial: data.subscription?.is_trial || false,
+      subscriptionEndDate: data.subscription?.end_date || null,
+      planName: data.plan ? (data.plan.name === 'Trail' ? 'Trial' : data.plan.name) : 'No Active Plan',
+      planPriceLabel: data.plan
+        ? `${data.plan.currency === 'INR' ? '₹' : data.plan.currency} ${data.plan.pricing?.find(p => p.cycle === 'monthly')?.price ?? data.plan.price ?? 0}/mo`
+        : 'Subscribe to use',
+      businessType: data.shop.businessType?._id || data.shop.businessType || null,
     };
 
     const branchData = data.branches.map(b => ({
@@ -109,8 +115,8 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
         line1: b.address.line1,
         line2: b.address.line2,
         city: b.address.city,
-        state: b.address.state?.name || "",
-        country: b.address.country?.name || "",
+        state: (typeof b.address.state === 'object' ? b.address.state?.name : b.address.state) || "",
+        country: (typeof b.address.country === 'object' ? b.address.country?.name : b.address.country) || "",
         pincode: b.address.pincode
       },
       taxConfig: {
@@ -226,63 +232,16 @@ export const deleteBranch = async (branchId) => {
 };
 
 export const initialOrganization = {
-  id: 1,
-  businessName: "Food Plaza",
+  id: null,
+  businessName: "",
   ownerName: "",
   ownerEmail: "",
   defaultCountry: "IN",
   defaultCurrency: "INR",
   defaultTaxSystem: TAX_SYSTEMS.GST,
-  subscriptionPlanId: "starter",
+  subscriptionPlanId: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
 
-export const initialBranches = [
-  {
-    id: 1,
-    organizationId: 1,
-    name: "Food Plaza - Trivandrum",
-    address: {
-      line1: "MG Road",
-      city: "Trivandrum",
-      state: "Kerala",
-      country: "India",
-      pincode: "695001",
-    },
-    taxConfig: {
-      taxSystem: TAX_SYSTEMS.GST,
-      gstin: "",
-      isGstRegistered: false,
-      allowInterState: true,
-    },
-    currency: "INR",
-    isMainBranch: true,
-    status: BRANCH_STATUS.ACTIVE,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 2,
-    organizationId: 1,
-    name: "Food Plaza - Bangalore",
-    address: {
-      line1: "Indiranagar",
-      city: "Bangalore",
-      state: "Karnataka",
-      country: "India",
-      pincode: "560038",
-    },
-    taxConfig: {
-      taxSystem: TAX_SYSTEMS.GST,
-      gstin: "29ABCDE1234F1Z9",
-      isGstRegistered: true,
-      allowInterState: true,
-    },
-    currency: "INR",
-    isMainBranch: false,
-    status: BRANCH_STATUS.ACTIVE,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+export const initialBranches = [];

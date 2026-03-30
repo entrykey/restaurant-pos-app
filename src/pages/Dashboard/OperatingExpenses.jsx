@@ -5,13 +5,13 @@ import { useTheme } from '../../context/ThemeContext';
 import { shopExpenseService } from '../../services/api/shopExpenses';
 import { dashboardService } from '../../services/api';
 import OperatingExpenseCard from '../../components/cards/OperatingExpenseCard';
-import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, IndianRupee } from 'lucide-react';
+import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, Banknote, TrendingDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatCurrency } from '../../utils/format';
+import CommonSelect from '../../components/ui/CommonSelect';
 
 const OperatingExpenses = () => {
     const { user } = useAuth();
-    const { activeBranchId, branches } = useApp();
+    const { activeBranchId, branches, organization, formatCurrency } = useApp();
     const { theme } = useTheme();
     const navigate = useNavigate();
 
@@ -210,47 +210,19 @@ const OperatingExpenses = () => {
                 <div className="flex gap-4">
                     {/* Branch Filter */}
                     {filteredBranches.length > 1 && (
-                        <div className="relative">
-                            <button
-                                onClick={() => setShowBranchDropdown(!showBranchDropdown)}
-                                className={`flex items-center gap-3 px-6 py-4 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl hover:shadow-md transition-all font-bold ${theme.textPrimary}`}
-                            >
-                                <Building2 size={18} className="text-indigo-600" />
-                                <span>{filteredBranches.find(b => b._id === selectedBranchId)?.name || 'Select Branch'}</span>
-                                <ChevronDown size={14} className={`transition-transform ${showBranchDropdown ? 'rotate-180' : ''}`} />
-                            </button>
-
-                            {showBranchDropdown && (
-                                <>
-                                    <div className="fixed inset-0 z-10" onClick={() => setShowBranchDropdown(false)}></div>
-                                    <div className={`absolute top-full right-0 mt-2 w-64 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl shadow-xl z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-200`}>
-                                        <div className="p-2">
-                                            {filteredBranches.map(branch => (
-                                                <button
-                                                    key={branch._id}
-                                                    onClick={() => {
-                                                        setSelectedBranchId(branch._id);
-                                                        setShowBranchDropdown(false);
-                                                    }}
-                                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors ${selectedBranchId === branch._id
-                                                        ? 'bg-indigo-50 text-indigo-600'
-                                                        : `hover:bg-gray-50 ${theme.textPrimary}`
-                                                        }`}
-                                                >
-                                                    <div className={`w-2 h-2 rounded-full ${selectedBranchId === branch._id ? 'bg-indigo-600' : 'bg-transparent'}`}></div>
-                                                    <span className="font-bold">{branch.name}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </>
-                            )}
+                        <div className="min-w-[200px]">
+                            <CommonSelect
+                                options={filteredBranches.map(b => ({ label: b.name, value: b._id }))}
+                                value={selectedBranchId}
+                                onChange={(val) => setSelectedBranchId(val)}
+                                placeholder="Select Branch"
+                            />
                         </div>
                     )}
 
                     <div className={`${theme.surfaceBg} p-4 rounded-2xl border ${theme.borderLight} text-right min-w-[150px]`}>
                         <p className={`text-[10px] uppercase font-black tracking-widest ${theme.textMuted}`}>Total Daily Cost</p>
-                        <p className="text-2xl font-black text-indigo-600">₹ {totalDailyExpense.toFixed(2)}</p>
+                        <p className="text-2xl font-black text-indigo-600">{formatCurrency(totalDailyExpense)}</p>
                     </div>
 
                     <div className={`${todayProfit >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'} p-4 rounded-2xl border text-right min-w-[150px]`}>
@@ -389,7 +361,7 @@ const OperatingExpenses = () => {
                                             </td>
                                             <td className="p-6 text-right">
                                                 <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl font-black ${day.netProfit >= 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                                                    {day.netProfit >= 0 ? <TrendingUp size={16} /> : <IndianRupee size={16} />}
+                                                    {day.netProfit >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
                                                     {formatCurrency(day.netProfit)}
                                                 </div>
                                             </td>

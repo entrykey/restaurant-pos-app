@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, Loader2, X } from 'lucide-react';
+import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, Loader2, X } from 'lucide-react';
+import { BUSINESS_FEATURES } from '../../config/businessTypes';
 import CommonTable from '../../components/CommonTable';
 import { getCommonFieldKeys } from '../../config/itemFields';
 import { ROUTE_ACCESS } from '../../config/permissionStructure';
@@ -13,7 +14,6 @@ import ProductPage from './ProductPage';
 import Modal from '../../components/ui/Modal';
 import CommonSelect from '../../components/ui/CommonSelect';
 import BulkUploadModal from '../../components/modals/BulkUploadModal';
-import { Upload } from 'lucide-react';
 import StockAdjustmentModal from '../../components/modals/StockAdjustmentModal';
 
 const Inventory = ({
@@ -26,24 +26,33 @@ const Inventory = ({
     hasPermissionFor,
 }) => {
     const { user } = useAuth();
-    const { activeBranchId } = useApp();
+    const { activeBranchId, currentShopId, businessTypeData, businessType } = useApp();
     const { theme } = useTheme();
     const { t } = useText();
     const isAdmin = user?.role === 'Admin';
 
+    const features = businessTypeData?.features || BUSINESS_FEATURES[businessType] || { 
+        sellManufacturedItems: true, 
+        sellStockItems: true, 
+        sellTradeItems: true 
+    };
+
     const canViewItems = hasPermissionFor?.("inventory", "inventory", "view");
-    const canManageItems = hasPermissionFor?.("inventory", "inventory", "edit") || hasPermissionFor?.("inventory", "inventory", "create");
+    const canManageItems = (hasPermissionFor?.("inventory", "inventory", "edit") || hasPermissionFor?.("inventory", "inventory", "create"));
 
     const canViewTradeItems = hasPermissionFor?.("inventory", "tradeitem", "view");
-    const canManageTradeItems = hasPermissionFor?.("inventory", "tradeitem", "edit") || hasPermissionFor?.("inventory", "tradeitem", "create");
+    const canManageTradeItems = (hasPermissionFor?.("inventory", "tradeitem", "edit") || hasPermissionFor?.("inventory", "tradeitem", "create"));
 
     const canViewMenu = hasPermissionFor?.("inventory", "menu", "view");
-    const canManageMenu = hasPermissionFor?.("inventory", "menu", "edit") || hasPermissionFor?.("inventory", "menu", "create");
+    const canManageMenu = (hasPermissionFor?.("inventory", "menu", "edit") || hasPermissionFor?.("inventory", "menu", "create"));
 
     // Default to the first allowed tab
-    const [activeTab, setActiveTab] = useState(
-        canViewMenu ? "menu" : (canViewItems ? "raw" : (canViewTradeItems ? "trade" : "menu"))
-    );
+    const [activeTab, setActiveTab] = useState(() => {
+        if (canViewMenu) return "menu";
+        if (canViewItems) return "raw";
+        if (canViewTradeItems) return "trade";
+        return "menu"; // Fallback
+    });
 
     const [inventorySearch, setInventorySearch] = useState("");
     const [loadingItemId, setLoadingItemId] = useState(null); // while fetching item by id for edit
@@ -72,13 +81,27 @@ const Inventory = ({
         setCurrentPage(1);
     }, [activeTab, inventorySearch, selectedCategory]);
 
+    // Ensure activeTab is valid if features change
+    useEffect(() => {
+        if (activeTab === "menu" && !canViewMenu) {
+            if (canViewItems) setActiveTab("raw");
+            else if (canViewTradeItems) setActiveTab("trade");
+        } else if (activeTab === "raw" && !canViewItems) {
+            if (canViewMenu) setActiveTab("menu");
+            else if (canViewTradeItems) setActiveTab("trade");
+        } else if (activeTab === "trade" && !canViewTradeItems) {
+            if (canViewMenu) setActiveTab("menu");
+            else if (canViewItems) setActiveTab("raw");
+        }
+    }, [canViewMenu, canViewItems, canViewTradeItems, activeTab]);
+
     // Fetch Used Categories for the current tab
     useEffect(() => {
         const fetchCategories = async () => {
-            if (!user?.shop_id) return;
+            if (!currentShopId) return;
             try {
                 const params = {
-                    shopId: user.shop_id,
+                    shopId: currentShopId,
                     branchId: activeBranchId || (user.branchIds?.length ? user.branchIds[0] : null),
                     itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
                 };
@@ -90,12 +113,12 @@ const Inventory = ({
             }
         };
         fetchCategories();
-    }, [activeTab, activeBranchId, user?.shop_id, user?.branchIds]);
+    }, [activeTab, activeBranchId, currentShopId, user?.branchIds]);
 
     // Fetch Items when Dependencies Change
     useEffect(() => {
         const fetchPaginatedItems = async () => {
-            if (!user?.shop_id) return;
+            if (!currentShopId) return;
             setLoadingItems(true);
             try {
                 const isMenu = activeTab === "menu";
@@ -104,7 +127,7 @@ const Inventory = ({
                     limit: 5, // Items per page (as requested)
                     search: inventorySearch,
                     filters: {
-                        shopId: user.shop_id,
+                        shopId: currentShopId,
                         branchId: activeBranchId || (user.branchIds?.length ? user.branchIds[0] : null),
                         itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
                         categoryId: selectedCategory === "ALL" ? undefined : selectedCategory
@@ -126,7 +149,7 @@ const Inventory = ({
         };
 
         fetchPaginatedItems();
-    }, [activeTab, inventorySearch, currentPage, activeBranchId, user?.shop_id, user?.branchIds, refreshTrigger]);
+    }, [activeTab, inventorySearch, currentPage, activeBranchId, currentShopId, user?.branchIds, refreshTrigger]);
 
     // Fetch stock levels whenever branchId or items change
     useEffect(() => {
@@ -397,7 +420,12 @@ const Inventory = ({
             headerClassName: "text-right",
             className: "text-right",
             render: (_, item) => (
-                <div className={`font-medium ${theme.textPrimary}`}>{formatCurrency(item.pricing?.purchasePrice || item.costPerUnit || 0)}</div>
+                <div className={`font-black ${theme.textHeading}`}>
+                    {formatCurrency(item.pricing?.purchasePrice || item.costPerUnit || 0)}
+                    <span className={`text-[10px] ml-1 opacity-40 font-black uppercase tracking-tighter`}>
+                        / {item.unitId?.name || ""}
+                    </span>
+                </div>
             )
         },
         {

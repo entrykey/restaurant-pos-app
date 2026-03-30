@@ -17,6 +17,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import CommonTable from "../../components/CommonTable";
+import CommonSelect from "../../components/ui/CommonSelect";
 
 const OfferList = ({ hasPermissionFor, formatCurrency }) => {
     const { theme } = useTheme();
@@ -204,15 +205,16 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
                 </div>
 
                 <div className="flex gap-2">
-                    <select
+                    <CommonSelect
+                        options={[
+                            { label: "All Status", value: "all" },
+                            { label: "Active Only", value: "active" },
+                            { label: "Inactive Only", value: "inactive" }
+                        ]}
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        className={`px-4 py-3.5 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText} min-w-[150px]`}
-                    >
-                        <option value="all">All Status</option>
-                        <option value="active">Active Only</option>
-                        <option value="inactive">Inactive Only</option>
-                    </select>
+                        onChange={(val) => setStatusFilter(val)}
+                        className="min-w-[180px]"
+                    />
                     <button className={`p-3.5 rounded-2xl ${theme.inputBg} ${theme.textSecondary} border ${theme.inputBorder}`}>
                         <Filter size={20} />
                     </button>

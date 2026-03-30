@@ -7,7 +7,8 @@ import {
     RefreshCw,
     Shield,
     History,
-    Search
+    Search,
+    Wallet
 } from "lucide-react";
 import AttributeSettings from "./AttributeSettings";
 import UnitSettings from "./UnitSettings";
@@ -18,8 +19,9 @@ import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
 import DatePicker from "../../components/ui/DatePicker";
-import { settingService, roleService } from "../../services/api";
+import { settingService, roleService, payrollService } from "../../services/api";
 import CommonSelect from "../../components/ui/CommonSelect";
+import { useApp } from "../../context/AppContext";
 import RolePermissionEditor from "./RolePermissionEditor";
 
 const Settings = ({
@@ -32,13 +34,17 @@ const Settings = ({
     currentUser,
 }) => {
     const { theme } = useTheme();
+    const { activeBranchId, branches, currentShopId } = useApp();
+    const currentBranchId = activeBranchId || (branches.length > 0 ? (branches[0]._id || branches[0].id) : null);
     const canViewGeneral = hasPermissionFor?.(ROUTE_ACCESS.SETTINGS.module, ROUTE_ACCESS.SETTINGS.resource, ROUTE_ACCESS.SETTINGS.action);
     const canViewAttributes = hasPermissionFor?.('settings', 'inventory_settings', 'manage');
     const canViewAppearance = hasPermissionFor?.('settings', 'settings', 'appearence_settings');
+    const canViewPayroll = hasPermissionFor?.(ROUTE_ACCESS.PAYROLL_SETTINGS.module, ROUTE_ACCESS.PAYROLL_SETTINGS.resource, ROUTE_ACCESS.PAYROLL_SETTINGS.action);
     const isSuperAdmin = currentUser?.isSuperAdmin === true;
 
     const allTabs = [
         { id: "general", label: "General", icon: Shield, show: isSuperAdmin || canViewGeneral },
+        { id: "payroll", label: "Payroll", icon: Wallet, show: isSuperAdmin || canViewPayroll },
         { id: "attributes", label: "Inventory Settings", icon: Package, show: canViewAttributes },
         { id: "appearance", label: "Appearance", icon: Palette, show: canViewAppearance || isSuperAdmin },
         { id: "activity", label: "Activity", icon: History, show: canViewGeneral },
@@ -68,6 +74,15 @@ const Settings = ({
     // Role Edit State
     const [isRoleEditorOpen, setIsRoleEditorOpen] = useState(false);
     const [editingRoleId, setEditingRoleId] = useState(null);
+    const [payrollSettings, setPayrollSettings] = useState({
+        periodStartDay: 1,
+        periodEndDay: 30,
+        salaryBasis: 'monthly',
+        workingDaysInMonth: 30,
+        overtimeRate: 0,
+        lateGracePeriod: 0
+    });
+    const [isSavingPayroll, setIsSavingPayroll] = useState(false);
 
     useEffect(() => {
         if (activeTab === "general" && (isSuperAdmin || canViewGeneral)) {
@@ -76,7 +91,10 @@ const Settings = ({
                 fetchSystemRoles();
             }
         }
-    }, [activeTab, isSuperAdmin, canViewGeneral]);
+        if (activeTab === "payroll" && (isSuperAdmin || canViewPayroll)) {
+            fetchPayrollSettings();
+        }
+    }, [activeTab, isSuperAdmin, canViewGeneral, canViewPayroll, currentShopId]);
 
     const fetchBackendSettings = async () => {
         setIsLoadingBackend(true);
@@ -108,6 +126,34 @@ const Settings = ({
             setSystemRoles(roles || []);
         } catch (error) {
             console.error("Failed to fetch system roles:", error);
+        }
+    };
+    const fetchPayrollSettings = async () => {
+        try {
+            const shopId = currentShopId || currentUser?.shop_id;
+            if (!shopId || shopId === 'undefined') return;
+            const data = await payrollService.getSettings(shopId);
+            if (data) setPayrollSettings(data);
+        } catch (error) {
+            console.error("Failed to fetch payroll settings:", error);
+        }
+    };
+    const handleSavePayrollSettings = async () => {
+        setIsSavingPayroll(true);
+        try {
+            const shopId = currentShopId || currentUser?.shop_id;
+            console.log("Attempting to save payroll settings for ShopId:", shopId, "Payload:", payrollSettings);
+            if (!shopId || shopId === 'undefined') {
+                alert(`Configuration Error: Shop ID is missing. Please refresh.`);
+                return;
+            }
+            await payrollService.saveSettings(shopId, payrollSettings);
+            alert("Payroll settings saved successfully");
+        } catch (error) {
+            console.error("Failed to save payroll settings:", error);
+            alert("Failed to save payroll settings");
+        } finally {
+            setIsSavingPayroll(false);
         }
     };
 
@@ -308,13 +354,13 @@ const Settings = ({
                         {!isSuperAdmin && (
                             <>
                                 <CategorySettings />
-                                <TaxSettings />
                             </>
                         )}
                         {isSuperAdmin && (
                             <>
                                 <UnitSettings />
                                 <AttributeSettings />
+                                <TaxSettings />
                             </>
                         )}
                     </div>
@@ -373,6 +419,95 @@ const Settings = ({
                             ]}
                             data={filteredLogs}
                         />
+                    </div>
+                );
+
+            case "payroll":
+                return (
+                    <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight} space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500`}>
+                        <div className="flex items-center gap-3">
+                            <div className={`p-3 ${theme.primaryIconBg} rounded-2xl ${theme.primaryIconText}`}>
+                                <Wallet size={24} />
+                            </div>
+                            <h3 className={`text-xl font-bold ${theme.textHeading}`}>Payroll Configuration</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-4">
+                                <label className={`block text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Monthly Cycle Start Day</label>
+                                <input
+                                    type="number" min="1" max="31"
+                                    value={payrollSettings.periodStartDay}
+                                    onChange={(e) => setPayrollSettings({ ...payrollSettings, periodStartDay: e.target.value })}
+                                    className={`w-full p-4 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-2xl outline-none ${theme.inputFocus} font-bold`}
+                                />
+                                <p className={`text-[10px] ${theme.textMuted}`}>The date each month when the salary period begins (e.g. 1st or 21st).</p>
+                            </div>
+                            <div className="space-y-4">
+                                <label className={`block text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Monthly Cycle End Day</label>
+                                <input
+                                    type="number" min="1" max="31"
+                                    value={payrollSettings.periodEndDay}
+                                    onChange={(e) => setPayrollSettings({ ...payrollSettings, periodEndDay: e.target.value })}
+                                    className={`w-full p-4 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-2xl outline-none ${theme.inputFocus} font-bold`}
+                                />
+                                <p className={`text-[10px] ${theme.textMuted}`}>The date each month when the salary period ends.</p>
+                            </div>
+                            <div className="space-y-4">
+                                <label className={`block text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Salary Calculation Basis</label>
+                                <CommonSelect
+                                    options={[
+                                        { label: 'Monthly Fixed', value: 'monthly' },
+                                        { label: 'Daily Based', value: 'daily' }
+                                    ]}
+                                    value={payrollSettings.salaryBasis}
+                                    onChange={(val) => setPayrollSettings({ ...payrollSettings, salaryBasis: val })}
+                                    labelKey="label"
+                                    valueKey="value"
+                                />
+                                <p className={`text-[10px] ${theme.textMuted}`}>{payrollSettings.salaryBasis === 'monthly' ? "Full month salary is fixed; absents are deducted." : "Salary is calculated per day present."}</p>
+                            </div>
+                            <div className="space-y-4">
+                                <label className={`block text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Working Days in Month</label>
+                                <input
+                                    type="number"
+                                    value={payrollSettings.workingDaysInMonth}
+                                    onChange={(e) => setPayrollSettings({ ...payrollSettings, workingDaysInMonth: e.target.value })}
+                                    className={`w-full p-4 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-2xl outline-none ${theme.inputFocus} font-bold`}
+                                />
+                                <p className={`text-[10px] ${theme.textMuted}`}>Average working days (e.g. 26 or 30). Used for per-day deduction math.</p>
+                            </div>
+                            <div className="space-y-4">
+                                <label className={`block text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Overtime Rate Multiplier</label>
+                                <input
+                                    type="number" step="0.1"
+                                    value={payrollSettings.overtimeRate}
+                                    onChange={(e) => setPayrollSettings({ ...payrollSettings, overtimeRate: e.target.value })}
+                                    className={`w-full p-4 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-2xl outline-none ${theme.inputFocus} font-bold`}
+                                />
+                                <p className={`text-[10px] ${theme.textMuted}`}>Multiplier for overtime pay (e.g., 1.5 for time-and-a-half). Set to 0 to disable.</p>
+                            </div>
+                            <div className="space-y-4">
+                                <label className={`block text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Late Arrival Grace Period (Mins)</label>
+                                <input
+                                    type="number"
+                                    value={payrollSettings.lateGracePeriod}
+                                    onChange={(e) => setPayrollSettings({ ...payrollSettings, lateGracePeriod: e.target.value })}
+                                    className={`w-full p-4 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-2xl outline-none ${theme.inputFocus} font-bold`}
+                                />
+                                <p className={`text-[10px] ${theme.textMuted}`}>Minutes allowed after shift start before being marked late. Set to 0 to disable.</p>
+                            </div>
+                        </div>
+
+                        <div className="pt-6 border-t flex justify-end">
+                            <button
+                                onClick={handleSavePayrollSettings}
+                                disabled={isSavingPayroll}
+                                className={`px-10 py-5 ${theme.buttonBg} ${theme.buttonText} rounded-3xl font-black text-xs uppercase tracking-[0.15em] shadow-xl hover:scale-105 transition-all disabled:opacity-50`}
+                            >
+                                {isSavingPayroll ? "Saving..." : "Update Payroll Rules"}
+                            </button>
+                        </div>
                     </div>
                 );
 

@@ -373,7 +373,7 @@ const TakeawayOrder = ({
 
                     <div className="flex-1 overflow-y-auto p-3">
                         {currentOrder.items.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-2 border-2 border-dashed rounded-3xl m-2">
+                            <div className="py-20 flex flex-col items-center justify-center text-gray-300 gap-2 border-2 border-dashed rounded-3xl m-2">
                                 <Utensils size={32} />
                                 <p className={`text-sm font-bold uppercase tracking-widest ${theme.textMuted}`}>Cart is empty</p>
                             </div>

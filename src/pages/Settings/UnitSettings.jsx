@@ -4,9 +4,11 @@ import CommonTable from "../../components/CommonTable";
 import { unitService } from "../../services/api";
 import { toast } from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
+import { useApp } from "../../context/AppContext";
 
 const UnitSettings = () => {
     const { theme } = useTheme();
+    const { currentShopId } = useApp();
     const [units, setUnits] = useState([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingUnit, setEditingUnit] = useState(null);
@@ -64,7 +66,9 @@ const UnitSettings = () => {
                 await unitService.updateUnit(editingUnit._id, formData);
                 toast.success("Unit updated successfully");
             } else {
-                await unitService.createUnit(formData);
+                await unitService.createUnit({
+                    ...formData
+                });
                 toast.success("Unit created successfully");
             }
 

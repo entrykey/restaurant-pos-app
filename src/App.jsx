@@ -1,4 +1,5 @@
 import React from "react";
+import { Toaster } from "react-hot-toast";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AppProvider } from "./context/AppContext";
 import { OrderProvider } from "./context/OrderContext";
@@ -16,6 +17,7 @@ const App = () => {
             <TakeawayProvider>
               <OnlineOrderProvider>
                 <AppContent />
+                <Toaster position="top-center" reverseOrder={false} />
               </OnlineOrderProvider>
             </TakeawayProvider>
           </DiningProvider>

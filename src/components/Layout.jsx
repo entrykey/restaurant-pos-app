@@ -29,7 +29,8 @@ const Layout = ({
     const { theme } = useTheme();
 
     return (
-        <div className={`h-screen w-screen overflow-hidden ${theme.pageBg} font-sans`}>
+        <div className={`h-screen w-screen flex flex-col overflow-hidden ${theme.pageBg} font-sans`}>
+
             {/* ✅ Full width navbar */}
             <div className=" w-full">
                 <Navbar
@@ -47,7 +48,8 @@ const Layout = ({
             </div>
 
             {/* Sidebar + Content */}
-            <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+            <div className="flex flex-1 overflow-hidden">
+
                 {/* Sidebar */}
                 <Sidebar
                     key={JSON.stringify(enabledModules)} // Force re-render when enabledModules changes
@@ -70,7 +72,10 @@ const Layout = ({
                 />
 
                 {/* Main Content */}
-                <div className={`flex-1 ml-0 transition-all duration-300 ${isSidebarExpanded ? 'md:ml-64' : 'md:ml-24'} h-[calc(100vh-64px)] overflow-hidden flex flex-col relative`}>
+                <div className={`flex-1 min-h-0 ml-0 transition-all duration-300 ${isSidebarExpanded ? 'md:ml-64' : 'md:ml-24'} overflow-y-auto custom-scrollbar relative bg-gray-50/30 dark:bg-transparent`}>
+
+
+
                     {children}
                 </div>
             </div>

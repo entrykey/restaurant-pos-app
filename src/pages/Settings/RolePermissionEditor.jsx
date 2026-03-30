@@ -30,10 +30,10 @@ const RolePermissionEditor = ({ isOpen, onClose, roleId }) => {
 
             // Set initial selected permissions
             const permsMap = (fetchedRole.permissions || []).reduce((acc, entry) => {
-                const moduleId = entry?.module?._id || entry?.module;
+                const moduleId = entry?.moduleId?._id || entry?.moduleId;
                 if (!moduleId) return acc;
-                const permIds = (entry.permissions || []).map(p => p?._id || p).filter(Boolean);
-                acc[String(moduleId)] = permIds.map(String);
+                const actionIds = (entry.actions || []).map(p => p?._id || p).filter(Boolean);
+                acc[String(moduleId)] = actionIds.map(String);
                 return acc;
             }, {});
             setSelectedPermissions(permsMap);
@@ -112,7 +112,7 @@ const RolePermissionEditor = ({ isOpen, onClose, roleId }) => {
         try {
             const permissionsPayload = Object.entries(selectedPermissions)
                 .filter(([_, perms]) => Array.isArray(perms) && perms.length > 0)
-                .map(([module, perms]) => ({ module, permissions: perms }));
+                .map(([module, perms]) => ({ moduleId: module, actions: perms }));
 
             const payload = { permissions: permissionsPayload };
             await roleService.updateRole(role._id, payload);

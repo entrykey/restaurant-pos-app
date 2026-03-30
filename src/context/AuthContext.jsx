@@ -85,7 +85,8 @@ export const AuthProvider = ({ children }) => {
   const isAuthenticated = Boolean(user);
 
   const login = (nextUser) => {
-    setUser(nextUser);
+    const isOwner = nextUser.isOwner || nextUser.isSuperAdmin;
+    setUser({ ...nextUser, isOwner });
     if (nextUser.customTexts) {
       setCustomTexts(nextUser.customTexts);
     }

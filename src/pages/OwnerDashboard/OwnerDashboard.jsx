@@ -82,7 +82,7 @@ const OwnerDashboard = () => {
     };
 
     return (
-        <div className="p-6 md:p-8 space-y-8 w-full">
+        <div className="p-6 md:p-8 pb-12 space-y-8 w-full">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className={`text-3xl font-black ${theme.textHeading}`}>Owner Dashboard</h1>
@@ -146,7 +146,7 @@ const OwnerDashboard = () => {
                                         <TrendingUp size={16} /> Daily Revenue
                                     </p>
                                     <p className={`text-2xl font-black ${theme.textHeading}`}>
-                                        {formatCurrency(shop.todayRevenue || 0)}
+                                        {formatCurrency(shop.todayRevenue || 0, shop.defaultCurrency || 'USD')}
                                     </p>
                                 </div>
                                 <div className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.inputBorder}`}>
@@ -154,7 +154,7 @@ const OwnerDashboard = () => {
                                         <TrendingUp size={16} /> Daily Profit
                                     </p>
                                     <p className={`text-2xl font-black ${shop.todayProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                        {formatCurrency(shop.todayProfit || 0)}
+                                        {formatCurrency(shop.todayProfit || 0, shop.defaultCurrency || 'USD')}
                                     </p>
                                 </div>
                             </div>

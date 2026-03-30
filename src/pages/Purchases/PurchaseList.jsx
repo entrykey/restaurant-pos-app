@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Plus, Search, Eye, Edit3, Trash2, ShoppingCart, Calendar,
-    CheckCircle, Clock, AlertCircle, X, Package, User, Building,
+    CheckCircle, CheckCircle2, Clock, AlertCircle, X, Package, User, Building,
     FileText, Calculator, Save, ChevronDown, ArrowLeft, Truck,
-    BadgeIndianRupee, TrendingUp, ReceiptText, XCircle, CheckCheck, CreditCard,
+    Banknote, TrendingUp, ReceiptText, XCircle, CheckCheck, CreditCard,
     MapPin, Hash, Info, Printer
 } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
@@ -15,11 +15,16 @@ import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
+import { toast } from "react-hot-toast";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const fmt = (val) =>
-    val != null ? `₹${Number(val).toFixed(2)}` : "₹0.00";
+import { formatCurrency as globalFormatCurrency } from "../../utils/format";
+
+const fmt = (val, currency = 'USD') => {
+    const code = (typeof currency === 'object' && currency !== null) ? (currency.code || currency.id || 'USD') : currency;
+    return globalFormatCurrency(val || 0, code);
+};
 
 const STATUS_PILL = {
     CONFIRMED: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -33,9 +38,48 @@ const PAY_PILL = {
     UNPAID: "bg-gray-100   text-gray-500    border-gray-200",
 };
 
+const confirmAction = (message, onConfirm, themeMode) => {
+    toast((t) => (
+        <div className={`p-4 min-w-[320px] rounded-2xl shadow-xl border ${themeMode === 'dark' ? 'bg-[#1a1c2e] border-gray-800 text-white' : 'bg-white border-gray-100'}`}>
+            <div className="flex items-center gap-4 mb-4">
+                <div className="p-2.5 bg-orange-100 dark:bg-orange-950/20 text-orange-500 rounded-xl">
+                    <AlertCircle size={24} />
+                </div>
+                <div>
+                    <h3 className="text-sm font-black uppercase tracking-tight">Confirm Action</h3>
+                    <p className={`text-xs font-bold leading-relaxed mt-1 ${themeMode === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{message}</p>
+                </div>
+            </div>
+            <div className="flex gap-2.5 justify-end pt-2 border-t border-gray-50 dark:border-gray-800">
+                <button
+                    onClick={() => toast.dismiss(t.id)}
+                    className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${themeMode === 'dark' ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                >
+                    Cancel
+                </button>
+                <button
+                    onClick={() => {
+                        onConfirm();
+                        toast.dismiss(t.id);
+                    }}
+                    className="px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-500/20 transition-all active:scale-95"
+                >
+                    Confirm
+                </button>
+            </div>
+        </div>
+    ), { 
+        duration: Infinity, 
+        position: 'top-center',
+        style: {
+            background: 'transparent',
+            padding: 0,
+            boxShadow: 'none'
+        }
+    });
+};
 
-
-const PurchaseDetailModal = ({ purchaseId, onClose }) => {
+const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId }) => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [shopInfo, setShopInfo] = useState(null);
@@ -44,18 +88,44 @@ const PurchaseDetailModal = ({ purchaseId, onClose }) => {
     const { formatCurrency } = useApp();
 
     useEffect(() => {
+        if (!purchaseId) return;
+
+        // Use the passed shopId or fallback to user object
+        const sid = propShopId || user?.shop_id || user?.companyId;
+        
+        if (!sid) {
+          console.warn("No shopId found in PurchaseDetailModal, skipping shop info fetch");
+          setLoading(true);
+          PurchaseService.getPurchaseById(purchaseId)
+            .then(purchaseData => {
+                setData(purchaseData);
+            })
+            .catch(err => {
+                console.error("Detail Fetch Error:", err);
+                toast.error("Failed to load purchase details");
+            })
+            .finally(() => setLoading(false));
+          return;
+        }
+
         setLoading(true);
         Promise.all([
             PurchaseService.getPurchaseById(purchaseId),
-            shopService.getShopById(user.shop_id)
+            shopService.getShopById(sid)
         ])
             .then(([purchaseData, shopData]) => {
                 setData(purchaseData);
                 setShopInfo(shopData);
             })
-            .catch(console.error)
+            .catch(err => {
+                console.error("Detail Fetch Error:", err);
+                // Try to at least load the purchase if shop fetch failed
+                PurchaseService.getPurchaseById(purchaseId)
+                  .then(setData)
+                  .catch(console.error);
+            })
             .finally(() => setLoading(false));
-    }, [purchaseId, user.shop_id]);
+    }, [purchaseId, propShopId, user?.shop_id, user?.companyId]);
 
     const purchase = data?.purchase;
     const items = data?.items || [];
@@ -248,8 +318,8 @@ const PurchaseDetailModal = ({ purchaseId, onClose }) => {
                 <div class="item-code">${it.itemId?.itemCode || ''}</div>
               </td>
               <td style="text-align: center;">${it.quantity}</td>
-              <td style="text-align: right;">${formatCurrency(it.purchasePrice)}</td>
-              <td style="text-align: right; font-weight: 600;">${formatCurrency(it.quantity * it.purchasePrice)}</td>
+              <td style="text-align: right;">${fmt(it.purchasePrice, currency)}</td>
+              <td style="text-align: right; font-weight: 600;">${fmt(it.quantity * it.purchasePrice, currency)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -259,19 +329,19 @@ const PurchaseDetailModal = ({ purchaseId, onClose }) => {
         <div class="totals-table">
           <div class="total-row">
             <span>Subtotal</span>
-            <span>${formatCurrency(purchase.subtotal)}</span>
+            <span>${fmt(purchase.subtotal, currency)}</span>
           </div>
           <div class="total-row">
             <span>Tax (+)</span>
-            <span>${formatCurrency(purchase.taxTotal)}</span>
+            <span>${fmt(purchase.taxTotal, currency)}</span>
           </div>
           <div class="total-row">
             <span>Discount (-)</span>
-            <span>${formatCurrency(purchase.discountTotal)}</span>
+            <span>${fmt(purchase.discountTotal, currency)}</span>
           </div>
           <div class="total-row grand">
             <span>GRAND TOTAL</span>
-            <span>${formatCurrency(purchase.grandTotal)}</span>
+            <span>${fmt(purchase.grandTotal, currency)}</span>
           </div>
         </div>
       </div>
@@ -403,10 +473,10 @@ const PurchaseDetailModal = ({ purchaseId, onClose }) => {
                                                     </td>
                                                     <td className="px-4 py-3 font-bold text-gray-700">{it.quantity}</td>
                                                     <td className="px-4 py-3 font-bold text-emerald-600">{it.freeQuantity || 0}</td>
-                                                    <td className="px-4 py-3 font-bold text-gray-700">{fmt(it.purchasePrice)}</td>
-                                                    <td className="px-4 py-3 text-blue-600 font-bold">{fmt(it.taxAmount)}</td>
-                                                    <td className="px-4 py-3 text-orange-500 font-bold">{fmt(it.discountAmount)}</td>
-                                                    <td className="px-4 py-3 font-black text-indigo-700">{fmt(it.totalAmount)}</td>
+                                                    <td className="px-4 py-3 font-bold text-gray-700">{fmt(it.purchasePrice, currency)}</td>
+                                                    <td className="px-4 py-3 text-blue-600 font-bold">{fmt(it.taxAmount, currency)}</td>
+                                                    <td className="px-4 py-3 text-orange-500 font-bold">{fmt(it.discountAmount, currency)}</td>
+                                                    <td className="px-4 py-3 font-black text-indigo-700">{fmt(it.totalAmount, currency)}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -433,7 +503,7 @@ const PurchaseDetailModal = ({ purchaseId, onClose }) => {
                                     ].map(({ label, value, cls }) => (
                                         <div key={label} className="flex justify-between items-center text-sm">
                                             <span className="text-gray-400 font-bold">{label}</span>
-                                            <span className={`font-bold ${cls}`}>{fmt(value)}</span>
+                                            <span className={`font-bold ${cls}`}>{fmt(value, currency)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -457,7 +527,7 @@ const PurchaseDetailModal = ({ purchaseId, onClose }) => {
                                                             {p.referenceNumber ? ` · ${p.referenceNumber}` : ""}
                                                         </div>
                                                     </div>
-                                                    <div className="font-black text-emerald-600 text-sm">{fmt(p.amount)}</div>
+                                                    <div className="font-black text-emerald-600 text-sm">{fmt(p.amount, currency)}</div>
                                                 </div>
                                             ))}
                                         </div>
@@ -477,24 +547,46 @@ const PurchaseDetailModal = ({ purchaseId, onClose }) => {
 // PAYMENT MODAL
 // ════════════════════════════════════════════════════════════════════════════
 
-const PaymentModal = ({ purchase, onClose, onSuccess }) => {
-    const [amount, setAmount] = useState(purchase.balanceAmount || 0);
-    const [method, setMethod] = useState("CASH");
-    const [ref, setRef] = useState("");
+const PaymentModal = ({ purchase, onClose, onSuccess, currency }) => {
+    const [payments, setPayments] = useState([
+        { amount: purchase.balanceAmount || 0, method: "CASH", ref: "" }
+    ]);
     const [saving, setSaving] = useState(false);
     const { theme } = useTheme();
 
+    const totalPaying = payments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+    const remaining = Math.max(0, purchase.balanceAmount - totalPaying);
+
+    const addPaymentRow = () => {
+        if (remaining <= 0) return;
+        setPayments([...payments, { amount: remaining, method: "CASH", ref: "" }]);
+    };
+
+    const removePaymentRow = (idx) => {
+        setPayments(payments.filter((_, i) => i !== idx));
+    };
+
+    const updateRow = (idx, field, value) => {
+        const next = [...payments];
+        next[idx][field] = value;
+        setPayments(next);
+    };
+
     const handlePay = async (e) => {
         e.preventDefault();
-        if (!amount || amount <= 0) { alert("Enter a valid amount."); return; }
+        const validPayments = payments.filter(p => p.amount > 0);
+        if (validPayments.length === 0) { alert("Enter at least one payment amount."); return; }
+        
         setSaving(true);
         try {
             await PurchaseService.addPayment({
                 purchaseId: purchase._id,
-                amount: Number(amount),
-                paymentMethod: method,
-                referenceNumber: ref,
-                paymentDate: new Date(),
+                payments: validPayments.map(p => ({
+                    amount: Number(p.amount),
+                    paymentMethod: p.method,
+                    referenceNumber: p.ref,
+                    paymentDate: new Date()
+                }))
             });
             onSuccess();
         } catch (err) {
@@ -504,78 +596,116 @@ const PaymentModal = ({ purchase, onClose, onSuccess }) => {
         }
     };
 
+    const METHODS = ["CASH", "BANK_TRANSFER", "CHEQUE", "UPI", "CARD"];
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className={`w-full max-w-md rounded-[28px] shadow-2xl overflow-hidden ${theme.surfaceBg}`}>
+            <div className={`w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden ${theme.surfaceBg}`}>
                 {/* Header */}
-                <div className="flex items-center justify-between px-7 py-5 bg-gradient-to-r from-emerald-600 to-emerald-500">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-white/20 rounded-2xl">
-                            <CreditCard className="text-white" size={20} />
+                <div className="flex items-center justify-between px-8 py-6 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-white/20 rounded-2xl">
+                            <CreditCard size={24} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-black text-white">Record Payment</h2>
-                            <p className="text-emerald-100 text-[11px] font-bold">{purchase.purchaseNumber} · Balance: {fmt(purchase.balanceAmount)}</p>
+                            <h2 className="text-xl font-black">Record Payment</h2>
+                            <p className="text-emerald-100 text-xs font-bold opacity-90">{purchase.purchaseNumber} · Balance: {fmt(purchase.balanceAmount, currency)}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
-                        <X size={18} />
+                    <button onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors">
+                        <X size={20} />
                     </button>
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handlePay} className="p-7 space-y-5">
-                    {/* Amount */}
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Amount Paid (₹)</label>
-                        <input
-                            type="number" min={0.01} step="any" required
-                            value={amount}
-                            onChange={e => setAmount(e.target.value)}
-                            className="w-full p-4 bg-gray-50 border-2 border-gray-100 focus:border-emerald-400 rounded-2xl outline-none font-black text-2xl text-emerald-600 transition-all"
-                        />
-                        <p className="text-[10px] font-bold text-gray-400">Max balance: {fmt(purchase.balanceAmount)}</p>
+                <form onSubmit={handlePay} className="p-8 space-y-6">
+                    <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                        {payments.map((p, idx) => (
+                            <div key={idx} className={`p-5 rounded-[24px] border-2 ${theme.borderLight} bg-gray-50/50 relative group`}>
+                                {payments.length > 1 && (
+                                    <button 
+                                        type="button"
+                                        onClick={() => removePaymentRow(idx)}
+                                        className="absolute -top-2 -right-2 p-1.5 bg-red-50 text-red-500 rounded-full border border-red-100 shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Amount</label>
+                                        <input
+                                            type="number" min={0} step="any" required
+                                            value={p.amount}
+                                            onChange={e => updateRow(idx, "amount", e.target.value)}
+                                            className="w-full p-3.5 bg-white border-2 border-gray-100 focus:border-emerald-400 rounded-xl outline-none font-black text-lg text-emerald-600 transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Method</label>
+                                        <div className="relative">
+                                            <select
+                                                value={p.method}
+                                                onChange={e => updateRow(idx, "method", e.target.value)}
+                                                className="w-full appearance-none p-4 bg-white border-2 border-gray-100 focus:border-emerald-400 rounded-xl outline-none font-bold text-gray-700 transition-all pr-10 text-sm"
+                                            >
+                                                {METHODS.map(m => (
+                                                    <option key={m} value={m}>{m.replace("_", " ")}</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Ref / Txn No.</label>
+                                        <input
+                                            placeholder="Optional"
+                                            value={p.ref}
+                                            onChange={e => updateRow(idx, "ref", e.target.value)}
+                                            className="w-full p-4 bg-white border-2 border-gray-100 focus:border-emerald-400 rounded-xl outline-none font-bold text-gray-700 transition-all text-sm"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+
+                        {remaining > 0 && (
+                            <button
+                                type="button"
+                                onClick={addPaymentRow}
+                                className="w-full py-4 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-bold text-sm hover:border-emerald-200 hover:text-emerald-500 hover:bg-emerald-50/30 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Plus size={16} /> Add Split Payment
+                            </button>
+                        )}
                     </div>
 
-                    {/* Method */}
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Payment Method</label>
-                        <div className="relative">
-                            <select
-                                value={method}
-                                onChange={e => setMethod(e.target.value)}
-                                className="w-full appearance-none p-4 bg-gray-50 border-2 border-gray-100 focus:border-emerald-400 rounded-2xl outline-none font-bold text-gray-700 transition-all pr-10"
-                            >
-                                {["CASH", "BANK_TRANSFER", "CHEQUE", "UPI", "CARD"].map(m => (
-                                    <option key={m} value={m}>{m.replace("_", " ")}</option>
-                                ))}
-                            </select>
-                            <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    {/* Summary Row */}
+                    <div className="flex flex-col md:flex-row justify-between items-center bg-gray-50 p-5 rounded-2xl border border-gray-100 gap-4">
+                        <div className="text-center md:text-left">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Paying</p>
+                            <p className="text-xl font-black text-emerald-600">{fmt(totalPaying, currency)}</p>
+                        </div>
+                        <div className="h-px md:h-8 w-full md:w-px bg-gray-200" />
+                        <div className="text-center md:text-right">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Remaining Balance</p>
+                            <p className={`text-xl font-black ${remaining > 0 ? "text-amber-500" : "text-green-600"}`}>
+                                {remaining > 0 ? fmt(remaining, currency) : "FULLY PAID"}
+                            </p>
                         </div>
                     </div>
 
-                    {/* Reference */}
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Reference / Txn No. <span className="normal-case text-gray-300">(optional)</span></label>
-                        <input
-                            placeholder="e.g. TXN-12345"
-                            value={ref}
-                            onChange={e => setRef(e.target.value)}
-                            className="w-full p-4 bg-gray-50 border-2 border-gray-100 focus:border-emerald-400 rounded-2xl outline-none font-bold text-gray-700 transition-all"
-                        />
-                    </div>
-
                     {/* Buttons */}
-                    <div className="flex gap-3 pt-2">
+                    <div className="flex gap-4 pt-4">
                         <button type="button" onClick={onClose}
-                            className="flex-1 py-4 rounded-2xl font-black text-gray-500 bg-gray-100 hover:bg-gray-200 transition-all text-sm">
+                            className="flex-1 py-4 rounded-2xl font-black text-gray-400 bg-gray-100 hover:bg-gray-200 transition-all text-sm uppercase tracking-widest">
                             Cancel
                         </button>
-                        <button type="submit" disabled={saving}
-                            className={`flex-1 py-4 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-100 ${saving ? "bg-emerald-200 text-white cursor-not-allowed" : "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95"
-                                }`}>
-                            {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <CreditCard size={16} />}
-                            {saving ? "Saving..." : "Record Payment"}
+                        <button type="submit" disabled={saving || totalPaying <= 0}
+                            className={`flex-[2] py-4 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2 shadow-xl ${saving ? "bg-emerald-200 text-white cursor-not-allowed" : "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95 shadow-emerald-100"
+                                } uppercase tracking-widest`}>
+                            {saving ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <CheckCircle2 size={18} />}
+                            {saving ? "Processing..." : "Confirm & Save Payments"}
                         </button>
                     </div>
                 </form>
@@ -590,7 +720,8 @@ const PaymentModal = ({ purchase, onClose, onSuccess }) => {
 
 const PurchaseList = ({ hasPermissionFor }) => {
     const { user } = useAuth();
-    const { activeBranchId } = useApp();
+    const { activeBranchId, organization } = useApp();
+    const currency = organization?.defaultCurrency || 'USD';
     const { theme } = useTheme();
     const navigate = useNavigate();
     const [purchases, setPurchases] = useState([]);
@@ -655,33 +786,60 @@ const PurchaseList = ({ hasPermissionFor }) => {
     };
 
     const handleDelete = async (id) => {
-        if (!window.confirm("Delete this draft purchase?")) return;
-        try {
-            await PurchaseService.deletePurchase(id);
-            loadPurchases();
-        } catch (err) {
-            alert(err?.response?.data?.message || "Failed to delete.");
-        }
+        confirmAction(
+            "Delete this draft purchase? This action cannot be undone.",
+            async () => {
+                setLoading(true);
+                try {
+                    await PurchaseService.deletePurchase(id);
+                    toast.success("Purchase deleted successfully");
+                    loadPurchases();
+                } catch (err) {
+                    toast.error(err?.response?.data?.message || "Failed to delete.");
+                } finally {
+                    setLoading(false);
+                }
+            },
+            theme.mode
+        );
     };
 
     const handleConfirm = async (id) => {
-        if (!window.confirm("Confirm this purchase? This will update inventory stock levels.")) return;
-        try {
-            await PurchaseService.confirmPurchase(id);
-            loadPurchases();
-        } catch (err) {
-            alert(err?.response?.data?.message || "Failed to confirm purchase.");
-        }
+        confirmAction(
+            "Confirm this purchase? This will permanently update your inventory stock levels.",
+            async () => {
+                setLoading(true);
+                try {
+                    await PurchaseService.confirmPurchase(id);
+                    toast.success("Purchase confirmed and stock levels updated!");
+                    loadPurchases();
+                } catch (err) {
+                    toast.error(err?.response?.data?.message || "Failed to confirm purchase.");
+                } finally {
+                    setLoading(false);
+                }
+            },
+            theme.mode
+        );
     };
 
     const handleCancel = async (id) => {
-        if (!window.confirm("Cancel this draft purchase? This cannot be undone.")) return;
-        try {
-            await PurchaseService.cancelPurchase(id);
-            loadPurchases();
-        } catch (err) {
-            alert(err?.response?.data?.message || "Failed to cancel purchase.");
-        }
+        confirmAction(
+            "Cancel this draft purchase? This cannot be undone.",
+            async () => {
+                setLoading(true);
+                try {
+                    await PurchaseService.cancelPurchase(id);
+                    toast.success("Purchase cancelled successfully");
+                    loadPurchases();
+                } catch (err) {
+                    toast.error(err?.response?.data?.message || "Failed to cancel purchase.");
+                } finally {
+                    setLoading(false);
+                }
+            },
+            theme.mode
+        );
     };
 
     // ── Columns
@@ -692,6 +850,11 @@ const PurchaseList = ({ hasPermissionFor }) => {
             render: (val, row) => (
                 <div>
                     <div className={`font-black ${theme.textPrimary}`}>{val}</div>
+                    {row.supplierInvoiceNumber && (
+                        <div className="text-[10px] font-black text-indigo-500 mt-0.5">
+                            #{row.supplierInvoiceNumber}
+                        </div>
+                    )}
                     <div className={`flex items-center gap-1 text-[10px] font-bold ${theme.textSecondary} mt-0.5 uppercase`}>
                         <Calendar size={9} />
                         {row.invoiceDate ? new Date(row.invoiceDate).toLocaleDateString() : "—"}
@@ -707,7 +870,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
         {
             header: "Grand Total",
             key: "grandTotal",
-            render: val => <span className="font-black text-indigo-600">{fmt(val)}</span>,
+            render: val => <span className="font-black text-indigo-600">{fmt(val, currency)}</span>,
         },
         {
             header: "Payment",
@@ -718,7 +881,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         {val || "UNPAID"}
                     </span>
                     {val !== "PAID" && row.balanceAmount > 0 && (
-                        <div className="text-[9px] font-bold text-red-500">Bal: {fmt(row.balanceAmount)}</div>
+                        <div className="text-[9px] font-bold text-red-500">Bal: {fmt(row.balanceAmount, currency)}</div>
                     )}
                 </div>
             ),
@@ -746,12 +909,12 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         className="p-2 text-indigo-500 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all"
                         title="View details"
                     ><Eye size={15} /></button>
-                    {/* ✎ Edit — only for DRAFT */}
-                    {canManage && row.status === "DRAFT" && (
+                    {/* ✎ Edit — allowed for DRAFT and CONFIRMED */}
+                    {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && (
                         <button
                             onClick={() => navigate(`/purchases/edit/${row._id}`)}
                             className="p-2 text-amber-500 bg-amber-50 hover:bg-amber-100 rounded-xl transition-all"
-                            title="Edit draft"
+                            title="Edit purchase"
                         ><Edit3 size={15} /></button>
                     )}
                     {/* 💳 Pay — CONFIRMED with remaining balance */}
@@ -762,28 +925,20 @@ const PurchaseList = ({ hasPermissionFor }) => {
                             title="Record Payment"
                         ><CreditCard size={15} /></button>
                     )}
-                    {/* Confirm — green, only for DRAFT */}
-                    {canManage && row.status === "DRAFT" && (
-                        <button
-                            onClick={() => handleConfirm(id)}
-                            className="p-2 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-all"
-                            title="Confirm Purchase (updates inventory)"
-                        ><CheckCheck size={15} /></button>
-                    )}
-                    {/* Cancel — orange, only for DRAFT */}
-                    {canManage && row.status === "DRAFT" && (
+                    {/* Cancel — orange, allowed if no payments */}
+                    {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && row.paidAmount === 0 && (
                         <button
                             onClick={() => handleCancel(id)}
                             className="p-2 text-orange-500 bg-orange-50 hover:bg-orange-100 rounded-xl transition-all"
                             title="Cancel Purchase"
                         ><XCircle size={15} /></button>
                     )}
-                    {/* Delete — red, only for DRAFT */}
-                    {canManage && row.status === "DRAFT" && (
+                    {/* Delete — red, allowed if no payments */}
+                    {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && row.paidAmount === 0 && (
                         <button
                             onClick={() => handleDelete(id)}
                             className="p-2 text-red-400 bg-red-50 hover:bg-red-100 rounded-xl transition-all"
-                            title="Delete draft"
+                            title="Delete purchase"
                         ><Trash2 size={15} /></button>
                     )}
                 </div>
@@ -858,8 +1013,8 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         { label: "Total Invoices", value: purchases.length, icon: ReceiptText, color: "indigo" },
                         { label: "Draft", value: purchases.filter(p => p.status === "DRAFT").length, icon: Clock, color: "amber" },
                         { label: "Confirmed", value: purchases.filter(p => p.status === "CONFIRMED").length, icon: CheckCircle, color: "emerald" },
-                        { label: "Total Value", value: fmt(purchases.reduce((a, p) => a + (p.grandTotal || 0), 0)), icon: BadgeIndianRupee, color: "indigo" },
-                        { label: "Total Due", value: fmt(purchases.reduce((a, p) => a + (p.balanceAmount || 0), 0)), icon: BadgeIndianRupee, color: "red" },
+                        { label: "Total Value", value: fmt(purchases.reduce((a, p) => a + (p.grandTotal || 0), 0), currency), icon: Banknote, color: "indigo" },
+                        { label: "Total Due", value: fmt(purchases.reduce((a, p) => a + (p.balanceAmount || 0), 0), currency), icon: Banknote, color: "red" },
                     ].map(({ label, value, icon: Icon, color, wide }) => (
                         <div key={label} className={`${theme.surfaceBg} rounded-3xl shadow-sm border ${theme.borderLight} p-6 flex items-center gap-5 ${wide ? "col-span-2 md:col-span-1" : ""}`}>
                             <div className={`p-3 rounded-2xl bg-${color}-50 text-${color}-600`}>
@@ -889,6 +1044,8 @@ const PurchaseList = ({ hasPermissionFor }) => {
                 <PurchaseDetailModal
                     purchaseId={viewTarget}
                     onClose={() => setViewTarget(null)}
+                    currency={currency}
+                    shopId={shopId}
                 />
             )}
 
@@ -898,6 +1055,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                     purchase={payTarget}
                     onClose={() => setPayTarget(null)}
                     onSuccess={() => { setPayTarget(null); loadPurchases(); }}
+                    currency={currency}
                 />
             )}
         </div>

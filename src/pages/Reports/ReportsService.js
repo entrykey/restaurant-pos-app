@@ -1,55 +1,6 @@
 // Mock service for Reports Module
-export const initialSalesHistory = [
-    {
-        id: "S1",
-        amount: 1500,
-        date: new Date().toISOString().split("T")[0],
-        type: "Dine-in",
-        method: "Cash",
-        tableId: 3,
-        tableName: "Table 3",
-        waiterName: "Waiter John",
-        startTime: Date.now() - 3600000,
-        endTime: Date.now(),
-        durationMinutes: 60,
-        timestamp: Date.now(),
-        subtotal: 1428.57,
-        taxAmount: 71.43,
-        discountAmount: 0,
-        finalTotal: 1500,
-        items: [
-            {
-                id: "m1",
-                name: "Butter Chicken Masala",
-                quantity: 2,
-                price: 450,
-                category: "Main Course",
-            },
-            {
-                id: "m4",
-                name: "Garlic Naan",
-                quantity: 4,
-                price: 65,
-                category: "Breads",
-            },
-        ],
-    },
-    {
-        id: "S2",
-        amount: 850,
-        date: new Date().toISOString().split("T")[0],
-        type: "Dine-in",
-        method: "UPI",
-        tableId: 1,
-        tableName: "Table 1",
-        waiterName: "Rahul (Manager)",
-        timestamp: Date.now() - 7200000,
-        items: [
-            { id: "m7", name: "Chicken Biryani", quantity: 2, price: 350, category: "Biriyani" },
-            { id: "m6", name: "Masala Chai", quantity: 2, price: 70, category: "Drinks" }
-        ]
-    }
-];
+export const initialSalesHistory = [];
+
 
 export const reportsService = {
     getSalesStats: (sales, date) => {

@@ -10,6 +10,32 @@ const normalizeAction = (action) => {
 };
 
 /**
+ * Whitelist of modules/resources that are always allowed regardless of subscription status.
+ * This ensures users can still access the dashboard, organization settings (to subscribe),
+ * and plan management.
+ */
+const ALWAYS_ALLOWED_MODULES = ["DASHBOARD", "ORGANIZATION", "SUBSCRIPTION_MANAGEMENT", "PLAN_MANAGEMENT", "SHOP_MANAGEMENT", "SETTINGS"];
+const ALWAYS_ALLOWED_RESOURCES = ["organization", "branch", "settings", "subscription"];
+
+const isSubscribedOrCore = (user, module, resource) => {
+  if (!user || user.isSuperAdmin === true || user.isOwner === true) return true;
+  
+  // If user is shop-linked, check subscription
+  if (user.shop_id && user.subscription) {
+    if (user.subscription.active) return true;
+    
+    // If not active, check if it's a core module/resource
+    const isCoreModule = ALWAYS_ALLOWED_MODULES.includes(module?.toUpperCase());
+    const isCoreResource = ALWAYS_ALLOWED_RESOURCES.includes(resource?.toLowerCase());
+    
+    return isCoreModule || isCoreResource;
+  }
+  
+  // Default to true for users not tied to a shop (SuperAdmins already handled)
+  return true;
+};
+
+/**
  * Check if user has a permission (backend structure: user.permissions = { moduleKey: [permissionKey, ...] }).
  * @param {object} user - User with .permissions object
  * @param {string} permissionKey - Full key e.g. "organization.branch.create", or use hasPermissionFor for (module, resource, action)
@@ -20,16 +46,22 @@ export const hasPermission = (user, permissionKey) => {
   if (user.isSuperAdmin === true) return true;
 
   const parts = permissionKey.split(".");
+  const module = parts[0];
+  const resource = parts.length > 1 ? parts[parts.length - 2] : null;
+
+  // Subscription check
+  if (!isSubscribedOrCore(user, module, resource)) return false;
+
   if (parts.length >= 3) {
     // If it's a 3-part generic string like organization.branch.create
-    const [module, resource, action] = parts;
+    const [moduleName, resourceName, action] = parts;
     const normalizedAction = normalizeAction(action);
-    const key = `${resource}.${normalizedAction}`;
-    return hasPermissionById(user, module, key);
+    const key = `${resourceName}.${normalizedAction}`;
+    return hasPermissionById(user, moduleName, key);
   } else if (parts.length === 2) {
     // If it's a 2-part string matching DB keys exactly like settings.inventory_settings
-    const [module] = parts;
-    return hasPermissionById(user, module, permissionKey);
+    const [moduleName] = parts;
+    return hasPermissionById(user, moduleName, permissionKey);
   }
 
   return false;
@@ -46,6 +78,9 @@ export const hasPermission = (user, permissionKey) => {
 export const hasPermissionFor = (user, module, resource, action) => {
   if (!user) return false;
   if (user.isSuperAdmin === true) return true;
+
+  // Subscription check
+  if (!isSubscribedOrCore(user, module, resource)) return false;
 
   // Handle special edge cases for settings
   if (module === "settings") {

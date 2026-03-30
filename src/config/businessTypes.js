@@ -75,10 +75,13 @@ export const BUSINESS_FEATURES = {
     purchase: true,
     sales: true,
     dining: true,
-    production: true, // Kitchen
+    production: true, 
     reservation: true,
     serialTracking: false,
-    serviceManagement: false
+    serviceManagement: false,
+    sellStockItems: false,
+    sellManufacturedItems: true,
+    sellTradeItems: true
   },
   [BUSINESS_TYPES.RETAIL]: {
     inventory: true,
@@ -87,18 +90,24 @@ export const BUSINESS_FEATURES = {
     dining: false,
     production: false,
     reservation: false,
-    serialTracking: true, // Electronics etc
-    serviceManagement: false // Unless electronics repair?
+    serialTracking: true,
+    serviceManagement: false,
+    sellStockItems: true,
+    sellManufacturedItems: false,
+    sellTradeItems: true
   },
   [BUSINESS_TYPES.SALON]: {
-    inventory: true, // Products
+    inventory: true,
     purchase: true,
     sales: true,
     dining: false,
     production: false,
-    reservation: true, // Appointments
+    reservation: true,
     serialTracking: false,
-    serviceManagement: false
+    serviceManagement: false,
+    sellStockItems: true,
+    sellManufacturedItems: false,
+    sellTradeItems: true
   },
   [BUSINESS_TYPES.CAFE]: {
     inventory: true,
@@ -108,7 +117,10 @@ export const BUSINESS_FEATURES = {
     production: true,
     reservation: false,
     serialTracking: false,
-    serviceManagement: false
+    serviceManagement: false,
+    sellStockItems: false,
+    sellManufacturedItems: true,
+    sellTradeItems: true
   },
   [BUSINESS_TYPES.HOTEL]: {
     inventory: true,
@@ -118,7 +130,10 @@ export const BUSINESS_FEATURES = {
     production: true,
     reservation: true,
     serialTracking: false,
-    serviceManagement: false
+    serviceManagement: false,
+    sellStockItems: false,
+    sellManufacturedItems: true,
+    sellTradeItems: true
   },
   [BUSINESS_TYPES.PHARMACY]: {
     inventory: true,
@@ -127,8 +142,11 @@ export const BUSINESS_FEATURES = {
     dining: false,
     production: false,
     reservation: false,
-    serialTracking: false, // Batch tracking is simpler, maybe not serial
-    serviceManagement: false
+    serialTracking: false,
+    serviceManagement: false,
+    sellStockItems: true,
+    sellManufacturedItems: false,
+    sellTradeItems: true
   }
 };
 

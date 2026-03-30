@@ -14,6 +14,9 @@ export const ROUTE_ACCESS = Object.freeze({
   ONLINE_ORDERS: { module: MODULES.POS, action: 'pos.onlineorder' },
   KDS: { module: MODULES.KDS },
   RESERVATIONS: { module: MODULES.RESERVATIONS, action: ACTIONS.RESERVATION_VIEWING },
+  MYATTENDANCE: { module: MODULES.MYATTENDANCE, action: ACTIONS.ATTENDANCE_MANAGE },
+  MYLEAVES: { module: MODULES.MYLEAVES },
+  MYSALARY: { module: MODULES.MYSALARY },
   INVENTORY: { module: MODULES.INVENTORY },
   REPORTS: { module: MODULES.REPORTS, action: ACTIONS.REPORTS_VIEW },
   SETTINGS: { module: MODULES.SETTINGS },
@@ -30,11 +33,15 @@ export const ROUTE_ACCESS = Object.freeze({
   SUBSCRIPTION_MANAGEMENT: { module: MODULES.SUBSCRIPTION_MANAGEMENT },
   TABLE_MANAGEMENT: { module: MODULES.TABLE_MANAGEMENT, action: ACTIONS.TABLE_VIEWING },
   OFFERS: { module: MODULES.OFFER_MANAGEMENT, action: ACTIONS.OFFER_MANAGE },
+  CLIENT_MANAGEMENT: { module: MODULES.CLIENT_MANAGEMENT },
 });
 
 // Define order in sidebar
 export const ROUTE_KEYS_ORDER = [
   'DASHBOARD',
+  'MYATTENDANCE',
+  'MYLEAVES',
+  'MYSALARY',
   'DINING',
   'TAKEAWAY',
   'DIRECT_SALE',
@@ -53,6 +60,7 @@ export const ROUTE_KEYS_ORDER = [
   'OFFERS',
   'SETTINGS',
   'BUSINESS_TYPES',
+  'CLIENT_MANAGEMENT',
   'SHOP_MANAGEMENT',
   'PLAN_MANAGEMENT',
   'SUBSCRIPTION_MANAGEMENT',
@@ -62,6 +70,10 @@ export const ROUTE_KEYS_ORDER = [
 /** Map route key to path for redirects */
 export const ROUTE_KEY_TO_PATH = Object.freeze({
   DASHBOARD: "/dashboard",
+  STAFF_DASHBOARD: "/staff-dashboard",
+  MYATTENDANCE: "/my-attendance",
+  MYLEAVES: "/my-leaves",
+  MYSALARY: "/my-salary",
   DINING: "/dininghall",
   TAKEAWAY: "/takeaway",
   DIRECT_SALE: "/takeaway",
@@ -78,13 +90,13 @@ export const ROUTE_KEY_TO_PATH = Object.freeze({
   PARTIES: "/parties",
   SERVICE: "/service",
   PURCHASES: "/purchases",
-  STAFF_DASHBOARD: "/staff-dashboard",
   BUSINESS_TYPES: "/business-types",
   SHOP_MANAGEMENT: "/shop-management",
   PLAN_MANAGEMENT: "/plan-management",
   SUBSCRIPTION_MANAGEMENT: "/subscription-management",
   TABLE_MANAGEMENT: "/table-management",
   OFFERS: "/offers",
+  CLIENT_MANAGEMENT: "/client-management",
 });
 
 /** Resolve first path the user is allowed to access (for redirect when denying a route) */

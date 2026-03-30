@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search, Briefcase } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Zap } from 'lucide-react';
 import { planService } from '../../services/api/plans';
 import { useTheme } from '../../context/ThemeContext';
 import CommonTable from '../../components/CommonTable';
@@ -51,7 +51,7 @@ const PlanList = ({ onEdit, onAddNew }) => {
             render: (_, plan) => (
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400">
-                        <Briefcase className="w-5 h-5" />
+                        <Zap className="w-5 h-5" />
                     </div>
                     <span className={`font-bold text-sm ${theme.textPrimary}`}>{plan.name}</span>
                     {plan.isCustom && (
@@ -141,7 +141,7 @@ const PlanList = ({ onEdit, onAddNew }) => {
                     <div>
                         <div className="flex items-center gap-3 mb-1">
                             <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-100 dark:shadow-none">
-                                <Briefcase size={26} />
+                                <Zap size={26} />
                             </div>
                             <h1 className={`text-2xl md:text-3xl font-black uppercase tracking-tight ${theme.textHeading}`}>Plan Management</h1>
                         </div>

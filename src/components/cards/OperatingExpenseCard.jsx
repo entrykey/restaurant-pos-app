@@ -1,6 +1,8 @@
 import React from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { Trash2, Save } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import { formatCurrency } from '../../utils/format';
 
 const OperatingExpenseCard = ({
     category,
@@ -13,6 +15,8 @@ const OperatingExpenseCard = ({
     isSaving
 }) => {
     const { theme } = useTheme();
+    const { organization } = useApp();
+    const currency = organization?.defaultCurrency || 'USD';
 
     const terms = [
         { value: 'daily', label: 'Daily' },
@@ -70,7 +74,7 @@ const OperatingExpenseCard = ({
                 </div>
 
                 <div>
-                    <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Amount (₹)</label>
+                    <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Amount ({currency})</label>
                     <input
                         type="number"
                         value={amount || ''}
@@ -84,7 +88,7 @@ const OperatingExpenseCard = ({
             <div className="pt-4 border-t border-dashed border-gray-200 dark:border-gray-800 flex justify-between items-center">
                 <div className="text-right">
                     <p className={`text-[10px] uppercase font-black tracking-widest ${theme.textMuted}`}>Per Day</p>
-                    <p className={`text-lg font-black ${theme.textPrimary}`}>₹ {perDay.toFixed(2)}</p>
+                    <p className={`text-lg font-black ${theme.textPrimary}`}>{formatCurrency(perDay, currency)}</p>
                 </div>
                 <button
                     onClick={onSave}

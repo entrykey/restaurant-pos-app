@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, ShieldAlert } from 'lucide-react';
 import { useTheme } from "../../context/ThemeContext";
 import { businessTypesService } from "../../services/api/businessTypes";
+import CommonSelect from '../../components/ui/CommonSelect';
 
 const BusinessSubTypesTab = () => {
     const { theme } = useTheme();
@@ -125,16 +126,12 @@ const BusinessSubTypesTab = () => {
                             </div>
                             <div>
                                 <label className={`block text-xs font-black uppercase tracking-wider mb-2 ${theme.textMuted}`}>Parent Business Type</label>
-                                <select
+                                <CommonSelect
+                                    options={parentTypes.map(p => ({ label: p.displayString, value: p._id }))}
                                     value={formData.businessTypeId}
-                                    onChange={e => setFormData({ ...formData, businessTypeId: e.target.value })}
-                                    className={`w-full p-3 rounded-xl border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} outline-none focus:border-indigo-500 font-bold transition-all appearance-none`}
-                                >
-                                    <option value="" disabled>Select Parent Type</option>
-                                    {parentTypes.map(p => (
-                                        <option key={p._id} value={p._id}>{p.displayString}</option>
-                                    ))}
-                                </select>
+                                    onChange={(val) => setFormData({ ...formData, businessTypeId: val })}
+                                    placeholder="Select Parent Type"
+                                />
                             </div>
                         </div>
 

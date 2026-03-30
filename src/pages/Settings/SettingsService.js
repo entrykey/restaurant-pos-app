@@ -64,5 +64,6 @@ export const initialSettings = {
     upiId: "restaurant@upi",
     isTaxEnabled: true,
     defaultTaxPercent: 5,
-    shopName: "Desi Flavours POS",
+    shopName: "FilePe Modern POS",
+
 };

@@ -109,6 +109,21 @@ const Parties = ({ hasPermissionFor }) => {
         }
     };
 
+    const toggleCustomerStatus = async (item) => {
+        if (!canCustomerEdit) return;
+        setCustomerLoading(true);
+        try {
+            const newStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+            await customerService.updateCustomer(item._id || item.id, { ...item, status: newStatus });
+            const data = await customerService.getCustomers({ branchId: activeBranchId, search: customerSearch });
+            setCustomers(Array.isArray(data) ? data : []);
+        } catch (err) {
+            alert('Failed to update status: ' + (err?.message || 'Unknown error'));
+        } finally {
+            setCustomerLoading(false);
+        }
+    };
+
     const deleteCustomer = async (id) => {
         if (!window.confirm('Are you sure you want to delete this customer?')) return;
         setCustomerLoading(true);
@@ -139,8 +154,17 @@ const Parties = ({ hasPermissionFor }) => {
         {
             header: 'Status',
             key: 'status',
-            render: (v) => (
-                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${v === 'ACTIVE' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>{v}</span>
+            render: (v, row) => (
+                <button
+                    onClick={(e) => { e.stopPropagation(); toggleCustomerStatus(row); }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${v === 'ACTIVE' ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+                        }`}
+                >
+                    <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${v === 'ACTIVE' ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                    />
+                </button>
             )
         }
     ];
@@ -289,13 +313,7 @@ const Parties = ({ hasPermissionFor }) => {
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Tax number / GSTIN</label>
                                     <input className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} value={customerForm.taxNumber} onChange={e => setCustomerForm(f => ({ ...f, taxNumber: e.target.value }))} placeholder="Optional" />
                                 </div>
-                                <div className="space-y-2">
-                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Status</label>
-                                    <select className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} value={customerForm.status} onChange={e => setCustomerForm(f => ({ ...f, status: e.target.value }))}>
-                                        <option value="ACTIVE">Active</option>
-                                        <option value="INACTIVE">Inactive</option>
-                                    </select>
-                                </div>
+                                 {/* Status removed as requested - handled in table toggle */}
                             </div>
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Address</label>

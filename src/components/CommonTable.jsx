@@ -15,6 +15,7 @@ const CommonTable = ({
     rowKey = 'id',
     onRowClick,
     className = '',
+    renderAdditionalRow,
     isLoading = false,
     loadingMessage = "Loading...",
     emptyMessage = "No records found.",
@@ -53,20 +54,22 @@ const CommonTable = ({
                             </tr>
                         ) : data && data.length > 0 ? (
                             data.map((row, rowIndex) => (
-                                <tr
-                                    key={row[rowKey] || rowIndex}
-                                    onClick={() => onRowClick && onRowClick(row)}
-                                    className={`hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors ${onRowClick ? 'cursor-pointer' : ''} group`}
-                                >
-                                    {columns.map((col, colIndex) => (
-                                        <td
-                                            key={colIndex}
-                                            className={`px-4 py-2.5 ${col.className || ''}`}
-                                        >
-                                            {col.render ? col.render(row[col.key], row) : row[col.key]}
-                                        </td>
-                                    ))}
-                                </tr>
+                                <React.Fragment key={row[rowKey] || rowIndex}>
+                                    <tr
+                                        onClick={() => onRowClick && onRowClick(row)}
+                                        className={`hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors ${onRowClick ? 'cursor-pointer' : ''} group`}
+                                    >
+                                        {columns.map((col, colIndex) => (
+                                            <td
+                                                key={colIndex}
+                                                className={`px-4 py-2.5 ${col.className || ''}`}
+                                            >
+                                                {col.render ? col.render(row[col.key], row) : row[col.key]}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                    {renderAdditionalRow && renderAdditionalRow(row)}
+                                </React.Fragment>
                             ))
                         ) : (
                             <tr>

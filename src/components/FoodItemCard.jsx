@@ -40,11 +40,13 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid" }) => 
                             e.currentTarget.src = DEFAULT_ITEM_IMAGE;
                         }}
                     />
-                    {/* FivePe AI Label */}
-                    <div className="absolute top-2 left-2 px-2 py-0.5 bg-indigo-600/90 backdrop-blur-md rounded-md flex items-center gap-1.5 shadow-lg z-10 border border-white/20">
-                        <Sparkles size={10} className="text-white animate-pulse" />
-                        <span className="text-[7px] md:text-[8px] text-white font-black uppercase tracking-tighter">FivePe AI Generated</span>
-                    </div>
+                    {/* FilePe AI Label */}
+                    {true && (
+                        <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 bg-indigo-600/90 backdrop-blur-md rounded-lg shadow-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-1 group-hover:translate-y-0">
+                            <Sparkles className="text-white" size={10} />
+                            <span className="text-[7px] md:text-[8px] text-white font-black uppercase tracking-tighter">FilePe AI Generated</span>
+                        </div>
+                    )}
                     {isGrid && (
                         <button
                             type="button"

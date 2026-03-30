@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import { ROUTE_KEY_TO_PATH } from "../constants/routeAccess";
+import toast from "react-hot-toast";
 import Layout from "./Layout";
 import AppRoutes from "../routes/AppRoutes";
 import Login from "../pages/Login";
@@ -11,10 +14,11 @@ import { useAuth } from "../context/AuthContext";
 import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from "../utils/permissions";
 import { formatCurrency } from "../utils/format";
 import { printBill, printBillA4, printKot } from "../utils/print";
-import api, { itemService, orderService, settingService, tableService, employeeService } from "../services/api";
+import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService } from "../services/api";
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
 import { TextProvider } from "../context/TextContext";
 import { useTheme } from "../context/ThemeContext";
+import { BUSINESS_TYPES, BUSINESS_FEATURES } from "../config/businessTypes";
 
 // Modals
 import NoteModal from "./modals/NoteModal";
@@ -22,6 +26,9 @@ import CustomizationModal from "./modals/CustomizationModal";
 import ExpenseModal from "./modals/ExpenseModal";
 import PaymentModal from "./modals/PaymentModal";
 import FullOrderSummaryModal from "./modals/FullOrderSummaryModal";
+import MultipleShopsModal from "./modals/MultipleShopsModal";
+import SubscriptionNoticeModal from "./modals/SubscriptionNoticeModal";
+import { sendBrowserNotification } from "../utils/notifications";
 
 const AppContent = () => {
     const { theme } = useTheme();
@@ -37,7 +44,7 @@ const AppContent = () => {
         salesHistory, setSalesHistory, rolesList, staffList, setRolesList, setStaffList,
         organization, setOrganization, branches, setBranches,
         businessType, setBusinessType, businessTypeData, businessSubtype, setBusinessSubtype,
-        activeBranchId,
+        activeBranchId, currentShopId,
         enabledModules, setEnabledModules, setInventoryItems,
         inventoryItems
     } = useApp();
@@ -75,9 +82,9 @@ const AppContent = () => {
 
     useEffect(() => {
         const fetchSettings = async () => {
-            if (isAuthenticated && currentUser?.shop_id) {
+            if (isAuthenticated && currentShopId) {
                 try {
-                    const data = await settingService.getSettings(currentUser.shop_id);
+                    const data = await settingService.getSettings(currentShopId);
                     if (data && Array.isArray(data)) {
                         const settingsMap = {};
                         data.forEach(s => {
@@ -92,59 +99,90 @@ const AppContent = () => {
             }
         };
         fetchSettings();
-    }, [isAuthenticated, currentUser?.shop_id]);
+    }, [isAuthenticated, currentShopId]);
 
     useEffect(() => {
         const fetchItems = async () => {
-            if (isAuthenticated && currentUser?.shop_id) {
+            if (isAuthenticated && currentShopId) {
                 try {
                     const branchId = getResolvedBranchId();
-                    const response = await itemService.getItems({
-                        limit: 500,
-                        filters: {
-                            shopId: currentUser.shop_id,
-                            branchId: branchId
-                        }
-                    });
+                    
+                    const [response, taxesRes] = await Promise.all([
+                        itemService.getItems({
+                            limit: 500,
+                            filters: {
+                                shopId: currentShopId,
+                                branchId: branchId
+                            }
+                        }),
+                        taxService.getTaxes({ branchId })
+                    ]);
+                    
                     const items = response.data || [];
-                    const menuData = items.filter(item => item.itemType === "MANUFACTURED" && item.status === "ACTIVE");
-                    const rawData = items.filter(item => (item.itemType === "STOCK" || item.itemType === "SERVICE" || item.itemType === "RAW" || item.itemType === "TRADE") && item.status === "ACTIVE");
+                    const activeTaxes = taxesRes.filter(t => t.isActive !== false);
+                    
+                    // Filter based on business type features
+                    // Default to BUSINESS_FEATURES if businessTypeData is nullish
+                    const features = businessTypeData?.features || BUSINESS_FEATURES[businessType] || { 
+                        sellManufacturedItems: true, 
+                        sellStockItems: true, 
+                        sellTradeItems: true 
+                    };
+
+                    const menuData = items.filter(item => {
+                        if (item.status !== "ACTIVE") return false;
+                        if (item.itemType === "MANUFACTURED") return !!features.sellManufacturedItems;
+                        if (item.itemType === "STOCK") return !!features.sellStockItems;
+                        if (item.itemType === "TRADE") return !!features.sellTradeItems;
+                        return false;
+                    });
+
+                    const rawData = items.filter(item => 
+                        (item.itemType === "STOCK" || item.itemType === "SERVICE" || item.itemType === "RAW" || item.itemType === "TRADE") && 
+                        item.status === "ACTIVE"
+                    );
 
                     // Map backend ID to `id` for frontend consistency and normalize fields for POS logic
-                    const mapItems = (arr) => arr.map(item => ({
-                        ...item,
-                        id: item._id,
-                        price: item.pricing?.sellingPrice || 0,
-                        pricePerUnit: item.pricing?.sellingPrice || 0,
-                        sellingPrice: item.pricing?.sellingPrice || 0,
-                        category: item.categoryId?.name || "Uncategorized",
-                        unitName: item.unitId?.name || "Unit",
-                        sellingType: item.weightBased ? "Weight" : "Standard",
-                        unitId: item.unitId, // Ensure this is preserved for React State
-                        quantityOnHand: item.quantityOnHand || 0,
-                        taxPercent: Number(item.taxPercent || item.tax_percent || 0)
-                    }));
+                    const mapItems = (arr) => arr.map(item => {
+                        const taxPercent = Number(item.taxPercent || item.tax_percent || 0);
+                        const taxObj = activeTaxes.find(t => t.percentage === taxPercent);
+                        const isExclusiveTax = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+                        return {
+                            ...item,
+                            id: item._id,
+                            price: item.pricing?.sellingPrice || 0,
+                            pricePerUnit: item.pricing?.sellingPrice || 0,
+                            sellingPrice: item.pricing?.sellingPrice || 0,
+                            category: item.categoryId?.name || "Uncategorized",
+                            unitName: item.unitId?.name || "Unit",
+                            sellingType: item.weightBased ? "Weight" : "Standard",
+                            unitId: item.unitId, // Ensure this is preserved for React State
+                            quantityOnHand: item.quantityOnHand || 0,
+                            taxPercent,
+                            isExclusiveTax
+                        };
+                    });
 
                     setMenu(mapItems(menuData));
                     setInventoryItems(mapItems(rawData));
 
                     // Fetch Active Offers as well
-                    fetchActiveOffers(currentUser.shop_id, branchId);
+                    fetchActiveOffers(currentShopId, branchId);
                 } catch (error) {
                     console.error("Failed to fetch shop items:", error);
                 }
             }
         };
         fetchItems();
-    }, [isAuthenticated, currentUser?.shop_id, activeBranchId]);
+    }, [isAuthenticated, currentShopId, activeBranchId, businessTypeData]);
 
     useEffect(() => {
         const fetchStaff = async () => {
-            if (isAuthenticated && currentUser?.shop_id) {
+            if (isAuthenticated && currentShopId) {
                 try {
                     const branchId = getResolvedBranchId();
                     // Fetch employees for this branch
-                    const data = await employeeService.getEmployeesByShopId(currentUser.shop_id);
+                    const data = await employeeService.getEmployeesByShopId(currentShopId);
                     
                     // Filter by branch if branchId is available
                     const filteredStaff = data.filter(emp => {
@@ -170,13 +208,13 @@ const AppContent = () => {
             }
         };
         fetchStaff();
-    }, [isAuthenticated, currentUser?.shop_id, activeBranchId]);
+    }, [isAuthenticated, currentShopId, activeBranchId]);
 
     useEffect(() => {
         const fetchOrg = async () => {
             if (isAuthenticated && (currentUser?._id || currentUser?.id)) {
                 try {
-                    const { organization: org, branches: brs } = await fetchOrganizationData(currentUser._id || currentUser.id, currentUser.shop_id);
+                    const { organization: org, branches: brs } = await fetchOrganizationData(currentUser._id || currentUser.id, currentShopId);
                     console.log("AppContent: Fetched dynamic organization & branches:", { org, brs });
                     setOrganization(org);
                     setBranches(brs);
@@ -186,15 +224,27 @@ const AppContent = () => {
             }
         };
         fetchOrg();
-    }, [isAuthenticated, currentUser?.shop_id]);
+    }, [isAuthenticated, currentShopId]);
 
     // Local UI State
     const [view, setView] = useState("dashboard");
+    const location = useLocation();
+
+    // Sync view with URL path
+    useEffect(() => {
+        const path = location.pathname;
+        const entry = Object.entries(ROUTE_KEY_TO_PATH).find(([key, routePath]) => path === routePath);
+        if (entry) {
+            setView(entry[0]);
+        }
+    }, [location]);
     const [orderSearch, setOrderSearch] = useState("");
     const [isCustomizationModalOpen, setIsCustomizationModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isFullOrderSummaryOpen, setIsFullOrderSummaryOpen] = useState(false);
+    const [isMultipleShopsModalOpen, setIsMultipleShopsModalOpen] = useState(false);
+    const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
     const [previewOrder, setPreviewOrder] = useState(null); // For KDS/Online
 
     // Customization State
@@ -211,6 +261,69 @@ const AppContent = () => {
         text: "",
     });
 
+    // Override window.alert project-wide for better UX
+    useEffect(() => {
+        const originalAlert = window.alert;
+        window.alert = (message) => {
+            if (!message) return;
+            const msg = String(message);
+            const lowerMsg = msg.toLowerCase();
+
+            // Simple heuristic to distinguish success from error
+            const isSuccess = 
+                lowerMsg.includes('success') || 
+                lowerMsg.includes('successfully') || 
+                lowerMsg.includes('done') || 
+                lowerMsg.includes('saved');
+
+            if (isSuccess) {
+                toast.success(msg);
+            } else {
+                toast.error(msg);
+            }
+            
+            // Log for debugging
+            console.log("Intercepted alert:", msg);
+        };
+
+        return () => {
+            window.alert = originalAlert;
+        };
+    }, []);
+
+    // Check for Multiple Shops and Subscription on Login
+    useEffect(() => {
+        if (isAuthenticated && currentUser) {
+            const hasIgnoredShops = sessionStorage.getItem('multiple_shops_ignored');
+            if (currentUser.shops && currentUser.shops.length > 1 && !hasIgnoredShops) {
+                setIsMultipleShopsModalOpen(true);
+            }
+
+            const isSubscribed = currentUser.subscription?.active;
+            const hasNotified = localStorage.getItem('subscription_notified');
+            
+            const isSuperAdmin = currentUser.isSuperAdmin || currentUser.role === 'superadmin' || currentUser.role?.name === 'superadmin';
+            const isOwner = currentUser.isOwner || isSuperAdmin;
+            
+            if (!isSubscribed && !hasNotified && !isSuperAdmin) {
+                if (isOwner) {
+                    sendBrowserNotification('Subscription Alert', {
+                        body: 'Your subscription is inactive. Please upgrade your plan to maintain access.',
+                        icon: '/logo192.png'
+                    });
+                    setIsSubscriptionModalOpen(true);
+                } else {
+                    sendBrowserNotification('Subscription Required', {
+                        body: 'The shop subscription is inactive. Please contact the owner.',
+                        icon: '/logo192.png'
+                    });
+                    setIsSubscriptionModalOpen(true);
+                }
+                localStorage.setItem('subscription_notified', 'true');
+            }
+        }
+    }, [isAuthenticated, currentUser]);
+
     const hasPermission = (permissionKey) => {
         return checkPermission(currentUser, permissionKey);
     };
@@ -224,11 +337,56 @@ const AppContent = () => {
         auth.logout();
     };
 
+    const handleIgnoreShopsAlert = () => {
+        sessionStorage.setItem('multiple_shops_ignored', 'true');
+        setIsMultipleShopsModalOpen(false);
+    };
+
+    const handleCloseSubscriptionNotice = () => {
+        sessionStorage.setItem('subscription_notified', 'true');
+        setIsSubscriptionModalOpen(false);
+    };
+
+    const handleSwitchShopAction = async (shopId) => {
+        setIsMultipleShopsModalOpen(false);
+        if (!shopId) return;
+        try {
+            const data = await shopService.switchShop(shopId);
+            if (data && data.user) {
+                auth.login(data.user);
+                const newIsSubscribed = data.user.subscription?.active;
+                if (!newIsSubscribed) {
+                    setView('organization');
+                    toast.success("Switching shop. Access is limited until you subscribe.");
+                } else {
+                    window.location.reload();
+                }
+            }
+        } catch (error) {
+            console.error("Failed to switch shop:", error);
+            toast.error("Error switching shop. Please try again.");
+        }
+    };
+
+    const getResolvedBranchId = () => {
+        return (
+            activeBranchId ||
+            currentUser?.branch_id ||
+            currentUser?.branchId ||
+            (currentUser?.branchIds && currentUser.branchIds[0]) ||
+            (branches[0]?._id) ||
+            null
+        );
+    };
+
     const getActiveBranchForPrint = () => {
         const branchId = getResolvedBranchId();
         if (!branchId) return null;
         return (branches || []).find((b) => String(b._id || b.id) === String(branchId)) || null;
     };
+
+    const activeBranch = getActiveBranchForPrint();
+    const branchStateCode = activeBranch?.address?.state?.code;
 
     const toAbsoluteLogoUrl = (logoUrl) => {
         if (!logoUrl) return null;
@@ -270,12 +428,14 @@ const AppContent = () => {
 
             let orderId = currentOrder.orderId;
             if (!orderId) {
-                const { subtotal, taxTotal, total } = calculateBillDetails(
+                const { subtotal, taxTotal, total, taxBreakdown } = calculateBillDetails(
                     orderItems,
                     currentOrder.discount || billDiscount || { type: 'flat', value: 0 },
                     settings?.defaultTaxPercent || 0,
                     true, // autoRound
-                    isTakeaway ? exchangeCredit : 0
+                    isTakeaway ? exchangeCredit : 0,
+                    branchStateCode,
+                    null // TODO: Get customer state code if possible
                 );
 
                 const payloadItems = orderItems.map(item => {
@@ -296,7 +456,7 @@ const AppContent = () => {
                 });
 
                 const created = await orderService.createOrder({
-                    shopId: currentUser.shop_id,
+                    shopId: currentShopId,
                     branchId: getResolvedBranchId(),
                     businessType: businessType || "RESTAURANT",
                     orderType: activeOrderType,
@@ -307,6 +467,7 @@ const AppContent = () => {
                     discountTotal: currentOrder.discountTotal || 0,
                     taxTotal,
                     grandTotal: total,
+                    taxBreakdown,
                     createdBy: currentUser._id,
                     customerName: takeawayCustName || "",
                     customerPhone: takeawayCustPhone || ""
@@ -330,6 +491,7 @@ const AppContent = () => {
                 subtotal: orderFromBackend?.subtotal ?? 0,
                 discountAmount: orderFromBackend?.discountTotal ?? 0,
                 taxAmount: orderFromBackend?.taxTotal ?? 0,
+                taxBreakdown: orderFromBackend?.taxBreakdown ?? null,
                 roundOff: 0,
                 finalTotal: orderFromBackend?.grandTotal ?? 0,
             };
@@ -356,7 +518,7 @@ const AppContent = () => {
             });
         } catch (e) {
             console.error("Print bill failed:", e);
-            alert("Failed to print bill. Please try again.");
+            toast.error("Failed to print bill. Please try again.");
         }
     };
 
@@ -533,17 +695,6 @@ const AppContent = () => {
         }
     };
 
-    const getResolvedBranchId = () => {
-        return (
-            activeBranchId ||
-            currentUser?.branch_id ||
-            currentUser?.branchId ||
-            (currentUser?.branchIds && currentUser.branchIds[0]) ||
-            (branches[0]?._id) ||
-            null
-        );
-    };
-
     const handleSendToKOT = async () => {
         const nowTs = Date.now();
         const table = !isTakeaway
@@ -557,12 +708,14 @@ const AppContent = () => {
         if (orderItems.length === 0) return;
 
         try {
-            const { subtotal, taxTotal, total } = calculateBillDetails(
+            const { subtotal, taxTotal, total, taxBreakdown } = calculateBillDetails(
                 orderItems,
                 currentOrder.discount || { type: 'flat', value: 0 },
                 settings?.defaultTaxPercent || 0,
                 true, // autoRound
-                isTakeaway ? exchangeCredit : 0
+                isTakeaway ? exchangeCredit : 0,
+                branchStateCode,
+                null // TODO: Get customer state code
             );
 
             const payloadItems = orderItems.map(item => {
@@ -585,7 +738,7 @@ const AppContent = () => {
             // 1) Create or Update backend Order
             let existingOrderId = currentOrder.orderId;
             const orderPayload = {
-                shopId: currentUser.shop_id,
+                shopId: currentShopId,
                 branchId: getResolvedBranchId(),
                 businessType: businessType || "RESTAURANT",
                 orderType: activeOrderType,
@@ -596,6 +749,7 @@ const AppContent = () => {
                 discountTotal: currentOrder.discountTotal || 0,
                 taxTotal,
                 grandTotal: total,
+                taxBreakdown,
                 exchangeCredit: exchangeCredit,
                 originalOrderId: originalOrderId,
                 isExchange: isExchange,
@@ -631,7 +785,7 @@ const AppContent = () => {
 
             if (kitchenItems.length > 0) {
                 await api.post('/kitchen/kots', {
-                    shopId: currentUser.shop_id,
+                    shopId: currentShopId,
                     branchId: getResolvedBranchId(),
                     orderId: existingOrderId,
                     tableId: !isTakeaway ? table?._id || table?.id : null,
@@ -698,15 +852,20 @@ const AppContent = () => {
             }
         } catch (error) {
             console.error("Failed to send KOT / create order:", error);
-            alert("Failed to send KOT. Please try again.");
+            toast.error("Failed to send KOT. Please try again.");
         }
     };
 
-    const handleFinalizePayment = async (method, billDetails, paidAmount = null, directCustName = "", directCustPhone = "") => {
+    const handleFinalizePayment = async (method, billDetails, paidAmount = null, directCustName = "", directCustPhone = "", payments = []) => {
         const now = Date.now();
         const table = !isTakeaway ? tables.find(t => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) : null;
         const orderItems = isTakeaway ? takeawayOrder.items : table?.order?.items || [];
-        const finalPaidAmount = paidAmount !== null ? paidAmount : billDetails.finalTotal;
+        
+        // Use total from payments array if available, otherwise fallback to paidAmount or finalTotal
+        const finalPaidAmount = payments.length > 0 
+            ? payments.reduce((acc, p) => acc + Number(p.amount || 0), 0)
+            : (paidAmount !== null ? paidAmount : billDetails.finalTotal);
+            
         const finalCustName = directCustName || takeawayCustName || "";
         const finalCustPhone = directCustPhone || takeawayCustPhone || "";
 
@@ -723,7 +882,7 @@ const AppContent = () => {
             }, 0),
             couponUsed: billDiscount.type !== "flat" || billDiscount.value > 0 ? "COUPON" : null,
             date: new Date().toISOString().split("T")[0],
-            method,
+            method: payments.length > 1 ? "COMBINED" : method,
             timestamp: now,
             tableName: !isTakeaway ? table?.name : "Takeaway",
             waiterName: currentUser?.name || "Staff",
@@ -738,6 +897,7 @@ const AppContent = () => {
                     taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
                 };
             }),
+            payments: payments // Store payment breakdown in history too
         };
 
         try {
@@ -778,6 +938,7 @@ const AppContent = () => {
                     discountTotal: billDetails.discountAmount,
                     taxTotal: billDetails.taxAmount,
                     grandTotal: billDetails.finalTotal,
+                    taxBreakdown: billDetails.taxBreakdown,
                     exchangeCredit: exchangeCredit,
                     originalOrderId: originalOrderId,
                     isExchange: isExchange,
@@ -791,9 +952,10 @@ const AppContent = () => {
                 currentOrderId = createdOrder._id;
             }
 
-            // Always register the payment if the paid amount is greater than 0, or if it's the required standard
+            // Always register the payment if the paid amount is greater than 0
             if (currentOrderId && finalPaidAmount >= 0) {
                 await orderService.addPayment(currentOrderId, {
+                    payments: payments.length > 0 ? payments : undefined, // Explicit array support
                     paymentMethod: method.toUpperCase(),
                     amount: finalPaidAmount,
                     customerName: finalCustName,
@@ -1090,6 +1252,24 @@ const AppContent = () => {
                 settings={settings}
                 calculateTotal={calculateTotal}
                 onPrint={handlePrintReceipt}
+            />
+
+            <MultipleShopsModal 
+                isOpen={isMultipleShopsModalOpen}
+                onClose={handleIgnoreShopsAlert}
+                onSwitch={handleSwitchShopAction}
+                shops={currentUser?.shops || []}
+                currentShopName={organization?.businessName}
+            />
+
+            <SubscriptionNoticeModal 
+                isOpen={isSubscriptionModalOpen}
+                onClose={handleCloseSubscriptionNotice}
+                isOwner={currentUser?.isOwner}
+                onSubscribe={() => {
+                    setIsSubscriptionModalOpen(false);
+                    setView('organization');
+                }}
             />
         </div>
     );
