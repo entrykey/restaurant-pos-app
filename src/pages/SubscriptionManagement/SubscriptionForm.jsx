@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { subscriptionService } from '../../services/api/subscriptions';
 import { useTheme } from '../../context/ThemeContext';
-import { ArrowLeft, Save, CreditCard, Calendar, FileText, CheckCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Save, CreditCard, Calendar, FileText } from 'lucide-react';
 
 const SubscriptionForm = ({ subscriptionToEdit, onBack }) => {
     const { theme } = useTheme();

@@ -4,7 +4,6 @@ import {
     ShoppingCart,
     Search,
     X,
-    Maximize,
     Printer,
     Check,
     Utensils,
@@ -59,16 +58,11 @@ const TakeawayOrder = ({
     const { theme, themeName } = useTheme();
     const { activeBranchId } = useApp();
     const {
-        billingStage: billingStageContext, setBillingStage: setGlobalBillingStage, resetBillingState,
         isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
-        originalOrderId, setOriginalOrderId, returnedItems, setReturnedItems,
+        setOriginalOrderId, setReturnedItems,
         resetExchange, billDiscount, setBillDiscount
     } = useOrder();
     const {
-        isTakeaway: isTakeawayContext, setIsTakeaway: setGlobalIsTakeaway, 
-        takeawayOrder: takeawayOrderContext, setTakeawayOrder: setTakeawayOrderContext,
-        takeawayCustName: takeawayCustNameContext, setTakeawayCustName: setTakeawayCustNameContext, 
-        takeawayCustPhone: takeawayCustPhoneContext, setTakeawayCustPhone: setTakeawayCustPhoneContext,
         selectedCustomer, setSelectedCustomer,
         resetTakeaway
     } = useTakeaway();
@@ -103,7 +97,8 @@ const TakeawayOrder = ({
     const isWholesale = takeawayOrder?.orderType === "WHOLESALE";
     const isDirectSale = takeawayOrder?.orderType === "DIRECT_SALE";
 
-    const title = isWholesale ? "Wholesale Order" : (isExchange ? "Exchange Order" : (isDirectSale ? "Direct Sale" : (isTakeaway ? "Takeaway Order" : "Dine-In Order")));
+    // derives heading from orderType or context
+
     const orderTypeLabels = {
         'DINE_IN': 'Dine-in Order',
         'TAKEAWAY': 'Takeaway Order',

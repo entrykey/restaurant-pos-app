@@ -94,13 +94,13 @@ const Settings = ({
         if (activeTab === "payroll" && (isSuperAdmin || canViewPayroll)) {
             fetchPayrollSettings();
         }
-    }, [activeTab, isSuperAdmin, canViewGeneral, canViewPayroll, currentShopId]);
+    }, [activeTab, isSuperAdmin, canViewGeneral, canViewPayroll, fetchBackendSettings, fetchSystemRoles, fetchPayrollSettings]);
 
-    const fetchBackendSettings = async () => {
+    const fetchBackendSettings = React.useCallback(async () => {
         setIsLoadingBackend(true);
         try {
             // Respect currently selected shop context
-            const shopId = currentUser?.shop_id;
+            const shopId = currentShopId || currentUser?.shop_id;
             const data = await settingService.getSettings(shopId);
             setBackendSettings(data || []);
             setOriginalSettings(JSON.parse(JSON.stringify(data || []))); // Deep copy
@@ -118,17 +118,17 @@ const Settings = ({
         } finally {
             setIsLoadingBackend(false);
         }
-    };
+    }, [currentShopId, currentUser?.shop_id, setSettings]);
 
-    const fetchSystemRoles = async () => {
+    const fetchSystemRoles = React.useCallback(async () => {
         try {
             const roles = await roleService.getRoles({ isSystemRole: true });
             setSystemRoles(roles || []);
         } catch (error) {
             console.error("Failed to fetch system roles:", error);
         }
-    };
-    const fetchPayrollSettings = async () => {
+    }, []);
+    const fetchPayrollSettings = React.useCallback(async () => {
         try {
             const shopId = currentShopId || currentUser?.shop_id;
             if (!shopId || shopId === 'undefined') return;
@@ -137,7 +137,7 @@ const Settings = ({
         } catch (error) {
             console.error("Failed to fetch payroll settings:", error);
         }
-    };
+    }, [currentShopId, currentUser?.shop_id]);
     const handleSavePayrollSettings = async () => {
         setIsSavingPayroll(true);
         try {

@@ -6,9 +6,8 @@ import DiningCategoryDialog from './DiningCategoryDialog';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
 import { usePermission } from '../../../auth/usePermission';
-import { ACTIONS } from '../../../constants/actions';
 import { MODULES } from '../../../constants/modules';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
+import { Edit2, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
@@ -22,18 +21,13 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const [editingCategory, setEditingCategory] = useState(null);
 
     // Permissions: DININGCATEGORY.VIEWING, DININGCATEGORY.EDITING, DININGCATEGORY.CREATING, DININGCATEGORY.DELETING
-    const hasCreatePermission = can(MODULES.TABLE_MANAGEMENT, 'DININGCATEGORY.CREATING') || user?.role?.name === 'SuperAdmin';
     const hasEditPermission = can(MODULES.TABLE_MANAGEMENT, 'DININGCATEGORY.EDITING') || user?.role?.name === 'SuperAdmin';
     const hasDeletePermission = can(MODULES.TABLE_MANAGEMENT, 'DININGCATEGORY.DELETING') || user?.role?.name === 'SuperAdmin';
 
     const branchId = activeBranchId || user?.branchId || user?.branch || (user?.branchIds?.length ? user.branchIds[0] : null);
     const shopId = user?.shop_id || user?.shopId || user?.shop;
 
-    useEffect(() => {
-        fetchData();
-    }, [branchId, shopId]);
-
-    const fetchData = async () => {
+    const fetchData = React.useCallback(async () => {
         setIsLoading(true);
         try {
             const params = { all: true };
@@ -47,7 +41,11 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [branchId]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     useEffect(() => {
         if (triggerCreate) {
@@ -55,12 +53,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
             setIsDialogOpen(true);
             onResetCreate();
         }
-    }, [triggerCreate]);
-
-    const handleCreate = () => {
-        setEditingCategory(null);
-        setIsDialogOpen(true);
-    };
+    }, [triggerCreate, onResetCreate]);
 
     const handleEdit = (category) => {
         setEditingCategory(category);

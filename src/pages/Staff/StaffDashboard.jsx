@@ -6,7 +6,6 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { usePermission } from "../../auth/usePermission";
 import { attendanceService, branchService, employeeService, shopService } from "../../services/api";
-import CommonSelect from "../../components/ui/CommonSelect";
 import CommonDialog from "../../components/modals/CommonDialog";
 
 const StaffDashboard = () => {
@@ -15,7 +14,6 @@ const StaffDashboard = () => {
     const navigate = useNavigate();
 
     const [shopId, setShopId] = useState(null);
-    const [branches, setBranches] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [selectedBranchId, setSelectedBranchId] = useState("");
     const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
@@ -25,7 +23,6 @@ const StaffDashboard = () => {
     const [error, setError] = useState("");
 
     const { can } = usePermission();
-    const isManager = can("staff", "staff.edit") || can("DASHBOARD", "OWNER.DASHBOARD");
 
     const currentUserId = user?._id || user?.id;
 
@@ -49,7 +46,6 @@ const StaffDashboard = () => {
         const loadBranches = async () => {
             try {
                 const data = await branchService.getAllowedBranches();
-                setBranches(data || []);
                 if (!selectedBranchId && data && data.length > 0) {
                     setSelectedBranchId(data[0]._id);
                 }

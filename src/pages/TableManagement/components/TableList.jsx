@@ -6,9 +6,8 @@ import TableDialog from './TableDialog';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
 import { usePermission } from '../../../auth/usePermission';
-import { ACTIONS } from '../../../constants/actions';
 import { MODULES } from '../../../constants/modules';
-import { Plus, Edit2, Trash2 } from 'lucide-react';
+import { Edit2, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const TableList = ({ triggerCreate, onResetCreate }) => {
@@ -23,18 +22,13 @@ const TableList = ({ triggerCreate, onResetCreate }) => {
     const [editingTable, setEditingTable] = useState(null);
 
     // Permission checks (keys from user req: TABLE.CREATING, TABLE.EDITING, TABLE.DELETING)
-    const hasCreatePermission = can(MODULES.TABLE_MANAGEMENT, 'TABLE.CREATING') || user?.role?.name === 'SuperAdmin';
     const hasEditPermission = can(MODULES.TABLE_MANAGEMENT, 'TABLE.EDITING') || user?.role?.name === 'SuperAdmin';
     const hasDeletePermission = can(MODULES.TABLE_MANAGEMENT, 'TABLE.DELETING') || user?.role?.name === 'SuperAdmin';
 
     const branchId = activeBranchId || user?.branchId || user?.branch || (user?.branchIds?.length ? user.branchIds[0] : null);
     const shopId = user?.shop_id || user?.shopId || user?.shop;
 
-    useEffect(() => {
-        fetchData();
-    }, [branchId, shopId]);
-
-    const fetchData = async () => {
+    const fetchData = React.useCallback(async () => {
         setIsLoading(true);
         try {
             const params = { all: true };
@@ -54,7 +48,11 @@ const TableList = ({ triggerCreate, onResetCreate }) => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [branchId]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     // Changed handleCreate to open create instantly from props
     useEffect(() => {
@@ -63,12 +61,7 @@ const TableList = ({ triggerCreate, onResetCreate }) => {
             setIsDialogOpen(true);
             onResetCreate();
         }
-    }, [triggerCreate]);
-
-    const handleCreate = () => {
-        setEditingTable(null);
-        setIsDialogOpen(true);
-    };
+    }, [triggerCreate, onResetCreate]);
 
     const handleEdit = (table) => {
         setEditingTable(table);

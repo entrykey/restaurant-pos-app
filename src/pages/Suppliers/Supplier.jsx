@@ -3,8 +3,6 @@ import { Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin } from
 import CommonTable from '../../components/CommonTable';
 import { SupplierService } from './SupplierService';
 import { ROUTE_ACCESS } from '../../config/permissionStructure';
-import { MODULES } from '../../constants/modules';
-import { shopService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useApp } from '../../context/AppContext';
@@ -15,7 +13,6 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const [searchTerm, setSearchTerm] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState(null);
-    const { user } = useAuth();
     const { theme } = useTheme();
     const { currentShopId } = useApp();
 
@@ -38,14 +35,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const canEdit = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "edit") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
     const canDelete = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "delete") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
 
-    useEffect(() => {
-        if (currentShopId) {
-            loadSuppliers();
-        }
-    }, [currentShopId]);
-
-
-    const loadSuppliers = async (search = "") => {
+    const loadSuppliers = React.useCallback(async (search = "") => {
         if (!currentShopId) return;
         setLoading(true);
         try {
@@ -56,7 +46,13 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentShopId]);
+
+    useEffect(() => {
+        if (currentShopId) {
+            loadSuppliers();
+        }
+    }, [currentShopId, loadSuppliers]);
 
     useEffect(() => {
         if (currentShopId) {
@@ -65,7 +61,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
             }, 500);
             return () => clearTimeout(delayDebounceFn);
         }
-    }, [currentShopId, searchTerm]);
+    }, [currentShopId, searchTerm, loadSuppliers]);
 
     const handleOpenModal = (supplier = null) => {
         if (supplier) {

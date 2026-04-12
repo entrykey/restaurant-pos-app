@@ -4,13 +4,10 @@ import {
     Store, 
     CreditCard, 
     TrendingUp, 
-    ArrowUpRight, 
     ArrowDownRight,
     Calendar,
     ChevronRight,
-    Search,
     Bell,
-    Settings,
     LayoutDashboard
 } from "lucide-react";
 import {

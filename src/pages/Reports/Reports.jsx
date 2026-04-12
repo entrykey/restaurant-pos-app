@@ -14,8 +14,7 @@ import {
     Banknote,
     Zap,
     Users,
-    ChevronRight,
-    Search
+    ChevronRight
 } from 'lucide-react';
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from '../../components/CommonTable';
@@ -89,49 +88,50 @@ const Reports = ({
         }
     }, [availableBranches, reportBranchFilter]);
 
+    const fetchData = React.useCallback(async () => {
+        console.log("DEBUG_REPORTS_FETCH_DATA_START:", { resolvedShopId, reportBranchFilter, filterStartDate, filterEndDate });
+        if (!resolvedShopId) {
+            console.warn("DEBUG_REPORTS_FETCH_DATA_MISSING_SHOPID");
+            return;
+        }
+        setLoading(true);
+        try {
+            const params = {
+                shopId: resolvedShopId,
+                branchId: reportBranchFilter,
+                startDate: filterStartDate,
+                endDate: filterEndDate
+            };
+
+            const [salesRes, expensesRes, perfRes, custRes, suppRes] = await Promise.all([
+                reportsService.getSalesReport(params),
+                reportsService.getExpensesReport(params),
+                reportsService.getPerformanceReport(params),
+                reportsService.getCustomerReport(params),
+                reportsService.getSupplierReport(params)
+            ]);
+            console.log("DEBUG_REPORTS_DATA_RESPONSES:", {
+                sales: salesRes.data,
+                expenses: expensesRes.data,
+                customers: custRes.data,
+                suppliers: suppRes.data
+            });
+
+            setSalesHistory(unwrapApiData(salesRes));
+            setExpensesHistory(unwrapApiData(expensesRes));
+            setPerformanceReport(unwrapApiData(perfRes));
+            setCustomerReport(unwrapApiData(custRes));
+            setSupplierReport(unwrapApiData(suppRes));
+        } catch (error) {
+            console.error("Failed to fetch report data:", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [resolvedShopId, reportBranchFilter, filterStartDate, filterEndDate]);
+
     useEffect(() => {
-        const fetchData = async () => {
-            console.log("DEBUG_REPORTS_FETCH_DATA_START:", { resolvedShopId, reportBranchFilter, filterStartDate, filterEndDate });
-            if (!resolvedShopId) {
-                console.warn("DEBUG_REPORTS_FETCH_DATA_MISSING_SHOPID");
-                return;
-            }
-            setLoading(true);
-            try {
-                const params = {
-                    shopId: resolvedShopId,
-                    branchId: reportBranchFilter,
-                    startDate: filterStartDate,
-                    endDate: filterEndDate
-                };
-
-                const [salesRes, expensesRes, perfRes, custRes, suppRes] = await Promise.all([
-                    reportsService.getSalesReport(params),
-                    reportsService.getExpensesReport(params),
-                    reportsService.getPerformanceReport(params),
-                    reportsService.getCustomerReport(params),
-                    reportsService.getSupplierReport(params)
-                ]);
-                console.log("DEBUG_REPORTS_DATA_RESPONSES:", {
-                    sales: salesRes.data,
-                    expenses: expensesRes.data,
-                    customers: custRes.data,
-                    suppliers: suppRes.data
-                });
-
-                setSalesHistory(unwrapApiData(salesRes));
-                setExpensesHistory(unwrapApiData(expensesRes));
-                setPerformanceReport(unwrapApiData(perfRes));
-                setCustomerReport(unwrapApiData(custRes));
-                setSupplierReport(unwrapApiData(suppRes));
-            } catch (error) {
-                console.error("Failed to fetch report data:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchData();
-    }, [filterStartDate, filterEndDate, resolvedShopId, reportBranchFilter]);
+    }, [fetchData]);
 
     useEffect(() => {
         const fetchPartyDetails = async () => {
@@ -1050,7 +1050,7 @@ const Reports = ({
                     {/* 10. EXPENSE LEDGER */}
                     {reportCategory === "expenses" && (
                         <div className="space-y-6">
-                            <div className="flex justify-between items-center border-b ${theme.borderLight} pb-4">
+                            <div className={`flex justify-between items-center border-b ${theme.borderLight} pb-4`}>
                                 <h3 className={`text-xl font-black ${theme.textHeading}`}>
                                     Expense Ledger ({rangeLabel})
                                 </h3>

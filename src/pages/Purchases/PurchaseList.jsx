@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Plus, Search, Eye, Edit3, Trash2, ShoppingCart, Calendar,
-    CheckCircle, CheckCircle2, Clock, AlertCircle, X, Package, User, Building,
-    FileText, Calculator, Save, ChevronDown, ArrowLeft, Truck,
-    Banknote, TrendingUp, ReceiptText, XCircle, CheckCheck, CreditCard,
-    MapPin, Hash, Info, Printer
+    CheckCircle, CheckCircle2, Clock, AlertCircle, X, Package,
+    Calculator, ChevronDown, ReceiptText, XCircle, CreditCard,
+    Printer, Banknote
 } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
 import { PurchaseService } from "../../services/PurchaseService";
@@ -85,7 +84,6 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
     const [shopInfo, setShopInfo] = useState(null);
     const { user } = useAuth();
     const { theme } = useTheme();
-    const { formatCurrency } = useApp();
 
     useEffect(() => {
         if (!purchaseId) return;
@@ -730,11 +728,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
     const [payTarget, setPayTarget] = useState(null); // purchase row for payment modal
     const [viewTarget, setViewTarget] = useState(null); // purchase id for detail modal
 
-    // Supporting data
     const [shopId, setShopId] = useState(null);
-    const [suppliers, setSuppliers] = useState([]);
-    const [branches, setBranches] = useState([]);
-    const [stockItems, setStockItems] = useState([]);
 
     // ── Permissions
     const access = ROUTE_ACCESS.PURCHASES;
@@ -752,14 +746,11 @@ const PurchaseList = ({ hasPermissionFor }) => {
                 const id = shopData.shop?._id || shopData.organization?._id || shopData._id;
                 setShopId(id);
 
-                const [suppRes, branchRes, itemRes] = await Promise.all([
+                await Promise.all([
                     SupplierService.getSuppliers(id),
                     branchService.getBranchesByShopId(id),
                     itemService.getItems({ filters: { shopId: id, itemType: "STOCK" }, limit: 200 }),
                 ]);
-                setSuppliers(suppRes);
-                setBranches(branchRes);
-                setStockItems(itemRes.data || []);
             } catch (err) {
                 console.error("Init error:", err);
             }
@@ -769,9 +760,9 @@ const PurchaseList = ({ hasPermissionFor }) => {
 
     useEffect(() => {
         if (shopId) loadPurchases();
-    }, [shopId, activeBranchId]);
+    }, [shopId, loadPurchases]);
 
-    const loadPurchases = async () => {
+    const loadPurchases = useCallback(async () => {
         setLoading(true);
         try {
             const params = { shopId };
@@ -783,7 +774,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [shopId, activeBranchId]);
 
     const handleDelete = async (id) => {
         confirmAction(
@@ -804,24 +795,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
         );
     };
 
-    const handleConfirm = async (id) => {
-        confirmAction(
-            "Confirm this purchase? This will permanently update your inventory stock levels.",
-            async () => {
-                setLoading(true);
-                try {
-                    await PurchaseService.confirmPurchase(id);
-                    toast.success("Purchase confirmed and stock levels updated!");
-                    loadPurchases();
-                } catch (err) {
-                    toast.error(err?.response?.data?.message || "Failed to confirm purchase.");
-                } finally {
-                    setLoading(false);
-                }
-            },
-            theme.mode
-        );
-    };
+
 
     const handleCancel = async (id) => {
         confirmAction(

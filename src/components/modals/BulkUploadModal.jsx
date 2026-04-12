@@ -17,7 +17,7 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
 
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0];
-        if (selectedFile && selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv')) {
+        if (selectedFile && (selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv'))) {
             setFile(selectedFile);
             setResult(null);
         } else {

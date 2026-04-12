@@ -129,13 +129,10 @@ const AppRoutes = (props) => {
     handleRejectOnlineOrder,
     handleCompleteOnlineKOT,
     setPreviewOrder,
-    setReservations,
-    handleCheckInReservation,
     handleCompleteKOT,
     currentTime,
     menu,
     setMenu,
-    salesHistory,
     staffList,
     organization,
     setOrganization,
@@ -143,17 +140,10 @@ const AppRoutes = (props) => {
     setBranches,
     inventoryItems,
     setInventoryItems,
-    businessTypeData,
     activeBranchId,
-    originalOrderId,
-    setOriginalOrderId,
-    returnedItems,
-    setReturnedItems,
-    resetTakeaway,
   } = props;
 
   const isWholesale = takeawayOrder?.orderType === "WHOLESALE";
-  const isDirectSale = takeawayOrder?.orderType === "DIRECT_SALE";
 
   // Use props.menu as the primary source of truth for POS items.
   // AppContent handles the hydration and filtering based on business features.
@@ -254,16 +244,16 @@ const AppRoutes = (props) => {
                 tables={props.tables}
                 categories={props.categories}
                 loading={props.diningLoading}
-                reservations={props.reservations}
+                reservations={reservations}
                 currentUser={props.currentUser}
-                getTableDuration={props.getTableDuration}
+                getTableDuration={getTableDuration}
                 formatCurrency={props.formatCurrency}
                 calculateTotal={props.calculateTotal}
                 setIsTakeaway={props.setIsTakeaway}
-                setTakeawayOrder={props.setTakeawayOrder}
+                setTakeawayOrder={setTakeawayOrder}
                 setView={props.setView}
                 setOrderSearch={props.setOrderSearch}
-                setActiveTableId={props.setActiveTableId}
+                setActiveTableId={setActiveTableId}
                 joinTables={props.joinTables}
                 refreshData={props.refreshData}
               />
@@ -310,7 +300,7 @@ const AppRoutes = (props) => {
               <WholesaleOrderWrapper
                 setView={setView}
                 setIsTakeaway={setIsTakeaway}
-                setTakeawayOrder={props.setTakeawayOrder}
+                setTakeawayOrder={setTakeawayOrder}
               >
                 <TakeawayOrder {...orderProps} />
               </WholesaleOrderWrapper>

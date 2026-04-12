@@ -16,9 +16,7 @@ import { leaveService } from "../../services/api";
 import { useApp } from "../../context/AppContext";
 
 const Staff = ({
-    staffList, // Legacy prop, can be ignored or removed later
     setStaffList,
-    rolesList, // Legacy prop
     setRolesList,
     hasPermissionFor,
 }) => {
@@ -320,7 +318,7 @@ const Staff = ({
 
     const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
-    const refreshAttendanceData = async () => {
+    const refreshAttendanceData = React.useCallback(async () => {
         if (!shopId) return;
         setIsAttendanceLoading(true);
         setAttendanceError("");
@@ -340,9 +338,9 @@ const Staff = ({
         } finally {
             setIsAttendanceLoading(false);
         }
-    };
+    }, [shopId, attendanceBranchId, attendanceEmployeeId]);
 
-    const refreshAttendanceLogs = async () => {
+    const refreshAttendanceLogs = React.useCallback(async () => {
         setIsAttendanceLoading(true);
         setAttendanceError("");
         try {
@@ -361,9 +359,9 @@ const Staff = ({
         } finally {
             setIsAttendanceLoading(false);
         }
-    };
+    }, [attendanceBranchId, attendanceEmployeeId, attendanceStartDate, attendanceEndDate]);
 
-    const fetchAllLeaves = async () => {
+    const fetchAllLeaves = React.useCallback(async () => {
         if (!shopId) return;
         setIsLeavesLoading(true);
         try {
@@ -376,7 +374,7 @@ const Staff = ({
         } finally {
             setIsLeavesLoading(false);
         }
-    };
+    }, [shopId]);
 
     const handleApproveLeave = async (id, response) => {
         try {
@@ -404,7 +402,7 @@ const Staff = ({
         if (activeStaffTab === "employee_leaves") {
             fetchAllLeaves();
         }
-    }, [activeStaffTab, shopId]);
+    }, [activeStaffTab, fetchAllLeaves]);
 
 
     const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
@@ -428,8 +426,7 @@ const Staff = ({
         if (activeStaffTab === "attendance_logs") {
             refreshAttendanceLogs();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeStaffTab, shopId]);
+    }, [activeStaffTab, refreshAttendanceData, refreshAttendanceLogs]);
 
     useEffect(() => {
         if (!isCreatePolicyOpen) return;

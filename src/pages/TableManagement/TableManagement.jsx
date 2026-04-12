@@ -3,7 +3,6 @@ import { Plus } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import TableList from './components/TableList';
 import DiningCategoryList from './components/DiningCategoryList';
-import { usePermission } from '../../auth/usePermission';
 import { LayoutDashboard, UtensilsCrossed } from 'lucide-react';
 
 const TableManagement = ({ hasPermissionFor }) => {

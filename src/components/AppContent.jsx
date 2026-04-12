@@ -1048,7 +1048,7 @@ const AppContent = () => {
 
             if (!currentOrderId) {
                 const orderPayload = {
-                    shopId: currentUser.shop_id,
+                    shopId: currentShopId,
                     branchId: getResolvedBranchId(),
                     businessType: businessType || "RESTAURANT",
                     orderType: activeOrderType,
@@ -1084,9 +1084,7 @@ const AppContent = () => {
                     totalPaid: finalPaidAmount,
                     paymentStatus: paymentStatus,
                     orderStatus: 'COMPLETED',
-                    createdBy: currentUser._id,
-                    shopId: currentShopId,
-                    branchId: getResolvedBranchId()
+                    createdBy: currentUser._id
                 };
                 const createdOrder = await orderService.createOrder(orderPayload);
                 currentOrderId = createdOrder._id;

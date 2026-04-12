@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { subscriptionService } from '../../services/api/subscriptions';
-import { Plus, Search, Edit2, Wallet, AlertCircle, CheckCircle, Clock, Trash2 } from 'lucide-react';
+import { Search, Edit2, Wallet, AlertCircle, CheckCircle, Clock, Trash2 } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
 
 const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {

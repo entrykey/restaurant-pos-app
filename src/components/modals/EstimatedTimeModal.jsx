@@ -48,7 +48,7 @@ const EstimatedTimeModal = ({ isOpen, onClose, onConfirm }) => {
                         <button
                             key={p}
                             onClick={() => setTime(p)}
-                            className={`py-2 rounded-xl font-bold text-sm transition-all ${time == p
+                            className={`py-2 rounded-xl font-bold text-sm transition-all ${Number(time) === p
                                     ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105"
                                     : `${theme.surfaceBg} border ${theme.borderLight} ${theme.textSecondary} hover:${theme.pageBg}`
                                 }`}

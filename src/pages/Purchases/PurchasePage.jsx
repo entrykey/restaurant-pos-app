@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Tag, ChevronDown, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera, AlertCircle } from "lucide-react";
+import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera } from "lucide-react";
 import { useNavigate, useParams, useLocation, Link } from "react-router-dom";
 import { PurchaseService } from "../../services/PurchaseService";
 import { SupplierService } from "../Suppliers/SupplierService";
-import api, { itemService, branchService, shopService, taxService } from "../../services/api";
+import api, { itemService, shopService, taxService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -73,7 +73,6 @@ const PurchasePage = () => {
     });
 
     const [itemSearch, setItemSearch] = useState("");
-    const [showResults, setShowResults] = useState(false);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [supplierSearch, setSupplierSearch] = useState("");
     const [showSupplierResults, setShowSupplierResults] = useState(false);
@@ -98,7 +97,6 @@ const PurchasePage = () => {
     const [isLocationLoading, setIsLocationLoading] = useState(false);
     const [productPrefillData, setProductPrefillData] = useState(null);
     const [editNote, setEditNote] = useState("");
-    /** Last successful invoice scan payload (OCR output + synced ids) for review / support */
     const [lastScannedInvoice, setLastScannedInvoice] = useState(null);
 
     const [barcodePrintDialog, setBarcodePrintDialog] = useState({
@@ -174,7 +172,7 @@ const PurchasePage = () => {
                 branchId: activeBranchId
             }));
         }
-    }, [user?.shop_id, id, activeBranchId, currentShopId]);
+    }, [user, id, activeBranchId, currentShopId, isEditing, fetchInitialData, loadPurchase]);
 
     // Handle restoration of state and auto-addition of new products when returning from full-page view
     useEffect(() => {
@@ -188,9 +186,9 @@ const PurchasePage = () => {
             // Clear location state to avoid re-triggering
             window.history.replaceState({ ...location.state, newProduct: null }, '');
         }
-    }, [location.state]);
+    }, [location.state, handleAddItem]);
 
-    const fetchInitialData = async (branchIdArg) => {
+    const fetchInitialData = React.useCallback(async (branchIdArg) => {
         try {
             const branchId = branchIdArg || formData.branchId || activeBranchId;
             console.log("FETCH_INITIAL_DATA_FOR_BRANCH:", branchId);
@@ -216,9 +214,9 @@ const PurchasePage = () => {
         } catch (error) {
             console.error("Error fetching form data:", error);
         }
-    };
+    }, [currentShopId, formData.branchId, activeBranchId]);
 
-    const loadPurchase = async () => {
+    const loadPurchase = React.useCallback(async () => {
         setLoading(true);
         try {
             const data = await PurchaseService.getPurchaseById(id);
@@ -246,7 +244,7 @@ const PurchasePage = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id]);
 
     // --- Calculations ---
     const { subtotal, taxTotal } = useMemo(() => {
@@ -284,7 +282,7 @@ const PurchasePage = () => {
     }, [subtotal, taxTotal, formData.discountTotal, formData.paidAmount]);
 
     // --- Handlers ---
-    const handleAddItem = (item) => {
+    const handleAddItem = React.useCallback((item) => {
         const existing = formData.items.find(it => it.itemId === item._id);
         if (existing) {
             toast.error("Item already added. Adjust quantity in the list.");
@@ -299,7 +297,6 @@ const PurchasePage = () => {
             purchasePrice: item.pricing?.purchasePrice || 0,
             sellingPrice: item.pricing?.sellingPrice || 0,
             mrp: item.pricing?.mrp || 0,
-            taxAmount: 0,
             discountAmount: 0,
             expiryDate: "",
             batchTracking: item.tracking?.batchTracking || false,
@@ -326,8 +323,7 @@ const PurchasePage = () => {
             items: [...prev.items, newItem]
         }));
         setItemSearch("");
-        setShowResults(false);
-    };
+    }, [formData.items, shopTaxes]);
 
     const handleProductDialogClose = async (newProduct) => {
         setIsProductModalOpen(false);
@@ -415,8 +411,6 @@ const PurchasePage = () => {
                             taxId: match.taxId || null,
                             taxPercent: match.taxPercent || 0,
                             taxAmount: (() => {
-                                const taxObj = match.taxId ? shopTaxes.find(t => t._id === match.taxId) : shopTaxes.find(t => t.percentage === Number(match.taxPercent || 0));
-                                const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
                                 const p = extractedItem.purchasePrice || match.pricing?.purchasePrice || 0;
                                 const q = extractedItem.quantity || 1;
                                 const r = match.taxPercent || 0;
@@ -874,12 +868,11 @@ const PurchasePage = () => {
                 shopId: finalShopId,
                 editNote: editNote || undefined,
             };
-            let savedPurchase;
             if (isEditing) {
-                savedPurchase = await PurchaseService.updatePurchase(id, payload);
+                await PurchaseService.updatePurchase(id, payload);
                 toast.success("Purchase updated successfully");
             } else {
-                savedPurchase = await PurchaseService.createPurchase(payload);
+                await PurchaseService.createPurchase(payload);
                 toast.success("Purchase created successfully");
             }
             if (shouldPrint) {
@@ -1065,12 +1058,7 @@ const PurchasePage = () => {
         }
     };
 
-    const filteredSearchItems = stockItems.filter(it => {
-        const name = String(it.name || "").toLowerCase();
-        const code = String(it.itemCode || "").toLowerCase();
-        const search = (itemSearch || "").toLowerCase();
-        return name.includes(search) || code.includes(search);
-    }).slice(0, 5);
+
 
     const filteredSuppliers = suppliers.filter(s => {
         const name = String(s.name || "").toLowerCase();
