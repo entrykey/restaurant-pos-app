@@ -679,7 +679,7 @@ const Organization = ({
                                     ) : organization?.logoUrl ? (
                                         <>
                                             <img
-                                                src={organization.logoUrl.startsWith("http") ? organization.logoUrl : `http://localhost:8000${organization.logoUrl}`}
+                                                src={organization.logoUrl.startsWith("http") ? organization.logoUrl : `${process.env.REACT_APP_SERVER_URL || 'http://localhost:8000'}${organization.logoUrl}`}
                                                 alt="Shop Logo"
                                                 className="w-full h-full object-contain p-2"
                                             />
