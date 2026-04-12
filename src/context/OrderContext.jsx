@@ -50,7 +50,7 @@ export const OrderProvider = ({ children }) => {
             (acc, e) => acc + e.price * e.quantity,
             0
         );
-        return itemBaseCost + extrasCost;
+        return parseFloat((itemBaseCost + extrasCost).toFixed(4));
     };
 
     const fetchActiveOffers = async (shopId, branchId) => {
@@ -93,10 +93,10 @@ export const OrderProvider = ({ children }) => {
             return isExclusive ? lineTotal : lineTotal / (1 + rate / 100);
         };
 
-        const subtotal = orderItems.reduce(
+        const subtotal = parseFloat(orderItems.reduce(
             (acc, i) => acc + getBaseLineTotal(i),
             0
-        );
+        ).toFixed(4));
 
         // ... existing offer logic ...
         let offerDiscountTotal = 0;
@@ -163,7 +163,7 @@ export const OrderProvider = ({ children }) => {
         if (discount.type === "flat") {
             discountAmount = discount.value;
         } else {
-            discountAmount = (subtotal * discount.value) / 100;
+            discountAmount = parseFloat(((subtotal * discount.value) / 100).toFixed(4));
         }
 
         const totalDiscount = discountAmount + offerDiscountTotal;
@@ -177,7 +177,7 @@ export const OrderProvider = ({ children }) => {
 
         const taxBreakdown = { cgst: 0, sgst: 0, igst: 0 };
 
-        const totalTaxAmount = orderItems.reduce((acc, item) => {
+        const totalTaxAmount = parseFloat(orderItems.reduce((acc, item) => {
             const lineTotal = calculateItemTotal(item);
             const lineRate = (item.taxPercent !== undefined && item.taxPercent !== null)
                 ? Number(item.taxPercent)
@@ -193,41 +193,37 @@ export const OrderProvider = ({ children }) => {
             }
 
             // Split tax based on components if taxSystem is GST
-            // For now, if components are not provided per item, we split 50/50 for CGST/SGST if Intra-state
-            if (item.taxSystem === 'GST' || true) { // Defaulting to splitting logic if it's likely GST
+            if (item.taxSystem === 'GST' || true) { 
                 if (isIntraState) {
-                    // Split actual calculated tax into CGST and SGST
-                    // We use the components from the tax object if available
                     const cgstRate = item.components?.cgst;
                     const sgstRate = item.components?.sgst;
                     
                     if (cgstRate !== undefined && sgstRate !== undefined && (cgstRate + sgstRate) > 0) {
                         const totalCompRate = cgstRate + sgstRate;
-                        taxBreakdown.cgst += (itemTax * cgstRate) / totalCompRate;
-                        taxBreakdown.sgst += (itemTax * sgstRate) / totalCompRate;
+                        taxBreakdown.cgst += parseFloat(((itemTax * cgstRate) / totalCompRate).toFixed(4));
+                        taxBreakdown.sgst += parseFloat(((itemTax * sgstRate) / totalCompRate).toFixed(4));
                     } else {
-                        // fallback to 50/50 split
-                        taxBreakdown.cgst += itemTax / 2;
-                        taxBreakdown.sgst += itemTax / 2;
+                        taxBreakdown.cgst += parseFloat((itemTax / 2).toFixed(4));
+                        taxBreakdown.sgst += parseFloat((itemTax / 2).toFixed(4));
                     }
                 } else {
-                    taxBreakdown.igst += itemTax;
+                    taxBreakdown.igst += parseFloat(itemTax.toFixed(4));
                 }
             }
 
             return acc + itemTax;
-        }, 0);
+        }, 0).toFixed(4));
 
         // Deduct exchange credit from total
-        const totalBeforeCredit = taxableAmount + totalTaxAmount;
-        const total = totalBeforeCredit - exchangeCredit;
+        const totalBeforeCredit = parseFloat((taxableAmount + totalTaxAmount).toFixed(4));
+        const total = parseFloat((totalBeforeCredit - exchangeCredit).toFixed(4));
 
         let roundOff = 0;
         let finalTotal = total;
 
         if (autoRound) {
             finalTotal = Math.round(total);
-            roundOff = finalTotal - total;
+            roundOff = parseFloat((finalTotal - total).toFixed(4));
         }
 
         return {

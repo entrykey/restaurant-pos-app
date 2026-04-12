@@ -201,7 +201,7 @@ const AppRoutes = (props) => {
   };
 
   return (
-    <div className="min-h-full flex flex-col">
+    <div className="h-full flex-1 flex flex-col">
       <Routes>
         {/* Generic Dashboard Route */}
         <Route

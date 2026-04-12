@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
     Building2,
     Edit3, Trash2, Plus, MapPin, CreditCard, ChevronDown, CheckCircle, Smartphone, Globe, AlertTriangle, ArrowRight, Save, X, Search, LogOut,
     Loader2, Sparkles, Check
 } from "lucide-react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
@@ -45,6 +45,20 @@ const emptyBranch = (organizationId) => ({
     isMainBranch: false,
     status: BRANCH_STATUS.ACTIVE,
 });
+
+const getProfileChecklist = (organization, branch) => ([
+    { key: "businessName", label: "Business Info", value: organization?.businessName },
+    { key: "ownerName", label: "Owner Details", value: organization?.ownerName },
+    { key: "ownerEmail", label: "Owner Email", value: organization?.ownerEmail },
+    { key: "defaultCountry", label: "Default Country", value: organization?.defaultCountry },
+    { key: "defaultCurrency", label: "Default Currency", value: organization?.defaultCurrency },
+    { key: "defaultTaxSystem", label: "Default Tax System", value: organization?.defaultTaxSystem },
+    { key: "line1", label: "Address Line 1", value: branch?.address?.line1 },
+    { key: "city", label: "City", value: branch?.address?.city },
+    { key: "state", label: "State", value: branch?.address?.state },
+    { key: "pincode", label: "Pincode", value: branch?.address?.pincode },
+    { key: "tax", label: "Tax Info (GST/VAT)", value: branch?.taxConfig?.gstin }
+]);
 
 const Organization = ({
     organization,
@@ -201,10 +215,24 @@ const Organization = ({
     const { user, login } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [highlightSubscriptionSection, setHighlightSubscriptionSection] = useState(false);
 
     const canSelectOrganization = hasPermissionFor?.(MODULES.ORGANIZATION, "organization", "select") || user?.permissions?.ORGANIZATION?.includes("ORGANIZATION.SELECT");
 
     const [logoUploading, setLogoUploading] = useState(false);
+    const mainBranch = useMemo(() => {
+        const existing = branches?.find((b) => b.isMainBranch) || branches?.[0] || null;
+        if (isBranchModalOpen && (branchForm?.isMainBranch || editingBranch?.isMainBranch)) {
+            return branchForm;
+        }
+        return existing;
+    }, [branches, isBranchModalOpen, branchForm, editingBranch]);
+
+    const profileChecklist = useMemo(() => getProfileChecklist(organization, mainBranch), [organization, mainBranch]);
+    const completedCount = profileChecklist.filter((item) => Boolean(item.value)).length;
+    const profileCompletion = profileChecklist.length ? Math.round((completedCount / profileChecklist.length) * 100) : 0;
+    const missingProfileKeys = new Set(profileChecklist.filter((item) => !item.value).map((item) => item.key));
 
     const loadData = async () => {
         try {
@@ -272,6 +300,32 @@ const Organization = ({
         }
     }, [organization, originalOrg]);
 
+    // Deep-link from SubscriptionNoticeModal: ?highlight=subscription (wait until page loaded)
+    useEffect(() => {
+        if (searchParams.get('highlight') !== 'subscription') return;
+        if (loading) return;
+
+        setHighlightSubscriptionSection(true);
+        const scrollTimer = window.setTimeout(() => {
+            document.getElementById('organization-subscription-plans')?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+            });
+        }, 100);
+
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('highlight');
+            return next;
+        }, { replace: true });
+
+        const clearTimer = window.setTimeout(() => setHighlightSubscriptionSection(false), 10000);
+        return () => {
+            window.clearTimeout(scrollTimer);
+            window.clearTimeout(clearTimer);
+        };
+    }, [searchParams, loading, setSearchParams]);
+
     const handleSwitchShop = async (newShopId) => {
         if (newShopId === organization?.id) return;
         setIsSwitchingShop(true);
@@ -312,6 +366,9 @@ const Organization = ({
                 name: organization.businessName,
                 ownerName: organization.ownerName,
                 ownerEmail: organization.ownerEmail,
+                defaultCountryCode: organization.defaultCountry || null,
+                defaultCurrencyCode: organization.defaultCurrency || null,
+                defaultTaxSystem: organization.defaultTaxSystem || null,
             };
             await shopService.updateShop(organization.id, updatePayload);
             toast.success("Organization details updated successfully.");
@@ -334,6 +391,8 @@ const Organization = ({
                     plan_id: plan.id 
                 });
                 toast.success(`Trial started! Enjoy ${plan.name} for ${plan.trialDurationDays} days.`);
+                localStorage.removeItem("subscription_notified");
+                localStorage.removeItem("pos_subscription_modal_dismissed");
                 await loadData();
             } catch (error) {
                 console.error("Failed to start trial:", error);
@@ -358,7 +417,8 @@ const Organization = ({
                     billing_cycle: 'monthly'
                 });
                 toast.success(`Successfully ${isCurrent ? "renewed" : "upgraded to"} ${plan.name} plan!`);
-                localStorage.removeItem('subscription_notified');
+                localStorage.removeItem("subscription_notified");
+                localStorage.removeItem("pos_subscription_modal_dismissed");
                 await loadData();
             } catch (error) {
                 console.error("Failed to change plan:", error);
@@ -574,6 +634,22 @@ const Organization = ({
 
                 {/* Organization Details */}
                 <div className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight || 'border-slate-100 dark:border-slate-700'}`}>
+                    <div className={`mb-6 p-5 rounded-3xl border ${profileCompletion >= 100 ? 'border-green-200 bg-green-50/70 dark:bg-green-900/20' : 'border-amber-200 bg-amber-50/80 dark:bg-amber-900/20'}`}>
+                        <div className="flex items-center justify-between gap-4 mb-3">
+                            <h4 className={`text-lg font-black ${theme.textHeading}`}>Profile Completion</h4>
+                            <span className={`text-sm font-black ${profileCompletion >= 100 ? 'text-green-600' : 'text-amber-600'}`}>{profileCompletion}%</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-gray-200 dark:bg-slate-700 mb-4">
+                            <div className={`h-2 rounded-full transition-all ${profileCompletion >= 100 ? 'bg-green-500' : 'bg-amber-500'}`} style={{ width: `${profileCompletion}%` }} />
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {profileChecklist.map((item) => (
+                                <div key={item.key} className={`text-xs px-2 py-1 rounded-lg font-bold ${item.value ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
+                                    {item.value ? '✔' : '✖'} {item.label}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                         <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} flex items-center gap-2`}>
                             <Building2 size={20} className="text-indigo-500 dark:text-indigo-400" /> Organization Details
@@ -643,7 +719,7 @@ const Organization = ({
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Business Name</label>
                                 <input
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('businessName') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
                                     value={organization?.businessName ?? ""}
                                     onChange={(e) => canEditOrg && setOrganization({ ...organization, businessName: e.target.value })}
                                     readOnly={!canEditOrg}
@@ -652,7 +728,7 @@ const Organization = ({
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Owner Name</label>
                                 <input
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('ownerName') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
                                     value={organization?.ownerName ?? ""}
                                     onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerName: e.target.value })}
                                     readOnly={!canEditOrg}
@@ -662,7 +738,7 @@ const Organization = ({
                                 <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Owner Email</label>
                                 <input
                                     type="email"
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('ownerEmail') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
                                     value={organization?.ownerEmail ?? ""}
                                     onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerEmail: e.target.value })}
                                     readOnly={!canEditOrg}
@@ -671,11 +747,12 @@ const Organization = ({
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Country</label>
                                 <select
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
-                                    value={organization?.defaultCountry ?? "IN"}
-                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCountry: e.target.value })}
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('defaultCountry') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                    value={organization?.defaultCountry ?? ""}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCountry: e.target.value || null })}
                                     disabled={!canEditOrg}
                                 >
+                                    <option value="">Select country</option>
                                     {DEFAULT_COUNTRIES.map((c) => (
                                         <option key={c.code} value={c.code}>{c.name}</option>
                                     ))}
@@ -684,11 +761,12 @@ const Organization = ({
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Currency</label>
                                 <select
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
-                                    value={organization?.defaultCurrency ?? "INR"}
-                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCurrency: e.target.value })}
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('defaultCurrency') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                    value={organization?.defaultCurrency ?? ""}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCurrency: e.target.value || null })}
                                     disabled={!canEditOrg}
                                 >
+                                    <option value="">Select currency</option>
                                     {CURRENCIES.map((c) => (
                                         <option key={c.code} value={c.code}>{c.name}</option>
                                     ))}
@@ -697,11 +775,12 @@ const Organization = ({
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Tax System</label>
                                 <select
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
-                                    value={organization?.defaultTaxSystem ?? TAX_SYSTEMS.GST}
-                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultTaxSystem: e.target.value })}
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('defaultTaxSystem') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                    value={organization?.defaultTaxSystem ?? ""}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultTaxSystem: e.target.value || null })}
                                     disabled={!canEditOrg}
                                 >
+                                    <option value="">Select tax system</option>
                                     {Object.values(TAX_SYSTEMS).map((t) => (
                                         <option key={t} value={t}>{t}</option>
                                     ))}
@@ -711,8 +790,15 @@ const Organization = ({
                     </div>
                 </div>
 
-                {/* Subscription & Plans */}
-                <div className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight || 'border-slate-100 dark:border-slate-700'}`}>
+                {/* Subscription & Plans — id used by SubscriptionNoticeModal deep-link */}
+                <div
+                    id="organization-subscription-plans"
+                    className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border transition-[box-shadow,ring] duration-500 ${theme.borderLight || 'border-slate-100 dark:border-slate-700'} ${
+                        highlightSubscriptionSection
+                            ? 'ring-4 ring-indigo-500 ring-offset-4 ring-offset-slate-950/0 dark:ring-offset-slate-900 shadow-2xl shadow-indigo-500/20'
+                            : ''
+                    }`}
+                >
                     <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} mb-6 flex items-center gap-2`}>
                         <CreditCard size={20} className="text-indigo-500 dark:text-indigo-400" /> Subscription & Plans
                     </h3>
@@ -730,10 +816,12 @@ const Organization = ({
                         */}
                     </div>
 
-                    <p className={`font-medium mb-6 ${theme.textSecondary || 'text-gray-500'}`}>Upgrade your plan for more branches and features</p>
+                    {plans.length > 0 && (
+                        <>
+                            <p className={`font-medium mb-6 ${theme.textSecondary || 'text-gray-500'}`}>Upgrade your plan for more branches and features</p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {plans.map((plan) => {
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {plans.map((plan) => {
                             const isCurrent = organization?.subscriptionPlanId === plan.id;
                             const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
                             const isTrialPlan = organization?.isTrial;
@@ -807,7 +895,9 @@ const Organization = ({
                                 </div>
                             );
                         })}
-                    </div>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Branches */}
@@ -867,7 +957,7 @@ const Organization = ({
                             <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Pincode</label>
                             <div className="relative">
                                 <input
-                                    className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
+                                    className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white ${missingProfileKeys.has('pincode') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
                                     value={branchForm.address?.pincode ?? ""}
                                     onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, pincode: e.target.value } })}
                                     onBlur={handlePincodeBlur}
@@ -879,7 +969,7 @@ const Organization = ({
                         <div>
                             <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Address Line 1</label>
                             <input
-                                className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
+                                className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white ${missingProfileKeys.has('line1') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
                                 value={branchForm.address?.line1 ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, line1: e.target.value } })}
                                 placeholder="Street / Area"
@@ -890,7 +980,7 @@ const Organization = ({
                         <div>
                             <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">City</label>
                             <input
-                                className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                                className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white ${missingProfileKeys.has('city') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
                                 value={branchForm.address?.city ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, city: e.target.value } })}
                             />
@@ -898,7 +988,7 @@ const Organization = ({
                         <div>
                             <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">State</label>
                             <input
-                                className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                                className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white ${missingProfileKeys.has('state') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
                                 value={branchForm.address?.state ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, state: e.target.value } })}
                             />
@@ -978,7 +1068,7 @@ const Organization = ({
                                     <div>
                                         <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">{regNumberLabel}</label>
                                         <input
-                                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                                            className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white ${missingProfileKeys.has('tax') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
                                             value={branchForm.taxConfig?.gstin ?? ""}
                                             onChange={(e) => setBranchForm({
                                                 ...branchForm,

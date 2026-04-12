@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ROUTE_KEY_TO_PATH } from "../constants/routeAccess";
 import toast from "react-hot-toast";
 import Layout from "./Layout";
@@ -19,6 +19,7 @@ import { fetchOrganizationData } from "../pages/Organization/OrganizationService
 import { TextProvider } from "../context/TextContext";
 import { useTheme } from "../context/ThemeContext";
 import { BUSINESS_TYPES, BUSINESS_FEATURES } from "../config/businessTypes";
+import { AlertTriangle } from "lucide-react";
 
 // Modals
 import NoteModal from "./modals/NoteModal";
@@ -29,6 +30,33 @@ import FullOrderSummaryModal from "./modals/FullOrderSummaryModal";
 import MultipleShopsModal from "./modals/MultipleShopsModal";
 import SubscriptionNoticeModal from "./modals/SubscriptionNoticeModal";
 import { sendBrowserNotification } from "../utils/notifications";
+
+/** Set only when user dismisses SubscriptionNoticeModal — never on open (avoids React Strict Mode + false "already notified"). */
+const POS_SUBSCRIPTION_MODAL_DISMISSED_KEY = "pos_subscription_modal_dismissed";
+
+const LIVE_SUBSCRIPTION_STATUSES = ["active", "trial", "grace", "base", "free"];
+
+/**
+ * Prefer organization payload (same source as Organization page) over JWT user snapshot,
+ * which can be stale or out of sync with "No Active Plan" in the UI.
+ */
+const computeUserHasActiveSubscription = (user, organization) => {
+    const orgId = organization?.id ?? organization?._id;
+    if (orgId != null && orgId !== "") {
+        const st = String(organization.subscriptionStatus || "inactive").toLowerCase();
+        if (LIVE_SUBSCRIPTION_STATUSES.includes(st)) {
+            const endRaw = organization.subscriptionEndDate;
+            if (endRaw) {
+                const end = new Date(endRaw);
+                if (!Number.isNaN(end.getTime()) && end < new Date()) return false;
+            }
+            return true;
+        }
+        // If organization data exists but status is inactive, we trust it over JWT
+        return false;
+    }
+    return user?.subscription?.active === true;
+};
 
 const AppContent = () => {
     const { theme } = useTheme();
@@ -224,11 +252,73 @@ const AppContent = () => {
             }
         };
         fetchOrg();
-    }, [isAuthenticated, currentShopId]);
+    }, [isAuthenticated, currentShopId, currentUser?._id, currentUser?.id, currentUser?.shopId, currentUser?.shop_id]);
 
     // Local UI State
     const [view, setView] = useState("dashboard");
+    
+    // Draggable Logic for Profile Completion Dialog
+    const [profileOffset, setProfileOffset] = useState({ x: 0, y: 0 });
+    const [isDraggingProfile, setIsDraggingProfile] = useState(false);
+    const [dragStartProfile, setDragStartProfile] = useState({ x: 0, y: 0 });
+
+    const handleMouseDownProfile = (e) => {
+        if (e.target.closest('button')) return;
+        setIsDraggingProfile(true);
+        setDragStartProfile({
+            x: e.clientX - profileOffset.x,
+            y: e.clientY - profileOffset.y
+        });
+    };
+
+    // Draggable Logic for Subscription Dialog
+    const [subOffset, setSubOffset] = useState({ x: 0, y: 0 });
+    const [isDraggingSub, setIsDraggingSub] = useState(false);
+    const [dragStartSub, setDragStartSub] = useState({ x: 0, y: 0 });
+
+    const handleMouseDownSub = (e) => {
+        if (e.target.closest('button')) return;
+        setIsDraggingSub(true);
+        setDragStartSub({
+            x: e.clientX - subOffset.x,
+            y: e.clientY - subOffset.y
+        });
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (isDraggingProfile) {
+                setProfileOffset({
+                    x: e.clientX - dragStartProfile.x,
+                    y: e.clientY - dragStartProfile.y
+                });
+            }
+            if (isDraggingSub) {
+                setSubOffset({
+                    x: e.clientX - dragStartSub.x,
+                    y: e.clientY - dragStartSub.y
+                });
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsDraggingProfile(false);
+            setIsDraggingSub(false);
+        };
+
+        if (isDraggingProfile || isDraggingSub) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDraggingProfile, isDraggingSub, dragStartProfile, dragStartSub]);
+
     const location = useLocation();
+    const navigate = useNavigate();
 
     // Sync view with URL path
     useEffect(() => {
@@ -291,38 +381,54 @@ const AppContent = () => {
         };
     }, []);
 
-    // Check for Multiple Shops and Subscription on Login
+    // Multiple shops picker + subscription nag (toast uses org data when loaded so it matches "No Active Plan" UI)
     useEffect(() => {
-        if (isAuthenticated && currentUser) {
-            const hasIgnoredShops = sessionStorage.getItem('multiple_shops_ignored');
-            if (currentUser.shops && currentUser.shops.length > 1 && !hasIgnoredShops) {
-                setIsMultipleShopsModalOpen(true);
-            }
+        if (!isAuthenticated || !currentUser) return;
 
-            const isSubscribed = currentUser.subscription?.active;
-            const hasNotified = localStorage.getItem('subscription_notified');
-            
-            const isSuperAdmin = currentUser.isSuperAdmin || currentUser.role === 'superadmin' || currentUser.role?.name === 'superadmin';
-            const isOwner = currentUser.isOwner || isSuperAdmin;
-            
-            if (!isSubscribed && !hasNotified && !isSuperAdmin) {
-                if (isOwner) {
-                    sendBrowserNotification('Subscription Alert', {
-                        body: 'Your subscription is inactive. Please upgrade your plan to maintain access.',
-                        icon: '/logo192.png'
-                    });
-                    setIsSubscriptionModalOpen(true);
-                } else {
-                    sendBrowserNotification('Subscription Required', {
-                        body: 'The shop subscription is inactive. Please contact the owner.',
-                        icon: '/logo192.png'
-                    });
-                    setIsSubscriptionModalOpen(true);
-                }
-                localStorage.setItem('subscription_notified', 'true');
-            }
+        const hasIgnoredShops = sessionStorage.getItem("multiple_shops_ignored");
+        if (currentUser.shops && currentUser.shops.length > 1 && !hasIgnoredShops) {
+            setIsMultipleShopsModalOpen(true);
         }
-    }, [isAuthenticated, currentUser]);
+
+        const isSuperAdmin =
+            currentUser.isSuperAdmin ||
+            currentUser.role === "superadmin" ||
+            currentUser.role?.name === "superadmin";
+
+        const isSubscribed = computeUserHasActiveSubscription(currentUser, organization);
+
+        if (isSubscribed || isSuperAdmin) {
+            setIsSubscriptionModalOpen(false);
+            return;
+        }
+
+        const dismissedSubscriptionModal =
+            localStorage.getItem(POS_SUBSCRIPTION_MODAL_DISMISSED_KEY) === "1";
+        if (dismissedSubscriptionModal) return;
+
+        const isOwner = currentUser.isOwner || isSuperAdmin;
+
+        if (isOwner) {
+            sendBrowserNotification("Subscription Alert", {
+                body: "Your subscription is inactive. Please upgrade your plan to maintain access.",
+                icon: "/logo192.png",
+            });
+            setIsSubscriptionModalOpen(true);
+        } else {
+            sendBrowserNotification("Subscription Required", {
+                body: "The shop subscription is inactive. Please contact the owner.",
+                icon: "/logo192.png",
+            });
+            setIsSubscriptionModalOpen(true);
+        }
+    }, [
+        isAuthenticated,
+        currentUser,
+        organization?.id,
+        organization?._id,
+        organization?.subscriptionStatus,
+        organization?.subscriptionEndDate,
+    ]);
 
     const hasPermission = (permissionKey) => {
         return checkPermission(currentUser, permissionKey);
@@ -343,7 +449,8 @@ const AppContent = () => {
     };
 
     const handleCloseSubscriptionNotice = () => {
-        sessionStorage.setItem('subscription_notified', 'true');
+        localStorage.setItem(POS_SUBSCRIPTION_MODAL_DISMISSED_KEY, "1");
+        localStorage.removeItem("subscription_notified");
         setIsSubscriptionModalOpen(false);
     };
 
@@ -366,6 +473,37 @@ const AppContent = () => {
             console.error("Failed to switch shop:", error);
             toast.error("Error switching shop. Please try again.");
         }
+    };
+
+    const profileFields = [
+        organization?.businessName,
+        organization?.ownerName,
+        organization?.ownerEmail,
+        organization?.defaultCountry,
+        organization?.defaultCurrency,
+        organization?.defaultTaxSystem,
+        branches?.find((b) => b.isMainBranch)?.address?.line1 || branches?.[0]?.address?.line1,
+        branches?.find((b) => b.isMainBranch)?.address?.city || branches?.[0]?.address?.city,
+        branches?.find((b) => b.isMainBranch)?.address?.state || branches?.[0]?.address?.state,
+        branches?.find((b) => b.isMainBranch)?.address?.pincode || branches?.[0]?.address?.pincode,
+        branches?.find((b) => b.isMainBranch)?.taxConfig?.gstin || branches?.[0]?.taxConfig?.gstin
+    ];
+    const uiProfileCompletion = Math.round((profileFields.filter(Boolean).length / profileFields.length) * 100);
+
+    const isSuperAdmin =
+        currentUser?.isSuperAdmin ||
+        currentUser?.role === "superadmin" ||
+        currentUser?.role?.name === "superadmin";
+
+    const isSubscribed = computeUserHasActiveSubscription(currentUser, organization);
+
+    const showProfileCompletionOverlay = isAuthenticated &&
+        currentUser?.isOwner &&
+        uiProfileCompletion < 100;
+
+    const handleCompleteSetupNavigation = () => {
+        setView("organization");
+        navigate(ROUTE_KEY_TO_PATH.organization || "/organization");
     };
 
     const getResolvedBranchId = () => {
@@ -946,7 +1084,9 @@ const AppContent = () => {
                     totalPaid: finalPaidAmount,
                     paymentStatus: paymentStatus,
                     orderStatus: 'COMPLETED',
-                    createdBy: currentUser._id
+                    createdBy: currentUser._id,
+                    shopId: currentShopId,
+                    branchId: getResolvedBranchId()
                 };
                 const createdOrder = await orderService.createOrder(orderPayload);
                 currentOrderId = createdOrder._id;
@@ -1262,15 +1402,47 @@ const AppContent = () => {
                 currentShopName={organization?.businessName}
             />
 
-            <SubscriptionNoticeModal 
+            <SubscriptionNoticeModal
                 isOpen={isSubscriptionModalOpen}
                 onClose={handleCloseSubscriptionNotice}
+                user={currentUser}
                 isOwner={currentUser?.isOwner}
+                elevateForProfile={showProfileCompletionOverlay}
                 onSubscribe={() => {
                     setIsSubscriptionModalOpen(false);
                     setView('organization');
                 }}
             />
+            {showProfileCompletionOverlay && (
+                <div 
+                    className="fixed right-4 bottom-4 z-[60] max-w-sm select-none cursor-grab active:cursor-grabbing"
+                    style={{
+                        transform: `translate(${profileOffset.x}px, ${profileOffset.y}px)`,
+                        transition: isDraggingProfile ? 'none' : 'transform 0.1s ease-out'
+                    }}
+                    onMouseDown={handleMouseDownProfile}
+                >
+                    <div className={`rounded-2xl shadow-2xl border p-4 ${theme.cardBg} ${theme.inputBorder}`}>
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
+                                <AlertTriangle size={18} />
+                            </div>
+                            <div className="flex-1">
+                                <p className={`text-sm font-bold ${theme.textPrimary}`}>Profile not completed</p>
+                                <p className={`text-xs mt-1 ${theme.textSecondary}`}>
+                                    Setup completion is {uiProfileCompletion || 0}%. Finish profile details to unlock full onboarding.
+                                </p>
+                                <button
+                                    onClick={handleCompleteSetupNavigation}
+                                    className={`mt-3 px-3 py-2 rounded-lg text-xs font-bold ${theme.buttonBg} ${theme.buttonText}`}
+                                >
+                                    Complete Setup
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

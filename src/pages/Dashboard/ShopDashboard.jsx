@@ -18,10 +18,14 @@ const ShopDashboard = () => {
 
     useEffect(() => {
         const fetchDashboard = async () => {
+            const resolvedShopId = user?.shopId || user?.shop_id;
             try {
-                if (user?.shop_id) {
-                    const result = await dashboardService.getShopDashboard(user.shop_id);
+                if (resolvedShopId) {
+                    console.log("ShopDashboard: Initiating fetch for shop:", resolvedShopId);
+                    const result = await dashboardService.getShopDashboard(resolvedShopId);
                     setData(result);
+                } else {
+                    console.warn("ShopDashboard: No shop identifier found in user context", user);
                 }
             } catch (error) {
                 console.error("Failed to fetch shop dashboard:", error);

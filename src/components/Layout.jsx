@@ -72,7 +72,7 @@ const Layout = ({
                 />
 
                 {/* Main Content */}
-                <div className={`flex-1 min-h-0 ml-0 transition-all duration-300 ${isSidebarExpanded ? 'md:ml-64' : 'md:ml-24'} overflow-y-auto custom-scrollbar relative bg-gray-50/30 dark:bg-transparent`}>
+                <div className={`flex-1 min-h-0 ml-0 transition-all duration-300 ${isSidebarExpanded ? 'md:ml-64' : 'md:ml-24'} overflow-hidden flex flex-col custom-scrollbar relative bg-gray-50/30 dark:bg-transparent`}>
 
 
 

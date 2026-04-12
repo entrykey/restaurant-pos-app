@@ -6,7 +6,7 @@ export const formatCurrency = (amount, currency = "INR") => {
             style: "currency",
             currency: code,
             minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            maximumFractionDigits: 4
         }).format(amount);
     } catch (e) {
         console.error("formatCurrency error:", e);

@@ -27,7 +27,8 @@ const Parties = ({ hasPermissionFor }) => {
         email: '',
         address: '',
         taxNumber: '',
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        discountPercentage: 0
     });
 
     // Permissions logic
@@ -68,11 +69,12 @@ const Parties = ({ hasPermissionFor }) => {
                 email: customer.email || '',
                 address: typeof customer.address === 'object' ? [customer.address?.street, customer.address?.city, customer.address?.state].filter(Boolean).join(', ') : (customer.address || ''),
                 taxNumber: customer.taxNumber || '',
-                status: customer.status || 'ACTIVE'
+                status: customer.status || 'ACTIVE',
+                discountPercentage: customer.discountPercentage || 0
             });
         } else {
             setEditingCustomer(null);
-            setCustomerForm({ name: '', phone: '', email: '', address: '', taxNumber: '', status: 'ACTIVE' });
+            setCustomerForm({ name: '', phone: '', email: '', address: '', taxNumber: '', status: 'ACTIVE', discountPercentage: 0 });
         }
         setCustomerModalOpen(true);
     };
@@ -90,7 +92,8 @@ const Parties = ({ hasPermissionFor }) => {
                 phone: customerForm.phone,
                 email: customerForm.email || undefined,
                 taxNumber: customerForm.taxNumber || undefined,
-                status: customerForm.status
+                status: customerForm.status,
+                discountPercentage: Number(customerForm.discountPercentage) || 0
             };
             if (customerForm.address) payload.address = { street: customerForm.address };
             if (editingCustomer) {
@@ -313,7 +316,18 @@ const Parties = ({ hasPermissionFor }) => {
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Tax number / GSTIN</label>
                                     <input className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} value={customerForm.taxNumber} onChange={e => setCustomerForm(f => ({ ...f, taxNumber: e.target.value }))} placeholder="Optional" />
                                 </div>
-                                 {/* Status removed as requested - handled in table toggle */}
+                                <div className="space-y-2">
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Discount Percentage (%)</label>
+                                    <input 
+                                        type="number" 
+                                        min="0" 
+                                        max="100" 
+                                        className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} 
+                                        value={customerForm.discountPercentage} 
+                                        onChange={e => setCustomerForm(f => ({ ...f, discountPercentage: e.target.value }))} 
+                                        placeholder="0" 
+                                    />
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Address</label>

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import FoodItemCard from "../../components/FoodItemCard";
 import { useApp } from "../../context/AppContext";
-import { itemService } from "../../services/api";
+import { itemService, customerService } from "../../services/api";
 import { DEFAULT_ITEM_IMAGE, getBingImage } from "../../utils/getImage";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -62,13 +62,14 @@ const TakeawayOrder = ({
         billingStage: billingStageContext, setBillingStage: setGlobalBillingStage, resetBillingState,
         isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
         originalOrderId, setOriginalOrderId, returnedItems, setReturnedItems,
-        resetExchange
+        resetExchange, billDiscount, setBillDiscount
     } = useOrder();
     const {
         isTakeaway: isTakeawayContext, setIsTakeaway: setGlobalIsTakeaway, 
         takeawayOrder: takeawayOrderContext, setTakeawayOrder: setTakeawayOrderContext,
         takeawayCustName: takeawayCustNameContext, setTakeawayCustName: setTakeawayCustNameContext, 
         takeawayCustPhone: takeawayCustPhoneContext, setTakeawayCustPhone: setTakeawayCustPhoneContext,
+        selectedCustomer, setSelectedCustomer,
         resetTakeaway
     } = useTakeaway();
 
@@ -116,6 +117,43 @@ const TakeawayOrder = ({
     const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
     const [isSearchingRemote, setIsSearchingRemote] = useState(false);
     const [remoteMenu, setRemoteMenu] = useState(null); // null → use local menu
+
+    const [customerSearchResults, setCustomerSearchResults] = useState([]);
+    const [showCustomerDropdown, setShowCustomerDropdown] = useState(null); // 'name' | 'phone' | null
+
+    const handleCustomerSearch = async (term, type) => {
+        if (!term || term.length < 2) {
+            setCustomerSearchResults([]);
+            return;
+        }
+
+        try {
+            const params = {
+                branchId: activeBranchId,
+                search: term
+            };
+            const response = await customerService.getCustomers(params);
+            setCustomerSearchResults(response || []);
+            setShowCustomerDropdown(type);
+        } catch (err) {
+            console.error("Customer search failed:", err);
+        }
+    };
+
+    const selectCustomer = (customer) => {
+        setTakeawayCustName(customer.name);
+        setTakeawayCustPhone(customer.phone);
+        setSelectedCustomer(customer);
+        setShowCustomerDropdown(null);
+        setCustomerSearchResults([]);
+
+        // Auto-apply discount if it exists
+        if (customer.discountPercentage > 0) {
+            setBillDiscount({ type: 'percent', value: customer.discountPercentage });
+        } else {
+            setBillDiscount({ type: 'flat', value: 0 });
+        }
+    };
 
     // Debounced AI/Backend search
     useEffect(() => {
@@ -244,19 +282,79 @@ const TakeawayOrder = ({
                     </div>
 
                     {isTakeaway && (
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                            <input
-                                value={takeawayCustName}
-                                onChange={(e) => setTakeawayCustName(e.target.value)}
-                                placeholder="Customer Name"
-                                className={`p-3 border ${theme.borderLight} rounded-xl outline-none ${theme.inputBg} ${theme.textPrimary}`}
-                            />
-                            <input
-                                value={takeawayCustPhone}
-                                onChange={(e) => setTakeawayCustPhone(e.target.value)}
-                                placeholder="Phone Number"
-                                className={`p-3 border ${theme.borderLight} rounded-xl outline-none ${theme.inputBg} ${theme.textPrimary}`}
-                            />
+                        <div className="grid grid-cols-2 gap-4 mb-6 relative">
+                            <div className="relative">
+                                {selectedCustomer && (
+                                    <div className="absolute right-3 top-3.5 flex items-center gap-2 z-10">
+                                        <span className="flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+                                            <Check size={10} strokeWidth={4} /> Selected
+                                        </span>
+                                        <button 
+                                            onClick={() => {
+                                                setSelectedCustomer(null);
+                                                setBillDiscount({ type: 'flat', value: 0 });
+                                            }}
+                                            className="text-gray-400 hover:text-red-500"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                )}
+                                <input
+                                    value={takeawayCustName}
+                                    onChange={(e) => {
+                                        setTakeawayCustName(e.target.value);
+                                        handleCustomerSearch(e.target.value, "name");
+                                        if (selectedCustomer && e.target.value !== selectedCustomer.name) {
+                                            setSelectedCustomer(null);
+                                            setBillDiscount({ type: 'flat', value: 0 });
+                                        }
+                                    }}
+                                    onFocus={() => setShowCustomerDropdown("name")}
+                                    placeholder="Customer Name"
+                                    className={`w-full p-3 border ${theme.borderLight} rounded-xl outline-none ${theme.inputBg} ${theme.textPrimary} ${selectedCustomer ? "pr-24" : ""}`}
+                                />
+                                {showCustomerDropdown === "name" && customerSearchResults.length > 0 && (
+                                    <div className={`absolute top-full left-0 right-0 mt-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl shadow-xl z-[60] max-h-60 overflow-y-auto`}>
+                                        {customerSearchResults.map(cust => (
+                                            <div 
+                                                key={cust._id}
+                                                onClick={() => selectCustomer(cust)}
+                                                className={`p-3 hover:bg-indigo-50 cursor-pointer border-b ${theme.borderLight} last:border-0`}
+                                            >
+                                                <div className={`font-bold ${theme.textPrimary}`}>{cust.name}</div>
+                                                <div className={`text-xs ${theme.textMuted}`}>{cust.phone} {cust.discountPercentage > 0 && <span className="text-emerald-600 ml-2">({cust.discountPercentage}% Disc)</span>}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="relative">
+                                <input
+                                    value={takeawayCustPhone}
+                                    onChange={(e) => {
+                                        setTakeawayCustPhone(e.target.value);
+                                        handleCustomerSearch(e.target.value, "phone");
+                                    }}
+                                    onFocus={() => setShowCustomerDropdown("phone")}
+                                    placeholder="Phone Number"
+                                    className={`w-full p-3 border ${theme.borderLight} rounded-xl outline-none ${theme.inputBg} ${theme.textPrimary}`}
+                                />
+                                {showCustomerDropdown === "phone" && customerSearchResults.length > 0 && (
+                                    <div className={`absolute top-full left-0 right-0 mt-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl shadow-xl z-[60] max-h-60 overflow-y-auto`}>
+                                        {customerSearchResults.map(cust => (
+                                            <div 
+                                                key={cust._id}
+                                                onClick={() => selectCustomer(cust)}
+                                                className={`p-3 hover:bg-indigo-50 cursor-pointer border-b ${theme.borderLight} last:border-0`}
+                                            >
+                                                <div className={`font-bold ${theme.textPrimary}`}>{cust.phone}</div>
+                                                <div className={`text-xs ${theme.textMuted}`}>{cust.name} {cust.discountPercentage > 0 && <span className="text-emerald-600 ml-2">({cust.discountPercentage}% Disc)</span>}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -460,7 +558,7 @@ const TakeawayOrder = ({
                         {(() => {
                             const billDetails = calculateBillDetails(
                                 currentOrder.items,
-                                { type: "flat", value: 0 },
+                                billDiscount,
                                 settings?.defaultTaxPercent || 0,
                                 false,
                                 isTakeaway ? exchangeCredit : 0
@@ -490,14 +588,24 @@ const TakeawayOrder = ({
                                         <span className={theme.textPrimary}>{formatCurrency(billDetails.taxAmount)}</span>
                                     </div>
 
+                                    {billDiscount.value > 0 && (
+                                        <div className={`flex justify-between items-center text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100`}>
+                                            <div className="flex flex-col">
+                                                <span>Customer Discount</span>
+                                                {billDiscount.type === 'percent' && <span className="text-[10px] opacity-70 uppercase tracking-wider">{billDiscount.value}% Off</span>}
+                                            </div>
+                                            <span>-{formatCurrency(billDetails.discountAmount)}</span>
+                                        </div>
+                                    )}
+
                                     {isTakeaway && exchangeCredit > 0 && (
-                                        <div className={`flex justify-between items-center text-sm font-bold text-orange-600`}>
+                                        <div className={`flex justify-between items-center text-sm font-bold text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100`}>
                                             <span>Exchange Credit</span>
                                             <span>-{formatCurrency(exchangeCredit)}</span>
                                         </div>
                                     )}
     
-                                    <div className={`flex justify-between items-center text-2xl font-black ${theme.textHeading} pt-2 border-t border-dashed ${theme.borderLight}`}>
+                                    <div className={`flex justify-between items-center text-2xl font-black ${theme.textHeading} pt-4 border-t-2 border-dashed ${theme.borderLight}`}>
                                         <span>Total</span>
                                         <span>{formatCurrency(billDetails.finalTotal)}</span>
                                     </div>

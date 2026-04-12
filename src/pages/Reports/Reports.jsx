@@ -206,11 +206,12 @@ const Reports = ({
                 .forEach((sale) => {
                     if (sale.items) {
                         sale.items.forEach((item) => {
-                            if (!itemStats[item.name])
-                                itemStats[item.name] = { qty: 0, revenue: 0, profit: 0 };
-                            itemStats[item.name].qty += item.quantity;
-                            itemStats[item.name].revenue += item.price * item.quantity;
-                            itemStats[item.name].profit += (item.price - (item.purchasePrice || 0)) * item.quantity;
+                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
+                            if (!itemStats[itemName])
+                                itemStats[itemName] = { qty: 0, revenue: 0, profit: 0 };
+                            itemStats[itemName].qty += (item.quantity || 0);
+                            itemStats[itemName].revenue += (item.price || 0) * (item.quantity || 0);
+                            itemStats[itemName].profit += ((item.price || 0) - (item.purchasePrice || 0)) * (item.quantity || 0);
                         });
                     }
                 });
@@ -305,39 +306,55 @@ const Reports = ({
                 stats.sales
             ]);
         } else if (reportCategory === "tax") {
-            const percentGroups = {};
+            const aggregatedItems = {}; 
+            
             salesHistory
                 .filter((s) => isWithinRange(s.date))
                 .forEach((sale) => {
                     const items = sale.items || [];
                     items.forEach((item) => {
+                        const system = item.taxSystem || "GST";
+                        if (system === "NONE" && (item.taxAmount || 0) === 0) return; // Skip non-taxable
+
                         const taxP = (item.taxPercent !== undefined && item.taxPercent !== null) 
                             ? Number(item.taxPercent) 
                             : (settings?.defaultTaxPercent || 0);
-                        const system = item.taxSystem || "GST";
-                        const groupKey = `${system} ${taxP}%`;
+                        const taxType = item.taxType || (item.isExclusiveTax ? "EXCLUSIVE" : "INCLUSIVE");
+                        const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
                         
-                        if (!percentGroups[groupKey]) {
-                            percentGroups[groupKey] = { label: groupKey, items: {}, total: 0 };
+                        const aggKey = `${system}|${taxP}|${taxType}|${itemName}`;
+                        
+                        if (!aggregatedItems[aggKey]) {
+                            aggregatedItems[aggKey] = {
+                                system,
+                                taxType,
+                                percentage: taxP,
+                                itemName,
+                                qty: 0,
+                                taxAmount: 0
+                            };
                         }
                         
-                        const itemKey = item.name;
-                        if (!percentGroups[groupKey].items[itemKey]) {
-                            percentGroups[groupKey].items[itemKey] = { name: item.name, qty: 0, taxAmount: 0 };
-                        }
-                        
-                        percentGroups[groupKey].items[itemKey].qty += (item.quantity || 0);
-                        percentGroups[groupKey].items[itemKey].taxAmount += (item.taxAmount || 0);
+                        aggregatedItems[aggKey].qty += (item.quantity || 0);
+                        aggregatedItems[aggKey].taxAmount += (item.taxAmount || 0);
                     });
                 });
             
-            columns = ["Tax Slab", "Item Name", "Qty Sold", "Tax Collected"];
-            rows = [];
-            Object.keys(percentGroups).sort().forEach(slab => {
-                Object.values(percentGroups[slab].items).forEach(item => {
-                    rows.push([slab, item.name, item.qty, item.taxAmount]);
-                });
-            });
+            columns = ["Tax Profile", "Tax Type", "Percentage", "Item Name", "Qty Sold", "Tax Collected"];
+            rows = Object.values(aggregatedItems)
+                .sort((a,b) => {
+                    if (a.system !== b.system) return a.system.localeCompare(b.system);
+                    if (a.percentage !== b.percentage) return b.percentage - a.percentage;
+                    return a.itemName.localeCompare(b.itemName);
+                })
+                .map(row => [
+                    row.system,
+                    row.taxType,
+                    `${row.percentage}%`,
+                    row.itemName,
+                    row.qty,
+                    formatCurrency(row.taxAmount, currency)
+                ]);
         } else if (reportCategory === "expenses") {
             columns = ["Date", "Category", "Term", "Type", "Amount"];
             rows = expensesHistory.map((e) => [
@@ -622,11 +639,12 @@ const Reports = ({
                                         .forEach((sale) => {
                                             if (sale.items) {
                                                 sale.items.forEach((item) => {
-                                                    if (!itemStats[item.name])
-                                                        itemStats[item.name] = { qty: 0, revenue: 0, profit: 0 };
-                                                    itemStats[item.name].qty += (item.quantity || 0);
-                                                    itemStats[item.name].revenue += (item.price || 0) * (item.quantity || 0);
-                                                    itemStats[item.name].profit += ((item.price || 0) - (item.purchasePrice || 0)) * (item.quantity || 0);
+                                                    const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
+                                                    if (!itemStats[itemName])
+                                                        itemStats[itemName] = { qty: 0, revenue: 0, profit: 0 };
+                                                    itemStats[itemName].qty += (item.quantity || 0);
+                                                    itemStats[itemName].revenue += (item.price || 0) * (item.quantity || 0);
+                                                    itemStats[itemName].profit += ((item.price || 0) - (item.purchasePrice || 0)) * (item.quantity || 0);
                                                 });
                                             }
                                         });
@@ -708,127 +726,149 @@ const Reports = ({
 
                     {/* 5. TAX REPORT */}
                     {reportCategory === "tax" && (
-                        <div className="space-y-8">
-                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
-                                Tax / GST Report
-                            </h3>
+                        <div className="space-y-12">
+                            {(() => {
+                                // 1. Calculate all stats in one pass to ensure consistency
+                                const profileStats = {};
+                                const aggregatedItems = {};
+                                let totalTax = 0;
 
-                            <div className={`p-8 ${theme.infoBg} rounded-[32px] border ${theme.infoBorder} text-center shadow-lg shadow-indigo-100/50`}>
-                                <p className={`text-sm font-bold ${theme.infoText} opacity-70 uppercase tracking-[0.2em]`}>Total Tax Collected</p>
-                                <p className={`text-5xl font-black ${theme.infoText} mt-2`}>
-                                    {formatCurrency(
-                                        salesHistory
-                                            .filter((s) => isWithinRange(s.date))
-                                            .reduce((sum, s) => sum + (s.taxAmount || 0), 0),
-                                        currency
-                                    )}
-                                </p>
-                            </div>
+                                salesHistory
+                                    .filter((s) => isWithinRange(s.date))
+                                    .forEach((sale) => {
+                                        const branch = sale.branchName || "Main Branch";
+                                        const items = sale.items || [];
+                                        items.forEach((item) => {
+                                            const system = item.taxSystem || "GST";
+                                            const taxP = (item.taxPercent !== undefined && item.taxPercent !== null) 
+                                                ? Number(item.taxPercent) 
+                                                : (settings?.defaultTaxPercent || 0);
+                                            const taxType = item.taxType || (item.isExclusiveTax ? "EXCLUSIVE" : "INCLUSIVE");
+                                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
+                                            const taxAmount = (item.taxAmount || 0);
 
-                            <div className="space-y-4">
-                                <h4 className={`text-sm font-black ${theme.textSecondary} uppercase tracking-widest`}>Tax Summary by Branch & Profile</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {(() => {
-                                        const profileStats = {};
-                                        salesHistory
-                                            .filter((s) => isWithinRange(s.date))
-                                            .forEach((sale) => {
-                                                const branch = sale.branchName || "Main Branch";
-                                                const items = sale.items || [];
-                                                items.forEach(item => {
-                                                    const system = item.taxSystem || "GST";
-                                                    const key = `${branch}|${system}`;
-                                                    if (!profileStats[key]) profileStats[key] = { branch, system, amount: 0 };
-                                                    profileStats[key].amount += (item.taxAmount || 0);
-                                                });
-                                            });
-                                        
-                                        const sortedStats = Object.values(profileStats).sort((a, b) => b.amount - a.amount);
-                                        
-                                        if (sortedStats.length === 0) return <div className={`p-4 ${theme.inputBg} rounded-2xl text-center ${theme.textMuted} font-bold`}>No tax data found for this period</div>;
+                                            // Skip zero-amount NONE profiles
+                                            if (system === "NONE" && taxAmount === 0) return;
 
-                                        return sortedStats.map((stat, idx) => (
-                                            <div key={idx} className={`p-5 ${theme.surfaceBg} border-2 ${theme.borderLight} rounded-3xl shadow-sm hover:shadow-md transition-all flex flex-col gap-1`}>
-                                                <div className="flex justify-between items-start">
-                                                    <span className={`text-[10px] font-black uppercase tracking-wider text-indigo-500 bg-indigo-50 px-2 py-1 rounded-lg`}>{stat.system}</span>
-                                                    <span className={`text-[10px] font-bold ${theme.textMuted}`}>{stat.branch}</span>
-                                                </div>
-                                                <span className={`text-2xl font-black ${theme.textPrimary} mt-2`}>{formatCurrency(stat.amount, currency)}</span>
-                                            </div>
-                                        ));
-                                    })()}
-                                </div>
-                            </div>
+                                            // Accumulate Profile Stats (Cards)
+                                            const profileKey = `${branch}|${system}`;
+                                            if (!profileStats[profileKey]) {
+                                                profileStats[profileKey] = { branch, system, amount: 0 };
+                                            }
+                                            profileStats[profileKey].amount += taxAmount;
 
-                            <div className="space-y-6">
-                                <h4 className={`text-sm font-black ${theme.textSecondary} uppercase tracking-widest`}>Tax Percentage Breakdown</h4>
-                                {(() => {
-                                    const percentGroups = {};
-                                    salesHistory
-                                        .filter((s) => isWithinRange(s.date))
-                                        .forEach((sale) => {
-                                            const items = sale.items || [];
-                                            items.forEach((item) => {
-                                                const taxP = (item.taxPercent !== undefined && item.taxPercent !== null) 
-                                                    ? Number(item.taxPercent) 
-                                                    : (settings?.defaultTaxPercent || 0);
-                                                const system = item.taxSystem || "GST";
-                                                const groupKey = `${system} ${taxP}%`;
-                                                
-                                                if (!percentGroups[groupKey]) {
-                                                    percentGroups[groupKey] = { label: groupKey, items: {}, total: 0 };
-                                                }
-                                                
-                                                const itemKey = item.name;
-                                                if (!percentGroups[groupKey].items[itemKey]) {
-                                                    percentGroups[groupKey].items[itemKey] = { name: item.name, qty: 0, taxAmount: 0 };
-                                                }
-                                                
-                                                percentGroups[groupKey].items[itemKey].qty += (item.quantity || 0);
-                                                percentGroups[groupKey].items[itemKey].taxAmount += (item.taxAmount || 0);
-                                                percentGroups[groupKey].total += (item.taxAmount || 0);
-                                            });
+                                            // Accumulate Aggregated Items (Table)
+                                            const aggKey = `${system}|${taxP}|${taxType}|${itemName}`;
+                                            if (!aggregatedItems[aggKey]) {
+                                                aggregatedItems[aggKey] = {
+                                                    system,
+                                                    percentage: taxP,
+                                                    taxType,
+                                                    itemName,
+                                                    qty: 0,
+                                                    taxAmount: 0
+                                                };
+                                            }
+                                            aggregatedItems[aggKey].qty += (item.quantity || 0);
+                                            aggregatedItems[aggKey].taxAmount += taxAmount;
+
+                                            // Total Tax
+                                            totalTax += taxAmount;
                                         });
+                                    });
 
-                                    const sortedGroups = Object.keys(percentGroups).sort();
+                                const sortedProfileStats = Object.values(profileStats).sort((a,b) => b.amount - a.amount);
+                                const sortedTableData = Object.values(aggregatedItems).sort((a,b) => {
+                                    if (a.system !== b.system) return a.system.localeCompare(b.system);
+                                    if (a.percentage !== b.percentage) return b.percentage - a.percentage;
+                                    return a.itemName.localeCompare(b.itemName);
+                                });
 
-                                    return sortedGroups.map((groupKey) => (
-                                        <div key={groupKey} className={`${theme.pageBg} rounded-[32px] border ${theme.borderLight} overflow-hidden shadow-sm`}>
-                                            <div className={`px-6 py-4 ${theme.surfaceBg} border-b ${theme.borderLight} flex justify-between items-center`}>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white">
-                                                        <Receipt size={20} />
+                                return (
+                                    <>
+                                        {/* TOTAL TAX BANNER */}
+                                        <div className={`p-8 ${theme.infoBg} rounded-[32px] border ${theme.infoBorder} text-center shadow-lg shadow-indigo-100/50`}>
+                                            <p className={`text-sm font-bold ${theme.infoText} opacity-70 uppercase tracking-[0.2em]`}>Total Tax Collected</p>
+                                            <p className={`text-5xl font-black ${theme.infoText} mt-2`}>
+                                                {formatCurrency(totalTax, currency)}
+                                            </p>
+                                        </div>
+
+                                        {/* SUMMARY CARDS BY BRANCH/PROFILE */}
+                                        <div className="space-y-6">
+                                            <h4 className={`text-sm font-black ${theme.textSecondary} uppercase tracking-widest`}>Tax Summary by Branch & Profile</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                {sortedProfileStats.length === 0 ? (
+                                                    <div className={`col-span-full p-4 ${theme.inputBg} rounded-2xl text-center ${theme.textMuted} font-bold`}>
+                                                        No tax data found for this period
                                                     </div>
-                                                    <div>
-                                                        <h5 className={`font-black ${theme.textHeading}`}>{groupKey}</h5>
-                                                        <p className={`text-[10px] font-bold ${theme.textMuted} uppercase`}>Collection for this slab</p>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-lg font-black text-indigo-600">{formatCurrency(percentGroups[groupKey].total, currency)}</p>
-                                                </div>
-                                            </div>
-                                            <div className="p-2">
-                                                <CommonTable
-                                                    columns={[
-                                                        { header: "Item Name", key: "name", className: `font-bold ${theme.textPrimary}` },
-                                                        { header: "Quantity", key: "qty", headerClassName: "text-center", className: "text-center font-bold" },
-                                                        { 
-                                                            header: "Tax Collected", 
-                                                            key: "taxAmount", 
-                                                            headerClassName: "text-right", 
-                                                            className: "text-right font-black text-emerald-600",
-                                                            render: (v) => formatCurrency(v, currency)
-                                                        }
-                                                    ]}
-                                                    data={Object.values(percentGroups[groupKey].items).sort((a,b) => b.taxAmount - a.taxAmount)}
-                                                    className="border-none shadow-none"
-                                                />
+                                                ) : (
+                                                    sortedProfileStats.map((stat, idx) => (
+                                                        <div key={idx} className={`${theme.pageBg} rounded-[32px] border ${theme.borderLight} p-6 shadow-sm`}>
+                                                            <div className="flex items-center justify-between mb-4">
+                                                                <span className="px-3 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-lg uppercase tracking-wider">
+                                                                    {stat.system}
+                                                                </span>
+                                                                <span className={`text-[10px] font-black ${theme.textMuted} uppercase`}>
+                                                                    {stat.branch}
+                                                                </span>
+                                                            </div>
+                                                            <p className={`text-3xl font-black ${theme.textHeading}`}>
+                                                                {formatCurrency(stat.amount, currency)}
+                                                            </p>
+                                                        </div>
+                                                    ))
+                                                )}
                                             </div>
                                         </div>
-                                    ));
-                                })()}
-                            </div>
+
+                                        {/* PERCENTAGE BREAKDOWN TABLE */}
+                                        <div className="space-y-6">
+                                            <h4 className={`text-sm font-black ${theme.textSecondary} uppercase tracking-widest`}>Tax Percentage Breakdown</h4>
+                                            {sortedTableData.length === 0 ? (
+                                                <div className={`p-8 text-center ${theme.textMuted} font-bold italic`}>No items with tax data found</div>
+                                            ) : (
+                                                <div className={`${theme.pageBg} rounded-[32px] border ${theme.borderLight} overflow-hidden shadow-sm`}>
+                                                    <CommonTable
+                                                        columns={[
+                                                            { header: "Tax Profile", key: "system", className: "font-black text-[10px] text-indigo-500 uppercase tracking-wider" },
+                                                            { 
+                                                                header: "Tax Type", 
+                                                                key: "taxType", 
+                                                                headerClassName: "text-center", 
+                                                                className: "text-center text-[10px] font-bold uppercase",
+                                                                render: (v) => (
+                                                                    <span className={`px-2 py-0.5 rounded-lg ${v === "EXCLUSIVE" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                                                                        {v}
+                                                                    </span>
+                                                                )
+                                                            },
+                                                            { 
+                                                                header: "Percentage", 
+                                                                key: "percentage", 
+                                                                headerClassName: "text-center", 
+                                                                className: "text-center font-black",
+                                                                render: (v) => `${v}%`
+                                                            },
+                                                            { header: "Item Name", key: "itemName", className: `font-bold ${theme.textPrimary}` },
+                                                            { header: "Quantity", key: "qty", headerClassName: "text-center", className: "text-center font-bold" },
+                                                            { 
+                                                                header: "Tax Collected", 
+                                                                key: "taxAmount", 
+                                                                headerClassName: "text-right", 
+                                                                className: "text-right font-black text-emerald-600",
+                                                                render: (v) => formatCurrency(v, currency)
+                                                            }
+                                                        ]}
+                                                        data={sortedTableData}
+                                                        className="border-none shadow-none"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </div>
                     )}
 

@@ -250,7 +250,8 @@ const PurchasePage = () => {
 
     // --- Calculations ---
     const { subtotal, taxTotal } = useMemo(() => {
-        return formData.items.reduce((acc, it) => {
+        if (!formData.items) return { subtotal: 0, taxTotal: 0 };
+        const totals = formData.items.reduce((acc, it) => {
             const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
             const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
 
@@ -263,6 +264,10 @@ const PurchasePage = () => {
             }
             return acc;
         }, { subtotal: 0, taxTotal: 0 });
+        return {
+            subtotal: parseFloat(totals.subtotal.toFixed(4)),
+            taxTotal: parseFloat(totals.taxTotal.toFixed(4))
+        };
     }, [formData.items, shopTaxes]);
 
     useEffect(() => {
@@ -270,10 +275,10 @@ const PurchasePage = () => {
             const grand = subtotal + taxTotal - (Number(prev.discountTotal) || 0);
             return {
                 ...prev,
-                subtotal: subtotal,
-                taxTotal: taxTotal,
-                grandTotal: grand,
-                balanceAmount: grand - (Number(prev.paidAmount) || 0)
+                subtotal: parseFloat(subtotal.toFixed(4)),
+                taxTotal: parseFloat(taxTotal.toFixed(4)),
+                grandTotal: parseFloat(grand.toFixed(4)),
+                balanceAmount: parseFloat((grand - (Number(prev.paidAmount) || 0)).toFixed(4))
             };
         });
     }, [subtotal, taxTotal, formData.discountTotal, formData.paidAmount]);
@@ -312,7 +317,7 @@ const PurchasePage = () => {
                 const p = item.pricing?.purchasePrice || 0;
                 const r = item.taxPercent || 0;
                 if (!r) return 0;
-                return isExclusive ? (p * r) / 100 : p - (p / (1 + r / 100));
+                return parseFloat((isExclusive ? (p * r) / 100 : p - (p / (1 + r / 100))).toFixed(4));
             })()
         };
 
@@ -417,7 +422,7 @@ const PurchasePage = () => {
                                 const r = match.taxPercent || 0;
                                 const lineTotal = p * q;
                                 if (!r) return 0;
-                                return (lineTotal * r) / 100;
+                                return parseFloat(((lineTotal * r) / 100).toFixed(4));
                             })(),
                             batchTracking: match.tracking?.batchTracking || false,
                             expiryTracking: match.tracking?.expiryTracking || false,
@@ -451,7 +456,7 @@ const PurchasePage = () => {
                             const r = Number(lineTax) || 0;
                             const lineTotal = p * q;
                             if (!r) return 0;
-                            return isExclusive ? (lineTotal * r) / 100 : lineTotal - (lineTotal / (1 + r / 100));
+                            return parseFloat((isExclusive ? (lineTotal * r) / 100 : lineTotal - (lineTotal / (1 + r / 100))).toFixed(4));
                         })(),
                         hsnCode: extractedItem.hsnCode || "",
                         mrp: extractedItem.mrp,
@@ -548,7 +553,7 @@ const PurchasePage = () => {
             if (!r) {
                 row.taxAmount = 0;
             } else {
-                row.taxAmount = (lineTotal * r) / 100;
+                row.taxAmount = parseFloat(((lineTotal * r) / 100).toFixed(4));
             }
         }
 
@@ -1363,7 +1368,7 @@ const PurchasePage = () => {
                                                 />
                                             </div>
                                             {showSupplierResults && (
-                                                <div className={`absolute top-full left-0 right-0 mt-2 rounded-2xl shadow-2xl border z-50 overflow-hidden divide-y animate-in slide-in-from-top-2 duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}>
+                                                <div className={`absolute top-full left-0 right-0 mt-2 rounded-2xl shadow-2xl border z-[2000] overflow-hidden divide-y animate-in slide-in-from-top-2 duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}>
                                                     {filteredSuppliers.map(supplier => (
                                                         <button
                                                             key={supplier._id}
@@ -1482,7 +1487,7 @@ const PurchasePage = () => {
                                                 />
                                             </div>
                                             {showBranchResults && (
-                                                <div className={`absolute top-full left-0 right-0 mt-2 rounded-2xl shadow-2xl border z-50 overflow-hidden divide-y animate-in slide-in-from-top-2 duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}>
+                                                <div className={`absolute top-full left-0 right-0 mt-2 rounded-2xl shadow-2xl border z-[2000] overflow-hidden divide-y animate-in slide-in-from-top-2 duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}>
                                                     {filteredBranches.map(branch => (
                                                         <button
                                                             key={branch._id}
@@ -1571,7 +1576,7 @@ const PurchasePage = () => {
                             </h2>
 
                             {/* Search for Adding Items - Now Full Width */}
-                            <div className="relative w-full">
+                            <div className="relative w-full z-[1100]">
                                 <CommonSelect
                                     options={stockItems}
                                     value={null}
@@ -1637,7 +1642,7 @@ const PurchasePage = () => {
                                 </thead>
                                 <tbody className={`divide-y ${theme.borderLight.replace('border-', 'divide-')} ${theme.textPrimary}`}>
                                     {formData.items.map((it, idx) => (
-                                        <tr key={it.itemId} className="group hover:opacity-80 transition-opacity relative" style={{ zIndex: 1000 - idx }}>
+                                        <tr key={it.itemId} className="group hover:opacity-80 transition-opacity relative" style={{ zIndex: 50 - idx }}>
                                             <td className={`py-5 px-2 font-bold ${theme.textMuted}`}>{idx + 1}</td>
                                             <td className="py-5 px-2">
                                                 <div className="flex items-center gap-2">
@@ -1889,14 +1894,15 @@ const PurchasePage = () => {
                         <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 border ${theme.borderLight} space-y-4`}>
                             <div className="flex justify-between items-center px-2">
                                 <span className={`font-bold uppercase text-[10px] tracking-widest ${theme.textMuted}`}>Subtotal</span>
-                                <span className={`font-black ${theme.textHeading}`}>{formatCurrency ? formatCurrency(formData.subtotal) : `₹${formData.subtotal.toFixed(2)}`}</span>
+                                <span className={`font-black ${theme.textHeading}`}>{formatCurrency ? formatCurrency(formData.subtotal) : `₹${formData.subtotal.toFixed(4)}`}</span>
                             </div>
                             <div className="flex justify-between items-center px-2">
                                 <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest font-black">Tax Total (+)</span>
                                 <input
                                     type="number"
+                                    step="0.0001"
                                     value={formData.taxTotal}
-                                    onChange={e => setFormData({ ...formData, taxTotal: parseFloat(e.target.value || 0) })}
+                                    onChange={e => setFormData({ ...formData, taxTotal: parseFloat(parseFloat(e.target.value || 0).toFixed(4)) })}
                                     className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} min-w-[80px] p-2 rounded-lg outline-none border ${theme.borderLight}`}
                                 />
                             </div>
@@ -1909,10 +1915,11 @@ const PurchasePage = () => {
                                     className={`text-right font-black ${theme.mode === 'dark' ? 'text-indigo-400 bg-indigo-900/40' : 'text-indigo-600 bg-indigo-50'} min-w-[80px] p-2 rounded-lg outline-none border ${theme.mode === 'dark' ? 'border-indigo-800' : 'border-indigo-100'}`}
                                 />
                             </div>
+
                             <div className="flex justify-between items-center bg-gray-900 rounded-3xl p-6 text-white shadow-2xl">
                                 <div className="space-y-1">
                                     <div className="text-[10px] font-black uppercase tracking-widest opacity-50">Grand Total</div>
-                                    <div className="text-3xl font-black">{formatCurrency ? formatCurrency(formData.grandTotal) : `₹${formData.grandTotal.toFixed(2)}`}</div>
+                                    <div className="text-3xl font-black">{formatCurrency ? formatCurrency(formData.grandTotal) : `₹${formData.grandTotal.toFixed(4)}`}</div>
                                 </div>
                                 <Calculator size={32} className="opacity-20" />
                             </div>

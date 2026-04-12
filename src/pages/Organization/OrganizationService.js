@@ -92,9 +92,10 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
       ownerEmail: data.shop.ownerEmail || data.shop.user_id?.email || "",
       ownerContact: data.shop.ownerContact || "",
       logoUrl: data.shop.logoUrl || null,
-      defaultCountry: data.branches.find(b => b.isMainBranch)?.address?.country?.code || data.branches.find(b => b.isMainBranch)?.address?.country || "IN",
-      defaultCurrency: data.branches.find(b => b.isMainBranch)?.currency?.code || data.branches.find(b => b.isMainBranch)?.currency || "INR",
-      defaultTaxSystem: data.branches.find(b => b.isMainBranch)?.taxProfile?.taxSystem || TAX_SYSTEMS.GST,
+      // Only use values saved on the shop by the owner — no branch/schema fallbacks
+      defaultCountry: data.shop.defaultCountryCode ?? null,
+      defaultCurrency: data.shop.defaultCurrencyCode ?? null,
+      defaultTaxSystem: data.shop.defaultTaxSystem ?? null,
       // If data.plan is null, set subscriptionPlanId to null so UI knows no plan is active
       subscriptionPlanId: data.plan ? data.plan._id : null,
       subscriptionStatus: data.subscription?.status || 'inactive',
@@ -155,7 +156,7 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
     return {
       organization: orgData,
       branches: branchData,
-      plans: availablePlans.length > 0 ? availablePlans : SUBSCRIPTION_PLANS
+      plans: availablePlans
     };
 
   } catch (error) {
@@ -236,9 +237,9 @@ export const initialOrganization = {
   businessName: "",
   ownerName: "",
   ownerEmail: "",
-  defaultCountry: "IN",
-  defaultCurrency: "INR",
-  defaultTaxSystem: TAX_SYSTEMS.GST,
+  defaultCountry: null,
+  defaultCurrency: null,
+  defaultTaxSystem: null,
   subscriptionPlanId: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),

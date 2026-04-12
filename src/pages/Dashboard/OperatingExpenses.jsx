@@ -53,13 +53,17 @@ const OperatingExpenses = () => {
     }, [filteredBranches, selectedBranchId]);
 
     const fetchData = useCallback(async () => {
-        if (!selectedBranchId || !user?.shop_id) return;
+        const resolvedShopId = user?.shopId || user?.shop_id;
+        if (!selectedBranchId || !resolvedShopId) {
+            setLoading(false);
+            return;
+        }
 
         setLoading(true);
         try {
-            const shopId = user.shop_id;
+            const shopId = resolvedShopId;
             const branchId = selectedBranchId;
-
+            
             // Fetch Fixed Expenses
             const expenseRes = await shopExpenseService.getExpenses(shopId, branchId);
             const fetchedExpenses = expenseRes.data;
@@ -93,7 +97,7 @@ const OperatingExpenses = () => {
         } finally {
             setLoading(false);
         }
-    }, [user?.shop_id, selectedBranchId]);
+    }, [user?.shop_id, user?.shopId, selectedBranchId]);
 
     useEffect(() => {
         fetchData();

@@ -15,11 +15,13 @@ import {
     ArrowUpRight,
     ArrowRight,
     User,
+    Edit3,
     Eye,
     X
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/format';
 import OrderReturnSheet from '../../components/modals/OrderReturnSheet';
+import OrderEditSheet from '../../components/modals/OrderEditSheet';
 
 const ReturnDetailModal = ({ isOpen, onClose, returnData, theme, formatCurrency, formatDate }) => {
     if (!isOpen || !returnData) return null;
@@ -181,6 +183,8 @@ const SalesList = () => {
     const [isReturnSheetOpen, setIsReturnSheetOpen] = useState(false);
     const [selectedReturn, setSelectedReturn] = useState(null);
     const [isReturnDetailOpen, setIsReturnDetailOpen] = useState(false);
+    const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
+    const [selectedOrderForEdit, setSelectedOrderForEdit] = useState(null);
 
     const fetchSales = useCallback(async () => {
         setLoading(true);
@@ -221,6 +225,11 @@ const SalesList = () => {
     const handleViewReturnDetail = (ret) => {
         setSelectedReturn(ret);
         setIsReturnDetailOpen(true);
+    };
+
+    const handleEditSale = (order) => {
+        setSelectedOrderForEdit(order);
+        setIsEditSheetOpen(true);
     };
 
     return (
@@ -339,13 +348,22 @@ const SalesList = () => {
                                                 </div>
                                             </td>
                                             <td className="px-8 py-6 text-right">
-                                                <button 
-                                                    onClick={() => handleProcessReturn(order)}
-                                                    className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all bg-orange-600 text-white hover:bg-orange-700 shadow-lg shadow-orange-600/20 flex items-center gap-2 ml-auto`}
-                                                >
-                                                    <RotateCcw size={14} />
-                                                    Process Return
-                                                </button>
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button 
+                                                        onClick={() => handleEditSale(order)}
+                                                        className={`p-2.5 rounded-xl border ${theme.borderLight} ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors bg-white dark:bg-slate-800 shadow-sm`}
+                                                        title="Edit Items/Quantity"
+                                                    >
+                                                        <Edit3 size={18} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleProcessReturn(order)}
+                                                        className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all bg-orange-600 text-white hover:bg-orange-700 shadow-lg shadow-orange-600/20 flex items-center gap-2`}
+                                                    >
+                                                        <RotateCcw size={14} />
+                                                        Process Return
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     )) : (
@@ -441,6 +459,13 @@ const SalesList = () => {
                 theme={theme}
                 formatCurrency={formatCurrency}
                 formatDate={formatDate}
+            />
+
+            <OrderEditSheet
+                isOpen={isEditSheetOpen}
+                onClose={() => setIsEditSheetOpen(false)}
+                order={selectedOrderForEdit}
+                onSuccess={fetchSales}
             />
         </div>
     );
