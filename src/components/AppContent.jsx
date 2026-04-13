@@ -499,7 +499,10 @@ const AppContent = () => {
 
     const showProfileCompletionOverlay = isAuthenticated &&
         currentUser?.isOwner &&
+        !isSuperAdmin &&
+        isSubscribed &&
         uiProfileCompletion < 100;
+
 
     const handleCompleteSetupNavigation = () => {
         setView("organization");
