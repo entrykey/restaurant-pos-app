@@ -18,12 +18,14 @@ const Navbar = ({
     businessSubtype,
     enabledModules,
     onBusinessTypeChange,
+    onSwitchShop
 }) => {
-    const { activeBranchId, setActiveBranchId, branches, currentShopId } = useApp();
+    const { activeBranchId, setActiveBranchId, branches, currentShopId, ownerShops } = useApp();
     const { theme } = useTheme();
     const [isBusinessTypeModalOpen, setIsBusinessTypeModalOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+    const [isSwitchingShop, setIsSwitchingShop] = useState(false);
 
     // Initial fetch of notifications
     useEffect(() => {
@@ -57,6 +59,22 @@ const Navbar = ({
         }
     };
 
+    const handleShopSwitch = async (shopId) => {
+        if (String(shopId) === String(currentShopId)) return;
+        setIsSwitchingShop(true);
+        try {
+            if (onSwitchShop) {
+                await onSwitchShop(shopId);
+            }
+        } catch (error) {
+            console.error("Failed to switch shop in navbar:", error);
+        } finally {
+            setIsSwitchingShop(false);
+        }
+    };
+
+    const isOwner = currentUser?.isOwner || currentUser?.isSuperAdmin;
+
     return (
         <div className={`h-16 ${theme.cardBg} border-b ${theme.borderLight} px-4 md:px-8 flex items-center justify-between shrink-0 w-full`}>
             <div className="flex items-center gap-4 md:gap-6">
@@ -69,18 +87,63 @@ const Navbar = ({
                 >
                     <Menu size={20} />
                 </button>
-                <div className="flex items-center gap-2 md:ml-20">
+                <div className="flex items-center gap-2 md:ml-10">
                     <UserCheck size={18} className={theme.primaryIconText} />
-                    <span className={`text-xs md:text-sm font-bold ${theme.textPrimary}`}>
+                    <span className={`text-[10px] md:text-sm font-black ${theme.textPrimary} tracking-tight`}>
                         {currentUser?.role}: {currentUser?.phone}
                     </span>
                 </div>
-                {/* Branch Selector - Hidden for SuperAdmin, Owner, System Roles, and Single Branch Users */}
-                {branches.length > 1 && !currentUser?.isSuperAdmin && !currentUser?.isOwner && !currentUser?.roles?.some(r => r.isSystemRole) && (
+
+                {/* Shop Selector - Only for Owners with multiple shops */}
+                {isOwner && ownerShops.length > 1 && (
+                    <div className="relative group">
+                        <div className={`flex items-center gap-2 ${theme.inputBg} px-3 py-2 rounded-xl border ${theme.inputBorder} cursor-pointer hover:opacity-80 transition-all`}>
+                            <Building2 size={16} className={theme.primaryIconText} />
+                            <span className={`text-[10px] md:text-xs font-black ${theme.textPrimary} uppercase tracking-tight truncate max-w-[100px] md:max-w-[150px]`}>
+                                {ownerShops.find(s => String(s._id || s.id) === String(currentShopId))?.name || "Select Shop"}
+                            </span>
+                            <ChevronRight size={14} className={`${theme.textMuted} group-hover:rotate-90 transition-transform`} />
+                            {isSwitchingShop && <div className="ml-1 animate-spin h-3 w-3 border-2 border-indigo-500 border-t-transparent rounded-full"></div>}
+                        </div>
+                        
+                        {/* Dropdown Menu */}
+                        <div className={`absolute top-full left-0 mt-2 w-64 ${theme.surfaceBg} rounded-2xl shadow-2xl border ${theme.borderLight} py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[110] translate-y-2 group-hover:translate-y-0`}>
+                            <div className={`px-4 py-2 border-b ${theme.borderLight} mb-1`}>
+                                <h5 className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Switch Shop Context</h5>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto no-scrollbar">
+                                {ownerShops.map(shop => (
+                                    <button
+                                        key={shop._id || shop.id}
+                                        onClick={() => handleShopSwitch(shop._id || shop.id)}
+                                        className={`w-full text-left px-4 py-2.5 text-xs font-bold transition-colors flex items-center justify-between
+                                            ${String(currentShopId) === String(shop._id || shop.id) 
+                                                ? `${theme.primaryIconBg} ${theme.primaryIconText}` 
+                                                : `${theme.textPrimary} ${theme.tableRowHover}`}`}
+                                    >
+                                        <div className="flex flex-col">
+                                            <span>{shop.name}</span>
+                                            <span className={`text-[8px] opacity-70`}>
+                                                {typeof shop.businessType === 'object' ? shop.businessType?.displayString : shop.businessType}
+                                            </span>
+                                        </div>
+                                        {String(currentShopId) === String(shop._id || shop.id) && (
+                                            <span className={`w-1.5 h-1.5 ${theme.mode === 'light' ? 'bg-indigo-600' : 'bg-current'} rounded-full shadow-[0_0_8px_rgba(79,70,229,0.5)]`}></span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Branch Selector - Visible for everyone if they have 1+ branches, 
+                    OR specifically for owners to manage branch context */}
+                {(branches.length > 1 || isOwner) && !currentUser?.roles?.some(r => r.isSystemRole) && (
                     <div className="relative group">
                         <div className={`flex items-center gap-2 ${theme.inputBg} px-3 py-2 rounded-xl border ${theme.inputBorder} cursor-pointer hover:opacity-80 transition-all`}>
                             <MapPin size={16} className={theme.primaryIconText} />
-                            <span className={`text-xs font-bold ${theme.textPrimary}`}>
+                            <span className={`text-[10px] md:text-xs font-black ${theme.textPrimary} uppercase tracking-tight truncate max-w-[100px] md:max-w-[150px]`}>
                                 {branches.find(b => String(b._id || b.id) === String(activeBranchId))?.name || "Select Branch"}
                             </span>
                             <ChevronRight size={14} className={`${theme.textMuted} group-hover:rotate-90 transition-transform`} />
@@ -112,9 +175,9 @@ const Navbar = ({
                     </div>
                 )}
 
-                <div className={`hidden md:flex items-center gap-2 ${theme.textSecondary}`}>
+                <div className={`hidden lg:flex items-center gap-2 ${theme.textSecondary}`}>
                     <Clock size={16} />
-                    <span className="text-xs font-medium uppercase tracking-wider">
+                    <span className="text-[10px] font-black uppercase tracking-wider">
                         Login: {sessionInfo.loginTime}
                     </span>
                 </div>
@@ -129,9 +192,9 @@ const Navbar = ({
                             title="Change Business Type"
                         >
                             <Building2 size={16} />
-                            <span className="text-xs font-bold hidden sm:inline capitalize">
-                                {businessType}
-                            </span>
+                                <span className="text-xs font-bold hidden sm:inline capitalize">
+                                    {typeof businessType === 'object' ? businessType?.displayString : businessType}
+                                </span>
                         </button>
                         <div
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all ${isOnlineOrderingEnabled

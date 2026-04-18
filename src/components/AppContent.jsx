@@ -20,6 +20,7 @@ import { TextProvider } from "../context/TextContext";
 import { useTheme } from "../context/ThemeContext";
 import { BUSINESS_TYPES, BUSINESS_FEATURES } from "../config/businessTypes";
 import { AlertTriangle } from "lucide-react";
+import ThemeLoader from "./ui/ThemeLoader";
 
 // Modals
 import NoteModal from "./modals/NoteModal";
@@ -74,7 +75,7 @@ const AppContent = () => {
         businessType, setBusinessType, businessTypeData, businessSubtype, setBusinessSubtype,
         activeBranchId, currentShopId,
         enabledModules, setEnabledModules, setInventoryItems,
-        inventoryItems
+        inventoryItems, globalLoading, loadingMessage
     } = useApp();
 
     const {
@@ -134,13 +135,13 @@ const AppContent = () => {
             if (isAuthenticated && currentShopId) {
                 try {
                     const branchId = getResolvedBranchId();
-                    
                     const [response, taxesRes] = await Promise.all([
                         itemService.getItems({
                             limit: 500,
                             filters: {
                                 shopId: currentShopId,
-                                branchId: branchId
+                                branchId: branchId,
+                                isActive: true
                             }
                         }),
                         taxService.getTaxes({ branchId })
@@ -148,22 +149,8 @@ const AppContent = () => {
                     
                     const items = response.data || [];
                     const activeTaxes = taxesRes.filter(t => t.isActive !== false);
-                    
-                    // Filter based on business type features
-                    // Default to BUSINESS_FEATURES if businessTypeData is nullish
-                    const features = businessTypeData?.features || BUSINESS_FEATURES[businessType] || { 
-                        sellManufacturedItems: true, 
-                        sellStockItems: true, 
-                        sellTradeItems: true 
-                    };
 
-                    const menuData = items.filter(item => {
-                        if (item.status !== "ACTIVE") return false;
-                        if (item.itemType === "MANUFACTURED") return !!features.sellManufacturedItems;
-                        if (item.itemType === "STOCK") return !!features.sellStockItems;
-                        if (item.itemType === "TRADE") return !!features.sellTradeItems;
-                        return false;
-                    });
+                    const menuData = items;
 
                     const rawData = items.filter(item => 
                         (item.itemType === "STOCK" || item.itemType === "SERVICE" || item.itemType === "RAW" || item.itemType === "TRADE") && 
@@ -486,7 +473,10 @@ const AppContent = () => {
         branches?.find((b) => b.isMainBranch)?.address?.city || branches?.[0]?.address?.city,
         branches?.find((b) => b.isMainBranch)?.address?.state || branches?.[0]?.address?.state,
         branches?.find((b) => b.isMainBranch)?.address?.pincode || branches?.[0]?.address?.pincode,
-        branches?.find((b) => b.isMainBranch)?.taxConfig?.gstin || branches?.[0]?.taxConfig?.gstin
+        (() => {
+            const b = branches?.find((b) => b.isMainBranch) || branches?.[0];
+            return b?.taxConfig?.gstin || (organization?.defaultTaxSystem && (b?._id || b?.id));
+        })()
     ];
     const uiProfileCompletion = Math.round((profileFields.filter(Boolean).length / profileFields.length) * 100);
 
@@ -1249,6 +1239,7 @@ const AppContent = () => {
                         isOnlineOrderingEnabled={isOnlineOrderingEnabled}
                         setIsOnlineOrderingEnabled={setIsOnlineOrderingEnabled}
                         shopName={settings.shopName}
+                        onSwitchShop={handleSwitchShopAction}
                     >
                         <AppRoutes
                             view={view}
@@ -1443,6 +1434,13 @@ const AppContent = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {globalLoading && (
+                <ThemeLoader 
+                    fullScreen={true} 
+                    message={loadingMessage} 
+                />
             )}
         </div>
     );

@@ -47,6 +47,7 @@ export const AppProvider = ({ children }) => {
     // Organization & Branches State
     const [organization, setOrganization] = useState(initialOrganization);
     const [branches, setBranches] = useState(initialBranches);
+    const [ownerShops, setOwnerShops] = useState([]);
 
     // Business Type & Enabled Modules State - Persisted
     const [businessType, setBusinessType] = useState(() => {
@@ -58,6 +59,20 @@ export const AppProvider = ({ children }) => {
     });
 
     const [businessTypeData, setBusinessTypeData] = useState(null);
+    
+    // Global Loading State
+    const [globalLoading, setGlobalLoading] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState("");
+
+    const showLoader = (message = "") => {
+        setLoadingMessage(message);
+        setGlobalLoading(true);
+    };
+
+    const hideLoader = () => {
+        setGlobalLoading(false);
+        setLoadingMessage("");
+    };
 
     // Branch Selection State - Persisted
     const [activeBranchId, setActiveBranchId] = useState(() => {
@@ -141,6 +156,23 @@ export const AppProvider = ({ children }) => {
         fetchBranches();
     }, [isAuthenticated]);
 
+    // Fetch owner's shops globally
+    useEffect(() => {
+        const fetchShops = async () => {
+            if (isAuthenticated && (user?.isOwner || user?.isSuperAdmin)) {
+                try {
+                    const { shopService } = await import("../services/api");
+                    const userId = user.id || user._id;
+                    const shops = await shopService.getShopsByOwner(userId);
+                    setOwnerShops(shops || []);
+                } catch (error) {
+                    console.error("Failed to fetch owner shops globally:", error);
+                }
+            }
+        };
+        fetchShops();
+    }, [isAuthenticated, user?.id, user?._id, user?.isOwner, user?.isSuperAdmin]);
+
     return (
         <AppContext.Provider
             value={{
@@ -163,6 +195,8 @@ export const AppProvider = ({ children }) => {
                 setOrganization,
                 branches,
                 setBranches,
+                ownerShops,
+                setOwnerShops,
                 businessType,
                 setBusinessType,
                 businessTypeData,
@@ -180,6 +214,11 @@ export const AppProvider = ({ children }) => {
                     const finalCode = (typeof codeRaw === 'object' && codeRaw !== null) ? (codeRaw.code || codeRaw.id || 'USD') : codeRaw;
                     return formatCurrency(value, finalCode);
                 },
+                globalLoading,
+                loadingMessage,
+                showLoader,
+                hideLoader,
+                setGlobalLoading
             }}
         >
             {children}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { ShieldCheck, Loader2, Plus, X, ChevronDown, ChevronUp, Clock, AlertCircle, Calendar, RefreshCw, Wallet } from "lucide-react";
+import { ShieldCheck, Plus, X, ChevronDown, ChevronUp, Clock, AlertCircle, Calendar, RefreshCw, Wallet } from "lucide-react";
+import ThemeLoader from "../../components/ui/ThemeLoader";
 import toast from "react-hot-toast";
 import CommonTable from "../../components/CommonTable";
 import { PERMISSIONS } from "./StaffService";
@@ -33,7 +34,7 @@ const Staff = ({
     const [isRolesLoading, setIsRolesLoading] = useState(false);
 
     const { user } = useAuth();
-    const [shopId, setShopId] = useState(null);
+
 
     // Attendance State (inside Staff page)
     const [attendancePolicies, setAttendancePolicies] = useState([]);
@@ -110,24 +111,7 @@ const Staff = ({
         ? user.permissions.includes("MANAGE.EMPLOYEESALARY")
         : Object.values(user?.permissions || {}).flat().includes("MANAGE.EMPLOYEESALARY"));
 
-    const [ownerShops, setOwnerShops] = useState([]);
-    const [formShopId, setFormShopId] = useState(null);
-    const [filterShopId, setFilterShopId] = useState(""); // Default to empty string for "All Shops"
-
-    useEffect(() => {
-        if (hasViewAllStaff && user) {
-
-            const fetchShops = async () => {
-                try {
-                    const shops = await shopService.getShopsByOwner(user.id || user._id);
-                    setOwnerShops(shops);
-                } catch (error) {
-                    console.error("Error fetching owner shops:", error);
-                }
-            };
-            fetchShops();
-        }
-    }, [hasViewAllStaff, user]);
+    // Shop fetching logic removed - now handled globally in AppContext/Navbar
 
     // Edit Role Dialog State
     const [isEditRoleOpen, setIsEditRoleOpen] = useState(false);
@@ -193,21 +177,7 @@ const Staff = ({
         openModalFn();
     };
 
-    useEffect(() => {
-        const fetchShopId = async () => {
-            if (user) {
-                try {
-                    const userId = user.id || user._id;
-                    const shopData = await shopService.getShopDataByUserId(userId);
-                    const id = shopData.shop?._id || shopData.organization?._id || shopData._id;
-                    setShopId(id);
-                } catch (error) {
-                    console.error("Error fetching shop ID:", error);
-                }
-            }
-        };
-        fetchShopId();
-    }, [user]);
+    const { currentShopId: shopId } = useApp();
 
     // Fetch Employees
     useEffect(() => {
@@ -221,7 +191,7 @@ const Staff = ({
                 setIsEmployeesLoading(true);
                 try {
                     const userId = user?.id || user?._id;
-                    const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId, filterShopId);
+                    const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId);
                     setEmployees(data);
                 } catch (error) {
                     console.error("Failed to fetch employees:", error);
@@ -231,7 +201,7 @@ const Staff = ({
             }
         };
         fetchEmployees();
-    }, [activeStaffTab, shopId, hasViewAllStaff, isCreateEmployeeOpen, filterShopId]);
+    }, [activeStaffTab, shopId, hasViewAllStaff, isCreateEmployeeOpen]);
 
     // Fetch Roles
     useEffect(() => {
@@ -240,7 +210,7 @@ const Staff = ({
                 setIsRolesLoading(true);
                 try {
                     const userId = user?.id || user?._id;
-                    const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId, filterShopId);
+                    const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
                     setRoles(fetchedRoles);
                     if (setRolesList) setRolesList(fetchedRoles);
                 } catch (error) {
@@ -248,10 +218,10 @@ const Staff = ({
                 } finally {
                     setIsRolesLoading(false);
                 }
-            } else if (isCreateEmployeeOpen && (formShopId || shopId)) {
+            } else if (isCreateEmployeeOpen && shopId) {
                 setIsRolesLoading(true);
                 try {
-                    const targetShop = formShopId || shopId;
+                    const targetShop = shopId;
                     const fetchedRoles = await roleService.getRolesByShopId(targetShop, false);
                     setRoles(fetchedRoles);
                 } catch (error) {
@@ -262,11 +232,11 @@ const Staff = ({
             }
         };
         fetchRoles();
-    }, [activeStaffTab, isCreateEmployeeOpen, shopId, formShopId, setRolesList, hasViewAllStaff, filterShopId]);
+    }, [activeStaffTab, isCreateEmployeeOpen, shopId, setRolesList, hasViewAllStaff]);
 
     // Fetch Branches (Shared for both dialogs)
     useEffect(() => {
-        const targetShop = formShopId || shopId;
+        const targetShop = shopId;
         if ((isCreateRoleOpen || isEditRoleOpen || isCreateEmployeeOpen || isCreatePolicyOpen || isAssignPolicyOpen || activeStaffTab === "attendance_logs" || activeStaffTab === "attendance_policies") && targetShop) {
             const fetchBranches = async () => {
                 try {
@@ -278,11 +248,11 @@ const Staff = ({
             };
             fetchBranches();
         }
-    }, [isCreateRoleOpen, isEditRoleOpen, isCreateEmployeeOpen, isCreatePolicyOpen, isAssignPolicyOpen, activeStaffTab, formShopId, shopId]);
+    }, [isCreateRoleOpen, isEditRoleOpen, isCreateEmployeeOpen, isCreatePolicyOpen, isAssignPolicyOpen, activeStaffTab, shopId]);
 
     // Fetch Potential Managers for Reporting To
     useEffect(() => {
-        const targetShop = formShopId || shopId;
+        const targetShop = shopId;
         if ((isCreateEmployeeOpen || isEditEmployeeOpen) && targetShop) {
             const fetchManagers = async () => {
                 setIsManagersLoading(true);
@@ -297,11 +267,11 @@ const Staff = ({
             };
             fetchManagers();
         }
-    }, [isCreateEmployeeOpen, isEditEmployeeOpen, formShopId, shopId]);
+    }, [isCreateEmployeeOpen, isEditEmployeeOpen, shopId]);
 
     // Fetch Attendance Policies for Employee Dialogs
     useEffect(() => {
-        const targetShop = formShopId || shopId;
+        const targetShop = shopId;
         if ((isCreateEmployeeOpen || isEditEmployeeOpen) && targetShop) {
             const fetchPolicies = async () => {
                 try {
@@ -313,7 +283,7 @@ const Staff = ({
             };
             fetchPolicies();
         }
-    }, [isCreateEmployeeOpen, isEditEmployeeOpen, formShopId, shopId]);
+    }, [isCreateEmployeeOpen, isEditEmployeeOpen, shopId]);
 
 
     const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
@@ -435,7 +405,7 @@ const Staff = ({
 
     // Fetch Permissions only for Role Dialog
     useEffect(() => {
-        const targetShop = formShopId || shopId;
+        const targetShop = shopId;
         if ((isCreateRoleOpen || isEditRoleOpen) && targetShop) {
             const fetchPermissions = async () => {
                 setIsLoadingData(true);
@@ -462,7 +432,7 @@ const Staff = ({
                 // but usually they should be reset when closing.
             }
         }
-    }, [isCreateRoleOpen, isEditRoleOpen, formShopId, shopId]);
+    }, [isCreateRoleOpen, isEditRoleOpen, shopId]);
 
 
     // --- Role Creation Handlers ---
@@ -503,7 +473,7 @@ const Staff = ({
             })
             .filter(entry => entry.actions.length > 0);
 
-        const targetShop = formShopId || shopId;
+        const targetShop = shopId;
         const payload = {
             name: newRoleName,
             code: newRoleCode.toUpperCase(),
@@ -548,7 +518,6 @@ const Staff = ({
         setEditSelectedPermissions(permsMap);
         setEditExpandedModules({});
         setAvailablePermissions([]);
-        setFormShopId(role.shopId?._id || role.shopId || shopId);
         setIsEditRoleOpen(true);
     };
 
@@ -619,7 +588,16 @@ const Staff = ({
 
     // --- Employee Creation Handlers ---
     const handleEmpDataChange = (field, value) => {
-        setNewEmpData(prev => ({ ...prev, [field]: value }));
+        setNewEmpData(prev => {
+            const updated = { ...prev, [field]: value };
+            if (field === "roleId") {
+                const selectedRole = roles.find(r => (r._id || r.id) === value);
+                if (selectedRole) {
+                    updated.designation = selectedRole.name;
+                }
+            }
+            return updated;
+        });
     };
 
     const handleUserBranchSelection = (branchId) => {
@@ -629,8 +607,8 @@ const Staff = ({
     };
 
     const handleCreateEmployee = async () => {
-        if (!newEmpData.name || !newEmpData.email || !newEmpData.phone || !newEmpData.roleId) {
-            alert("Please fill in all required fields (Name, Email, Phone, Role)");
+        if (!newEmpData.name || (!newEmpData.email && !newEmpData.phone) || !newEmpData.roleId) {
+            alert("Please fill in required fields (Name, Email/Phone, and Role)");
             return;
         }
         if (!userAllBranches && userSelectedBranchIds.length === 0) {
@@ -638,7 +616,7 @@ const Staff = ({
             return;
         }
 
-        const targetShop = formShopId || shopId;
+        const targetShop = shopId;
         const payload = {
             ...newEmpData,
             shopId: targetShop,
@@ -719,12 +697,20 @@ const Staff = ({
         const branchIds = (employee.mapping?.branchIds || employee.allowedBranches || []).map(b => b?._id || b);
         setEditUserSelectedBranchIds(branchIds);
         setEditUserAllBranches(!!employee.mapping?.allBranches);
-        setFormShopId(employee.shopId?._id || employee.shopId || shopId);
         setIsEditEmployeeOpen(true);
     };
 
     const handleEditEmpDataChange = (field, value) => {
-        setEditEmpData(prev => ({ ...prev, [field]: value }));
+        setEditEmpData(prev => {
+            const updated = { ...prev, [field]: value };
+            if (field === "roleId") {
+                const selectedRole = roles.find(r => (r._id || r.id) === value);
+                if (selectedRole) {
+                    updated.designation = selectedRole.name;
+                }
+            }
+            return updated;
+        });
     };
 
     const handleEditUserBranchSelection = (branchId) => {
@@ -735,8 +721,8 @@ const Staff = ({
 
     const handleUpdateEmployee = async () => {
         if (!editingEmployee) return;
-        if (!editEmpData.name || !editEmpData.email || !editEmpData.phone || !editEmpData.roleId) {
-            alert("Please fill in all required fields (Name, Email, Phone, Role)");
+        if (!editEmpData.name || (!editEmpData.email && !editEmpData.phone) || !editEmpData.roleId) {
+            alert("Please fill in required fields (Name, Email/Phone, and Role)");
             return;
         }
         if (!editUserAllBranches && editUserSelectedBranchIds.length === 0) {
@@ -786,7 +772,7 @@ const Staff = ({
             setEditingEmployee(null);
             // Refresh employees
             const userId = user?.id || user?._id;
-            const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId, filterShopId);
+            const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId);
             setEmployees(data);
             alert("Employee updated successfully!");
         } catch (error) {
@@ -832,7 +818,7 @@ const Staff = ({
                 <div className="flex gap-3">
                     {activeStaffTab === "staff" ? (
                         <button
-                            onClick={() => checkSubscriptionAndOpen(() => { setIsCreateEmployeeOpen(true); setFormShopId(shopId); })}
+                            onClick={() => checkSubscriptionAndOpen(() => { setIsCreateEmployeeOpen(true); })}
                             className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
                         >
                             <Plus size={20} /> Add Employee
@@ -842,7 +828,6 @@ const Staff = ({
                             onClick={() => checkSubscriptionAndOpen(() => {
                                 setSelectedPermissions({});
                                 setExpandedModules({});
-                                setFormShopId(shopId);
                                 setIsCreateRoleOpen(true);
                             })}
                             className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
@@ -929,27 +914,13 @@ const Staff = ({
                     )}
                 </div>
 
-                {hasViewAllStaff && ownerShops.length > 0 && (
-                    <div className="flex items-center gap-3">
-                        <span className={`text-sm font-bold ${theme.textSecondary}`}>Filter by Shop:</span>
-                        <CommonSelect
-                            options={ownerShops}
-                            value={filterShopId}
-                            onChange={(val) => setFilterShopId(val)}
-                            placeholder="All Shops"
-                            labelKey="name"
-                            valueKey="_id"
-                            className="min-w-[200px]"
-                        />
 
-                    </div>
-                )}
             </div>
 
             {activeStaffTab === "staff" ? (
                 <>
                     {isEmployeesLoading ? (
-                        <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>
+                        <div className="p-8 flex justify-center"><ThemeLoader size="lg" /></div>
                     ) : (
                         <CommonTable
                             columns={[
@@ -961,7 +932,7 @@ const Staff = ({
                                     className: `font-bold ${theme.textPrimary}`,
                                     render: (_, item) => item.userId?.name || "N/A"
                                 },
-                                { header: "Designation", key: "designation", className: theme.textSecondary },
+
                                 {
                                     header: "Role",
                                     key: "roleId.name",
@@ -1031,7 +1002,7 @@ const Staff = ({
             ) : activeStaffTab === "roles" ? (
                 <>
                     {isRolesLoading ? (
-                        <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>
+                        <div className="p-8 flex justify-center"><ThemeLoader size="md" /></div>
                     ) : (
                         <CommonTable
                             columns={[
@@ -1534,7 +1505,7 @@ const Staff = ({
             {activeStaffTab === "payroll" ? (
                 <PayrollManagement 
                     theme={theme} 
-                    shopId={formShopId || shopId} 
+                    shopId={shopId} 
                     canManageSalary={canManageSalary} 
                 />
             ) : null}
@@ -1766,7 +1737,7 @@ const Staff = ({
                         </div>
                         <div className="p-6 overflow-y-auto flex-1 space-y-6">
                             {isLoadingData ? (
-                                <div className="flex justify-center p-10"><Loader2 className={`animate-spin ${theme.primaryIconText}`} size={32} /></div>
+                                <div className="flex justify-center p-10"><ThemeLoader size="lg" /></div>
                             ) : (
                                 <>
                                     <div>
@@ -1900,22 +1871,10 @@ const Staff = ({
                             </button>
                         </div>
                         <div className="p-6 overflow-y-auto flex-1 space-y-6">
-                            {hasViewAllStaff && ownerShops.length > 0 && (
-                                <div className="mb-2">
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Assigned Shop</label>
-                                    <CommonSelect
-                                        options={ownerShops}
-                                        value={formShopId || shopId || ""}
-                                        onChange={(val) => setFormShopId(val)}
-                                        placeholder="Select Shop"
-                                        labelKey="name"
-                                        valueKey="_id"
-                                    />
-                                </div>
-                            )}
+
 
                             {isLoadingData ? (
-                                <div className="flex justify-center p-10"><Loader2 className={`animate-spin ${theme.primaryIconText}`} size={32} /></div>
+                                <div className="flex justify-center p-10"><ThemeLoader size="lg" /></div>
                             ) : (
                                 <>
                                     <div>
@@ -2043,20 +2002,7 @@ const Staff = ({
                             </button>
                         </div>
                         <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                            {hasViewAllStaff && ownerShops.length > 0 && (
-                                <div className="mb-2">
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Assigned Shop</label>
-                                    <CommonSelect
-                                        options={ownerShops}
-                                        value={formShopId || shopId || ""}
-                                        onChange={(val) => setFormShopId(val)}
-                                        placeholder="Select Shop"
-                                        labelKey="name"
-                                        valueKey="_id"
-                                    />
 
-                                </div>
-                            )}
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -2069,7 +2015,7 @@ const Staff = ({
                                     />
                                 </div>
                                 <div>
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Mobile Number *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Mobile Number (Either Phone or Email Required)</label>
                                     <input
                                         value={newEmpData.phone}
                                         onChange={(e) => handleEmpDataChange("phone", e.target.value)}
@@ -2078,7 +2024,7 @@ const Staff = ({
                                     />
                                 </div>
                                 <div>
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Email Address *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Email Address</label>
                                     <input
                                         value={newEmpData.email}
                                         onChange={(e) => handleEmpDataChange("email", e.target.value)}
@@ -2086,15 +2032,7 @@ const Staff = ({
                                         placeholder="john@example.com"
                                     />
                                 </div>
-                                <div>
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Designation</label>
-                                    <input
-                                        value={newEmpData.designation}
-                                        onChange={(e) => handleEmpDataChange("designation", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                        placeholder="e.g. Cashier"
-                                    />
-                                </div>
+
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role *</label>
                                     <CommonSelect
@@ -2271,7 +2209,7 @@ const Staff = ({
                                     />
                                 </div>
                                 <div>
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Mobile Number *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Mobile Number (Either Phone or Email Required)</label>
                                     <input
                                         value={editEmpData.phone}
                                         onChange={(e) => handleEditEmpDataChange("phone", e.target.value)}
@@ -2287,15 +2225,7 @@ const Staff = ({
                                         className={`w-full p-3 border ${theme.inputBorder} bg-gray-100 dark:bg-gray-800 ${theme.inputText} rounded-xl outline-none cursor-not-allowed`}
                                     />
                                 </div>
-                                <div>
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Designation</label>
-                                    <input
-                                        value={editEmpData.designation}
-                                        onChange={(e) => handleEditEmpDataChange("designation", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                        placeholder="e.g. Cashier"
-                                    />
-                                </div>
+
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role *</label>
                                     <CommonSelect

@@ -4,7 +4,7 @@ import { DEFAULT_ITEM_IMAGE, getBingImage } from "../utils/getImage";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
 
-const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid" }) => {
+const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disabled = false }) => {
     const { theme } = useTheme();
     const { activeBranchId, branches } = useApp();
     const isGrid = viewMode === "grid";
@@ -25,9 +25,16 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid" }) => 
 
     return (
         <div
-            className={`${theme.surfaceBg} rounded-2xl shadow-sm border-2 border-transparent hover:border-indigo-500 cursor-pointer flex flex-col group relative ${isGrid ? "p-0" : "p-3 md:p-4"}`}
-            onClick={() => onSelect(item)}
+            className={`${theme.surfaceBg} rounded-2xl shadow-sm border-2 border-transparent transition-all flex flex-col group relative 
+                ${isGrid ? "p-0" : "p-3 md:p-4"} 
+                ${disabled ? "grayscale opacity-60 cursor-not-allowed pointer-events-none" : "hover:border-indigo-500 cursor-pointer"}`}
+            onClick={() => !disabled && onSelect(item)}
         >
+            {disabled && (
+                <div className="absolute top-2 left-2 z-10">
+                    <span className="bg-red-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-tighter shadow-sm">Disabled in Settings</span>
+                </div>
+            )}
             <div className={`flex ${isGrid ? "flex-col" : "items-center gap-3 h-full"}`}>
                 <div className={`relative ${isGrid ? "w-full" : "shrink-0"}`}>
                     <img

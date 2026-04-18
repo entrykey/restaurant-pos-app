@@ -112,6 +112,49 @@ const TakeawayOrder = ({
     const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
     const [isSearchingRemote, setIsSearchingRemote] = useState(false);
     const [remoteMenu, setRemoteMenu] = useState(null); // null → use local menu
+    const [localMenu, setLocalMenu] = useState([]);
+    const [isMenuLoading, setIsMenuLoading] = useState(false);
+
+    const fetchMenu = React.useCallback(async () => {
+        setIsMenuLoading(true);
+        try {
+            const payload = {
+                page: 1,
+                limit: 1000, // Fetch all for POS
+                filters: {
+                    shopId: currentUser?.shop_id,
+                    branchId: activeBranchId || null,
+                    isActive: true,
+                },
+            };
+            const response = await itemService.getItems(payload);
+            const items = response?.data || [];
+            const mapped = items.map((item) => ({
+                ...item,
+                id: item._id || item.id,
+                price: item.pricing?.sellingPrice ?? item.price ?? 0,
+                pricePerUnit: item.pricing?.sellingPrice ?? item.price ?? 0,
+                sellingPrice: item.pricing?.sellingPrice ?? item.price ?? 0,
+                category: item.categoryId?.name || item.category || "Uncategorized",
+                unitName: item.unitId?.name || item.unitName || "Unit",
+                sellingType: item.weightBased
+                    ? "Weight"
+                    : item.sellingType || "Standard",
+                unitId: item.unitId,
+                quantityOnHand: item.quantityOnHand ?? 0,
+            }));
+            setLocalMenu(mapped);
+            if (setMenu) setMenu(mapped); // Sync with global if provided
+        } catch (err) {
+            console.error("Failed to fetch fresh menu:", err);
+        } finally {
+            setIsMenuLoading(false);
+        }
+    }, [currentUser?.shop_id, activeBranchId, setMenu]);
+
+    useEffect(() => {
+        fetchMenu();
+    }, [fetchMenu]);
 
     const [customerSearchResults, setCustomerSearchResults] = useState([]);
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(null); // 'name' | 'phone' | null
@@ -173,6 +216,7 @@ const TakeawayOrder = ({
                     filters: {
                         shopId: currentUser?.shop_id,
                         branchId: activeBranchId || null,
+                        isActive: true, // Should probably always be true in search too
                     },
                 };
 
@@ -212,7 +256,8 @@ const TakeawayOrder = ({
     }, [orderSearch, currentUser?.shop_id, activeBranchId]);
 
     // Derive categories dynamically from the menu prop (already normalized in AppContent)
-    const categories = ["All", ...new Set(menu.map((item) => item.category || "Uncategorized"))];
+    const activeMenu = remoteMenu || localMenu || menu || [];
+    const categories = ["All", ...new Set(activeMenu.map((item) => item.category || "Uncategorized"))];
 
     const currentOrder = isTakeaway
         ? takeawayOrder
@@ -423,20 +468,28 @@ const TakeawayOrder = ({
                             : "flex flex-col gap-3"
                             } overflow-y-auto pr-2 flex-1 min-h-0 custom-scrollbar mt-2`}
                     >
-                        {(remoteMenu || menu)
-                            .filter((item) =>
-                                activeMenuCategory === "All" ||
-                                item.category === activeMenuCategory
-                            )
-                            .map((item) => (
-                                <FoodItemCard
-                                    key={item.id}
-                                    item={item}
-                                    formatCurrency={formatCurrency}
-                                    onSelect={initiateAddItem}
-                                    viewMode={viewMode}
-                                />
-                            ))}
+                        {isMenuLoading ? (
+                            <div className="col-span-full py-20 flex flex-col items-center justify-center gap-4">
+                                <Loader2 className="h-10 w-10 text-indigo-500 animate-spin" />
+                                <p className={`font-bold ${theme.textSecondary}`}>Refreshing Fresh Menu...</p>
+                            </div>
+                        ) : (
+                            activeMenu
+                                .filter((item) =>
+                                    activeMenuCategory === "All" ||
+                                    item.category === activeMenuCategory
+                                )
+                                .map((item) => (
+                                    <FoodItemCard
+                                        key={item.id}
+                                        item={item}
+                                        formatCurrency={formatCurrency}
+                                        onSelect={(item) => initiateAddItem(item)}
+                                        viewMode={viewMode}
+                                        disabled={false}
+                                    />
+                                ))
+                        )}
                     </div>
                 </div>
 

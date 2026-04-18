@@ -159,35 +159,6 @@ const PurchasePage = () => {
         }
     };
 
-    useEffect(() => {
-        if (user && (user.shop_id || currentShopId)) {
-            fetchInitialData(activeBranchId);
-        }
-        if (isEditing) {
-            loadPurchase();
-        } else if (activeBranchId) {
-            // Sync branchId with active branch if not editing an existing purchase
-            setFormData(prev => ({
-                ...prev,
-                branchId: activeBranchId
-            }));
-        }
-    }, [user, id, activeBranchId, currentShopId, isEditing, fetchInitialData, loadPurchase]);
-
-    // Handle restoration of state and auto-addition of new products when returning from full-page view
-    useEffect(() => {
-        if (location.state?.returnState) {
-            setFormData(location.state.returnState);
-            // Clear location state to avoid re-triggering on unrelated renders
-            window.history.replaceState({ ...location.state, returnState: null }, '');
-        }
-        if (location.state?.newProduct) {
-            handleAddItem(location.state.newProduct);
-            // Clear location state to avoid re-triggering
-            window.history.replaceState({ ...location.state, newProduct: null }, '');
-        }
-    }, [location.state, handleAddItem]);
-
     const fetchInitialData = React.useCallback(async (branchIdArg) => {
         try {
             const branchId = branchIdArg || formData.branchId || activeBranchId;
@@ -246,42 +217,6 @@ const PurchasePage = () => {
         }
     }, [id]);
 
-    // --- Calculations ---
-    const { subtotal, taxTotal } = useMemo(() => {
-        if (!formData.items) return { subtotal: 0, taxTotal: 0 };
-        const totals = formData.items.reduce((acc, it) => {
-            const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
-            const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
-
-            if (isExclusive) {
-                acc.subtotal += (it.quantity * it.purchasePrice);
-                acc.taxTotal += (it.taxAmount || 0);
-            } else {
-                acc.subtotal += (it.quantity * it.purchasePrice) - (it.taxAmount || 0);
-                acc.taxTotal += (it.taxAmount || 0);
-            }
-            return acc;
-        }, { subtotal: 0, taxTotal: 0 });
-        return {
-            subtotal: parseFloat(totals.subtotal.toFixed(4)),
-            taxTotal: parseFloat(totals.taxTotal.toFixed(4))
-        };
-    }, [formData.items, shopTaxes]);
-
-    useEffect(() => {
-        setFormData(prev => {
-            const grand = subtotal + taxTotal - (Number(prev.discountTotal) || 0);
-            return {
-                ...prev,
-                subtotal: parseFloat(subtotal.toFixed(4)),
-                taxTotal: parseFloat(taxTotal.toFixed(4)),
-                grandTotal: parseFloat(grand.toFixed(4)),
-                balanceAmount: parseFloat((grand - (Number(prev.paidAmount) || 0)).toFixed(4))
-            };
-        });
-    }, [subtotal, taxTotal, formData.discountTotal, formData.paidAmount]);
-
-    // --- Handlers ---
     const handleAddItem = React.useCallback((item) => {
         const existing = formData.items.find(it => it.itemId === item._id);
         if (existing) {
@@ -324,6 +259,75 @@ const PurchasePage = () => {
         }));
         setItemSearch("");
     }, [formData.items, shopTaxes]);
+
+    useEffect(() => {
+        if (user && (user.shop_id || currentShopId)) {
+            fetchInitialData(activeBranchId);
+        }
+        if (isEditing) {
+            loadPurchase();
+        } else if (activeBranchId) {
+            // Sync branchId with active branch if not editing an existing purchase
+            setFormData(prev => ({
+                ...prev,
+                branchId: activeBranchId
+            }));
+        }
+    }, [user, id, activeBranchId, currentShopId, isEditing, fetchInitialData, loadPurchase]);
+
+    // Handle restoration of state and auto-addition of new products when returning from full-page view
+    useEffect(() => {
+        if (location.state?.returnState) {
+            setFormData(location.state.returnState);
+            // Clear location state to avoid re-triggering on unrelated renders
+            window.history.replaceState({ ...location.state, returnState: null }, '');
+        }
+        if (location.state?.newProduct) {
+            handleAddItem(location.state.newProduct);
+            // Clear location state to avoid re-triggering
+            window.history.replaceState({ ...location.state, newProduct: null }, '');
+        }
+    }, [location.state, handleAddItem]);
+
+
+
+    // --- Calculations ---
+    const { subtotal, taxTotal } = useMemo(() => {
+        if (!formData.items) return { subtotal: 0, taxTotal: 0 };
+        const totals = formData.items.reduce((acc, it) => {
+            const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
+            const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+
+            if (isExclusive) {
+                acc.subtotal += (it.quantity * it.purchasePrice);
+                acc.taxTotal += (it.taxAmount || 0);
+            } else {
+                acc.subtotal += (it.quantity * it.purchasePrice) - (it.taxAmount || 0);
+                acc.taxTotal += (it.taxAmount || 0);
+            }
+            return acc;
+        }, { subtotal: 0, taxTotal: 0 });
+        return {
+            subtotal: parseFloat(totals.subtotal.toFixed(4)),
+            taxTotal: parseFloat(totals.taxTotal.toFixed(4))
+        };
+    }, [formData.items, shopTaxes]);
+
+    useEffect(() => {
+        setFormData(prev => {
+            const grand = subtotal + taxTotal - (Number(prev.discountTotal) || 0);
+            return {
+                ...prev,
+                subtotal: parseFloat(subtotal.toFixed(4)),
+                taxTotal: parseFloat(taxTotal.toFixed(4)),
+                grandTotal: parseFloat(grand.toFixed(4)),
+                balanceAmount: parseFloat((grand - (Number(prev.paidAmount) || 0)).toFixed(4))
+            };
+        });
+    }, [subtotal, taxTotal, formData.discountTotal, formData.paidAmount]);
+
+    // --- Handlers ---
+
 
     const handleProductDialogClose = async (newProduct) => {
         setIsProductModalOpen(false);

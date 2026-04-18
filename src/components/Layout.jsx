@@ -23,6 +23,7 @@ const Layout = ({
     businessSubtype,
     enabledModules,
     onBusinessTypeChange,
+    onSwitchShop,
 }) => {
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
     const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
@@ -44,6 +45,7 @@ const Layout = ({
                     businessSubtype={businessSubtype}
                     enabledModules={enabledModules}
                     onBusinessTypeChange={onBusinessTypeChange}
+                    onSwitchShop={onSwitchShop}
                 />
             </div>
 

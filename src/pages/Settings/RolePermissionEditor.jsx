@@ -12,15 +12,6 @@ const RolePermissionEditor = ({ isOpen, onClose, roleId }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
-    useEffect(() => {
-        if (isOpen && roleId) {
-            setAvailablePermissions([]);
-            setSelectedPermissions({});
-            setExpandedModules({});
-            fetchData();
-        }
-    }, [isOpen, roleId]);
-
     const fetchData = async () => {
         setIsLoading(true);
         try {
@@ -85,6 +76,16 @@ const RolePermissionEditor = ({ isOpen, onClose, roleId }) => {
             setIsLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (isOpen && roleId) {
+            setAvailablePermissions([]);
+            setSelectedPermissions({});
+            setExpandedModules({});
+            fetchData();
+        }
+    }, [isOpen, roleId]);
+
 
     const toggleModuleExpand = (moduleId) => {
         setExpandedModules(prev => ({ ...prev, [moduleId]: !prev[moduleId] }));

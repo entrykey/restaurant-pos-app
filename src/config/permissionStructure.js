@@ -54,7 +54,7 @@ export const MODULE_RESOURCES = Object.freeze({
   [MODULES.RESERVATIONS]: ["reservation"],
   [MODULES.INVENTORY]: ["inventory", "menu", "tradeitem"],
   [MODULES.REPORTS]: ["report"],
-  [MODULES.SETTINGS]: ["settings", "inventory_settings"],
+  [MODULES.SETTINGS]: ["settings", "inventory_settings", "sale_settings"],
   [MODULES.STAFF]: ["staff"],
   [MODULES.SERVICE]: ["service", "jobcard"],
   [MODULES.SUPPLIER]: ["supplier"],
@@ -123,6 +123,7 @@ export const ROUTE_ACCESS = Object.freeze({
   ATTENDANCE_POLICIES: { module: MODULES.STAFF, resource: "ATTENDANCE", action: "POLICIES" },
   ATTENDANCE_LOGS: { module: MODULES.STAFF, resource: "ATTENDANCE", action: "LOGS" },
   PAYROLL_SETTINGS: { module: MODULES.SETTINGS, resource: "PAYROLL", action: "SETTINGS" },
+  SALE_SETTINGS: { module: MODULES.SETTINGS, resource: "SALE", action: "SETTINGS" },
 });
 
 /** Optional: page-level "manage" for sections that have edit/delete (e.g. staff.staff.manage) */

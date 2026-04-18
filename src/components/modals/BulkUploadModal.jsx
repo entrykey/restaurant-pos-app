@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Upload, Download, FileText, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react';
+import { X, Upload, Download, FileText, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import ThemeLoader from '../ui/ThemeLoader';
 import { useTheme } from '../../context/ThemeContext';
 import { itemService } from '../../services/api';
 import Modal from '../ui/Modal';
@@ -170,7 +171,7 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
                     >
                         {uploading ? (
                             <>
-                                <Loader2 size={20} className="animate-spin" /> UPLOADING...
+                                <ThemeLoader size="sm" /> UPLOADING...
                             </>
                         ) : (
                             <>

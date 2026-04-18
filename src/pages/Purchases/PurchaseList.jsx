@@ -758,10 +758,6 @@ const PurchaseList = ({ hasPermissionFor }) => {
         init();
     }, [user]);
 
-    useEffect(() => {
-        if (shopId) loadPurchases();
-    }, [shopId, loadPurchases]);
-
     const loadPurchases = useCallback(async () => {
         setLoading(true);
         try {
@@ -775,6 +771,10 @@ const PurchaseList = ({ hasPermissionFor }) => {
             setLoading(false);
         }
     }, [shopId, activeBranchId]);
+
+    useEffect(() => {
+        if (shopId) loadPurchases();
+    }, [shopId, loadPurchases]);
 
     const handleDelete = async (id) => {
         confirmAction(

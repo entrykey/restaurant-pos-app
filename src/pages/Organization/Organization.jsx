@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
     Building2,
     Edit3, Trash2, Plus, MapPin, CreditCard, ChevronDown, CheckCircle, Smartphone, Globe, AlertTriangle, ArrowRight, Save, X, Search, LogOut,
-    Loader2, Sparkles, Check
+    Sparkles, Check
 } from "lucide-react";
+import ThemeLoader from "../../components/ui/ThemeLoader";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -11,6 +12,7 @@ import CommonTable from "../../components/CommonTable";
 import SubscriptionNoticeModal from "../../components/modals/SubscriptionNoticeModal";
 
 import Modal from "../../components/ui/Modal";
+import CommonSelect from "../../components/ui/CommonSelect";
 import { ROUTE_ACCESS, MODULES } from "../../config/permissionStructure";
 import {
     TAX_SYSTEMS,
@@ -57,7 +59,7 @@ const getProfileChecklist = (organization, branch) => ([
     { key: "city", label: "City", value: branch?.address?.city },
     { key: "state", label: "State", value: branch?.address?.state },
     { key: "pincode", label: "Pincode", value: branch?.address?.pincode },
-    { key: "tax", label: "Tax Info (GST/VAT)", value: branch?.taxConfig?.gstin }
+    { key: "tax", label: "Tax Info (GST/VAT)", value: branch?.taxConfig?.gstin || (organization?.defaultTaxSystem && branch?.id) }
 ]);
 
 const Organization = ({
@@ -138,9 +140,7 @@ const Organization = ({
         ), { duration: Infinity, position: 'top-center' });
     };
 
-    // Shop switching state
-    const [userShops, setUserShops] = useState([]);
-    const [isSwitchingShop, setIsSwitchingShop] = useState(false);
+
     // ... loadData and useEffect ...
 
     // ... handleStartTrial ...
@@ -261,15 +261,8 @@ const Organization = ({
                 setPlans(data.plans);
             }
 
-            // Fetch user's shops for the switcher dropdown
-            try {
-                if (canSelectOrganization) {
-                    const shopsData = await shopService.getShopsByOwner(userId);
-                    setUserShops(shopsData);
-                }
-            } catch (err) {
-                console.error("Failed to fetch user's shops for dropdown:", err);
-            }
+            // Fetch user's shops logic removed, now handled globally in AppContext/Navbar
+
 
             setLoading(false);
             console.log("Organization: Data state updated.");
@@ -326,37 +319,7 @@ const Organization = ({
         };
     }, [searchParams, loading, setSearchParams]);
 
-    const handleSwitchShop = async (newShopId) => {
-        if (newShopId === organization?.id) return;
-        setIsSwitchingShop(true);
-        try {
-            const newAuthData = await shopService.switchShop(newShopId);
-            const newAccessToken = newAuthData.accessToken;
-            // First we MUST update localStorage for axios interceptors
-            localStorage.setItem('accessToken', newAccessToken);
 
-            // MANUALLY commit to AuthContext storage to prevent React async batching race condition with reload()
-            const storageKey = "restaurant_pos_auth_v1";
-            const currentStorageParams = JSON.parse(localStorage.getItem(storageKey) || '{}');
-            localStorage.setItem(storageKey, JSON.stringify({
-                ...currentStorageParams,
-                user: { ...newAuthData.user, accessToken: newAccessToken }
-            }));
-
-            // Update context state
-            login({ ...newAuthData.user, accessToken: newAccessToken });
-
-            // Fetch new shop data and populate the UI in-place
-            await loadData(newShopId);
-
-            toast.success("Successfully switched context to new shop.");
-        } catch (error) {
-            console.error("Failed to switch shop:", error);
-            toast.error(error.message || "Failed to switch shop.");
-        } finally {
-            setIsSwitchingShop(false);
-        }
-    };
 
     const handleSaveChanges = async () => {
         if (!organization?.id || !canEditOrg) return;
@@ -575,6 +538,37 @@ const Organization = ({
         }
     };
 
+    const handleCountryChange = (countryCode) => {
+        if (!canEditOrg) return;
+
+        let taxSystem = organization.defaultTaxSystem;
+        let currency = organization.defaultCurrency;
+
+        // Auto-select tax system based on country
+        if (countryCode === 'IN') taxSystem = TAX_SYSTEMS.GST;
+        else if (['AE', 'SA', 'GB'].includes(countryCode)) taxSystem = TAX_SYSTEMS.VAT;
+        else if (countryCode === 'US') taxSystem = TAX_SYSTEMS.SALES_TAX;
+
+        // Auto-select currency based on country
+        const countryToCurrency = {
+            'IN': 'INR',
+            'AE': 'AED',
+            'SA': 'SAR',
+            'US': 'USD',
+            'GB': 'GBP'
+        };
+        if (countryToCurrency[countryCode]) {
+            currency = countryToCurrency[countryCode];
+        }
+
+        setOrganization({
+            ...organization,
+            defaultCountry: countryCode,
+            defaultTaxSystem: taxSystem,
+            defaultCurrency: currency
+        });
+    };
+
     return (
         <div className={`p-4 md:p-8 h-full overflow-y-auto ${theme.pageBg || 'bg-slate-50 dark:bg-slate-900'}`}>
             <div className="w-full mx-auto space-y-8">
@@ -593,33 +587,10 @@ const Organization = ({
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-3 md:gap-4 text-[10px] md:text-[11px] font-black">
-                            {canSelectOrganization && userShops.length > 1 ? (
-                                <div className="px-1 py-0.5 rounded-full bg-white/10 text-white flex items-center gap-2 backdrop-blur">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 ml-2" />
-                                    <select
-                                        className="bg-transparent border-none text-white focus:ring-0 outline-none cursor-pointer appearance-none font-black pl-1 pr-6 py-1"
-                                        value={organization?.id || ""}
-                                        onChange={(e) => handleSwitchShop(e.target.value)}
-                                        disabled={isSwitchingShop}
-                                    >
-                                        <option value="" disabled className="text-black">Select a Shop</option>
-                                        {userShops.map((shop) => (
-                                            <option key={shop._id} value={shop._id} className="text-black">
-                                                {shop.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <div className="pointer-events-none absolute right-3">
-                                        <svg className="w-3 h-3 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                                    </div>
-                                    {isSwitchingShop && <Loader2 size={12} className="animate-spin text-white absolute right-8" />}
-                                </div>
-                            ) : (
-                                <div className="px-3 py-1.5 rounded-full bg-white/10 text-white flex items-center gap-2 backdrop-blur">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
-                                    {organization?.businessName || "Unnamed Business"}
-                                </div>
-                            )}
+                            <div className="px-3 py-1.5 rounded-full bg-white/10 text-white flex items-center gap-2 backdrop-blur">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
+                                {organization?.businessName || "Unnamed Business"}
+                            </div>
                             <div className="px-3 py-1.5 rounded-full bg-black/10 text-indigo-100 flex items-center gap-1.5 backdrop-blur">
                                 <Sparkles size={12} />
                                 <span>{organization?.planName || "No Active Plan"}</span>
@@ -660,7 +631,7 @@ const Organization = ({
                                 disabled={isSaving}
                                 className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
                             >
-                                {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                                {isSaving ? <ThemeLoader size="xs" /> : <Save size={20} />}
                                 Save Changes
                             </button>
                         )}
@@ -673,7 +644,7 @@ const Organization = ({
                                 <div className={`relative w-32 h-32 rounded-[24px] border-2 border-dashed flex items-center justify-center overflow-hidden group hover:border-indigo-400 transition-colors ${theme.borderLight} ${theme.inputBg}`}>
                                     {logoUploading ? (
                                         <div className="flex flex-col items-center gap-2 text-[11px] text-gray-500 font-bold">
-                                            <Loader2 size={24} className="animate-spin text-indigo-500" />
+                                            <ThemeLoader size="sm" />
                                             Uploading…
                                         </div>
                                     ) : organization?.logoUrl ? (
@@ -746,45 +717,42 @@ const Organization = ({
                             </div>
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Country</label>
-                                <select
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('defaultCountry') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                <CommonSelect
+                                    options={DEFAULT_COUNTRIES}
                                     value={organization?.defaultCountry ?? ""}
-                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCountry: e.target.value || null })}
+                                    onChange={handleCountryChange}
+                                    placeholder="Select country"
+                                    labelKey="name"
+                                    valueKey="code"
                                     disabled={!canEditOrg}
-                                >
-                                    <option value="">Select country</option>
-                                    {DEFAULT_COUNTRIES.map((c) => (
-                                        <option key={c.code} value={c.code}>{c.name}</option>
-                                    ))}
-                                </select>
+                                    triggerClassName={missingProfileKeys.has('defaultCountry') ? 'border-amber-400 ring-1 ring-amber-300' : ''}
+                                />
                             </div>
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Currency</label>
-                                <select
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('defaultCurrency') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                <CommonSelect
+                                    options={CURRENCIES}
                                     value={organization?.defaultCurrency ?? ""}
-                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultCurrency: e.target.value || null })}
+                                    onChange={(val) => canEditOrg && setOrganization({ ...organization, defaultCurrency: val })}
+                                    placeholder="Select currency"
+                                    labelKey="name"
+                                    valueKey="code"
                                     disabled={!canEditOrg}
-                                >
-                                    <option value="">Select currency</option>
-                                    {CURRENCIES.map((c) => (
-                                        <option key={c.code} value={c.code}>{c.name}</option>
-                                    ))}
-                                </select>
+                                    triggerClassName={missingProfileKeys.has('defaultCurrency') ? 'border-amber-400 ring-1 ring-amber-300' : ''}
+                                />
                             </div>
                             <div className="space-y-2">
                                 <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Tax System</label>
-                                <select
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('defaultTaxSystem') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                <CommonSelect
+                                    options={Object.values(TAX_SYSTEMS).map(t => ({ label: t, value: t }))}
                                     value={organization?.defaultTaxSystem ?? ""}
-                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultTaxSystem: e.target.value || null })}
+                                    onChange={(val) => canEditOrg && setOrganization({ ...organization, defaultTaxSystem: val })}
+                                    placeholder="Select tax system"
+                                    labelKey="label"
+                                    valueKey="value"
                                     disabled={!canEditOrg}
-                                >
-                                    <option value="">Select tax system</option>
-                                    {Object.values(TAX_SYSTEMS).map((t) => (
-                                        <option key={t} value={t}>{t}</option>
-                                    ))}
-                                </select>
+                                    triggerClassName={missingProfileKeys.has('defaultTaxSystem') ? 'border-amber-400 ring-1 ring-amber-300' : ''}
+                                />
                             </div>
                         </div>
                     </div>
@@ -939,7 +907,7 @@ const Organization = ({
                             disabled={isLocationLoading}
                             className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:underline disabled:opacity-50"
                         >
-                            {isLocationLoading ? <Loader2 size={12} className="animate-spin" /> : <MapPin size={12} />}
+                            {isLocationLoading ? <ThemeLoader size="xs" /> : <MapPin size={12} />}
                             Use Current Location
                         </button>
                     </div>
@@ -963,7 +931,7 @@ const Organization = ({
                                     onBlur={handlePincodeBlur}
                                     placeholder="Enter to autofill"
                                 />
-                                {isLocationLoading && <div className="absolute right-3 top-3"><Loader2 size={16} className="animate-spin text-indigo-500" /></div>}
+                                {isLocationLoading && <div className="absolute right-3 top-3"><ThemeLoader size="xs" /></div>}
                             </div>
                         </div>
                         <div>
@@ -1006,36 +974,31 @@ const Organization = ({
                     </div>
                     <div>
                         <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Currency</label>
-                        <select
-                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                        <CommonSelect
+                            options={CURRENCIES}
                             value={branchForm.currency}
-                            onChange={(e) => setBranchForm({ ...branchForm, currency: e.target.value })}
-                        >
-                            {CURRENCIES.map((c) => (
-                                <option key={c.code} value={c.code}>{c.name}</option>
-                            ))}
-                        </select>
+                            onChange={(val) => setBranchForm({ ...branchForm, currency: val })}
+                            placeholder="Select currency"
+                            labelKey="name"
+                            valueKey="code"
+                        />
                     </div>
                     <div>
                         <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Tax System</label>
-                        <select
-                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                        <CommonSelect
+                            options={Object.values(TAX_SYSTEMS).map(t => ({ label: t, value: t }))}
                             value={branchForm.taxConfig?.taxSystem}
-                            onChange={(e) => {
-                                const newSystem = e.target.value;
-                                setBranchForm({
-                                    ...branchForm,
-                                    taxConfig: {
-                                        ...branchForm.taxConfig,
-                                        taxSystem: newSystem,
-                                    },
-                                });
-                            }}
-                        >
-                            {Object.values(TAX_SYSTEMS).map((t) => (
-                                <option key={t} value={t}>{t}</option>
-                            ))}
-                        </select>
+                            onChange={(val) => setBranchForm({
+                                ...branchForm,
+                                taxConfig: {
+                                    ...branchForm.taxConfig,
+                                    taxSystem: val,
+                                },
+                            })}
+                            placeholder="Select tax system"
+                            labelKey="label"
+                            valueKey="value"
+                        />
                     </div>
                     {(() => {
                         const taxSystem = branchForm.taxConfig?.taxSystem || TAX_SYSTEMS.GST;

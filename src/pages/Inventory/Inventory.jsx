@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, Loader2, X } from 'lucide-react';
+import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X } from 'lucide-react';
+import ThemeLoader from '../../components/ui/ThemeLoader';
 import { BUSINESS_FEATURES } from '../../config/businessTypes';
 import CommonTable from '../../components/CommonTable';
 import { getCommonFieldKeys } from '../../config/itemFields';
@@ -336,7 +337,7 @@ const Inventory = ({
                             } ${isToggling ? "opacity-50 cursor-wait" : ""}`}
                         title={isActive ? "Deactivate Item" : "Activate Item"}
                     >
-                        {isToggling ? <Loader2 size={20} className="animate-spin" /> : <Globe size={20} />}
+                        {isToggling ? <ThemeLoader size="xs" /> : <Globe size={20} />}
                         {isActive && !isToggling && (
                             <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
                         )}
@@ -449,7 +450,7 @@ const Inventory = ({
                             } ${isToggling ? "opacity-50 cursor-wait" : ""}`}
                         title={isActive ? "Deactivate Item" : "Activate Item"}
                     >
-                        {isToggling ? <Loader2 size={20} className="animate-spin" /> : <Globe size={20} />}
+                        {isToggling ? <ThemeLoader size="xs" /> : <Globe size={20} />}
                         {isActive && !isToggling && (
                             <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
                         )}

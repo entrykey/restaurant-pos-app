@@ -8,13 +8,15 @@ import {
     Shield,
     History,
     Search,
-    Wallet
+    Wallet,
+    ShoppingBag
 } from "lucide-react";
 import AttributeSettings from "./AttributeSettings";
 import UnitSettings from "./UnitSettings";
 import CategorySettings from "./CategorySettings";
 import AppearanceSettings from "./AppearanceSettings";
 import TaxSettings from "./TaxSettings";
+import SaleSettings from "./SaleSettings";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
@@ -37,6 +39,7 @@ const Settings = ({
     const { activeBranchId, branches, currentShopId } = useApp();
     const currentBranchId = activeBranchId || (branches.length > 0 ? (branches[0]._id || branches[0].id) : null);
     const canViewGeneral = hasPermissionFor?.(ROUTE_ACCESS.SETTINGS.module, ROUTE_ACCESS.SETTINGS.resource, ROUTE_ACCESS.SETTINGS.action);
+    const canViewSaleSettings = hasPermissionFor?.(ROUTE_ACCESS.SALE_SETTINGS.module, ROUTE_ACCESS.SALE_SETTINGS.resource, ROUTE_ACCESS.SALE_SETTINGS.action);
     const canViewAttributes = hasPermissionFor?.('settings', 'inventory_settings', 'manage');
     const canViewAppearance = hasPermissionFor?.('settings', 'settings', 'appearence_settings');
     const canViewPayroll = hasPermissionFor?.(ROUTE_ACCESS.PAYROLL_SETTINGS.module, ROUTE_ACCESS.PAYROLL_SETTINGS.resource, ROUTE_ACCESS.PAYROLL_SETTINGS.action);
@@ -44,6 +47,7 @@ const Settings = ({
 
     const allTabs = [
         { id: "general", label: "General", icon: Shield, show: isSuperAdmin || canViewGeneral },
+        { id: "sale-settings", label: "Sale Settings", icon: ShoppingBag, show: isSuperAdmin || canViewSaleSettings },
         { id: "payroll", label: "Payroll", icon: Wallet, show: isSuperAdmin || canViewPayroll },
         { id: "attributes", label: "Inventory Settings", icon: Package, show: canViewAttributes },
         { id: "appearance", label: "Appearance", icon: Palette, show: canViewAppearance || isSuperAdmin },
@@ -84,18 +88,6 @@ const Settings = ({
     });
     const [isSavingPayroll, setIsSavingPayroll] = useState(false);
 
-    useEffect(() => {
-        if (activeTab === "general" && (isSuperAdmin || canViewGeneral)) {
-            fetchBackendSettings();
-            if (isSuperAdmin) {
-                fetchSystemRoles();
-            }
-        }
-        if (activeTab === "payroll" && (isSuperAdmin || canViewPayroll)) {
-            fetchPayrollSettings();
-        }
-    }, [activeTab, isSuperAdmin, canViewGeneral, canViewPayroll, fetchBackendSettings, fetchSystemRoles, fetchPayrollSettings]);
-
     const fetchBackendSettings = React.useCallback(async () => {
         setIsLoadingBackend(true);
         try {
@@ -128,6 +120,7 @@ const Settings = ({
             console.error("Failed to fetch system roles:", error);
         }
     }, []);
+
     const fetchPayrollSettings = React.useCallback(async () => {
         try {
             const shopId = currentShopId || currentUser?.shop_id;
@@ -138,6 +131,19 @@ const Settings = ({
             console.error("Failed to fetch payroll settings:", error);
         }
     }, [currentShopId, currentUser?.shop_id]);
+
+    useEffect(() => {
+        if (activeTab === "general" && (isSuperAdmin || canViewGeneral)) {
+            fetchBackendSettings();
+            if (isSuperAdmin) {
+                fetchSystemRoles();
+            }
+        }
+        if (activeTab === "payroll" && (isSuperAdmin || canViewPayroll)) {
+            fetchPayrollSettings();
+        }
+    }, [activeTab, isSuperAdmin, canViewGeneral, canViewPayroll, fetchBackendSettings, fetchSystemRoles, fetchPayrollSettings]);
+
     const handleSavePayrollSettings = async () => {
         setIsSavingPayroll(true);
         try {
@@ -346,6 +352,16 @@ const Settings = ({
                             </div>
                         )}
                     </div>
+                );
+
+            case "sale-settings":
+                return (
+                    <SaleSettings 
+                        backendSettings={backendSettings}
+                        handleUpdateBackendSetting={handleUpdateBackendSetting}
+                        handleSaveBackendSetting={handleSaveBackendSetting}
+                        isSaving={isSavingBackend}
+                    />
                 );
 
             case "attributes":

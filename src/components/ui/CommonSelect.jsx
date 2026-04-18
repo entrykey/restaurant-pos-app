@@ -15,7 +15,8 @@ const CommonSelect = ({
     className = "",
     extraAction,
     onKeyDown,
-    disabled = false
+    disabled = false,
+    triggerClassName = ""
 }) => {
     const { theme } = useTheme();
     const [isOpen, setIsOpen] = useState(false);
@@ -89,7 +90,7 @@ const CommonSelect = ({
                     }
                     if (onKeyDown) onKeyDown(e);
                 }}
-                className={`w-full px-4 py-3 flex items-center justify-between cursor-pointer border-2 rounded-2xl outline-none transition-all font-bold common-select-trigger ${isOpen ? 'border-indigo-500' : 'border-transparent'} ${theme.inputBg} ${theme.textPrimary} ${disabled ? 'pointer-events-none' : ''}`}
+                className={`w-full px-4 py-3 flex items-center justify-between cursor-pointer border-2 rounded-2xl outline-none transition-all font-bold common-select-trigger ${isOpen ? 'border-indigo-500' : (triggerClassName ? '' : 'border-transparent')} ${triggerClassName} ${theme.inputBg} ${theme.textPrimary} ${disabled ? 'pointer-events-none' : ''}`}
                 tabIndex={disabled ? -1 : 0}
             >
                 <span className={displayValue ? theme.textPrimary : theme.textSecondary}>

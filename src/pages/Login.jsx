@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Utensils, Loader2, Eye, EyeOff } from "lucide-react";
+import { Utensils, Eye, EyeOff } from "lucide-react";
+import ThemeLoader from "../components/ui/ThemeLoader";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { shopService } from "../services/api";
@@ -216,7 +217,7 @@ export default function Login({
               disabled={loading}
               className={`w-full py-4 rounded-2xl font-bold shadow-xl transition-all transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg}`}
             >
-              {loading ? <Loader2 className="animate-spin" /> : "Login"}
+              {loading ? <ThemeLoader size="sm" /> : "Login"}
             </button>
           </form>
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
+import ThemeLoader from '../components/ui/ThemeLoader';
 import { shopService } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import CommonSelect from '../components/ui/CommonSelect';
@@ -135,7 +136,7 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Email</label>
+                        <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Email (Optional if Phone provided)</label>
                         <input
                             type="email"
                             value={formData.ownerEmail}
@@ -145,7 +146,7 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                         />
                     </div>
                     <div>
-                        <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Phone</label>
+                        <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Phone (Either Email or Phone Required)</label>
                         <input
                             type="tel"
                             value={formData.ownerPhone}
@@ -177,11 +178,7 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                         : `${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} active:scale-95`
                         }`}
                 >
-                    {loading ? (
-                        <Loader2 className="animate-spin" size={20} />
-                    ) : (
-                        <span>Create Shop</span>
-                    )}
+                    {loading ? <ThemeLoader size="sm" /> : 'Create Shop'}
                 </button>
             </div>
         </div>

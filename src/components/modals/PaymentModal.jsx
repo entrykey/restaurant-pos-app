@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { X, Tag, CreditCard, Banknote, Smartphone, Receipt, CheckCircle2, ChevronLeft, Plus, Trash2, Loader2 } from "lucide-react";
+import { X, Tag, CreditCard, Banknote, Smartphone, Receipt, CheckCircle2, ChevronLeft, Plus, Trash2 } from "lucide-react";
+import ThemeLoader from "../ui/ThemeLoader";
 import { formatCurrency } from "../../utils/format";
 import { useOrder } from "../../context/OrderContext";
 import { customerService } from "../../services/api";
@@ -432,7 +433,7 @@ const PaymentModal = ({
                                                                 <div className="space-y-2">
                                                                     <label className="text-[10px] uppercase font-black text-orange-400 tracking-widest flex justify-between">
                                                                         <span>Phone Number *</span>
-                                                                        {isSearchingCustomer && <Loader2 size={12} className="animate-spin" />}
+                                                                        {isSearchingCustomer && <ThemeLoader size="xs" />}
                                                                     </label>
                                                                     <input
                                                                         type="text"

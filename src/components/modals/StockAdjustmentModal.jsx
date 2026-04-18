@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Plus, Minus, Calculator, FileText, Calendar, Loader2 } from 'lucide-react';
+import { X, Plus, Minus, Calculator, FileText, Calendar } from 'lucide-react';
+import ThemeLoader from '../ui/ThemeLoader';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { inventoryService } from '../../services/api';
@@ -206,7 +207,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                             className={`flex-1 py-4 rounded-2xl font-black text-white bg-blue-600 shadow-xl shadow-blue-500/30 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-wait transition-all flex items-center justify-center gap-2`}
                         >
                             {isSubmitting ? (
-                                <Loader2 className="animate-spin" size={20} />
+                                <ThemeLoader size="sm" />
                             ) : (
                                 "Create"
                             )}
