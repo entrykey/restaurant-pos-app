@@ -171,10 +171,11 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "SUPPLIERS",
       "REPORTS",
       "SETTINGS",
-      "STAFF",
       "ORGANIZATION",
       "SERVICE",
       "OFFERS",
+      "SALE_MARKING",
+      "SALES_HISTORY"
     ],
     casual: [
       "DINING",
@@ -190,6 +191,8 @@ export const BUSINESS_MODULE_STRUCTURE = {
       "STAFF",
       "ORGANIZATION",
       "OFFERS",
+      "SALE_MARKING",
+      "SALES_HISTORY"
     ],
     fast_food: [
       "TAKEAWAY",

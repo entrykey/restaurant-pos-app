@@ -7,7 +7,7 @@ const Modal = ({ isOpen, onClose, title, children, className = "" }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[2000] flex items-center justify-center p-4 animate-in fade-in">
             <div
                 className={`${theme.surfaceBg} w-full rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${className}`}
                 onClick={(e) => e.stopPropagation()}

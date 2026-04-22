@@ -1,4 +1,4 @@
-import { diningCategoryService, tableService } from "../../services/api";
+import { diningCategoryService, tableService, reservationService } from "../../services/api";
 
 export const diningHallService = {
     getDiningHalls: async (branchId) => {
@@ -17,6 +17,24 @@ export const diningHallService = {
         } catch (error) {
             console.error("Error fetching tables by category:", error);
             return [];
+        }
+    },
+    markArrived: async (reservationId) => {
+        try {
+            const response = await reservationService.updateStatus(reservationId, 'SEATED');
+            return response.data || response;
+        } catch (error) {
+            console.error("Error marking arrival:", error);
+            throw error;
+        }
+    },
+    cancelReservation: async (reservationId) => {
+        try {
+            const response = await reservationService.deleteReservation(reservationId);
+            return response.data || response;
+        } catch (error) {
+            console.error("Error cancelling reservation:", error);
+            throw error;
         }
     }
 };

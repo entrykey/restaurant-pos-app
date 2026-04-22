@@ -17,7 +17,10 @@ import {
     User,
     Edit3,
     Eye,
-    X
+    X,
+    ChevronDown,
+    ChevronUp,
+    History
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/format';
 import OrderReturnSheet from '../../components/modals/OrderReturnSheet';
@@ -185,6 +188,14 @@ const SalesList = () => {
     const [isReturnDetailOpen, setIsReturnDetailOpen] = useState(false);
     const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
     const [selectedOrderForEdit, setSelectedOrderForEdit] = useState(null);
+    const [expandedOrders, setExpandedOrders] = useState({});
+
+    const toggleOrderArea = (orderId) => {
+        setExpandedOrders(prev => ({
+            ...prev,
+            [orderId]: !prev[orderId]
+        }));
+    };
 
     const fetchSales = useCallback(async () => {
         setLoading(true);
@@ -301,7 +312,8 @@ const SalesList = () => {
                             <tbody className={`divide-y ${theme.borderLight}`}>
                                 {activeTab === 'history' ? (
                                     sales.length > 0 ? sales.map((order) => (
-                                        <tr key={order._id} className={`group hover:${theme.mode === 'dark' ? 'bg-white/5' : 'bg-gray-50/50'} transition-all`}>
+                                        <React.Fragment key={order._id}>
+                                        <tr className={`group hover:${theme.mode === 'dark' ? 'bg-white/5' : 'bg-gray-50/50'} transition-all`}>
                                             <td className="px-8 py-6">
                                                 <div className="space-y-1">
                                                     <div className="flex items-center gap-2">
@@ -349,6 +361,15 @@ const SalesList = () => {
                                             </td>
                                             <td className="px-8 py-6 text-right">
                                                 <div className="flex items-center justify-end gap-2">
+                                                    {order.editHistory && order.editHistory.length > 0 && (
+                                                        <button 
+                                                            onClick={() => toggleOrderArea(order._id)}
+                                                            className={`p-2.5 rounded-xl border ${theme.borderLight} ${expandedOrders[order._id] ? 'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-900/30' : theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors bg-white dark:bg-slate-800 shadow-sm`}
+                                                            title="View Edit History"
+                                                        >
+                                                            {expandedOrders[order._id] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                                        </button>
+                                                    )}
                                                     <button 
                                                         onClick={() => handleEditSale(order)}
                                                         className={`p-2.5 rounded-xl border ${theme.borderLight} ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors bg-white dark:bg-slate-800 shadow-sm`}
@@ -366,6 +387,38 @@ const SalesList = () => {
                                                 </div>
                                             </td>
                                         </tr>
+                                        {/* Expandable Edit History Row */}
+                                        {expandedOrders[order._id] && order.editHistory && order.editHistory.length > 0 && (
+                                            <tr>
+                                                <td colSpan="6" className="p-0 border-none bg-transparent">
+                                                    <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-indigo-50/30'} border-t ${theme.borderLight} p-8 animate-in slide-in-from-top-2 duration-300 overflow-hidden`}>
+                                                        <h4 className={`text-sm font-black uppercase tracking-widest ${theme.textHeading} mb-6 flex items-center gap-2`}>
+                                                            <History size={18} className="text-indigo-500" /> Edit History
+                                                        </h4>
+                                                        <div className="space-y-4">
+                                                            {order.editHistory.sort((a,b) => new Date(b.editedAt) - new Date(a.editedAt)).map((edit, idx) => (
+                                                                <div key={idx} className={`p-4 rounded-2xl bg-white dark:bg-slate-800 border ${theme.borderLight} flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm`}>
+                                                                    <div className="flex items-start gap-3">
+                                                                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
+                                                                            <User size={14} />
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className={`text-sm font-bold ${theme.textPrimary}`}>Edited by <span className="font-black text-indigo-600">{edit.editedByName || 'Unknown User'}</span></p>
+                                                                            <p className={`text-xs ${theme.textMuted} mt-0.5 whitespace-pre-wrap italic`}>Reason: "{edit.reason}"</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 text-xs font-bold text-gray-400 whitespace-nowrap bg-gray-50 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-white/5">
+                                                                        <Clock size={12} />
+                                                                        {formatDate(edit.editedAt)}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                        </React.Fragment>
                                     )) : (
                                         <tr>
                                             <td colSpan="6" className="px-8 py-20 text-center">

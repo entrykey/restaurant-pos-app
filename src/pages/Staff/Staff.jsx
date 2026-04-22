@@ -192,7 +192,29 @@ const Staff = ({
                 try {
                     const userId = user?.id || user?._id;
                     const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId);
-                    setEmployees(data);
+                    
+                    // Filter by branch if activeBranchId is available
+                    const filteredStaff = data.filter(emp => {
+                        if (!activeBranchId) return true;
+                        // Handle both object and ID forms of branch mapping
+                        const branchIds = (emp.mapping?.branchIds || emp.allowedBranches || []).map(b => b?._id || b);
+                        if (branchIds.length === 0 || emp.mapping?.allBranches) return true;
+                        return branchIds.includes(activeBranchId);
+                    });
+
+                    setEmployees(filteredStaff);
+                    // Also update global staff list if setter is provided
+                    if (setStaffList) {
+                        const mappedStaff = filteredStaff.map(emp => ({
+                            ...emp,
+                            id: emp._id,
+                            name: emp.userId?.name || "N/A",
+                            role: emp.roleId?.name || "N/A",
+                            phone: emp.userId?.phone || "",
+                            active: emp.status === "ACTIVE"
+                        }));
+                        setStaffList(mappedStaff);
+                    }
                 } catch (error) {
                     console.error("Failed to fetch employees:", error);
                 } finally {
@@ -201,7 +223,7 @@ const Staff = ({
             }
         };
         fetchEmployees();
-    }, [activeStaffTab, shopId, hasViewAllStaff, isCreateEmployeeOpen]);
+    }, [activeStaffTab, shopId, hasViewAllStaff, isCreateEmployeeOpen, activeBranchId]);
 
     // Fetch Roles
     useEffect(() => {
@@ -232,7 +254,7 @@ const Staff = ({
             }
         };
         fetchRoles();
-    }, [activeStaffTab, isCreateEmployeeOpen, shopId, setRolesList, hasViewAllStaff]);
+    }, [activeStaffTab, isCreateEmployeeOpen, shopId, setRolesList, hasViewAllStaff, activeBranchId]);
 
     // Fetch Branches (Shared for both dialogs)
     useEffect(() => {
@@ -799,7 +821,7 @@ const Staff = ({
         if (activeStaffTab === "attendance_logs" && !canViewLogs) {
             setActiveStaffTab("staff");
         }
-    }, [canViewPolicies, canViewLogs]);
+    }, [canViewPolicies, canViewLogs, activeStaffTab]);
 
     if (!canView) {
         return (

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "restaurant_pos_auth_v1";
+const DEFAULT_SHOP_OWNER_ROLE_ID = "6995d4ee2e3c2c5ce06a6fe0";
 
 const AuthContext = createContext(null);
 
@@ -10,6 +11,15 @@ const safeJsonParse = (value) => {
   } catch {
     return null;
   }
+};
+
+const hasShopOwnerRole = (nextUser) => {
+  const roles = Array.isArray(nextUser?.roles) ? nextUser.roles : [];
+  return roles.some((role) => {
+    const roleId = String(role?._id || role?.id || role?.roleId || "");
+    const roleName = String(role?.name || role?.displayString || "").toLowerCase();
+    return roleId === DEFAULT_SHOP_OWNER_ROLE_ID || roleName.includes("shop owner");
+  });
 };
 
 export const AuthProvider = ({ children }) => {
@@ -85,8 +95,15 @@ export const AuthProvider = ({ children }) => {
   const isAuthenticated = Boolean(user);
 
   const login = (nextUser) => {
-    const isOwner = nextUser.isOwner || nextUser.isSuperAdmin;
+    // Keep owner and superadmin semantics separate.
+    // Superadmin should not be forced into owner shop-selection flow.
+    const isOwner =
+      nextUser?.isSuperAdmin === true
+        ? false
+        : (nextUser?.isOwner === true || hasShopOwnerRole(nextUser));
     setUser({ ...nextUser, isOwner });
+    // Always ask owner to choose shop again in fresh login session.
+    sessionStorage.removeItem("multiple_shops_ignored");
     if (nextUser.customTexts) {
       setCustomTexts(nextUser.customTexts);
     }
@@ -97,6 +114,7 @@ export const AuthProvider = ({ children }) => {
     setSessionInfo((prev) => ({ ...prev, logoutTime: new Date().toLocaleTimeString() }));
     setUser(null);
     setCustomTexts({});
+    sessionStorage.removeItem("multiple_shops_ignored");
     
     // Clear all app-specific storage
     localStorage.removeItem("accessToken");

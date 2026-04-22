@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
 import { ROUTE_KEY_TO_PATH } from "../constants/routeAccess";
 import toast from "react-hot-toast";
 import Layout from "./Layout";
 import AppRoutes from "../routes/AppRoutes";
 import Login from "../pages/Login";
+import LandingPage from "../pages/LandingPage";
 import { useApp } from "../context/AppContext";
 import { useOrder } from "../context/OrderContext";
 import { useDining } from "../pages/DiningHall/DiningContext";
@@ -14,7 +15,7 @@ import { useAuth } from "../context/AuthContext";
 import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from "../utils/permissions";
 import { formatCurrency } from "../utils/format";
 import { printBill, printBillA4, printKot } from "../utils/print";
-import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService } from "../services/api";
+import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService } from "../services/api";
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
 import { TextProvider } from "../context/TextContext";
 import { useTheme } from "../context/ThemeContext";
@@ -34,8 +35,42 @@ import { sendBrowserNotification } from "../utils/notifications";
 
 /** Set only when user dismisses SubscriptionNoticeModal — never on open (avoids React Strict Mode + false "already notified"). */
 const POS_SUBSCRIPTION_MODAL_DISMISSED_KEY = "pos_subscription_modal_dismissed";
+const SHOW_MULTI_SHOP_MODAL = false;
 
 const LIVE_SUBSCRIPTION_STATUSES = ["active", "trial", "grace", "base", "free"];
+const ROOT_PATH_SEGMENTS = new Set([
+    "dashboard",
+    "dininghall",
+    "takeaway",
+    "wholesale",
+    "online-orders",
+    "reservations",
+    "kds",
+    "inventory",
+    "reports",
+    "settings",
+    "staff",
+    "organization",
+    "suppliers",
+    "parties",
+    "service",
+    "purchases",
+    "business-types",
+    "shop-management",
+    "client-management",
+    "plan-management",
+    "subscription-management",
+    "table-management",
+    "offers",
+    "owner-dashboard",
+    "my-attendance",
+    "my-leaves",
+    "my-salary",
+    "staff-dashboard",
+    "sale-marking",
+    "sales-history",
+    "login",
+]);
 
 /**
  * Prefer organization payload (same source as Organization page) over JWT user snapshot,
@@ -226,6 +261,20 @@ const AppContent = () => {
     }, [isAuthenticated, currentShopId, activeBranchId]);
 
     useEffect(() => {
+        const fetchRoles = async () => {
+            if (isAuthenticated && currentShopId) {
+                try {
+                    const roles = await roleService.getRolesByShopId(currentShopId);
+                    setRolesList(roles || []);
+                } catch (error) {
+                    console.error("Failed to fetch roles:", error);
+                }
+            }
+        };
+        fetchRoles();
+    }, [isAuthenticated, currentShopId]);
+
+    useEffect(() => {
         const fetchOrg = async () => {
             if (isAuthenticated && (currentUser?._id || currentUser?.id)) {
                 try {
@@ -307,14 +356,117 @@ const AppContent = () => {
     const location = useLocation();
     const navigate = useNavigate();
 
+    const toShopSegment = (rawName) => {
+        const raw = String(rawName || "").trim().toLowerCase();
+        if (!raw) return "";
+        return raw
+            .replace(/&/g, "and")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 60);
+    };
+
+    const getCurrentShopSegment = () => {
+        const currentShopId = currentUser?.shop_id || currentUser?.shopId;
+        const shops = Array.isArray(currentUser?.shops) ? currentUser.shops : [];
+        const matched = shops.find((s) =>
+            String(s?._id || s?.id || s?.shopId || "") === String(currentShopId || "")
+        );
+        const fromUserShops = toShopSegment(matched?.name || matched?.shopName);
+        if (fromUserShops) return fromUserShops;
+
+        const fromOrg = toShopSegment(organization?.businessName);
+        if (fromOrg) return fromOrg;
+
+        return toShopSegment(settings?.shopName);
+    };
+
+    // If authenticated user lands on /login, move them into app dashboard.
+    useEffect(() => {
+        if (!isAuthenticated) return;
+
+        const rawPath = String(location.pathname || "/");
+        const isLoginScopedPath =
+            rawPath === "/login" ||
+            rawPath.startsWith("/login/") ||
+            rawPath.endsWith("/login") ||
+            rawPath.includes("/login/");
+        if (!isLoginScopedPath) return;
+
+        const isSuperAdmin =
+            currentUser?.isSuperAdmin ||
+            currentUser?.role === "superadmin" ||
+            currentUser?.role?.name === "superadmin";
+
+        if (isSuperAdmin) {
+            navigate("/dashboard", { replace: true });
+            return;
+        }
+
+        if (currentUser?.isOwner) {
+            navigate("/owner-dashboard", { replace: true });
+            return;
+        }
+
+        const shopSegment = getCurrentShopSegment();
+        navigate(shopSegment ? `/${shopSegment}/dashboard` : "/dashboard", { replace: true });
+    }, [isAuthenticated, currentUser, location.pathname, navigate, organization?.businessName, settings?.shopName]);
+
+    // Normalize unauthenticated login URL to plain /login (avoid stale scoped login paths).
+    useEffect(() => {
+        if (isAuthenticated) return;
+        const rawPath = String(location.pathname || "/");
+        const isScopedLogin =
+            rawPath !== "/login" &&
+            (rawPath.endsWith("/login") || rawPath.includes("/login/"));
+        if (isScopedLogin) {
+            navigate("/login", { replace: true });
+        }
+    }, [isAuthenticated, location.pathname, navigate]);
+
+    // Keep shop slug as a common base URL for all normal app routes.
+    // This lets existing absolute navigations (/takeaway, /inventory, etc.)
+    // remain backward-compatible while still enforcing /{shopName}/... for scoped users.
+    useEffect(() => {
+        if (!isAuthenticated) return;
+
+        const isSuperAdmin =
+            currentUser?.isSuperAdmin ||
+            currentUser?.role === "superadmin" ||
+            currentUser?.role?.name === "superadmin";
+        if (isSuperAdmin) return;
+
+        const rawPath = String(location.pathname || "/");
+        if (rawPath === "/owner-dashboard" || rawPath === "/login" || rawPath.startsWith("/login/")) return;
+
+        const segs = rawPath.split("/").filter(Boolean);
+        if (segs.length === 0) return;
+
+        const first = segs[0];
+        // Already scoped if first segment is not a known root route.
+        if (!ROOT_PATH_SEGMENTS.has(first)) return;
+
+        const shopSegment = getCurrentShopSegment();
+        if (!shopSegment) return;
+
+        navigate(`/${shopSegment}${rawPath}`, { replace: true });
+    }, [isAuthenticated, currentUser, location.pathname, navigate, organization?.businessName, settings?.shopName]);
+
     // Sync view with URL path
     useEffect(() => {
-        const path = location.pathname;
+        const rawPath = location.pathname;
+        const segs = String(rawPath || "/").split("/").filter(Boolean);
+        const first = segs[0];
+
+        const path = (first && !ROOT_PATH_SEGMENTS.has(first))
+            ? `/${segs.slice(1).join("/")}`
+            : rawPath;
+
         const entry = Object.entries(ROUTE_KEY_TO_PATH).find(([key, routePath]) => path === routePath);
         if (entry) {
             setView(entry[0]);
         }
-    }, [location]);
+    }, [location.pathname, setView]);
     const [orderSearch, setOrderSearch] = useState("");
     const [isCustomizationModalOpen, setIsCustomizationModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -373,7 +525,7 @@ const AppContent = () => {
         if (!isAuthenticated || !currentUser) return;
 
         const hasIgnoredShops = sessionStorage.getItem("multiple_shops_ignored");
-        if (currentUser.shops && currentUser.shops.length > 1 && !hasIgnoredShops) {
+        if (SHOW_MULTI_SHOP_MODAL && currentUser.isOwner && currentUser.shops && currentUser.shops.length > 1 && !hasIgnoredShops) {
             setIsMultipleShopsModalOpen(true);
         }
 
@@ -428,6 +580,8 @@ const AppContent = () => {
 
     const handleLogout = () => {
         auth.logout();
+        setView("dashboard");
+        navigate("/login", { replace: true });
     };
 
     const handleIgnoreShopsAlert = () => {
@@ -1200,14 +1354,20 @@ const AppContent = () => {
 
 
             {!isAuthenticated ? (
-                <Login
-                    shopName={settings.shopName}
-                    rolesList={rolesList}
-                    staffList={staffList}
-                    onSetBusinessType={setBusinessType}
-                    onSetBusinessSubtype={setBusinessSubtype}
-                    onSetEnabledModules={setEnabledModules}
-                />
+                <Routes>
+                    <Route path="/" element={<LandingPage />} />
+                    <Route path="/login" element={
+                        <Login
+                            shopName={settings.shopName}
+                            rolesList={rolesList}
+                            staffList={staffList}
+                            onSetBusinessType={setBusinessType}
+                            onSetBusinessSubtype={setBusinessSubtype}
+                            onSetEnabledModules={setEnabledModules}
+                        />
+                    } />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
             ) : (
                 <TextProvider>
                     <Layout
@@ -1386,13 +1546,15 @@ const AppContent = () => {
                 onPrint={handlePrintReceipt}
             />
 
-            <MultipleShopsModal 
-                isOpen={isMultipleShopsModalOpen}
-                onClose={handleIgnoreShopsAlert}
-                onSwitch={handleSwitchShopAction}
-                shops={currentUser?.shops || []}
-                currentShopName={organization?.businessName}
-            />
+            {SHOW_MULTI_SHOP_MODAL && (
+                <MultipleShopsModal 
+                    isOpen={isMultipleShopsModalOpen}
+                    onClose={handleIgnoreShopsAlert}
+                    onSwitch={handleSwitchShopAction}
+                    shops={currentUser?.shops || []}
+                    currentShopName={organization?.businessName}
+                />
+            )}
 
             <SubscriptionNoticeModal
                 isOpen={isSubscriptionModalOpen}

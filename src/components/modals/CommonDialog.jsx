@@ -6,6 +6,7 @@ const CommonDialog = ({
     isOpen, 
     onClose, 
     onConfirm, 
+    onCancel,
     title, 
     message, 
     type = 'info', // 'info', 'success', 'warning', 'error', 'confirm', 'prompt'
@@ -37,11 +38,16 @@ const CommonDialog = ({
         onClose();
     };
 
+    const handleCancel = () => {
+        if (onCancel) onCancel();
+        onClose();
+    };
+
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
             <div 
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                onClick={onClose}
+                onClick={handleCancel}
             />
             
             <div className={`relative w-full max-w-md ${theme.surfaceBg} rounded-[32px] shadow-2xl border ${theme.borderLight} overflow-hidden animate-in fade-in zoom-in duration-300`}>
@@ -55,7 +61,7 @@ const CommonDialog = ({
                             <p className={`text-sm font-medium ${theme.textSecondary} leading-relaxed`}>{message}</p>
                         </div>
                         <button 
-                            onClick={onClose}
+                            onClick={handleCancel}
                             className={`p-2 rounded-xl ${theme.sectionBg} ${theme.textSecondary} hover:text-red-500 transition-colors`}
                         >
                             <X size={20} />
@@ -76,7 +82,7 @@ const CommonDialog = ({
 
                     <div className="flex gap-3">
                         <button
-                            onClick={onClose}
+                            onClick={handleCancel}
                             className={`flex-1 py-4 px-6 rounded-2xl font-black text-xs uppercase tracking-widest ${theme.textSecondary} ${theme.sectionBg} hover:opacity-80 transition-all active:scale-95`}
                         >
                             {cancelText}

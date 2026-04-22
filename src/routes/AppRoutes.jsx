@@ -44,6 +44,7 @@ import PayInList from "../pages/Dashboard/PayInList";
 import PayOutList from "../pages/Dashboard/PayOutList";
 import OperatingExpenses from "../pages/Dashboard/OperatingExpenses";
 import SalesList from "../pages/Dashboard/SalesList";
+import SaleMarking from "../pages/Sales/SaleMarking";
 
 
 const Staff = lazy(() => import("../pages/Staff/Staff"));
@@ -144,6 +145,7 @@ const AppRoutes = (props) => {
   } = props;
 
   const isWholesale = takeawayOrder?.orderType === "WHOLESALE";
+  const prefix = "/:shopName?";
 
   // Use props.menu as the primary source of truth for POS items.
   // AppContent handles the hydration and filtering based on business features.
@@ -195,7 +197,7 @@ const AppRoutes = (props) => {
       <Routes>
         {/* Generic Dashboard Route */}
         <Route
-          path="/dashboard"
+          path={`${prefix}/dashboard`}
           element={
             <ProtectedRoute routeKey="DASHBOARD">
               <Dashboard hasPermissionFor={hasPermissionFor || props.hasPermissionFor} />
@@ -203,7 +205,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/dashboard/sales"
+          path={`${prefix}/dashboard/sales`}
           element={
             <ProtectedRoute routeKey="DASHBOARD">
               <SalesList />
@@ -211,7 +213,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/dashboard/pay-in"
+          path={`${prefix}/dashboard/pay-in`}
           element={
             <ProtectedRoute routeKey="DASHBOARD">
               <PayInList />
@@ -219,7 +221,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/dashboard/pay-out"
+          path={`${prefix}/dashboard/pay-out`}
           element={
             <ProtectedRoute routeKey="DASHBOARD">
               <PayOutList />
@@ -227,7 +229,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/dashboard/operating-expenses"
+          path={`${prefix}/dashboard/operating-expenses`}
           element={
             <ProtectedRoute routeKey="DASHBOARD">
               <OperatingExpenses />
@@ -237,7 +239,7 @@ const AppRoutes = (props) => {
 
         {/* New specific route for dining hall */}
         <Route
-          path="/dininghall"
+          path={`${prefix}/dininghall`}
           element={
             <ProtectedRoute routeKey="DINING">
               <DiningHall
@@ -263,7 +265,7 @@ const AppRoutes = (props) => {
 
         {/* Route for specific table order */}
         <Route
-          path="/dininghall/table/:tableId"
+          path={`${prefix}/dininghall/table/:tableId`}
           element={
             <ProtectedRoute routeKey="DINING">
               <TableOrderWrapper
@@ -279,7 +281,7 @@ const AppRoutes = (props) => {
 
         {/* Route for takeaway / direct sale (same screen; heading by orderType) */}
         <Route
-          path="/takeaway"
+          path={`${prefix}/takeaway`}
           element={
             <ProtectedRoute routeKeys={["TAKEAWAY", "DIRECT_SALE"]}>
               <TakeawayOrderWrapper
@@ -294,7 +296,7 @@ const AppRoutes = (props) => {
 
         {/* Wholesale: same TakeawayOrder UI with stock items only (when shop has pos.wholesale) */}
         <Route
-          path="/wholesale"
+          path={`${prefix}/wholesale`}
           element={
             <ProtectedRoute routeKey="WHOLESALE">
               <WholesaleOrderWrapper
@@ -311,7 +313,7 @@ const AppRoutes = (props) => {
 
         {/* Online Orders Route */}
         <Route
-          path="/online-orders"
+          path={`${prefix}/online-orders`}
           element={
             <ProtectedRoute routeKey="ONLINE_ORDERS">
               <OnlineOrders
@@ -333,7 +335,7 @@ const AppRoutes = (props) => {
 
         {/* Reservations Route */}
         <Route
-          path="/reservations"
+          path={`${prefix}/reservations`}
           element={
             <ProtectedRoute routeKey="RESERVATIONS">
               <Reservations
@@ -343,7 +345,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/reservations/new"
+          path={`${prefix}/reservations/new`}
           element={
             <ProtectedRoute routeKey="RESERVATIONS">
               <ReservationForm />
@@ -351,7 +353,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/reservations/edit/:id"
+          path={`${prefix}/reservations/edit/:id`}
           element={
             <ProtectedRoute routeKey="RESERVATIONS">
               <ReservationForm />
@@ -361,7 +363,7 @@ const AppRoutes = (props) => {
 
         {/* KDS Route */}
         <Route
-          path="/kds"
+          path={`${prefix}/kds`}
           element={
             <ProtectedRoute routeKey="KDS">
               <KDS
@@ -378,7 +380,7 @@ const AppRoutes = (props) => {
 
         {/* Inventory Route */}
         <Route
-          path="/inventory"
+          path={`${prefix}/inventory`}
           element={
             <ProtectedRoute routeKey="INVENTORY">
               <Inventory
@@ -395,7 +397,7 @@ const AppRoutes = (props) => {
         />
 
         <Route
-          path="/inventory/new"
+          path={`${prefix}/inventory/new`}
           element={
             <ProtectedRoute routeKey="INVENTORY">
               <ProductPage
@@ -408,7 +410,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/inventory/edit/:id"
+          path={`${prefix}/inventory/edit/:id`}
           element={
             <ProtectedRoute routeKey="INVENTORY">
               <ProductPage
@@ -423,7 +425,7 @@ const AppRoutes = (props) => {
 
         {/* Reports Route */}
         <Route
-          path="/reports"
+          path={`${prefix}/reports`}
           element={
             <ProtectedRoute routeKey="REPORTS">
               <Reports
@@ -439,9 +441,27 @@ const AppRoutes = (props) => {
           }
         />
 
+        {/* Sale Marking Route */}
+        <Route
+          path={`${prefix}/sale-marking`}
+          element={
+            <ProtectedRoute routeKey="SALE_MARKING">
+              <SaleMarking />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={`${prefix}/sales-history`}
+          element={
+            <ProtectedRoute routeKey="SALES_HISTORY">
+              <SalesList />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Settings Route */}
         <Route
-          path="/settings"
+          path={`${prefix}/settings`}
           element={
             <ProtectedRoute routeKey="SETTINGS">
               <Settings
@@ -460,7 +480,7 @@ const AppRoutes = (props) => {
 
         {/* Organization Route */}
         <Route
-          path="/organization"
+          path={`${prefix}/organization`}
           element={
             <ProtectedRoute routeKey="ORGANIZATION">
               <Organization
@@ -476,7 +496,7 @@ const AppRoutes = (props) => {
 
         {/* Offers Route */}
         <Route
-          path="/offers"
+          path={`${prefix}/offers`}
           element={
             <ProtectedRoute routeKey="OFFERS">
               <OfferList
@@ -487,7 +507,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/offers/new"
+          path={`${prefix}/offers/new`}
           element={
             <ProtectedRoute routeKey="OFFERS">
               <OfferForm />
@@ -495,7 +515,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/offers/edit/:id"
+          path={`${prefix}/offers/edit/:id`}
           element={
             <ProtectedRoute routeKey="OFFERS">
               <OfferForm />
@@ -505,7 +525,7 @@ const AppRoutes = (props) => {
 
         {/* Staff Route */}
         <Route
-          path="/staff"
+          path={`${prefix}/staff`}
           element={
             <ProtectedRoute routeKey="STAFF">
               <Suspense fallback={<div>Loading...</div>}>
@@ -522,7 +542,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/my-attendance"
+          path={`${prefix}/my-attendance`}
           element={
             <ProtectedRoute routeKey="MYATTENDANCE">
               <MyAttendance />
@@ -530,7 +550,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/my-leaves"
+          path={`${prefix}/my-leaves`}
           element={
             <ProtectedRoute routeKey="MYLEAVES">
               <MyLeaves />
@@ -538,7 +558,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/my-salary"
+          path={`${prefix}/my-salary`}
           element={
             <ProtectedRoute routeKey="MYSALARY">
               <Suspense fallback={<div>Loading...</div>}>
@@ -548,7 +568,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/staff-dashboard"
+          path={`${prefix}/staff-dashboard`}
           element={
             <ProtectedRoute routeKey="STAFF_DASHBOARD">
               <StaffDashboard />
@@ -558,7 +578,7 @@ const AppRoutes = (props) => {
 
         {/* Suppliers Route (standalone) */}
         <Route
-          path="/suppliers"
+          path={`${prefix}/suppliers`}
           element={
             <ProtectedRoute routeKey="SUPPLIERS">
               <Supplier
@@ -570,7 +590,7 @@ const AppRoutes = (props) => {
 
         {/* Parties Route (Suppliers + Customers tabs) */}
         <Route
-          path="/parties"
+          path={`${prefix}/parties`}
           element={
             <ProtectedRoute routeKey="PARTIES">
               <Parties hasPermissionFor={hasPermissionFor || props.hasPermissionFor} />
@@ -580,7 +600,7 @@ const AppRoutes = (props) => {
 
         {/* Service Routes */}
         <Route
-          path="/service"
+          path={`${prefix}/service`}
           element={
             <ProtectedRoute routeKey="SERVICE">
               <ServiceList
@@ -590,7 +610,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/service/new"
+          path={`${prefix}/service/new`}
           element={
             <ProtectedRoute routeKey="SERVICE">
               <ServiceCreate
@@ -600,7 +620,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/service/:id"
+          path={`${prefix}/service/:id`}
           element={
             <ProtectedRoute routeKey="SERVICE">
               <ServiceDetails
@@ -612,7 +632,7 @@ const AppRoutes = (props) => {
 
         {/* Purchase Routes */}
         <Route
-          path="/purchases"
+          path={`${prefix}/purchases`}
           element={
             <ProtectedRoute routeKey="PURCHASES">
               <PurchaseList
@@ -622,7 +642,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/purchases/new"
+          path={`${prefix}/purchases/new`}
           element={
             <ProtectedRoute routeKey="PURCHASES">
               <PurchasePage />
@@ -630,7 +650,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/purchases/edit/:id"
+          path={`${prefix}/purchases/edit/:id`}
           element={
             <ProtectedRoute routeKey="PURCHASES">
               <PurchasePage />
@@ -638,7 +658,7 @@ const AppRoutes = (props) => {
           }
         />
         <Route
-          path="/purchases/:id"
+          path={`${prefix}/purchases/:id`}
           element={
             <ProtectedRoute routeKey="PURCHASES">
               <PurchasePage />
@@ -648,7 +668,7 @@ const AppRoutes = (props) => {
 
         {/* Business Types (SuperAdmin Only) */}
         <Route
-          path="/business-types"
+          path={`${prefix}/business-types`}
           element={
             <ProtectedRoute routeKey="BUSINESS_TYPES">
               <BusinessTypesPage hasPermissionFor={hasPermissionFor || props.hasPermissionFor} />
@@ -658,7 +678,7 @@ const AppRoutes = (props) => {
 
         {/* Shop Management (SuperAdmin Only) */}
         <Route
-          path="/shop-management"
+          path={`${prefix}/shop-management`}
           element={
             <ProtectedRoute routeKey="SHOP_MANAGEMENT">
               <ShopManagementPage />
@@ -668,7 +688,7 @@ const AppRoutes = (props) => {
 
         {/* Client Management (SuperAdmin Only) */}
         <Route
-          path="/client-management"
+          path={`${prefix}/client-management`}
           element={
             <ProtectedRoute routeKey="CLIENT_MANAGEMENT">
               <ClientManagementPage />
@@ -678,7 +698,7 @@ const AppRoutes = (props) => {
 
         {/* Plan Management (SuperAdmin Only) */}
         <Route
-          path="/plan-management"
+          path={`${prefix}/plan-management`}
           element={
             <ProtectedRoute routeKey="PLAN_MANAGEMENT">
               <PlanManagementPage />
@@ -688,7 +708,7 @@ const AppRoutes = (props) => {
 
         {/* Subscription Management (SuperAdmin Only) */}
         <Route
-          path="/subscription-management"
+          path={`${prefix}/subscription-management`}
           element={
             <ProtectedRoute routeKey="SUBSCRIPTION_MANAGEMENT">
               <SubscriptionManagementPage />
@@ -698,7 +718,7 @@ const AppRoutes = (props) => {
 
         {/* Table Management Route */}
         <Route
-          path="/table-management"
+          path={`${prefix}/table-management`}
           element={
             <ProtectedRoute routeKey="TABLE_MANAGEMENT">
               <TableManagement hasPermissionFor={hasPermissionFor || props.hasPermissionFor} />
@@ -708,7 +728,7 @@ const AppRoutes = (props) => {
 
         {/* Owner Dashboard Route (Keep direct url access optional, though it'll be part of unified dashboard) */}
         <Route
-          path="/owner-dashboard"
+          path={`${prefix}/owner-dashboard`}
           element={
             <ProtectedRoute routeKey="DASHBOARD">
               <OwnerDashboard />
@@ -722,70 +742,70 @@ const AppRoutes = (props) => {
           element={
             <>
               {view === "dashboard" && (
-                <Navigate to="/dashboard" replace />
+                <Navigate to="dashboard" replace />
               )}
               {view === "tables" && (
-                <Navigate to="/dininghall" replace />
+                <Navigate to="dininghall" replace />
               )}
               {view === "order" && isTakeaway && (
-                <Navigate to={takeawayOrder?.orderType === "WHOLESALE" ? "/wholesale" : "/takeaway"} replace />
+                <Navigate to={takeawayOrder?.orderType === "WHOLESALE" ? "wholesale" : "takeaway"} replace />
               )}
               {view === "order" && !isTakeaway && (
-                <Navigate to={`/dininghall/table/${activeTableId}`} replace />
+                <Navigate to={`dininghall/table/${activeTableId}`} replace />
               )}
               {view === "online-orders" && (
-                <Navigate to="/online-orders" replace />
+                <Navigate to="online-orders" replace />
               )}
               {view === "reservations" && (
-                <Navigate to="/reservations" replace />
+                <Navigate to="reservations" replace />
               )}
               {view === "kds" && (
-                <Navigate to="/kds" replace />
+                <Navigate to="kds" replace />
               )}
               {view === "inventory" && (
-                <Navigate to="/inventory" replace />
+                <Navigate to="inventory" replace />
               )}
               {view === "reports" && (
-                <Navigate to="/reports" replace />
+                <Navigate to="reports" replace />
               )}
               {view === "organization" && (
-                <Navigate to="/organization" replace />
+                <Navigate to="organization" replace />
               )}
               {view === "suppliers" && (
-                <Navigate to="/suppliers" replace />
+                <Navigate to="suppliers" replace />
               )}
               {view === "parties" && (
-                <Navigate to="/parties" replace />
+                <Navigate to="parties" replace />
               )}
               {view === "service" && (
-                <Navigate to="/service" replace />
+                <Navigate to="service" replace />
               )}
               {view === "purchases" && (
-                <Navigate to="/purchases" replace />
+                <Navigate to="purchases" replace />
               )}
               {view === "business-types" && (
-                <Navigate to="/business-types" replace />
+                <Navigate to="business-types" replace />
               )}
               {view === "shop-management" && (
-                <Navigate to="/shop-management" replace />
+                <Navigate to="shop-management" replace />
               )}
               {view === "plan-management" && (
-                <Navigate to="/plan-management" replace />
+                <Navigate to="plan-management" replace />
               )}
               {view === "client-management" && (
-                <Navigate to="/client-management" replace />
+                <Navigate to="client-management" replace />
               )}
               {view === "table-management" && (
-                <Navigate to="/table-management" replace />
+                <Navigate to="table-management" replace />
               )}
               {view === "offers" && (
-                <Navigate to="/offers" replace />
+                <Navigate to="offers" replace />
               )}
               {view === "owner-dashboard" && (
-                <Navigate to="/owner-dashboard" replace />
+                <Navigate to="owner-dashboard" replace />
               )}
               {view === "my-salary" && (
-                <Navigate to="/my-salary" replace />
+                <Navigate to="my-salary" replace />
               )}
               {view !== "dashboard" && view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "parties" && view !== "service" && view !== "purchases" && view !== "business-types" && view !== "shop-management" && view !== "client-management" && view !== "plan-management" && view !== "table-management" && view !== "owner-dashboard" && view !== "offers" && props.children}
             </>

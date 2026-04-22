@@ -718,7 +718,7 @@ const PaymentModal = ({ purchase, onClose, onSuccess, currency }) => {
 
 const PurchaseList = ({ hasPermissionFor }) => {
     const { user } = useAuth();
-    const { activeBranchId, organization } = useApp();
+    const { activeBranchId, organization, currentShopId } = useApp();
     const currency = organization?.defaultCurrency || 'USD';
     const { theme } = useTheme();
     const navigate = useNavigate();
@@ -728,8 +728,6 @@ const PurchaseList = ({ hasPermissionFor }) => {
     const [payTarget, setPayTarget] = useState(null); // purchase row for payment modal
     const [viewTarget, setViewTarget] = useState(null); // purchase id for detail modal
 
-    const [shopId, setShopId] = useState(null);
-
     // ── Permissions
     const access = ROUTE_ACCESS.PURCHASES;
     const canView = hasPermissionFor?.(access.module, access.resource, "view") ||
@@ -737,31 +735,11 @@ const PurchaseList = ({ hasPermissionFor }) => {
     const canManage = hasPermissionFor?.(access.module, access.resource, "manage");
 
     // ── Bootstrap
-    useEffect(() => {
-        if (!user) return;
-        const init = async () => {
-            try {
-                const userId = user.id || user._id;
-                const shopData = await shopService.getShopDataByUserId(userId);
-                const id = shopData.shop?._id || shopData.organization?._id || shopData._id;
-                setShopId(id);
-
-                await Promise.all([
-                    SupplierService.getSuppliers(id),
-                    branchService.getBranchesByShopId(id),
-                    itemService.getItems({ filters: { shopId: id, itemType: "STOCK" }, limit: 200 }),
-                ]);
-            } catch (err) {
-                console.error("Init error:", err);
-            }
-        };
-        init();
-    }, [user]);
-
     const loadPurchases = useCallback(async () => {
+        if (!currentShopId) return;
         setLoading(true);
         try {
-            const params = { shopId };
+            const params = { shopId: currentShopId };
             if (activeBranchId) params.branchId = activeBranchId;
             const data = await PurchaseService.getPurchases(params);
             setPurchases(Array.isArray(data) ? data : data.purchases || []);
@@ -770,11 +748,11 @@ const PurchaseList = ({ hasPermissionFor }) => {
         } finally {
             setLoading(false);
         }
-    }, [shopId, activeBranchId]);
+    }, [currentShopId, activeBranchId]);
 
     useEffect(() => {
-        if (shopId) loadPurchases();
-    }, [shopId, loadPurchases]);
+        if (currentShopId) loadPurchases();
+    }, [currentShopId, activeBranchId, loadPurchases]);
 
     const handleDelete = async (id) => {
         confirmAction(
@@ -1019,7 +997,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                     purchaseId={viewTarget}
                     onClose={() => setViewTarget(null)}
                     currency={currency}
-                    shopId={shopId}
+                    shopId={currentShopId}
                 />
             )}
 

@@ -1,7 +1,7 @@
 import React from 'react';
+import { useLocation, useParams } from 'react-router-dom';
 import { usePermission } from '../../auth/usePermission';
 import { ACTIONS } from '../../constants/actions';
-import OwnerDashboard from '../OwnerDashboard/OwnerDashboard';
 import SuperAdminDashboard from '../SuperAdminDashboard/SuperAdminDashboard';
 import ShopDashboard from './ShopDashboard';
 import StaffDashboard from '../Staff/StaffDashboard';
@@ -12,6 +12,8 @@ import { useAuth } from '../../context/AuthContext';
 const Dashboard = () => {
     const { can } = usePermission();
     const { user } = useAuth();
+    const { shopName } = useParams();
+    const location = useLocation();
 
     const isSuperAdmin = user?.isSuperAdmin === true || user?.role === 'superadmin' || user?.role?.name === 'superadmin';
 
@@ -20,19 +22,22 @@ const Dashboard = () => {
         return <SuperAdminDashboard />;
     }
 
-    // Check if the user has OWNER.DASHBOARD permission
-    const isOwner = can(MODULES.DASHBOARD, ACTIONS.OWNER_DASHBOARD) || can("DASHBOARD", ACTIONS.OWNER_DASHBOARD);
-
     // Check if the user has SHOP.DASHBOARD permission
     const isShopManager = can(MODULES.DASHBOARD, "SHOP.DASHBOARD") || can("DASHBOARD", "SHOP.DASHBOARD");
 
     // Check if the user has STAFF.DASHBOARD permission
     const isStaff = can(MODULES.DASHBOARD, ACTIONS.STAFF_DASHBOARD) || can("DASHBOARD", ACTIONS.STAFF_DASHBOARD) || can("69abb4069b697daaf0909284", ACTIONS.STAFF_DASHBOARD);
 
-    console.log("Dashboard rendering. isOwner:", isOwner, "isShopManager:", isShopManager, "isStaff:", isStaff);
+    console.log("Dashboard rendering. isShopManager:", isShopManager, "isStaff:", isStaff);
 
-    if (isOwner) {
-        return <OwnerDashboard />;
+    // If a shop is selected in the URL (/{shopName}/...), prefer SHOP dashboard when permitted.
+    // This ensures clicking "Dashboard" from shop pages stays in shop context.
+    const inShopContext =
+        Boolean(shopName) &&
+        (location.pathname.startsWith(`/${shopName}/`) || location.pathname === `/${shopName}`);
+
+    if (inShopContext && isShopManager) {
+        return <ShopDashboard />;
     }
 
     if (isShopManager) {

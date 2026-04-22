@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
 import { useTheme } from "../context/ThemeContext";
+import { useLocation } from "react-router-dom";
 
 const Layout = ({
     children,
@@ -28,6 +29,22 @@ const Layout = ({
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
     const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
     const { theme } = useTheme();
+    const location = useLocation();
+
+    const hideChrome = useMemo(() => {
+        // Owner selection page should be full-width with no Navbar/Sidebar.
+        return location.pathname === "/owner-dashboard" && Boolean(currentUser?.isOwner);
+    }, [location.pathname, currentUser?.isOwner]);
+
+    if (hideChrome) {
+        return (
+            <div className={`h-screen w-screen overflow-hidden ${theme.pageBg} font-sans`}>
+                <div className="h-full w-full overflow-auto custom-scrollbar">
+                    {children}
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={`h-screen w-screen flex flex-col overflow-hidden ${theme.pageBg} font-sans`}>

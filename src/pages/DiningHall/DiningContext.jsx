@@ -101,7 +101,8 @@ export const DiningProvider = ({ children }) => {
                 ...r,
                 id: r._id,
                 tableId: r.tableId?._id || r.tableId, // Ensure it's a string ID
-                date: new Date(r.reservationTime).toISOString().split("T")[0] // Add YYYY-MM-DD
+                date: new Date(r.reservationTime).toISOString().split("T")[0], // Add YYYY-MM-DD
+                time: new Date(r.reservationTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }));
 
             // IMPORTANT:

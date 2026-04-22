@@ -18,6 +18,7 @@ import {
     Briefcase,
     ChevronRight,
     ChevronLeft,
+    ChevronDown,
     Store,
     Tag,
     CreditCard,
@@ -31,7 +32,7 @@ import {
     ClipboardList,
     Wallet
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
 import { getModuleList } from "../config/businessTypes";
 import { usePermission } from "../auth/usePermission";
@@ -64,10 +65,58 @@ const Sidebar = ({
     setIsExpanded,
 }) => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { can, canModule } = usePermission();
     const { theme } = useTheme();
     const { user } = useAuth();
+    const [isSelfServiceExpanded, setIsSelfServiceExpanded] = useState(true);
+    const [isSalesExpanded, setIsSalesExpanded] = useState(true);
     const closeMobile = () => onMobileClose?.();
+
+    const getShopPrefix = () => {
+        const segs = String(location.pathname || "/").split("/").filter(Boolean);
+        const first = segs[0];
+        if (!first) return "";
+        const ROOTS = new Set([
+            "dashboard",
+            "dininghall",
+            "takeaway",
+            "wholesale",
+            "online-orders",
+            "reservations",
+            "kds",
+            "inventory",
+            "reports",
+            "settings",
+            "staff",
+            "organization",
+            "suppliers",
+            "parties",
+            "service",
+            "purchases",
+            "business-types",
+            "shop-management",
+            "client-management",
+            "plan-management",
+            "subscription-management",
+            "table-management",
+            "offers",
+            "owner-dashboard",
+            "my-attendance",
+            "my-leaves",
+            "my-salary",
+            "staff-dashboard",
+            "sale-marking",
+            "sales-history",
+        ]);
+        return ROOTS.has(first) ? "" : `/${first}`;
+    };
+
+    const goDashboard = () => {
+        const prefix = getShopPrefix();
+        navigate(`${prefix}/dashboard`);
+        closeMobile();
+    };
 
 
     // Modules to show: from business type intersected with user permissions; if no business list, use allowed-by-permission only
@@ -112,13 +161,55 @@ const Sidebar = ({
         const foundOrder = order.filter(m => result.includes(m));
         result = [...foundOrder, ...others];
 
+        // --- NEW: Grouping Logic ---
+        const selfServiceKeys = ['MYATTENDANCE', 'MYLEAVES', 'MYSALARY'];
+        const activeSelfService = result.filter(k => selfServiceKeys.includes(k));
+        
+        if (result.length > 5 && activeSelfService.length > 1) {
+            // Replace the first occurrence of any self-service item with 'SELF_SERVICE'
+            // and remove the others.
+            let grouped = false;
+            const newResult = [];
+            for (const key of result) {
+                if (selfServiceKeys.includes(key)) {
+                    if (!grouped) {
+                        newResult.push('SELF_SERVICE');
+                        grouped = true;
+                    }
+                } else {
+                    newResult.push(key);
+                }
+            }
+            result = newResult;
+        }
+
+        // --- NEW: Sales Grouping Logic ---
+        const salesKeys = ['SALE_MARKING', 'SALES_HISTORY'];
+        const activeSalesArr = result.filter(k => salesKeys.includes(k));
+        
+        if (result.length > 5 && activeSalesArr.length > 1) {
+            let grouped = false;
+            const newResult = [];
+            for (const key of result) {
+                if (salesKeys.includes(key)) {
+                    if (!grouped) {
+                        newResult.push('SALES');
+                        grouped = true;
+                    }
+                } else {
+                    newResult.push(key);
+                }
+            }
+            result = newResult;
+        }
+
         return result;
-    }, [businessType, businessSubtype, enabledModules, can, canModule]);
+    }, [businessType, businessSubtype, enabledModules, can, canModule, user]);
 
     const MODULE_CONFIG = {
         DASHBOARD: {
             icon: LayoutDashboard, label: "Dashboard",
-            onClick: () => { setView("dashboard"); navigate("/dashboard"); closeMobile(); },
+            onClick: () => { setView("dashboard"); goDashboard(); },
             isActive: view === "dashboard" || view === "owner-dashboard"
         },
         DINING: {
@@ -161,6 +252,16 @@ const Sidebar = ({
             icon: Boxes, label: "Stock Items",
             onClick: () => { setView("inventory"); navigate("/inventory"); closeMobile(); },
             isActive: view === "inventory"
+        },
+        SALE_MARKING: {
+            icon: CalendarCheck, label: "Sale Marking",
+            onClick: () => { setView("sale-marking"); navigate("/sale-marking"); closeMobile(); },
+            isActive: view === "sale-marking"
+        },
+        SALES_HISTORY: {
+            icon: ShoppingBag, label: "Sales History",
+            onClick: () => { setView("sales-history"); navigate("/sales-history"); closeMobile(); },
+            isActive: view === "sales-history"
         },
         REPORTS: {
             icon: TrendingUp, label: "Reports",
@@ -252,10 +353,67 @@ const Sidebar = ({
             onClick: () => { setView("table-management"); navigate("/table-management"); closeMobile(); },
             isActive: view === "table-management"
         },
+        SELF_SERVICE: {
+            icon: Briefcase, label: "Self Service",
+            isGroup: true,
+            children: ['MYATTENDANCE', 'MYLEAVES', 'MYSALARY'].filter(k => canAccessRoute(can, canModule, k))
+        },
+        SALES: {
+            icon: ShoppingBag, label: "Sales",
+            isGroup: true,
+            children: ['SALE_MARKING', 'SALES_HISTORY'].filter(k => canAccessRoute(can, canModule, k))
+        }
     };
 
     const renderNavButton = (config, key) => {
         if (!config) return null;
+        if (config.isGroup) {
+            const isAnyChildActive = config.children.some(childKey => MODULE_CONFIG[childKey]?.isActive);
+            const isSelfService = key === 'SELF_SERVICE';
+            const isSales = key === 'SALES';
+            const isOpen = isSelfService ? isSelfServiceExpanded : (isSales ? isSalesExpanded : false);
+            const toggle = () => isSelfService ? setIsSelfServiceExpanded(!isSelfServiceExpanded) : (isSales ? setIsSalesExpanded(!isSalesExpanded) : null);
+
+            return (
+                <div key={key} className="w-full flex flex-col mb-2">
+                    <div className={`relative flex w-full ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:justify-center'}`}>
+                        <button
+                            onClick={toggle}
+                            className={`p-3 md:p-4 transition-all flex items-center w-full ${isExpanded
+                                ? 'gap-4 justify-start rounded-xl md:rounded-2xl'
+                                : 'justify-start md:justify-center gap-4 md:gap-0 rounded-2xl md:rounded-[24px]'
+                                } ${isAnyChildActive ? theme.sidebarItemActiveBg : theme.sidebarItemHoverBg}`}
+                        >
+                            <config.icon className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
+                            <div className={`flex-1 flex items-center justify-between overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-0 opacity-0 md:hidden'}`}>
+                                <span className="font-bold text-sm whitespace-nowrap">{config.label}</span>
+                                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </div>
+                        </button>
+                    </div>
+                    {isOpen && isExpanded && (
+                        <div className="mt-1 flex flex-col items-stretch space-y-1">
+                            {config.children.map(childKey => {
+                                const childConfig = MODULE_CONFIG[childKey];
+                                if (!childConfig) return null;
+                                const { icon: ChildIcon, label, onClick, isActive } = childConfig;
+                                return (
+                                    <button
+                                        key={childKey}
+                                        onClick={onClick}
+                                        className={`mx-6 md:mx-10 p-3 rounded-xl transition-all flex items-center gap-3 ${isActive ? `${theme.sidebarItemActiveBg} shadow-sm` : `hover:bg-black/5 dark:hover:bg-white/5`}`}
+                                    >
+                                        <ChildIcon size={16} />
+                                        <span className="font-bold text-xs">{label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         const { icon: Icon, label, onClick, isActive, badge } = config;
         return (
             <div key={key} className={`relative flex w-full mb-2 ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:justify-center'}`}>
@@ -335,7 +493,7 @@ const Sidebar = ({
 
                 {/* Desktop logo */}
                 <div 
-                    onClick={() => { setView("dashboard"); navigate("/dashboard"); closeMobile(); }}
+                    onClick={() => { setView("dashboard"); goDashboard(); }}
                     className={`hidden md:flex items-center cursor-pointer hover:opacity-80 transition-all active:scale-95 ${isExpanded ? 'justify-start px-8 gap-4' : 'justify-center'} w-full mb-8`}
                 >
                     <div className={`shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-2xl ${theme.sidebarLogoBg} ${theme.sidebarLogoText} shadow-lg shadow-indigo-600/10`}>

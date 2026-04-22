@@ -114,8 +114,10 @@ const PurchasePage = () => {
         batchOverride: "",
         expiryOverride: "",
         layout: "ROWS",
-        labelWidth: 38,
-        labelHeight: 20,
+        labelWidth: 50,
+        labelHeight: 25,
+        labelGapX: 2,
+        labelGapY: 2,
         elementsOrder: ["logo", "barcode", "name", "code", "price", "batch", "expiry", "custom"]
     });
 
@@ -136,7 +138,8 @@ const PurchasePage = () => {
             const root = base.replace(/\/api\/?$/, "");
             const fullUrl = `${root}${barcode.imageUrl}`;
 
-            setBarcodePrintDialog({
+            setBarcodePrintDialog(prev => ({
+                ...prev,
                 isOpen: true,
                 item: lineItem,
                 barcode: { ...barcode, fullUrl },
@@ -152,7 +155,7 @@ const PurchasePage = () => {
                 expiryOverride: "",
                 layout: "ROWS",
                 elementsOrder: ["logo", "barcode", "name", "code", "price", "batch", "expiry", "custom"]
-            });
+            }));
         } catch (error) {
             console.error("Failed to prepare barcode for printing:", error);
             alert("Failed to load barcode for printing.");
@@ -1097,6 +1100,8 @@ const PurchasePage = () => {
             layout,
             labelWidth,
             labelHeight,
+            labelGapX,
+            labelGapY,
             elementsOrder
         } = barcodePrintDialog;
         if (!barcode || !barcode.fullUrl) {
@@ -1178,7 +1183,7 @@ const PurchasePage = () => {
       .labels {
         display: flex;
         flex-wrap: wrap;
-        gap: 4mm;
+        gap: ${labelGapY}mm ${labelGapX}mm;
       }
       .labels.rows { flex-direction: row; }
       .labels.columns { flex-direction: column; }
@@ -1568,7 +1573,7 @@ const PurchasePage = () => {
                             </h2>
 
                             {/* Search for Adding Items - Now Full Width */}
-                            <div className="relative w-full z-[1100]">
+                            <div className="relative w-full z-[30]">
                                 <CommonSelect
                                     options={stockItems}
                                     value={null}
@@ -1984,7 +1989,7 @@ const PurchasePage = () => {
                                             min={1}
                                             value={barcodePrintDialog.labelWidth}
                                             onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelWidth: parseFloat(e.target.value || 0) }))}
-                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs text-center pr-6`}
+                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs pl-3 pr-6`}
                                         />
                                         <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>W</span>
                                     </div>
@@ -1995,13 +2000,68 @@ const PurchasePage = () => {
                                             min={1}
                                             value={barcodePrintDialog.labelHeight}
                                             onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelHeight: parseFloat(e.target.value || 0) }))}
-                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs text-center pr-6`}
+                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs pl-3 pr-6`}
                                         />
                                         <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>H</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
+
+                        {Number(barcodePrintDialog.copies) > 1 && (
+                            <div className="grid grid-cols-2 gap-6 p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/50">
+                                <div className="space-y-2 col-span-2">
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Layout Direction</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "ROWS" }))}
+                                            className={`flex-1 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${barcodePrintDialog.layout === "ROWS"
+                                                ? (theme.mode === 'dark' ? "border-indigo-400 text-indigo-300 bg-indigo-400/10" : "border-indigo-500 text-indigo-600 bg-indigo-50")
+                                                : `${theme.borderLight} ${theme.textSecondary} ${theme.surfaceBg}`
+                                                }`}
+                                        >
+                                            Row-wise
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "COLUMNS" }))}
+                                            className={`flex-1 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${barcodePrintDialog.layout === "COLUMNS"
+                                                ? (theme.mode === 'dark' ? "border-indigo-400 text-indigo-300 bg-indigo-400/10" : "border-indigo-500 text-indigo-600 bg-indigo-50")
+                                                : `${theme.borderLight} ${theme.textSecondary} ${theme.surfaceBg}`
+                                                }`}
+                                        >
+                                            Column-wise
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-1 col-span-2">
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Label Gaps (H / V mm)</label>
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={barcodePrintDialog.labelGapX}
+                                                onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelGapX: parseFloat(e.target.value || 0) }))}
+                                                className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs pl-3 pr-6`}
+                                            />
+                                            <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>X</span>
+                                        </div>
+                                        <div className="relative flex-1">
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={barcodePrintDialog.labelGapY}
+                                                onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelGapY: parseFloat(e.target.value || 0) }))}
+                                                className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs pl-3 pr-6`}
+                                            />
+                                            <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>Y</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Include on label</label>
@@ -2154,28 +2214,6 @@ const PurchasePage = () => {
                                 })}
                             </div>
 
-                            <div className="flex gap-2 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "ROWS" }))}
-                                    className={`flex-1 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${barcodePrintDialog.layout === "ROWS"
-                                        ? (theme.mode === 'dark' ? "border-indigo-400 text-indigo-300 bg-indigo-400/10" : "border-indigo-500 text-indigo-600 bg-indigo-50")
-                                        : `${theme.borderLight} ${theme.textSecondary} ${theme.surfaceBg}`
-                                        }`}
-                                >
-                                    Row-wise
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "COLUMNS" }))}
-                                    className={`flex-1 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${barcodePrintDialog.layout === "COLUMNS"
-                                        ? (theme.mode === 'dark' ? "border-indigo-400 text-indigo-300 bg-indigo-400/10" : "border-indigo-500 text-indigo-600 bg-indigo-50")
-                                        : `${theme.borderLight} ${theme.textSecondary} ${theme.surfaceBg}`
-                                        }`}
-                                >
-                                    Column-wise
-                                </button>
-                            </div>
                         </div>
                     </div>
 
@@ -2264,7 +2302,7 @@ const PurchasePage = () => {
 
             {/* Product Modal */}
             {isProductModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
                     <div className={`w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-[40px] shadow-2xl relative flex flex-col ${theme.surfaceBg}`}>
                         <button
                             onClick={() => setIsProductModalOpen(false)}
@@ -2476,7 +2514,7 @@ const PurchasePage = () => {
             </Modal>
             {/* Supplier Modal */}
             {isSupplierModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
                     <div className={`w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-[32px] shadow-2xl relative flex flex-col ${theme.surfaceBg}`}>
                         <div className={`p-6 md:p-8 border-b sticky top-0 z-10 flex justify-between items-center ${theme.surfaceBg} ${theme.borderLight}`}>
                             <h3 className={`text-2xl font-black flex items-center gap-3 ${theme.textHeading}`}>

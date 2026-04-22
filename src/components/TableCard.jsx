@@ -8,9 +8,13 @@ import {
   Timer,
   Users,
   Wind,
-  Check
+  Check,
+  UserCheck,
+  XCircle,
+  CalendarX
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import { usePermission } from "../auth/usePermission";
 
 const TableCard = ({
   table,
@@ -19,8 +23,17 @@ const TableCard = ({
   isAdmin,
   onSelect,
   totalLabel,
+  onMarkArrived,
+  onCancelReservation
 }) => {
   const { theme, themeName } = useTheme();
+  const { canModule } = usePermission();
+
+  const handleAction = (e, callback) => {
+    e.stopPropagation();
+    callback?.(hasReservation);
+  };
+
   return (
     <div
       onClick={() => {
@@ -77,11 +90,36 @@ const TableCard = ({
         )}
       </div>
 
-      {/* Middle: Status Badges */}
+      {/* Middle: Status Badges & Reservation Actions */}
       <div className="flex-1 flex flex-col gap-2 mt-2">
         {hasReservation && !table.isMaintenance && (
-          <div className="bg-yellow-400 text-yellow-900 self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm border border-yellow-500/20">
-            <CalendarCheck size={12} /> Reserved
+          <div className="flex flex-col gap-2">
+            <div className="bg-yellow-400 text-yellow-900 self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm border border-yellow-500/20">
+              <CalendarCheck size={12} /> {hasReservation.time || 'Reserved'}
+            </div>
+            
+            {/* Arrived and Cancel Buttons */}
+            {table.status !== 'occupied' && (
+              <div className="flex gap-2">
+                <button 
+                  onClick={(e) => handleAction(e, onMarkArrived)}
+                  className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-xl shadow-lg transition-all active:scale-90 flex items-center gap-1 font-black text-[9px] uppercase"
+                  title="Guest Arrived"
+                >
+                  <UserCheck size={14} /> Arrived
+                </button>
+                
+                {canModule('reservation') && (
+                  <button 
+                    onClick={(e) => handleAction(e, onCancelReservation)}
+                    className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-xl shadow-lg transition-all active:scale-90 flex items-center gap-1 font-black text-[9px] uppercase"
+                    title="Cancel Reservation"
+                  >
+                    <CalendarX size={14} /> Cancel
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -129,4 +167,5 @@ const TableCard = ({
 };
 
 export default TableCard;
+
 

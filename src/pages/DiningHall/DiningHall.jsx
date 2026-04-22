@@ -7,12 +7,14 @@ import { useNavigate } from "react-router-dom";
 import TableCard from "../../components/TableCard";
 import { useTheme } from "../../context/ThemeContext";
 import { diningHallService } from "./DiningHallService";
+import CommonDialog from "../../components/modals/CommonDialog";
+import { toast } from "react-hot-toast";
 
 const DiningHall = ({
   tables: propsTables,
   categories,
   loading,
-  reservations,
+  reservations = [],
   currentUser,
   getTableDuration,
   formatCurrency,
@@ -29,6 +31,18 @@ const DiningHall = ({
   const navigate = useNavigate();
   const { can } = usePermission();
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+
+  // Modal State
+  const [dialogConfig, setDialogConfig] = useState({ 
+    isOpen: false, 
+    title: "", 
+    message: "", 
+    type: "confirm", 
+    onConfirm: () => {}, 
+    confirmText: "Yes" 
+  });
+
+  const closeDialog = () => setDialogConfig(prev => ({ ...prev, isOpen: false }));
 
   useEffect(() => {
     if (categories.length > 0 && !selectedCategoryId) {
@@ -92,6 +106,49 @@ const DiningHall = ({
     joinTables(selectedTables);
     setIsJoinMode(false);
     setSelectedTables([]);
+  };
+
+  const handleMarkArrived = (reservation) => {
+    setDialogConfig({
+      isOpen: true,
+      title: "Guest Arrival",
+      message: `Has the reserved customer "${reservation.customerId?.name || 'Guest'}" arrived for Table ${reservation.tableId?.tableNumber}?`,
+      type: "confirm",
+      confirmText: "Yes, Seated",
+      cancelText: "No",
+      onConfirm: async () => {
+        try {
+          await diningHallService.markArrived(reservation._id);
+          toast.success("Guest marked as arrived!");
+          if (refreshData) refreshData();
+        } catch (error) {
+          toast.error("Failed to update status.");
+        }
+      }
+    });
+  };
+
+  const handleCancelReservation = (reservation) => {
+    setDialogConfig({
+      isOpen: true,
+      title: "Cancel Reservation",
+      message: `Are you sure you want to cancel the reservation for "${reservation.customerId?.name || 'Guest'}"?`,
+      type: "confirm",
+      confirmText: "Yes, Cancel",
+      cancelText: "Go to Reservations",
+      onConfirm: async () => {
+        try {
+          await diningHallService.cancelReservation(reservation._id);
+          toast.success("Reservation cancelled.");
+          if (refreshData) refreshData();
+        } catch (error) {
+          toast.error("Failed to cancel reservation.");
+        }
+      },
+      onCancel: () => {
+        navigate("/reservations");
+      }
+    });
   };
 
   return (
@@ -232,11 +289,18 @@ const DiningHall = ({
                   displayTable.order ? formatCurrency(calculateTotal(displayTable.order)) : null
                 }
                 onSelect={handleTableSelect}
+                onMarkArrived={handleMarkArrived}
+                onCancelReservation={handleCancelReservation}
               />
             );
           });
         })()}
       </div>
+
+      <CommonDialog 
+        {...dialogConfig}
+        onClose={closeDialog}
+      />
     </div>
   );
 };

@@ -35,7 +35,7 @@ const Settings = ({
     hasPermissionFor,
     currentUser,
 }) => {
-    const { theme } = useTheme();
+    const { theme, themeName } = useTheme();
     const { activeBranchId, branches, currentShopId } = useApp();
     const currentBranchId = activeBranchId || (branches.length > 0 ? (branches[0]._id || branches[0].id) : null);
     const canViewGeneral = hasPermissionFor?.(ROUTE_ACCESS.SETTINGS.module, ROUTE_ACCESS.SETTINGS.resource, ROUTE_ACCESS.SETTINGS.action);
@@ -92,7 +92,7 @@ const Settings = ({
         setIsLoadingBackend(true);
         try {
             // Respect currently selected shop context
-            const shopId = currentShopId || currentUser?.shop_id;
+            const shopId = currentShopId || currentUser?.shopId || currentUser?.shop_id;
             const data = await settingService.getSettings(shopId);
             setBackendSettings(data || []);
             setOriginalSettings(JSON.parse(JSON.stringify(data || []))); // Deep copy
@@ -110,7 +110,7 @@ const Settings = ({
         } finally {
             setIsLoadingBackend(false);
         }
-    }, [currentShopId, currentUser?.shop_id, setSettings]);
+    }, [currentShopId, currentUser?.shop_id, currentUser?.shopId, setSettings]);
 
     const fetchSystemRoles = React.useCallback(async () => {
         try {
@@ -123,14 +123,14 @@ const Settings = ({
 
     const fetchPayrollSettings = React.useCallback(async () => {
         try {
-            const shopId = currentShopId || currentUser?.shop_id;
+            const shopId = currentShopId || currentUser?.shop_id || currentUser?.shopId;
             if (!shopId || shopId === 'undefined') return;
             const data = await payrollService.getSettings(shopId);
             if (data) setPayrollSettings(data);
         } catch (error) {
             console.error("Failed to fetch payroll settings:", error);
         }
-    }, [currentShopId, currentUser?.shop_id]);
+    }, [currentShopId, currentUser?.shop_id, currentUser?.shopId]);
 
     useEffect(() => {
         if (activeTab === "general" && (isSuperAdmin || canViewGeneral)) {
@@ -147,7 +147,7 @@ const Settings = ({
     const handleSavePayrollSettings = async () => {
         setIsSavingPayroll(true);
         try {
-            const shopId = currentShopId || currentUser?.shop_id;
+            const shopId = currentShopId || currentUser?.shop_id || currentUser?.shopId;
             console.log("Attempting to save payroll settings for ShopId:", shopId, "Payload:", payrollSettings);
             if (!shopId || shopId === 'undefined') {
                 alert(`Configuration Error: Shop ID is missing. Please refresh.`);
@@ -170,7 +170,7 @@ const Settings = ({
     const handleSaveBackendSetting = async (setting) => {
         setIsSavingBackend(true);
         try {
-            const shopId = currentUser?.shop_id;
+            const shopId = currentShopId || currentUser?.shop_id || currentUser?.shopId;
             const updatedSetting = await settingService.updateSetting(setting.key, {
                 value: setting.value,
                 shopId: shopId
@@ -236,15 +236,55 @@ const Settings = ({
         const { key, value, type, meta } = setting;
 
         if (meta?.inputType === 'select') {
-            const options = key === 'DEFAULT_SHOP_OWNER_ROLE' ? systemRoles : (meta.options || []);
+            const options = key === 'DEFAULT_SHOP_OWNER_ROLE' ? systemRoles.map(r => ({ label: r.name, value: r._id })) : (meta.options || []);
+            
+            // Binary Toggle for exactly 2 options
+            if (options.length === 2 && key !== 'DEFAULT_SHOP_OWNER_ROLE') {
+                return (
+                    <div 
+                        className={`relative w-44 h-11 ${themeName === 'dark' ? 'bg-slate-700/50' : 'bg-slate-100'} rounded-2xl flex p-1.5 cursor-pointer selection-none relative`}
+                        onClick={() => {
+                            const opt0 = typeof options[0] === 'object' ? options[0].value : options[0];
+                            const opt1 = typeof options[1] === 'object' ? options[1].value : options[1];
+                            const newValue = value === opt0 ? opt1 : opt0;
+                            handleUpdateBackendSetting(key, newValue);
+                        }}
+                    >
+                        {/* Sliding Background */}
+                        <div 
+                            className={`absolute w-[calc(50%-6px)] h-[calc(100%-12px)] ${theme.buttonBg} rounded-xl shadow-lg transition-all duration-300 ease-out`}
+                            style={{ 
+                                transform: value === (typeof options[1] === 'object' ? options[1].value : options[1]) ? 'translateX(100%)' : 'translateX(0)'
+                            }}
+                        />
+                        
+                        {/* Labels */}
+                        {options.map((opt) => {
+                            const label = typeof opt === 'object' ? opt.label : opt;
+                            const optValue = typeof opt === 'object' ? opt.value : opt;
+                            return (
+                                <div 
+                                    key={optValue}
+                                    className={`flex-1 flex items-center justify-center z-10 text-[10px] font-black uppercase tracking-widest transition-colors duration-300 ${
+                                        value === optValue ? 'text-white' : (themeName === 'dark' ? 'text-slate-400' : 'text-slate-500')
+                                    }`}
+                                >
+                                    {label}
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+            }
+
             return (
                 <div className="flex items-center gap-2 w-full">
                     <CommonSelect
                         options={options}
                         value={value}
                         onChange={(val) => handleUpdateBackendSetting(key, val)}
-                        labelKey={key === 'DEFAULT_SHOP_OWNER_ROLE' ? "name" : "label"}
-                        valueKey={key === 'DEFAULT_SHOP_OWNER_ROLE' ? "_id" : "value"}
+                        labelKey={(options.length > 0 && typeof options[0] === 'string') ? null : "label"}
+                        valueKey={(options.length > 0 && typeof options[0] === 'string') ? null : "value"}
                         className="flex-1"
                     />
                     {key === 'DEFAULT_SHOP_OWNER_ROLE' && value && (
@@ -315,7 +355,12 @@ const Settings = ({
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 gap-6">
-                                {backendSettings.filter(s => isSuperAdmin ? s.isSystem : !s.isSystem).map((setting) => (
+                                {backendSettings.filter(s => {
+                                    if (isSuperAdmin) return s.isSystem;
+                                    // For shop owners, show them all settings EXCEPT superadmin-only or specific tab settings
+                                    if (['DEFAULT_SHOP_OWNER_ROLE', 'ALLOW_UNSAFE_REGISTRATION', 'SALE_MARKING_TYPE', 'SALE_MARKING_TIME'].includes(s.key)) return false;
+                                    return true;
+                                }).map((setting) => (
                                     <div key={setting.key} className={`p-6 ${theme.inputBg} rounded-3xl border ${theme.inputBorder} flex flex-col md:flex-row md:items-center justify-between gap-4`}>
                                         <div className="space-y-1">
                                             <div className="flex items-center gap-2">

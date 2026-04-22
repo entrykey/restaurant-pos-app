@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight } from "lucide-react";
 import BusinessTypeModal from "./BusinessTypeModal";
-import { branchService } from "../services/api";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
 import { notificationService } from "../services/notificationService";
@@ -20,12 +19,12 @@ const Navbar = ({
     onBusinessTypeChange,
     onSwitchShop
 }) => {
-    const { activeBranchId, setActiveBranchId, branches, currentShopId, ownerShops } = useApp();
+    const { activeBranchId, setActiveBranchId, branches, currentShopId } = useApp();
     const { theme } = useTheme();
     const [isBusinessTypeModalOpen, setIsBusinessTypeModalOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-    const [isSwitchingShop, setIsSwitchingShop] = useState(false);
+    const navigate = useNavigate();
 
     // Initial fetch of notifications
     useEffect(() => {
@@ -35,7 +34,28 @@ const Navbar = ({
             const interval = setInterval(refreshNotifications, 5 * 60 * 1000);
             return () => clearInterval(interval);
         }
-    }, [currentShopId, activeBranchId]);
+    }, [currentShopId]); // Removed activeBranchId to keep polling for whole shop/organization
+
+    // Monitor for NEW notifications to trigger browser alerts
+    useEffect(() => {
+        if (notifications.length > 0) {
+            // Find unread notifications created in the last 10 minutes to avoid spamming old ones on login
+            const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+            const newUnread = notifications.filter(n => 
+                !n.isRead && 
+                new Date(n.createdAt) > tenMinutesAgo
+            );
+
+            if (newUnread.length > 0) {
+                // Show notification for the most recent one
+                const latest = newUnread[0];
+                notificationService.notify(latest.title, {
+                    body: latest.message,
+                    tag: latest._id // Prevent duplicate alerts for the same ID
+                });
+            }
+        }
+    }, [notifications]);
 
     const refreshNotifications = async () => {
         const data = await notificationService.fetchNotifications(currentShopId, activeBranchId);
@@ -49,6 +69,35 @@ const Navbar = ({
         }
     };
 
+    const handleNotificationClick = async (n) => {
+        if (!n.isRead) {
+            await notificationService.markAsRead(n._id);
+            setNotifications(prev => prev.map(item => item._id === n._id ? { ...item, isRead: true } : item));
+        }
+
+        // Context switching if needed
+        if (n.shopId && String(n.shopId) !== String(currentShopId)) {
+            if (onSwitchShop) {
+                await onSwitchShop(n.shopId);
+                if (n.branchId) {
+                    setActiveBranchId(n.branchId);
+                }
+                setTimeout(() => {
+                    if (n.actionUrl) navigate(n.actionUrl);
+                }, 100);
+                return;
+            }
+        }
+        
+        if (n.branchId && String(n.branchId) !== String(activeBranchId)) {
+            setActiveBranchId(n.branchId);
+        }
+
+        if (n.actionUrl) {
+            navigate(n.actionUrl);
+        }
+    };
+
     // Handle Browser Notifications Permission
     const requestNotificationPermission = async () => {
         const granted = await notificationService.requestPermission();
@@ -56,20 +105,6 @@ const Navbar = ({
             notificationService.notify("Notifications Enabled!", {
                 body: "FilePe will now show you live order alerts and reminders."
             });
-        }
-    };
-
-    const handleShopSwitch = async (shopId) => {
-        if (String(shopId) === String(currentShopId)) return;
-        setIsSwitchingShop(true);
-        try {
-            if (onSwitchShop) {
-                await onSwitchShop(shopId);
-            }
-        } catch (error) {
-            console.error("Failed to switch shop in navbar:", error);
-        } finally {
-            setIsSwitchingShop(false);
         }
     };
 
@@ -93,49 +128,6 @@ const Navbar = ({
                         {currentUser?.role}: {currentUser?.phone}
                     </span>
                 </div>
-
-                {/* Shop Selector - Only for Owners with multiple shops */}
-                {isOwner && ownerShops.length > 1 && (
-                    <div className="relative group">
-                        <div className={`flex items-center gap-2 ${theme.inputBg} px-3 py-2 rounded-xl border ${theme.inputBorder} cursor-pointer hover:opacity-80 transition-all`}>
-                            <Building2 size={16} className={theme.primaryIconText} />
-                            <span className={`text-[10px] md:text-xs font-black ${theme.textPrimary} uppercase tracking-tight truncate max-w-[100px] md:max-w-[150px]`}>
-                                {ownerShops.find(s => String(s._id || s.id) === String(currentShopId))?.name || "Select Shop"}
-                            </span>
-                            <ChevronRight size={14} className={`${theme.textMuted} group-hover:rotate-90 transition-transform`} />
-                            {isSwitchingShop && <div className="ml-1 animate-spin h-3 w-3 border-2 border-indigo-500 border-t-transparent rounded-full"></div>}
-                        </div>
-                        
-                        {/* Dropdown Menu */}
-                        <div className={`absolute top-full left-0 mt-2 w-64 ${theme.surfaceBg} rounded-2xl shadow-2xl border ${theme.borderLight} py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[110] translate-y-2 group-hover:translate-y-0`}>
-                            <div className={`px-4 py-2 border-b ${theme.borderLight} mb-1`}>
-                                <h5 className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Switch Shop Context</h5>
-                            </div>
-                            <div className="max-h-60 overflow-y-auto no-scrollbar">
-                                {ownerShops.map(shop => (
-                                    <button
-                                        key={shop._id || shop.id}
-                                        onClick={() => handleShopSwitch(shop._id || shop.id)}
-                                        className={`w-full text-left px-4 py-2.5 text-xs font-bold transition-colors flex items-center justify-between
-                                            ${String(currentShopId) === String(shop._id || shop.id) 
-                                                ? `${theme.primaryIconBg} ${theme.primaryIconText}` 
-                                                : `${theme.textPrimary} ${theme.tableRowHover}`}`}
-                                    >
-                                        <div className="flex flex-col">
-                                            <span>{shop.name}</span>
-                                            <span className={`text-[8px] opacity-70`}>
-                                                {typeof shop.businessType === 'object' ? shop.businessType?.displayString : shop.businessType}
-                                            </span>
-                                        </div>
-                                        {String(currentShopId) === String(shop._id || shop.id) && (
-                                            <span className={`w-1.5 h-1.5 ${theme.mode === 'light' ? 'bg-indigo-600' : 'bg-current'} rounded-full shadow-[0_0_8px_rgba(79,70,229,0.5)]`}></span>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* Branch Selector - Visible for everyone if they have 1+ branches, 
                     OR specifically for owners to manage branch context */}
@@ -254,24 +246,28 @@ const Navbar = ({
 
                             {/* Server fetched notifications */}
                             {notifications.map((n, idx) => (
-                                <Link 
-                                    to={n.actionUrl || "#"} 
+                                <div 
                                     key={n._id || idx} 
-                                    onClick={() => !n.isRead && notificationService.markAsRead(n._id)}
-                                    className={`group/item flex gap-3 items-start p-3 rounded-2xl ${n.isRead ? theme.cardBg : theme.infoBg} border ${n.isRead ? theme.borderLight : theme.infoBorder} hover:scale-[1.02] transition-all cursor-pointer block no-underline`}
+                                    onClick={() => handleNotificationClick(n)}
+                                    className={`group/item flex gap-3 items-start p-3 rounded-2xl ${n.isRead ? theme.cardBg : theme.infoBg} border ${n.isRead ? theme.borderLight : theme.infoBorder} hover:scale-[1.02] transition-all cursor-pointer block text-left`}
                                 >
-                                    <div className={`p-1.5 rounded-lg ${n.type === 'LOW_STOCK' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                    <div className={`p-1.5 rounded-lg ${n.type === 'LOW_STOCK' || n.priority === 'HIGH' || n.priority === 'URGENT' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
                                         {n.type === 'LOW_STOCK' ? <AlertTriangle size={14} /> : <Info size={14} />}
                                     </div>
-                                    <div className="flex-1 text-left">
-                                        <h5 className={`text-[11px] font-black ${theme.textHeading} mb-0.5`}>{n.title}</h5>
+                                    <div className="flex-1">
+                                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                                            <h5 className={`text-[11px] font-black ${theme.textHeading}`}>{n.title}</h5>
+                                            {n.shopId && String(n.shopId) !== String(currentShopId) && (
+                                                <span className="text-[7px] font-black uppercase bg-indigo-500/10 text-indigo-500 px-1 py-0.5 rounded italic">Cross-Shop</span>
+                                            )}
+                                        </div>
                                         <p className={`text-[10px] font-bold ${theme.textSecondary} leading-relaxed`}>{n.message}</p>
                                         <span className={`text-[9px] font-medium ${theme.textMuted} mt-1 block flex items-center gap-2`}>
                                            {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                            {!n.isRead && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>}
                                         </span>
                                     </div>
-                                </Link>
+                                </div>
                             ))}
 
                             {/* Subscription Warning */}

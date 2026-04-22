@@ -122,12 +122,16 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
     const totals = calculateTotals();
 
     const handleSave = async () => {
+        setError(null);
         if (items.length === 0) {
             setError("Cannot save an empty order. Please add at least one item.");
             return;
         }
+        if (!notes || notes.trim() === '') {
+            setError("Please provide a reason for editing this sale in the Order Notes field.");
+            return;
+        }
         setLoading(true);
-        setError(null);
         try {
             await orderService.updateOrder(order._id, {
                 items,
@@ -258,7 +262,7 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
 
                     {/* 3. Notes */}
                     <section className="space-y-4">
-                        <h3 className={`text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>Order Notes</h3>
+                        <h3 className={`text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>Order Notes <span className="text-red-500">*</span></h3>
                         <textarea
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}

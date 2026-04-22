@@ -15,6 +15,16 @@ const OwnerDashboard = () => {
     const [shops, setShops] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    
+    const toShopSegment = (shop) => {
+        const raw = String(shop?.slug || shop?.name || "").trim().toLowerCase();
+        if (!raw) return "shop";
+        return raw
+            .replace(/&/g, "and")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 60) || "shop";
+    };
 
     const fetchShops = async () => {
         try {
@@ -47,10 +57,15 @@ const OwnerDashboard = () => {
             </div>
         );
     }
-    const handleShopClick = async (shopId) => {
+    const handleStatClick = async (e, shopId, targetPath) => {
+        e.stopPropagation(); // Prevent trigger handleShopClick
         try {
+            const shop = shops.find((s) => String(s._id) === String(shopId));
+            const shopSegment = toShopSegment(shop);
+            const scopedTargetPath = `/${shopSegment}${targetPath}`;
+
             if (user?.shop_id === shopId) {
-                navigate('/organization');
+                navigate(scopedTargetPath);
                 return;
             }
 
@@ -71,13 +86,54 @@ const OwnerDashboard = () => {
 
             // Small timeout to allow context to update before navigation
             setTimeout(() => {
-                navigate('/organization');
+                navigate(scopedTargetPath);
+            }, 50);
+
+        } catch (err) {
+            console.error("Failed to switch shop context for stat click:", err);
+            const shop = shops.find((s) => String(s._id) === String(shopId));
+            const shopSegment = toShopSegment(shop);
+            const scopedTargetPath = `/${shopSegment}${targetPath}`;
+            navigate(scopedTargetPath, { state: { shopId } });
+        }
+    };
+
+    const handleShopClick = async (shopId) => {
+        try {
+            const shop = shops.find((s) => String(s._id) === String(shopId));
+            const shopSegment = toShopSegment(shop);
+
+            if (user?.shop_id === shopId) {
+                navigate(`/${shopSegment}/organization`);
+                return;
+            }
+
+            // Perform actual shop switch so tokens match the new shop
+            const newAuthData = await shopService.switchShop(shopId);
+            const newAccessToken = newAuthData.accessToken;
+
+            localStorage.setItem('accessToken', newAccessToken);
+
+            const storageKey = "restaurant_pos_auth_v1";
+            const currentStorageParams = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            localStorage.setItem(storageKey, JSON.stringify({
+                ...currentStorageParams,
+                user: { ...newAuthData.user, accessToken: newAccessToken }
+            }));
+
+            login({ ...newAuthData.user, accessToken: newAccessToken });
+
+            // Small timeout to allow context to update before navigation
+            setTimeout(() => {
+                navigate(`/${shopSegment}/organization`);
             }, 50);
 
         } catch (err) {
             console.error("Failed to switch shop context from dashboard:", err);
             // Fallback to simple navigation if switch fails
-            navigate('/organization', { state: { shopId } });
+            const shop = shops.find((s) => String(s._id) === String(shopId));
+            const shopSegment = toShopSegment(shop);
+            navigate(`/${shopSegment}/organization`, { state: { shopId } });
         }
     };
 
@@ -140,21 +196,43 @@ const OwnerDashboard = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4 mb-6">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                                 <div className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.inputBorder}`}>
-                                    <p className={`text-sm font-bold ${theme.textSecondary} mb-1 flex items-center gap-2`}>
-                                        <TrendingUp size={16} /> Daily Revenue
+                                    <p className={`text-[10px] font-black ${theme.textSecondary} mb-1 flex items-center gap-2 uppercase tracking-tight`}>
+                                        <TrendingUp size={14} className="text-indigo-500" /> Daily Revenue
                                     </p>
-                                    <p className={`text-2xl font-black ${theme.textHeading}`}>
-                                        {formatCurrency(shop.todayRevenue || 0, shop.defaultCurrency || 'USD')}
+                                    <p className={`text-xl font-black ${theme.textHeading}`}>
+                                        {formatCurrency(shop.todayRevenue || 0, shop.defaultCurrencyCode || 'INR')}
                                     </p>
                                 </div>
                                 <div className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.inputBorder}`}>
-                                    <p className={`text-sm font-bold ${theme.textSecondary} mb-1 flex items-center gap-2`}>
-                                        <TrendingUp size={16} /> Daily Profit
+                                    <p className={`text-[10px] font-black ${theme.textSecondary} mb-1 flex items-center gap-2 uppercase tracking-tight`}>
+                                        <TrendingUp size={14} className="text-emerald-500" /> Daily Profit
                                     </p>
-                                    <p className={`text-2xl font-black ${shop.todayProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                        {formatCurrency(shop.todayProfit || 0, shop.defaultCurrency || 'USD')}
+                                    <p className={`text-xl font-black ${shop.todayProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                        {formatCurrency(shop.todayProfit || 0, shop.defaultCurrencyCode || 'INR')}
+                                    </p>
+                                </div>
+                                <div 
+                                    onClick={(e) => handleStatClick(e, shop._id, '/dashboard/pay-in')}
+                                    className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.inputBorder} cursor-pointer hover:bg-orange-50 transition-colors group`}
+                                >
+                                    <p className={`text-[10px] font-black ${theme.textSecondary} mb-1 flex items-center gap-2 uppercase tracking-tight group-hover:text-orange-600`}>
+                                        <TrendingUp size={14} className="text-orange-500" /> Pay In
+                                    </p>
+                                    <p className={`text-xl font-black text-orange-600`}>
+                                        {formatCurrency(shop.payIn || 0, shop.defaultCurrencyCode || 'INR')}
+                                    </p>
+                                </div>
+                                <div 
+                                    onClick={(e) => handleStatClick(e, shop._id, '/dashboard/pay-out')}
+                                    className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.inputBorder} cursor-pointer hover:bg-red-50 transition-colors group`}
+                                >
+                                    <p className={`text-[10px] font-black ${theme.textSecondary} mb-1 flex items-center gap-2 uppercase tracking-tight group-hover:text-red-600`}>
+                                        <TrendingUp size={14} className="text-red-500" /> Pay Out
+                                    </p>
+                                    <p className={`text-xl font-black text-red-600`}>
+                                        {formatCurrency(shop.payOut || 0, shop.defaultCurrencyCode || 'INR')}
                                     </p>
                                 </div>
                             </div>
@@ -176,9 +254,9 @@ const OwnerDashboard = () => {
                                                     </linearGradient>
                                                 </defs>
                                                 <XAxis dataKey="_id" tickFormatter={(tick) => tick.split('-').slice(1).join('/')} stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                                                <YAxis width={60} tickFormatter={(tick) => `₹${tick}`} stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                                                <YAxis width={60} tickFormatter={(tick) => formatCurrency(tick, shop.defaultCurrencyCode || 'INR').replace(/[0-9., ]/g, '') + tick} stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
                                                 <Tooltip
-                                                    formatter={(value, name) => [formatCurrency(value), name === 'totalSales' ? 'Revenue' : 'Profit']}
+                                                    formatter={(value, name) => [formatCurrency(value, shop.defaultCurrencyCode || 'INR'), name === 'totalSales' ? 'Revenue' : 'Profit']}
                                                     contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                                                     labelStyle={{ color: '#000', fontWeight: 'bold' }}
                                                 />

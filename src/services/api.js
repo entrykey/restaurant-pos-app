@@ -327,7 +327,7 @@ export const employeeService = {
                 const response = await api.post(`/employees/all-shops`, {
                     user_id: userId,
                     get_all_shop_user: true,
-                    shopId: filterShopId // Pass the filter if present
+                    shopId: filterShopId || shopId // Pass the filter if present or fallback to shopId
                 });
                 return response.data;
             }
@@ -384,7 +384,7 @@ export const roleService = {
                 const response = await api.post(`/roles/all-shops`, {
                     user_id: userId,
                     get_all_shop_user: true,
-                    shopId: filterShopId // Pass the filter if present
+                    shopId: filterShopId || shopId // Pass the filter if present or fallback to shopId
                 });
                 return response.data;
             }
@@ -776,6 +776,17 @@ export const inventoryService = {
             return response.data;
         } catch (error) {
             console.error("Error adjusting inventory:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getItemHistory: async (itemId, branchId) => {
+        try {
+            const response = await api.get(`/inventory/history/${itemId}`, {
+                params: { branchId }
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching item history:", error);
             throw error.response ? error.response.data : error;
         }
     }
@@ -1280,6 +1291,63 @@ export const reportsService = {
     }
 };
 
+export const reservationService = {
+    getReservations: async (params = {}) => {
+        try {
+            const response = await api.get('/reservations', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching reservations:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getReservationById: async (id) => {
+        try {
+            const response = await api.get(`/reservations/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching reservation:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    createReservation: async (payload) => {
+        try {
+            const response = await api.post('/reservations', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error creating reservation:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateReservation: async (id, payload) => {
+        try {
+            const response = await api.put(`/reservations/${id}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating reservation:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    updateStatus: async (id, status) => {
+        try {
+            const response = await api.put(`/reservations/${id}/status`, { status });
+            return response.data;
+        } catch (error) {
+            console.error("Error updating reservation status:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteReservation: async (id) => {
+        try {
+            const response = await api.delete(`/reservations/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting reservation:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
 export default api;
 export const taxService = {
     getTaxes: async (params = {}) => {
@@ -1367,3 +1435,27 @@ export const leaveService = {
         }
     }
 };
+
+export const saleMarkingService = {
+    getMarkingItems: async (shopId, branchId) => {
+        try {
+            const response = await api.get('/sale-marking/items', {
+                params: { shopId, branchId }
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching marking items:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    markDailySale: async (payload) => {
+        try {
+            const response = await api.post('/sale-marking/mark', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error marking daily sale:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
