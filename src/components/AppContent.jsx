@@ -20,7 +20,7 @@ import { fetchOrganizationData } from "../pages/Organization/OrganizationService
 import { TextProvider } from "../context/TextContext";
 import { useTheme } from "../context/ThemeContext";
 import { BUSINESS_TYPES, BUSINESS_FEATURES } from "../config/businessTypes";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import ThemeLoader from "./ui/ThemeLoader";
 
 // Modals
@@ -474,6 +474,7 @@ const AppContent = () => {
     const [isFullOrderSummaryOpen, setIsFullOrderSummaryOpen] = useState(false);
     const [isMultipleShopsModalOpen, setIsMultipleShopsModalOpen] = useState(false);
     const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+    const [isProfileHintExpanded, setIsProfileHintExpanded] = useState(false);
     const [previewOrder, setPreviewOrder] = useState(null); // For KDS/Online
 
     // Customization State
@@ -640,10 +641,12 @@ const AppContent = () => {
         currentUser?.role?.name === "superadmin";
 
     const isSubscribed = computeUserHasActiveSubscription(currentUser, organization);
+    const isOwnerSelectionPage = location.pathname === "/owner-dashboard";
 
     const showProfileCompletionOverlay = isAuthenticated &&
         currentUser?.isOwner &&
         !isSuperAdmin &&
+        !isOwnerSelectionPage &&
         isSubscribed &&
         uiProfileCompletion < 100;
 
@@ -1321,14 +1324,27 @@ const AppContent = () => {
         setNoteModal({ isOpen: false, idx: null, text: "" });
     };
 
+    if (!isAuthenticated) {
+        return (
+            <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={
+                    <Login
+                        shopName={settings.shopName}
+                        rolesList={rolesList}
+                        staffList={staffList}
+                        onSetBusinessType={setBusinessType}
+                        onSetBusinessSubtype={setBusinessSubtype}
+                        onSetEnabledModules={setEnabledModules}
+                    />
+                } />
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        );
+    }
+
     return (
         <div className={`flex flex-col-reverse md:flex-row h-screen ${theme.pageBg} overflow-hidden font-sans`}>
-            {/* HIDDEN RECEIPT COMPONENT logic from App.jsx is still needed for Print. 
-                I'm omitting it here for brevity but it SHOULD be here or in a separate component.
-                For now, assuming window.print() prints the page and we use print CSS.
-                Ideally, we extract the receipt to a component.
-            */}
-
             {/* Receipt Print Area */}
             <style>{`
                 @media print {
@@ -1342,136 +1358,114 @@ const AppContent = () => {
                 id="receipt-print-area"
                 className="hidden print:block p-4 font-mono text-xs w-[80mm] mx-auto bg-white"
             >
-                {/* Simplified Receipt for Refactor - ideally extract this */}
                 <div className="text-center mb-4">
                     <h1 className="text-lg font-bold">{settings.shopName}</h1>
                     <p>Ph: {currentUser?.phone}</p>
                     <p>{new Date().toLocaleString()}</p>
                 </div>
-                {/* Receipt Body would go here - keeping it simple for now to ensure file size */}
                 <div className="text-center">Receipt Printing Enabled</div>
             </div>
 
-
-            {!isAuthenticated ? (
-                <Routes>
-                    <Route path="/" element={<LandingPage />} />
-                    <Route path="/login" element={
-                        <Login
-                            shopName={settings.shopName}
-                            rolesList={rolesList}
-                            staffList={staffList}
-                            onSetBusinessType={setBusinessType}
-                            onSetBusinessSubtype={setBusinessSubtype}
-                            onSetEnabledModules={setEnabledModules}
-                        />
-                    } />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-            ) : (
-                <TextProvider>
-                    <Layout
+            <TextProvider>
+                <Layout
+                    view={view}
+                    setView={setView}
+                    currentUser={currentUser}
+                    handleLogout={handleLogout}
+                    businessType={businessType}
+                    businessSubtype={businessSubtype}
+                    enabledModules={enabledModules}
+                    onBusinessTypeChange={(type, subtype, modules) => {
+                        setBusinessType(type);
+                        setBusinessSubtype(subtype);
+                        const newModules = {};
+                        Object.keys(modules).forEach(key => {
+                            newModules[key] = modules[key] === true;
+                        });
+                        setEnabledModules({ ...newModules });
+                    }}
+                    isTakeaway={isTakeaway}
+                    takeawayOrder={takeawayOrder}
+                    setIsTakeaway={setIsTakeaway}
+                    setTakeawayOrder={setTakeawayOrder}
+                    setOrderSearch={setOrderSearch}
+                    pendingOnlineOrdersCount={pendingOnlineOrdersCount}
+                    sessionInfo={sessionInfo}
+                    isOnlineOrderingEnabled={isOnlineOrderingEnabled}
+                    setIsOnlineOrderingEnabled={setIsOnlineOrderingEnabled}
+                    shopName={settings.shopName}
+                    onSwitchShop={handleSwitchShopAction}
+                >
+                    <AppRoutes
                         view={view}
-                        setView={setView}
-                        currentUser={currentUser}
-                        handleLogout={handleLogout}
-                        businessType={businessType}
-                        businessSubtype={businessSubtype}
-                        enabledModules={enabledModules}
-                        onBusinessTypeChange={(type, subtype, modules) => {
-                            setBusinessType(type);
-                            setBusinessSubtype(subtype);
-                            // Create a completely new object with all module keys explicitly set
-                            const newModules = {};
-                            Object.keys(modules).forEach(key => {
-                                newModules[key] = modules[key] === true;
-                            });
-                            // Force a new object reference
-                            setEnabledModules({ ...newModules });
-                        }}
                         isTakeaway={isTakeaway}
+                        activeTableId={activeTableId}
+                        tables={tables}
+                        categories={categories}
+                        diningLoading={diningLoading}
                         takeawayOrder={takeawayOrder}
+                        reservations={reservations}
+                        currentUser={currentUser}
+                        getTableDuration={getTableDuration}
+                        formatCurrency={formatCurrency}
+                        calculateTotal={calculateTotal}
+                        calculateItemTotal={calculateItemTotal}
+                        calculateBillDetails={calculateBillDetails}
+                        offers={offers}
+                        handlePrintReceipt={handlePrintReceipt}
+                        handleSendToKOT={handleSendToKOT}
+                        businessTypeData={businessTypeData}
+                        setIsPaymentModalOpen={setIsPaymentModalOpen}
+                        setBillingStage={setBillingStage}
+                        initiateAddItem={initiateAddItem}
+                        updateItemQuantity={updateItemQuantity}
+                        openNoteModal={openNoteModal}
+                        takeawayCustName={takeawayCustName}
+                        setTakeawayCustName={setTakeawayCustName}
+                        takeawayCustPhone={takeawayCustPhone}
+                        setTakeawayCustPhone={setTakeawayCustPhone}
+                        orderSearch={orderSearch}
+                        setOrderSearch={setOrderSearch}
                         setIsTakeaway={setIsTakeaway}
                         setTakeawayOrder={setTakeawayOrder}
-                        setOrderSearch={setOrderSearch}
+                        setView={setView}
+                        settings={settings}
+                        hasPermission={hasPermission}
+                        hasPermissionFor={hasPermissionFor}
+                        setActiveTableId={setActiveTableId}
+                        setReservations={setReservations}
+                        handleCheckInReservation={handleCheckInReservation}
+                        onlineOrders={onlineOrders}
+                        setOnlineOrders={setOnlineOrders}
+                        onlineOrderTab={onlineOrderTab}
+                        setOnlineOrderTab={setOnlineOrderTab}
                         pendingOnlineOrdersCount={pendingOnlineOrdersCount}
-                        sessionInfo={sessionInfo}
-                        isOnlineOrderingEnabled={isOnlineOrderingEnabled}
-                        setIsOnlineOrderingEnabled={setIsOnlineOrderingEnabled}
-                        shopName={settings.shopName}
-                        onSwitchShop={handleSwitchShopAction}
-                    >
-                        <AppRoutes
-                            view={view}
-                            isTakeaway={isTakeaway}
-                            activeTableId={activeTableId}
-                            tables={tables}
-                            categories={categories}
-                            diningLoading={diningLoading}
-                            takeawayOrder={takeawayOrder}
-                            reservations={reservations}
-                            currentUser={currentUser}
-                            getTableDuration={getTableDuration}
-                            formatCurrency={formatCurrency}
-                            calculateTotal={calculateTotal}
-                            calculateItemTotal={calculateItemTotal}
-                            calculateBillDetails={calculateBillDetails}
-                            offers={offers}
-                            handlePrintReceipt={handlePrintReceipt}
-                            handleSendToKOT={handleSendToKOT}
-                            businessTypeData={businessTypeData}
-                            setIsPaymentModalOpen={setIsPaymentModalOpen}
-                            setBillingStage={setBillingStage}
-                            initiateAddItem={initiateAddItem}
-                            updateItemQuantity={updateItemQuantity}
-                            openNoteModal={openNoteModal}
-                            takeawayCustName={takeawayCustName}
-                            setTakeawayCustName={setTakeawayCustName}
-                            takeawayCustPhone={takeawayCustPhone}
-                            setTakeawayCustPhone={setTakeawayCustPhone}
-                            orderSearch={orderSearch}
-                            setOrderSearch={setOrderSearch}
-                            setIsTakeaway={setIsTakeaway}
-                            setTakeawayOrder={setTakeawayOrder}
-                            setView={setView}
-                            settings={settings}
-                            hasPermission={hasPermission}
-                            hasPermissionFor={hasPermissionFor}
-                            setActiveTableId={setActiveTableId}
-                            setReservations={setReservations}
-                            handleCheckInReservation={handleCheckInReservation}
-                            onlineOrders={onlineOrders}
-                            setOnlineOrders={setOnlineOrders}
-                            onlineOrderTab={onlineOrderTab}
-                            setOnlineOrderTab={setOnlineOrderTab}
-                            pendingOnlineOrdersCount={pendingOnlineOrdersCount}
-                            handleAcceptOnlineOrder={handleAcceptOnlineOrder}
-                            handleRejectOnlineOrder={handleRejectOnlineOrder}
-                            handleCompleteOnlineKOT={handleCompleteOnlineKOT}
-                            setPreviewOrder={setPreviewOrder}
-                            handleCompleteKOT={handleCompleteKOT}
-                            currentTime={currentTime}
-                            menu={menu}
-                            setMenu={setMenu}
-                            inventoryItems={inventoryItems}
-                            salesHistory={salesHistory}
-                            staffList={staffList}
-                            authLogs={authLogs}
-                            rolesList={rolesList}
-                            setRolesList={setRolesList}
-                            setStaffList={setStaffList}
-                            setSettings={setSettings}
-                            setTables={setTables}
-                            organization={organization}
-                            setOrganization={setOrganization}
-                            branches={branches}
-                            setBranches={setBranches}
-                            joinTables={joinTables}
-                            refreshData={refreshData}
-                        />
-                    </Layout>
-                </TextProvider>
-            )}
+                        handleAcceptOnlineOrder={handleAcceptOnlineOrder}
+                        handleRejectOnlineOrder={handleRejectOnlineOrder}
+                        handleCompleteOnlineKOT={handleCompleteOnlineKOT}
+                        setPreviewOrder={setPreviewOrder}
+                        handleCompleteKOT={handleCompleteKOT}
+                        currentTime={currentTime}
+                        menu={menu}
+                        setMenu={setMenu}
+                        inventoryItems={inventoryItems}
+                        salesHistory={salesHistory}
+                        staffList={staffList}
+                        authLogs={authLogs}
+                        rolesList={rolesList}
+                        setRolesList={setRolesList}
+                        setStaffList={setStaffList}
+                        setSettings={setSettings}
+                        setTables={setTables}
+                        organization={organization}
+                        setOrganization={setOrganization}
+                        branches={branches}
+                        setBranches={setBranches}
+                        joinTables={joinTables}
+                        refreshData={refreshData}
+                    />
+                </Layout>
+            </TextProvider>
 
             {/* Modals */}
             <CustomizationModal
@@ -1568,33 +1562,58 @@ const AppContent = () => {
                 }}
             />
             {showProfileCompletionOverlay && (
-                <div 
-                    className="fixed right-4 bottom-4 z-[60] max-w-sm select-none cursor-grab active:cursor-grabbing"
+                <div
+                    className="fixed right-4 bottom-4 z-[70] select-none cursor-grab active:cursor-grabbing"
                     style={{
                         transform: `translate(${profileOffset.x}px, ${profileOffset.y}px)`,
                         transition: isDraggingProfile ? 'none' : 'transform 0.1s ease-out'
                     }}
                     onMouseDown={handleMouseDownProfile}
                 >
-                    <div className={`rounded-2xl shadow-2xl border p-4 ${theme.cardBg} ${theme.inputBorder}`}>
-                        <div className="flex items-start gap-3">
-                            <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
-                                <AlertTriangle size={18} />
-                            </div>
-                            <div className="flex-1">
-                                <p className={`text-sm font-bold ${theme.textPrimary}`}>Profile not completed</p>
-                                <p className={`text-xs mt-1 ${theme.textSecondary}`}>
-                                    Setup completion is {uiProfileCompletion || 0}%. Finish profile details to unlock full onboarding.
-                                </p>
+                    <button
+                        type="button"
+                        onClick={() => setIsProfileHintExpanded((prev) => !prev)}
+                        className={`w-14 h-14 rounded-full shadow-2xl border flex items-center justify-center transition-all hover:scale-105 ${theme.cardBg} ${theme.inputBorder}`}
+                        title="Profile/Subscription Alert"
+                    >
+                        <AlertTriangle size={20} className="text-amber-500" />
+                        <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center">
+                            !
+                        </span>
+                    </button>
+
+                    {isProfileHintExpanded && (
+                        <div
+                            className="absolute right-0 bottom-16 w-[320px] sm:w-[360px]"
+                        >
+                            <div className={`relative rounded-2xl shadow-2xl border p-4 ${theme.cardBg} ${theme.inputBorder}`}>
+                                <div className="flex items-start gap-3">
+                                    <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
+                                        <AlertTriangle size={18} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className={`text-sm font-bold leading-5 ${theme.textPrimary}`}>Profile not completed</p>
+                                        <p className={`text-xs mt-1 leading-5 ${theme.textSecondary}`}>
+                                            Setup completion is {uiProfileCompletion || 0}%. Finish profile details to unlock full onboarding.
+                                        </p>
+                                        <button
+                                            onClick={handleCompleteSetupNavigation}
+                                            className={`mt-3 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap ${theme.buttonBg} ${theme.buttonText}`}
+                                        >
+                                            Complete Setup
+                                        </button>
+                                    </div>
+                                </div>
                                 <button
-                                    onClick={handleCompleteSetupNavigation}
-                                    className={`mt-3 px-3 py-2 rounded-lg text-xs font-bold ${theme.buttonBg} ${theme.buttonText}`}
+                                    type="button"
+                                    onClick={() => setIsProfileHintExpanded(false)}
+                                    className={`absolute top-4 right-4 p-1 rounded-lg ${theme.textMuted} hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
                                 >
-                                    Complete Setup
+                                    <X size={16} />
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             )}
 

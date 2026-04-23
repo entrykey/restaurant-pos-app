@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { AlertTriangle, CreditCard, ArrowRight } from "lucide-react";
+import { AlertTriangle, CreditCard, ArrowRight, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { ROUTE_KEY_TO_PATH } from "../../constants/routeAccess";
@@ -85,7 +85,7 @@ const SubscriptionNoticeModal = ({
             }}
             onMouseDown={handleMouseDown}
         >
-            <div className={`rounded-2xl shadow-2xl border p-4 ${theme.cardBg} ${theme.inputBorder}`}>
+            <div className={`relative rounded-2xl shadow-2xl border p-4 ${theme.cardBg} ${theme.inputBorder}`}>
                 <div className="flex items-start gap-3">
                     <div className="p-2 rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400 shrink-0">
                         {showOwnerSubscribeFlow ? (
@@ -115,13 +115,13 @@ const SubscriptionNoticeModal = ({
                             </button>
                         ) : null}
 
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className={`mt-2 text-xs font-bold ${theme.textSecondary} hover:opacity-80 underline-offset-2 hover:underline`}
-                        >
-                            Dismiss
-                        </button>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className={`absolute top-4 right-4 p-1 rounded-lg ${theme.textSecondary} hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                >
+                    <X size={16} />
+                </button>
                     </div>
                 </div>
             </div>

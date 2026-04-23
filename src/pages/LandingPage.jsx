@@ -1,135 +1,191 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Sparkles, CheckCircle2, Building2, Store, CreditCard } from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { categoryService, shopService } from '../services/api';
+import { getBingImage } from '../utils/getImage';
 
 const LandingPage = () => {
     const navigate = useNavigate();
     const { theme } = useTheme();
+    const [scrolled, setScrolled] = useState(0);
+    const [categories, setCategories] = useState([]);
+    const [businessTypes, setBusinessTypes] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    // Default to a dark theme for the landing page to make it look premium
-    const isDark = theme.mode === 'dark' || true; // Force dark mode aesthetic for landing if preferred, or use context.
+    useEffect(() => {
+        const handleScroll = () => setScrolled(window.scrollY);
+        window.addEventListener('scroll', handleScroll);
+        
+        // Fetch categories and business types
+        const fetchData = async () => {
+            try {
+                const [categoryData, btData] = await Promise.all([
+                    categoryService.getPublicCategories(),
+                    shopService.getBusinessTypes()
+                ]);
+
+                // Combine categories with same name
+                const uniqueMap = new Map();
+                categoryData.forEach(cat => {
+                    const nameKey = cat.name.trim().toLowerCase();
+                    if (!uniqueMap.has(nameKey)) {
+                        uniqueMap.set(nameKey, {
+                            name: cat.name,
+                            image: getBingImage(cat.name, { w: 300, h: 300 })
+                        });
+                    }
+                });
+                setCategories(Array.from(uniqueMap.values()));
+                
+                // Set business types (using displayString from backend)
+                setBusinessTypes(btData.map(bt => {
+                    const name = bt.displayString || bt.name || "Business Type";
+                    return {
+                        ...bt,
+                        name: name,
+                        image: getBingImage(name, { w: 400, h: 400 })
+                    };
+                }));
+            } catch (error) {
+                console.error("Failed to fetch landing data", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    // Thresholds for navbar states
+    const isNavbarVisible = scrolled > 100;
+    const showPartnerBtnInNavbar = scrolled > 100;
 
     return (
-        <div className={`min-h-screen relative overflow-hidden bg-[#0A0A10] text-white selection:bg-indigo-500/30 font-sans`}>
+        <div className="min-h-screen relative overflow-x-hidden bg-[#0A0A10] text-white selection:bg-indigo-500/30 font-sans">
             
             {/* Background Effects */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[500px] bg-gradient-to-b from-indigo-600/20 to-transparent blur-[120px] rounded-full pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-fuchsia-600/10 blur-[150px] rounded-full pointer-events-none" />
-            <div className="absolute -left-40 top-1/3 w-[500px] h-[500px] bg-blue-600/10 blur-[150px] rounded-full pointer-events-none" />
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[800px] bg-gradient-to-b from-indigo-600/10 to-transparent blur-[120px] rounded-full pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-fuchsia-600/5 blur-[150px] rounded-full pointer-events-none" />
 
-            {/* Glowing Grid */}
-            <div className="absolute inset-0 bg-[url('https://transparenttextures.com/patterns/cubes.png')] opacity-[0.03] pointer-events-none"></div>
+            {/* Become a Partner Button (Initial state, top right) */}
+            <div className={`fixed top-8 right-8 z-[110] transition-all duration-500 
+                ${scrolled > 100 ? 'opacity-0 scale-90 pointer-events-none' : 'opacity-100 scale-100'}`}>
+                <button 
+                    onClick={() => navigate('/login')}
+                    className="px-6 py-3 bg-white text-black font-black text-sm rounded-full shadow-2xl hover:scale-105 transition-transform flex items-center gap-2"
+                >
+                    Become a Partner
+                    <ArrowRight size={16} />
+                </button>
+            </div>
 
-            {/* Navbar */}
-            <nav className="relative z-50 border-b border-white/5 bg-black/20 backdrop-blur-xl">
-                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            {/* Sticky Navbar (Transitioning states) */}
+            <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ease-out border-b border-white/5 bg-black/60 backdrop-blur-xl
+                ${isNavbarVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
+                <div className="w-full px-6 h-16 flex items-center justify-between">
+                    {/* Logo/Heading */}
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/25`}>
+                         <div className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white">
                             F
                         </div>
-                        <span className="font-black tracking-tight text-xl text-white">
+                        <span className="font-black tracking-tight text-lg text-white uppercase">
                             FilePe
                         </span>
                     </div>
 
-                    <div className="flex items-center gap-6">
-                        <a href="#features" className="text-sm font-bold text-gray-300 hover:text-white transition-colors hidden md:block">Features</a>
-                        <a href="#about" className="text-sm font-bold text-gray-300 hover:text-white transition-colors hidden md:block">About</a>
+                    {/* Navbar Button (Conditional) */}
+                    <div className={`transition-all duration-300 ${showPartnerBtnInNavbar ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}>
                         <button 
                             onClick={() => navigate('/login')}
-                            className="text-sm font-bold text-gray-300 hover:text-white transition-colors"
+                            className="px-5 py-2 bg-indigo-600 text-white font-bold text-xs rounded-full hover:bg-indigo-700 transition-colors flex items-center gap-2"
                         >
-                            Login
-                        </button>
-                        <button 
-                            onClick={() => navigate('/login')}
-                            className="group relative px-6 py-2.5 bg-white text-black font-black text-sm rounded-full overflow-hidden shadow-xl hover:shadow-indigo-500/20 transition-all hover:scale-105 active:scale-95"
-                        >
-                            <span className="relative z-10 flex items-center gap-2">
-                                Start Trial
-                                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-                            </span>
+                            Become a Partner
+                            <ArrowRight size={14} />
                         </button>
                     </div>
                 </div>
             </nav>
 
             {/* Hero Section */}
-            <main className="relative z-10 flex flex-col items-center justify-center px-4 pt-32 pb-20 text-center">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-bold text-xs uppercase tracking-widest mb-8 animate-fade-in-up">
-                    <Sparkles size={14} />
-                    Next-Gen Point of Sale
+            <main className="relative z-10 flex flex-col items-center justify-center px-4 min-h-[80vh] text-center">
+                {/* Initial Centered Logo/Heading */}
+                <div className={`flex flex-col items-center gap-6 transition-all duration-700 ${scrolled > 50 ? 'opacity-0 scale-95 blur-sm' : 'opacity-100 scale-100'}`}>
+                    <div className="w-24 h-24 rounded-3xl flex items-center justify-center font-black text-5xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-[0_0_50px_rgba(79,70,229,0.3)]">
+                        F
+                    </div>
+                    <h1 className="text-6xl md:text-8xl font-black tracking-tighter text-white">
+                        FilePe
+                    </h1>
                 </div>
 
-                <h1 className="text-5xl md:text-7xl font-black tracking-tighter leading-[1.1] mb-8 max-w-4xl text-transparent bg-clip-text bg-gradient-to-r from-white via-gray-100 to-gray-400 animate-title">
-                    Manage your business like <br className="hidden md:block"/> never before.
-                </h1>
+            </main>
 
-                <p className="text-lg md:text-xl text-gray-400 font-medium max-w-2xl mb-12 animate-fade-in-up animation-delay-200">
-                    The ultimate smart POS system designed for modern restaurants, retail stores, and wholesale businesses. Effortless billing, dynamic inventory, and deep insights.
-                </p>
-
-                <div className="flex flex-col sm:flex-row items-center gap-4 animate-fade-in-up animation-delay-300">
-                    <button 
-                        onClick={() => navigate('/login')}
-                        className="group relative px-8 py-4 bg-gradient-to-r from-indigo-600 to-fuchsia-600 rounded-2xl font-black text-white shadow-2xl hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 transition-all w-full sm:w-auto overflow-hidden"
-                    >
-                        <div className="absolute inset-0 bg-white/20 translate-y-full hover:translate-y-0 transition-transform duration-300"></div>
-                        <span className="relative z-10 flex items-center justify-center gap-3">
-                            Start Your Free Trial
-                            <ArrowRight className="group-hover:translate-x-2 transition-transform" />
-                        </span>
-                    </button>
-                </div>
-
-                <div className="mt-20 pt-10 border-t border-white/5 w-full max-w-5xl animate-fade-in-up animation-delay-400">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-8 text-center">Built for businesses of all sizes</p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Feature 1 */}
-                        <div className="group bg-white/[0.02] border border-white/5 p-8 rounded-3xl hover:bg-white/[0.04] transition-colors relative overflow-hidden backdrop-blur-sm">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all text-indigo-500">
-                                <Store size={64} />
-                            </div>
-                            <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center mb-6 border border-indigo-500/20 shadow-inner">
-                                <Store size={24} />
-                            </div>
-                            <h3 className="text-xl font-black text-white mb-3">Restaurants</h3>
-                            <p className="text-sm font-medium text-gray-400 leading-relaxed">
-                                Complete dining hall management, Kitchen Displays (KDS), online orders, and table reservation systems.
-                            </p>
+            {/* Categories & Business Types Section */}
+            <section className="relative z-10 w-full px-6 py-12">
+                {loading ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                        {[...Array(12)].map((_, i) => (
+                            <div key={i} className="aspect-square rounded-3xl bg-white/5 animate-pulse" />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="space-y-16">
+                        {/* Business Types Grid */}
+                        <div className="flex flex-wrap items-start justify-center gap-10">
+                            {businessTypes.map((bt, index) => (
+                                <div 
+                                    key={index}
+                                    className="group relative flex flex-col items-center gap-6 p-2 transition-all cursor-pointer"
+                                >
+                                    <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden transition-all">
+                                        <img 
+                                            src={bt.image} 
+                                            alt={bt.name}
+                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                                            onError={(e) => { e.target.src = 'https://via.placeholder.com/400?text=Shop'; }}
+                                        />
+                                    </div>
+                                    <div className="text-center">
+                                        <h3 className="text-sm md:text-base font-black text-white/90 tracking-widest uppercase group-hover:text-indigo-400 transition-colors">
+                                            {bt.name}
+                                        </h3>
+                                        <div className="h-0.5 w-0 group-hover:w-full bg-indigo-500 mx-auto transition-all duration-300 mt-1" />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
 
-                        {/* Feature 2 */}
-                        <div className="group bg-white/[0.02] border border-white/5 p-8 rounded-3xl hover:bg-white/[0.04] transition-colors relative overflow-hidden backdrop-blur-sm">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all text-fuchsia-500">
-                                <Building2 size={64} />
-                            </div>
-                            <div className="w-12 h-12 bg-fuchsia-500/10 text-fuchsia-400 rounded-2xl flex items-center justify-center mb-6 border border-fuchsia-500/20 shadow-inner">
-                                <Building2 size={24} />
-                            </div>
-                            <h3 className="text-xl font-black text-white mb-3">Retail & Wholesale</h3>
-                            <p className="text-sm font-medium text-gray-400 leading-relaxed">
-                                Multi-branch inventory tracking, party bulk orders, direct sales, and granular barcode operations.
-                            </p>
-                        </div>
-
-                        {/* Feature 3 */}
-                        <div className="group bg-white/[0.02] border border-white/5 p-8 rounded-3xl hover:bg-white/[0.04] transition-colors relative overflow-hidden backdrop-blur-sm">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all text-emerald-500">
-                                <CreditCard size={64} />
-                            </div>
-                            <div className="w-12 h-12 bg-emerald-500/10 text-emerald-400 rounded-2xl flex items-center justify-center mb-6 border border-emerald-500/20 shadow-inner">
-                                <CheckCircle2 size={24} />
-                            </div>
-                            <h3 className="text-xl font-black text-white mb-3">Seamless Billing</h3>
-                            <p className="text-sm font-medium text-gray-400 leading-relaxed">
-                                Blazing fast checkout, split payments, multi-channel payment tracking, and dynamic discounting.
-                            </p>
+                        {/* Categories Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                            {categories.map((category, index) => (
+                                <div 
+                                    key={index}
+                                    className="group relative aspect-square rounded-3xl overflow-hidden bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-all cursor-pointer hover:scale-105"
+                                >
+                                    <img 
+                                        src={category.image} 
+                                        alt={category.name}
+                                        className="w-full h-full object-cover opacity-60 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                                    <div className="absolute bottom-4 left-4 right-4">
+                                        <p className="text-sm font-black text-white tracking-tight uppercase group-hover:text-indigo-400 transition-colors">
+                                            {category.name}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
-                </div>
-            </main>
+                )}
+            </section>
+
+            {/* Footer space */}
+            <footer className="py-20 text-center border-t border-white/5">
+                <p className="text-gray-500 text-sm font-medium">&copy; 2024 FilePe. All rights reserved.</p>
+            </footer>
         </div>
     );
 };

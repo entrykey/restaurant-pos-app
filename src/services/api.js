@@ -615,6 +615,15 @@ export const categoryService = {
             throw error.response ? error.response.data : error;
         }
     },
+    getPublicCategories: async () => {
+        try {
+            const response = await api.get('/items/categories/public');
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching public categories:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
     createCategory: async (payload) => {
         try {
             const response = await api.post('/items/categories', payload);

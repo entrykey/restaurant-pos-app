@@ -325,7 +325,7 @@ const Inventory = ({
             key: "categoryId",
             render: (value, item) => (
                 <span className="bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wide">
-                    {item.categoryId?.name || value?.name || "Uncategorized"}
+                    {item.categoryId?.name || value?.name || "Other Category"}
                 </span>
             )
         },
@@ -386,7 +386,7 @@ const Inventory = ({
             key: "categoryId",
             render: (value, item) => (
                 <span className="bg-orange-50 text-orange-700 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wide">
-                    {item.categoryId?.name || value?.name || "Uncategorized"}
+                    {item.categoryId?.name || value?.name || "Other Category"}
                 </span>
             )
         },

@@ -291,8 +291,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         let options = fieldDef.options || [];
         if (fieldKey === "category_id") {
-            options = categories.map(c => ({ label: c.name, value: c._id }));
-            fieldDef.required = true; 
+            options = [
+                { label: "Other Category", value: "" },
+                ...categories.map(c => ({ label: c.name, value: c._id }))
+            ];
         } else if (fieldKey === "supplier_id") {
             options = suppliers.map(s => ({ label: s.name, value: s._id }));
         } else if (fieldKey === "unit_id") {
@@ -629,7 +631,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 const field = ALL_FIELDS[fieldKey];
                                 if (!field) return null;
                                 
-                                const isRequired = field.required || fieldKey === 'category_id';
+                                const isRequired = field.required;
 
                                 // Helper to get options for standard selects
                                 let options = field.options || [];
