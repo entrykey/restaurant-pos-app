@@ -7,7 +7,5 @@ export const shopService = {
     createShop: (shopData) => api.post('/shops', shopData),
     updateShop: (id, shopData) => api.put(`/shops/${id}`, shopData),
     deleteShop: (id) => api.delete(`/shops/${id}`),
-    uploadLogo: (id, formData) => api.post(`/shops/${id}/logo`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
+    uploadLogo: (id, formData) => api.post(`/shops/${id}/logo`, formData),
 };

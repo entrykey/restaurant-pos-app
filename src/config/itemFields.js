@@ -52,6 +52,7 @@ export const ALL_FIELDS = {
         defaultValue: "ACTIVE",
         section: "Common"
     },
+    is_sellable: { key: "isSellable", label: "Show on Sale Page", type: "boolean", defaultValue: true, section: "Common" },
 };
 
 // Helper to get common/core field keys (always visible)

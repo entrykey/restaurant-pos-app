@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const api = axios.create({
+export const api = axios.create({
     baseURL: process.env.REACT_APP_API_URL, // Adjust base URL as needed
     headers: {
         'Content-Type': 'application/json',
@@ -132,6 +132,16 @@ export const shopService = {
         }
     },
 
+    getShops: async () => {
+        try {
+            const response = await api.get('/shops');
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching shops:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+
     getShopsByOwner: async (userId) => {
         try {
             const response = await api.get(`/shops/owner/${userId}`);
@@ -173,10 +183,16 @@ export const shopService = {
     },
     uploadLogo: async (shopId, file) => {
         try {
-            const formData = new FormData();
-            formData.append('logo', file);
-            const response = await api.post(`/shops/${shopId}/logo`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
+            // We check if it is already FormData to handle both legacy usages and standard usages.
+            const data = file instanceof FormData ? file : (() => {
+                const fd = new FormData();
+                fd.append('logo', file);
+                return fd;
+            })();
+            const response = await api.post(`/shops/${shopId}/logo`, data, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
             });
             return response.data;
         } catch (error) {
@@ -744,6 +760,15 @@ export const itemService = {
             return response.data;
         } catch (error) {
             console.error("Error fetching item barcodes:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getPreviewBarcode: async (code) => {
+        try {
+            const response = await api.get(`/items/preview-barcode?code=${code}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error previewing barcode:", error);
             throw error.response ? error.response.data : error;
         }
     },

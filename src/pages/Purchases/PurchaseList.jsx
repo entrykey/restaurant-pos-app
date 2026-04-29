@@ -89,7 +89,7 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
         if (!purchaseId) return;
 
         // Use the passed shopId or fallback to user object
-        const sid = propShopId || user?.shop_id || user?.companyId;
+        const sid = propShopId || user?.shopId || user?.shop_id || user?.companyId;
         
         if (!sid) {
           console.warn("No shopId found in PurchaseDetailModal, skipping shop info fetch");
@@ -123,7 +123,7 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
                   .catch(console.error);
             })
             .finally(() => setLoading(false));
-    }, [purchaseId, propShopId, user?.shop_id, user?.companyId]);
+    }, [purchaseId, propShopId, user?.shopId, user?.shop_id, user?.companyId]);
 
     const purchase = data?.purchase;
     const items = data?.items || [];

@@ -185,7 +185,8 @@ const AppContent = () => {
                     const items = response.data || [];
                     const activeTaxes = taxesRes.filter(t => t.isActive !== false);
 
-                    const menuData = items;
+                    // Filter only items that are sellable for the POS menu
+                    const menuData = items.filter(item => item.isSellable !== false);
 
                     const rawData = items.filter(item => 
                         (item.itemType === "STOCK" || item.itemType === "SERVICE" || item.itemType === "RAW" || item.itemType === "TRADE") && 
@@ -900,16 +901,21 @@ const AppContent = () => {
     };
 
     const initiateAddItem = (menuItem) => {
-        const hasVariants = ["Portion", "Volume", "Weight"].includes(menuItem.sellingType);
+        const hasNewPortions = menuItem.portionPricing && menuItem.portionPricing.length > 0;
+        const hasLegacyVariants = ["Portion", "Volume", "Weight"].includes(menuItem.sellingType);
         const hasExtras = menuItem.availableExtras && menuItem.availableExtras.length > 0;
 
-        if (hasVariants || hasExtras) {
+        if (hasNewPortions || hasLegacyVariants || hasExtras) {
             setCustomizingItem(menuItem);
-            if (menuItem.sellingType === "Weight") {
+            if (hasNewPortions) {
+                const defPortion = menuItem.portionPricing.find(p => p.isDefault) || menuItem.portionPricing[0];
+                setCustomVariant(defPortion);
+                setCustomWeightInput(1);
+            } else if (menuItem.sellingType === "Weight") {
                 setCustomWeightInput(1);
                 setCustomWeightUnit("kg");
                 setCustomVariant(null);
-            } else if (hasVariants) {
+            } else if (hasLegacyVariants) {
                 setCustomVariant(menuItem.variants[0]);
                 setCustomWeightInput(1);
             } else {
@@ -1013,10 +1019,12 @@ const AppContent = () => {
                 return {
                     itemId: item.id || item._id,
                     itemName: item.name,
-                    price: item.price,
+                    price: item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice),
                     quantity: item.quantity,
                     totalAmount: calculateItemTotal(item),
-                    variantId: item.selectedVariant ? item.selectedVariant._id : null,
+                    variantId: item.selectedVariant ? (item.selectedVariant._id || item.selectedVariant.id) : null,
+                    portionName: item.selectedVariant ? item.selectedVariant.name : null,
+                    quantityFactor: item.selectedVariant ? (item.selectedVariant.quantityFactor || 1) : 1,
                     notes: item.suggestion,
                     taxPercent: itemTaxPercent,
                     taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
@@ -1054,7 +1062,6 @@ const AppContent = () => {
 
             // 2) Create KOT only for new items or increased quantities
             const kitchenItems = orderItems
-                .filter(item => item.itemType === "MANUFACTURED")
                 .map(item => {
                     const previouslySent = item.sentQuantity || 0;
                     const diff = item.quantity - previouslySent;
@@ -1213,10 +1220,12 @@ const AppContent = () => {
                         return {
                             itemId: item.id || item._id,
                             itemName: item.name,
-                            price: item.price,
+                            price: item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice),
                             quantity: item.quantity,
                             totalAmount: calculateItemTotal(item),
-                            variantId: item.selectedVariant ? item.selectedVariant._id : null,
+                            variantId: item.selectedVariant ? (item.selectedVariant._id || item.selectedVariant.id) : null,
+                            portionName: item.selectedVariant ? item.selectedVariant.name : null,
+                            quantityFactor: item.selectedVariant ? (item.selectedVariant.quantityFactor || 1) : 1,
                             notes: item.suggestion,
                             taxPercent: itemTaxPercent,
                             taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
@@ -1287,6 +1296,7 @@ const AppContent = () => {
             setTakeawayCustPhone("");
             setOrderSearch("");
             setView("tables");
+            toast.success("Order completed successfully!");
 
             // Proactive table clean-up
             if (!isTakeaway) {

@@ -64,7 +64,7 @@ const OwnerDashboard = () => {
             const shopSegment = toShopSegment(shop);
             const scopedTargetPath = `/${shopSegment}${targetPath}`;
 
-            if (user?.shop_id === shopId) {
+            if ((user?.shopId || user?.shop_id) === shopId) {
                 navigate(scopedTargetPath);
                 return;
             }
@@ -103,7 +103,7 @@ const OwnerDashboard = () => {
             const shop = shops.find((s) => String(s._id) === String(shopId));
             const shopSegment = toShopSegment(shop);
 
-            if (user?.shop_id === shopId) {
+            if ((user?.shopId || user?.shop_id) === shopId) {
                 navigate(`/${shopSegment}/organization`);
                 return;
             }

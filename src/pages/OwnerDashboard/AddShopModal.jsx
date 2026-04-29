@@ -3,6 +3,7 @@ import { ArrowLeft, Building2, MapPin, FileText, Check, ChevronRight, Loader2, X
 import { shopService } from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import CommonSelect from '../../components/ui/CommonSelect';
 
 const STEPS = [
     { id: 1, title: 'Business Info', icon: Building2 },
@@ -316,19 +317,19 @@ const AddShopModal = ({ onClose, onSuccess }) => {
             case 3:
                 return (
                     <div className="space-y-4">
-                        <div>
-                            <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Tax System</label>
-                            <select
+                            <CommonSelect
+                                options={[
+                                    { label: "GST", value: "GST" },
+                                    { label: "VAT", value: "VAT" },
+                                    { label: "Sales Tax", value: "SALES_TAX" },
+                                    { label: "None", value: "NONE" }
+                                ]}
                                 value={formData.taxProfile.taxSystem}
-                                onChange={(e) => handleTaxChange('taxSystem', e.target.value)}
-                                className={`w-full p-3 border rounded-xl outline-none ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
-                            >
-                                <option value="GST">GST</option>
-                                <option value="VAT">VAT</option>
-                                <option value="SALES_TAX">Sales Tax</option>
-                                <option value="NONE">None</option>
-                            </select>
-                        </div>
+                                onChange={(val) => handleTaxChange('taxSystem', val)}
+                                placeholder="Select Tax System"
+                                labelKey="label"
+                                valueKey="value"
+                            />
 
                         <div>
                             <label className={`block text-sm font-medium mb-1 ${theme.textPrimary}`}>Registration Number</label>

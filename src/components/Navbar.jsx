@@ -4,6 +4,9 @@ import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, A
 import BusinessTypeModal from "./BusinessTypeModal";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
+import { usePermission } from "../auth/usePermission";
+import { MODULES } from "../constants/modules";
+import { ACTIONS } from "../constants/actions";
 import { notificationService } from "../services/notificationService";
 
 const Navbar = ({
@@ -19,8 +22,9 @@ const Navbar = ({
     onBusinessTypeChange,
     onSwitchShop
 }) => {
-    const { activeBranchId, setActiveBranchId, branches, currentShopId } = useApp();
+    const { activeBranchId, setActiveBranchId, branches, currentShopId, organization } = useApp();
     const { theme } = useTheme();
+    const { can } = usePermission();
     const [isBusinessTypeModalOpen, setIsBusinessTypeModalOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -131,7 +135,7 @@ const Navbar = ({
 
                 {/* Branch Selector - Visible for everyone if they have 1+ branches, 
                     OR specifically for owners to manage branch context */}
-                {(branches.length > 1 || isOwner) && !currentUser?.roles?.some(r => r.isSystemRole) && (
+                {(branches.length > 1 || isOwner) && !currentUser?.roles?.some(r => r.isSystemRole) && !currentUser?.isSuperAdmin && (
                     <div className="relative group">
                         <div className={`flex items-center gap-2 ${theme.inputBg} px-3 py-2 rounded-xl border ${theme.inputBorder} cursor-pointer hover:opacity-80 transition-all`}>
                             <MapPin size={16} className={theme.primaryIconText} />
@@ -166,14 +170,39 @@ const Navbar = ({
                         </div>
                     </div>
                 )}
-
-                <div className={`hidden lg:flex items-center gap-2 ${theme.textSecondary}`}>
-                    <Clock size={16} />
-                    <span className="text-[10px] font-black uppercase tracking-wider">
-                        Login: {sessionInfo.loginTime}
-                    </span>
-                </div>
             </div>
+
+            {/* Middle Section: Trial Countdown */}
+            {!currentUser?.isSuperAdmin && organization?.subscriptionStatus === 'trial' && (
+                <div 
+                    onClick={() => {
+                        if (can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW)) {
+                            navigate('/organization');
+                        }
+                    }}
+                    className={`flex items-center gap-3 px-5 py-2 rounded-2xl border-2 border-dashed shadow-sm transition-all
+                        ${can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW) ? 'cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default'}
+                        ${theme.mode === 'light' 
+                            ? 'bg-amber-50 border-amber-200 text-amber-700 shadow-amber-100/50' 
+                            : 'bg-amber-900/10 border-amber-800/50 text-amber-400'}
+                    `}
+                >
+                    <div className={`p-1.5 rounded-lg ${theme.mode === 'light' ? 'bg-amber-100' : 'bg-amber-900/30'}`}>
+                        <Clock size={16} className="animate-pulse" />
+                    </div>
+                    <div>
+                        <div className="text-[10px] font-black uppercase tracking-widest opacity-70">Free Trial</div>
+                        <div className="text-xs font-black tracking-tight">
+                            Ends in {Math.max(0, Math.ceil((new Date(organization.subscriptionEndDate) - new Date()) / (1000 * 60 * 60 * 24)))} days
+                        </div>
+                    </div>
+                    {can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW) && (
+                        <div className={`ml-2 p-1 rounded-full ${theme.mode === 'light' ? 'bg-amber-200/50' : 'bg-amber-800/30'}`}>
+                            <ChevronRight size={12} />
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="flex items-center gap-4">
                 {(currentUser.role === "Admin" || currentUser.role === "Manager") && (

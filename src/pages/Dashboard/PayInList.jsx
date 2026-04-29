@@ -25,16 +25,17 @@ const PayInList = () => {
 
     const fetchData = useCallback(async () => {
         try {
-            if (user?.shop_id) {
+            const resolvedShopId = user?.shopId || user?.shop_id;
+            if (resolvedShopId) {
                 setLoading(true);
                 if (activeTab === 'pending') {
-                    const result = await dashboardService.getPayInList(user.shop_id);
+                    const result = await dashboardService.getPayInList(resolvedShopId);
                     setData(result);
                 } else if (activeTab === 'history') {
-                    const result = await dashboardService.getPayInHistory(user.shop_id);
+                    const result = await dashboardService.getPayInHistory(resolvedShopId);
                     setHistoryData(result);
                 } else if (activeTab === 'returns') {
-                    const result = await orderService.getOrderReturns({ shopId: user.shop_id });
+                    const result = await orderService.getOrderReturns({ shopId: resolvedShopId });
                     setReturnsData(result);
                 }
             }
@@ -43,7 +44,7 @@ const PayInList = () => {
         } finally {
             setLoading(false);
         }
-    }, [user?.shop_id, activeTab]);
+    }, [user?.shopId, user?.shop_id, activeTab]);
 
     useEffect(() => {
         fetchData();

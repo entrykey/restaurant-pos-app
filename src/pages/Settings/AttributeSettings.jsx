@@ -6,15 +6,22 @@ import CommonSelect from "../../components/ui/CommonSelect";
 import { attributeService, shopService, unitService, categoryService } from "../../services/api";
 import { toast } from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { useApp } from "../../context/AppContext";
 
 const AttributeSettings = () => {
     const { theme } = useTheme();
+    const { user } = useAuth();
+    const { currentShopId, organization } = useApp();
+    const isSuperAdmin = user?.isSuperAdmin;
+
     const [attributes, setAttributes] = useState([]);
     const [businessTypes, setBusinessTypes] = useState([]);
     const [businessSubTypes, setBusinessSubTypes] = useState({});
     const [units, setUnits] = useState([]);
     const [categories, setCategories] = useState([]);
 
+    const [shops, setShops] = useState([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingAttribute, setEditingAttribute] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -24,12 +31,14 @@ const AttributeSettings = () => {
         code: "",
         dataType: "TEXT",
         options: "",
-        businessTypes: [],
-        businessSubTypes: [],
+        businessType: "", // Single selection for hierarchy
+        businessSubType: "", // Optional single selection
         requiresUnit: false,
         unitId: "",
         categoryDependent: false,
-        categoryId: ""
+        categoryId: "",
+        shopDependent: false,
+        shopId: ""
     });
 
     const dataTypes = ["TEXT", "NUMBER", "BOOLEAN", "SELECT", "DATE"];
@@ -38,12 +47,32 @@ const AttributeSettings = () => {
         fetchData();
         fetchBusinessTypes();
         fetchUnits();
-        fetchCategories();
-    }, []);
+        if (isSuperAdmin) {
+            fetchShops();
+        }
+    }, [currentShopId, isSuperAdmin]);
 
-    const fetchCategories = async () => {
+    useEffect(() => {
+        if (formData.shopId) {
+            fetchCategories(formData.shopId);
+        } else {
+            setCategories([]);
+        }
+    }, [formData.shopId]);
+
+    const fetchShops = async () => {
         try {
-            const data = await categoryService.getCategories();
+            const data = await shopService.getShops();
+            setShops(data);
+        } catch (error) {
+            toast.error("Failed to fetch shops");
+        }
+    };
+
+    const fetchCategories = async (shopId = null) => {
+        try {
+            const params = shopId ? { shopId } : {};
+            const data = await categoryService.getCategories(params);
             // Filter only active categories for selection
             setCategories(data.filter(cat => cat.isActive !== false));
         } catch (error) {
@@ -62,7 +91,8 @@ const AttributeSettings = () => {
 
     const fetchData = async () => {
         try {
-            const data = await attributeService.getAttributes();
+            const params = isSuperAdmin ? {} : { shopId: currentShopId };
+            const data = await attributeService.getAttributes(params);
             setAttributes(data);
         } catch (error) {
             toast.error("Failed to fetch attributes");
@@ -79,14 +109,9 @@ const AttributeSettings = () => {
     };
 
     const handleBusinessTypeChange = async (typeId) => {
-        const types = formData.businessTypes.includes(typeId)
-            ? formData.businessTypes.filter(id => id !== typeId)
-            : [...formData.businessTypes, typeId];
+        setFormData({ ...formData, businessType: typeId, businessSubType: "", shopId: "", categoryId: "" });
 
-        setFormData({ ...formData, businessTypes: types });
-
-        // Fetch sub types if selected and not already fetched
-        if (!businessSubTypes[typeId] && !formData.businessTypes.includes(typeId)) {
+        if (typeId && !businessSubTypes[typeId]) {
             try {
                 const subTypes = await shopService.getBusinessSubTypes(typeId);
                 setBusinessSubTypes(prev => ({ ...prev, [typeId]: subTypes }));
@@ -106,41 +131,57 @@ const AttributeSettings = () => {
     const handleOpenDialog = (attribute = null) => {
         if (attribute) {
             setEditingAttribute(attribute);
+            const btId = attribute.businessTypes?.[0]?._id || attribute.businessTypes?.[0] || "";
+            const bstId = attribute.businessSubTypes?.[0]?._id || attribute.businessSubTypes?.[0] || "";
+            
             setFormData({
                 name: attribute.name,
                 code: attribute.code,
                 dataType: attribute.dataType,
                 options: attribute.options?.join(", ") || "",
-                businessTypes: attribute.businessTypes?.map(bt => bt._id || bt) || [],
-                businessSubTypes: attribute.businessSubTypes?.map(bst => bst._id || bst) || [],
+                businessType: btId,
+                businessSubType: bstId,
                 requiresUnit: attribute.requiresUnit || false,
                 unitId: attribute.unitId?._id || attribute.unitId || "",
                 categoryDependent: attribute.categoryDependent || false,
-                categoryId: attribute.categoryId?._id || attribute.categoryId || ""
+                categoryId: attribute.categoryId?._id || attribute.categoryId || "",
+                shopDependent: attribute.shopDependent || false,
+                shopId: attribute.shopId?._id || attribute.shopId || ""
             });
 
-            // Pre-fetch subtypes for existing business types
-            attribute.businessTypes?.forEach(async (bt) => {
-                const id = bt._id || bt;
-                if (!businessSubTypes[id]) {
-                    const subTypes = await shopService.getBusinessSubTypes(id);
-                    setBusinessSubTypes(prev => ({ ...prev, [id]: subTypes }));
-                }
-            });
+            if (btId && !businessSubTypes[btId]) {
+                shopService.getBusinessSubTypes(btId).then(subTypes => {
+                    setBusinessSubTypes(prev => ({ ...prev, [btId]: subTypes }));
+                });
+            }
         } else {
             setEditingAttribute(null);
+            
+            // If shop owner, pre-fill context
+            const defaultBT = isSuperAdmin ? "" : (organization?.businessType?._id || organization?.businessType || "");
+            const defaultBST = isSuperAdmin ? "" : (organization?.subType?._id || organization?.subType || "");
+            const defaultShop = isSuperAdmin ? "" : currentShopId;
+
             setFormData({
                 name: "",
                 code: "",
                 dataType: "TEXT",
                 options: "",
-                businessTypes: [],
-                businessSubTypes: [],
+                businessType: defaultBT,
+                businessSubType: defaultBST,
                 requiresUnit: false,
                 unitId: "",
                 categoryDependent: false,
-                categoryId: ""
+                categoryId: "",
+                shopDependent: !isSuperAdmin,
+                shopId: defaultShop
             });
+
+            if (defaultBT && !businessSubTypes[defaultBT]) {
+                shopService.getBusinessSubTypes(defaultBT).then(subTypes => {
+                    setBusinessSubTypes(prev => ({ ...prev, [defaultBT]: subTypes }));
+                });
+            }
         }
         setIsDialogOpen(true);
     };
@@ -152,9 +193,12 @@ const AttributeSettings = () => {
         try {
             const payload = {
                 ...formData,
+                businessTypes: formData.businessType ? [formData.businessType] : [],
+                businessSubTypes: formData.businessSubType ? [formData.businessSubType] : [],
                 options: formData.dataType === "SELECT" ? formData.options.split(",").map(o => o.trim()).filter(Boolean) : [],
                 unitId: formData.requiresUnit ? formData.unitId : null,
-                categoryId: formData.categoryDependent ? formData.categoryId : null
+                categoryId: formData.categoryDependent ? formData.categoryId : null,
+                shopId: formData.shopDependent ? formData.shopId : null
             };
 
             if (editingAttribute) {
@@ -207,8 +251,16 @@ const AttributeSettings = () => {
                 value?.length ? value.join(", ") : "-"
         },
         {
-            header: "Business Types", key: "businessTypes", render: (value) =>
-                value?.map(bt => bt.displayString || bt).join(", ") || "-"
+            header: "Business Type", key: "businessTypes", render: (value) =>
+                value?.[0]?.displayString || value?.[0] || "All"
+        },
+        {
+            header: "Subtype", key: "businessSubTypes", render: (value) =>
+                value?.[0]?.displayString || value?.[0] || "All"
+        },
+        {
+            header: "Shop", key: "shopId", render: (value, row) =>
+                row.shopDependent && value ? <span className={`px-2 py-1 ${theme.infoBg} ${theme.infoText} rounded-lg text-xs font-bold`}>{value.name}</span> : <span className="text-xs italic opacity-50">Global</span>
         },
         {
             header: "Actions", key: "actions", render: (_, row) => (
@@ -337,18 +389,119 @@ const AttributeSettings = () => {
                                         )}
                                     </div>
                                 )}
+                            </div>
 
-                                <div className={`space-y-4 md:col-span-2 p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl`}>
+                            <div className={`space-y-6 pt-4 border-t ${theme.borderLight} ${!isSuperAdmin ? "hidden" : ""}`}>
+                                <h4 className={`text-lg font-bold ${theme.textHeading}`}>Scope & Dependencies</h4>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Business Type</label>
+                                        <CommonSelect
+                                            options={businessTypes}
+                                            value={formData.businessType}
+                                            onChange={handleBusinessTypeChange}
+                                            placeholder="Select Business Type..."
+                                            labelKey="displayString"
+                                            valueKey="_id"
+                                        />
+                                    </div>
+
+                                    <div className={`space-y-2 ${!formData.businessType ? "opacity-50 pointer-events-none" : ""}`}>
+                                        <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Business Subtype (Optional)</label>
+                                        <CommonSelect
+                                            options={businessSubTypes[formData.businessType] || []}
+                                            value={formData.businessSubType}
+                                            onChange={(val) => setFormData({ ...formData, businessSubType: val, shopId: "", categoryId: "" })}
+                                            placeholder="All Subtypes"
+                                            labelKey="displayString"
+                                            valueKey="_id"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className={`space-y-4 p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl ${!formData.businessType ? "opacity-50 pointer-events-none" : ""}`}>
+                                    <label className={`flex items-center gap-3 cursor-pointer hover:${theme.primaryIconText} transition-colors`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.shopDependent}
+                                            onChange={(e) => setFormData({ ...formData, shopDependent: e.target.checked, shopId: "", categoryDependent: false, categoryId: "" })}
+                                            className={`w-5 h-5 rounded ${theme.inputBorder} text-indigo-600 focus:ring-indigo-500`}
+                                        />
+                                        <div>
+                                            <div className={`font-bold ${theme.textPrimary}`}>Shop Dependent</div>
+                                            <div className={`text-xs ${theme.textSecondary} font-medium`}>Make this attribute specific to a particular shop</div>
+                                        </div>
+                                    </label>
+
+                                    {formData.shopDependent && (
+                                        <div className={`mt-4 pt-4 border-t ${theme.borderLight}`}>
+                                            <label className={`text-xs font-black ${theme.textSecondary} uppercase mb-2 block`}>Select Shop</label>
+                                            <CommonSelect
+                                                options={shops.filter(s => {
+                                                    const sBtId = s.businessType?._id || s.businessType;
+                                                    const sBstId = s.subType?._id || s.subType;
+                                                    const matchesBt = String(sBtId) === String(formData.businessType);
+                                                    const matchesBst = !formData.businessSubType || String(sBstId) === String(formData.businessSubType);
+                                                    return matchesBt && matchesBst;
+                                                })}
+                                                value={formData.shopId}
+                                                onChange={(val) => setFormData({ ...formData, shopId: val, categoryId: "" })}
+                                                placeholder="Select a shop..."
+                                                labelKey="name"
+                                                valueKey="_id"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className={`space-y-4 p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl ${(!formData.shopId && isSuperAdmin) ? "opacity-50 pointer-events-none" : ""}`}>
                                     <label className={`flex items-center gap-3 cursor-pointer hover:${theme.primaryIconText} transition-colors`}>
                                         <input
                                             type="checkbox"
                                             checked={formData.categoryDependent}
-                                            onChange={(e) => setFormData({ ...formData, categoryDependent: e.target.checked, categoryId: e.target.checked ? formData.categoryId : "" })}
+                                            disabled={!formData.shopId && isSuperAdmin}
+                                            onChange={(e) => setFormData({ ...formData, categoryDependent: e.target.checked, categoryId: "" })}
                                             className={`w-5 h-5 rounded ${theme.inputBorder} text-indigo-600 focus:ring-indigo-500`}
                                         />
                                         <div>
                                             <div className={`font-bold ${theme.textPrimary}`}>Category Dependent</div>
-                                            <div className={`text-xs ${theme.textSecondary} font-medium`}>Link this attribute rigidly to a specific item category</div>
+                                            <div className={`text-xs ${theme.textSecondary} font-medium`}>
+                                                {(!formData.shopId && isSuperAdmin) ? "Select 'Shop' first" : "Link this attribute rigidly to a specific item category"}
+                                            </div>
+                                        </div>
+                                    </label>
+
+                                    {formData.categoryDependent && (formData.shopId || !isSuperAdmin) && (
+                                        <div className={`mt-4 pt-4 border-t ${theme.borderLight}`}>
+                                            <label className={`text-xs font-black ${theme.textSecondary} uppercase mb-2 block`}>Select Category</label>
+                                            <CommonSelect
+                                                options={categories}
+                                                value={formData.categoryId}
+                                                onChange={(val) => setFormData({ ...formData, categoryId: val })}
+                                                placeholder="Select a category..."
+                                                labelKey="name"
+                                                valueKey="_id"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            {!isSuperAdmin && (
+                                <div className={`space-y-4 p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl`}>
+                                    <label className={`flex items-center gap-3 cursor-pointer hover:${theme.primaryIconText} transition-colors`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.categoryDependent}
+                                            onChange={(e) => setFormData({ ...formData, categoryDependent: e.target.checked, categoryId: "" })}
+                                            className={`w-5 h-5 rounded ${theme.inputBorder} text-indigo-600 focus:ring-indigo-500`}
+                                        />
+                                        <div>
+                                            <div className={`font-bold ${theme.textPrimary}`}>Category Dependent</div>
+                                            <div className={`text-xs ${theme.textSecondary} font-medium`}>
+                                                Link this attribute to a specific category in your shop
+                                            </div>
                                         </div>
                                     </label>
 
@@ -366,53 +519,7 @@ const AttributeSettings = () => {
                                         </div>
                                     )}
                                 </div>
-                            </div>
-
-                            <div className={`space-y-4 pt-4 border-t ${theme.borderLight}`}>
-                                <h4 className={`text-lg font-bold ${theme.textHeading}`}>Applies to Business Types</h4>
-                                <div className="space-y-4">
-                                    {businessTypes.map(bt => (
-                                        <div key={bt._id} className={`${theme.inputBg} p-4 rounded-2xl border ${theme.inputBorder}`}>
-                                            <label
-                                                className="flex items-center gap-3 cursor-pointer mb-2"
-                                                onClick={() => handleBusinessTypeChange(bt._id)}
-                                            >
-                                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${formData.businessTypes.includes(bt._id)
-                                                    ? `${theme.buttonBg} border-transparent ${theme.buttonText}`
-                                                    : `${theme.inputBorder} hover:border-indigo-400 ${theme.surfaceBg}`
-                                                    }`}>
-                                                    {formData.businessTypes.includes(bt._id) && <Check size={14} strokeWidth={4} />}
-                                                </div>
-                                                <span className={`font-bold ${theme.textPrimary} text-lg`}>{bt.displayString}</span>
-                                            </label>
-
-                                            {/* Show subtypes if business type is selected */}
-                                            {formData.businessTypes.includes(bt._id) && businessSubTypes[bt._id] && businessSubTypes[bt._id].length > 0 && (
-                                                <div className="pl-9 mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                    {businessSubTypes[bt._id].map(bst => (
-                                                        <label
-                                                            key={bst._id}
-                                                            className={`flex items-center gap-3 cursor-pointer p-3 ${theme.surfaceBg} rounded-xl border ${theme.inputBorder} hover:border-indigo-300 transition-colors`}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleSubtypeChange(bst._id);
-                                                            }}
-                                                        >
-                                                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${formData.businessSubTypes.includes(bst._id)
-                                                                ? `${theme.buttonBg} border-transparent ${theme.buttonText}`
-                                                                : `${theme.inputBorder} hover:border-indigo-400 ${theme.surfaceBg}`
-                                                                }`}>
-                                                                {formData.businessSubTypes.includes(bst._id) && <Check size={12} strokeWidth={4} />}
-                                                            </div>
-                                                            <span className={`font-semibold ${theme.textSecondary} text-sm`}>{bst.displayString}</span>
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
+                            )}
 
                             <div className={`flex justify-end gap-3 pt-6 border-t ${theme.borderLight}`}>
                                 <button
@@ -424,7 +531,7 @@ const AttributeSettings = () => {
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={isLoading || formData.businessTypes.length === 0}
+                                    disabled={isLoading || !formData.businessType}
                                     className={`${theme.buttonBg} ${theme.buttonText} px-8 py-3 rounded-xl font-bold ${theme.buttonHoverBg} transition-colors disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-indigo-200`}
                                 >
                                     {isLoading ? "Saving..." : "Save Attribute"}

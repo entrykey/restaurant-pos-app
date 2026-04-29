@@ -26,16 +26,17 @@ const PayOutList = () => {
 
     const fetchData = useCallback(async () => {
         try {
-            if (user?.shop_id) {
+            const resolvedShopId = user?.shopId || user?.shop_id;
+            if (resolvedShopId) {
                 setLoading(true);
                 if (activeTab === 'pending') {
-                    const result = await dashboardService.getPayOutList(user.shop_id);
+                    const result = await dashboardService.getPayOutList(resolvedShopId);
                     setData(result);
                 } else if (activeTab === 'history') {
-                    const result = await dashboardService.getPayOutHistory(user.shop_id);
+                    const result = await dashboardService.getPayOutHistory(resolvedShopId);
                     setHistoryData(result);
                 } else if (activeTab === 'returns') {
-                    const result = await PurchaseService.getPurchaseReturns({ shopId: user.shop_id });
+                    const result = await PurchaseService.getPurchaseReturns({ shopId: resolvedShopId });
                     setReturnsData(result);
                 }
             }
@@ -44,7 +45,7 @@ const PayOutList = () => {
         } finally {
             setLoading(false);
         }
-    }, [user?.shop_id, activeTab]);
+    }, [user?.shopId, user?.shop_id, activeTab]);
 
     useEffect(() => {
         fetchData();

@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { X, Tag, CreditCard, Banknote, Smartphone, Receipt, CheckCircle2, ChevronLeft, Plus, Trash2 } from "lucide-react";
+import { X, Tag, CreditCard, Banknote, Smartphone, Receipt, CheckCircle2, ChevronLeft, Plus, Trash2, Printer } from "lucide-react";
 import ThemeLoader from "../ui/ThemeLoader";
 import { formatCurrency } from "../../utils/format";
 import { useOrder } from "../../context/OrderContext";
 import { customerService } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { useApp } from "../../context/AppContext";
+import { QRCodeSVG } from "qrcode.react";
+import CommonSelect from "../ui/CommonSelect";
+
 
 const PaymentModal = ({
     isOpen,
@@ -41,8 +44,9 @@ const PaymentModal = ({
         calculateBillDetails,
         applyCoupon
     } = useOrder();
-    const { activeBranchId, branches } = useApp();
+    const { activeBranchId, branches, organization } = useApp();
     const activeBranch = branches.find(b => b._id === activeBranchId);
+    const resolvedUpiId = activeBranch?.upiId || organization?.defaultUpiId;
     const branchStateCode = activeBranch?.address?.state?.code;
     const [customerStateCode, setCustomerStateCode] = useState(null);
 
@@ -185,7 +189,7 @@ const PaymentModal = ({
                                                     </span>
                                                     <div className="min-w-0">
                                                         <div className="flex flex-col">
-                                                            <span className={`font-black ${theme.textPrimary} leading-tight text-base truncate`}>
+                                                            <span className={`font-black ${theme.textPrimary} leading-tight text-sm md:text-base truncate`}>
                                                                 {item.name}
                                                                 <span className={`ml-2 text-[10px] ${theme.textMuted} font-bold opacity-60`}>
                                                                     ({(item.taxPercent !== undefined && item.taxPercent !== null) ? item.taxPercent : (settings?.defaultTaxPercent || 0)}%)
@@ -210,13 +214,13 @@ const PaymentModal = ({
                             </div>
 
                             {/* Right Side: Discounts & Summary (Fixed height or smaller scroll) */}
-                            <div className="w-full xl:w-[450px] flex flex-col p-6 space-y-6 shrink-0 bg-gray-50/30 dark:bg-white/2">
+                            <div className="w-full xl:w-[450px] flex flex-col p-4 md:p-6 space-y-4 md:space-y-6 shrink-0 bg-gray-50/30 dark:bg-white/2">
                                 {/* Coupon Code Section */}
                                 {(hasPermissionFor?.("pos", "order", "apply_discount") || (hasPermission && hasPermission("APPLY_DISCOUNTS"))) && (
-                                    <section className={`${theme.mode === 'dark' ? 'bg-orange-900/10' : 'bg-orange-50'} p-5 rounded-[32px] border ${theme.mode === 'dark' ? 'border-orange-900/40' : 'border-orange-100'} space-y-4`}>
+                                    <section className={`${theme.mode === 'dark' ? 'bg-orange-900/10' : 'bg-orange-50'} p-4 md:p-5 rounded-2xl md:rounded-[32px] border ${theme.mode === 'dark' ? 'border-orange-900/40' : 'border-orange-100'} space-y-3 md:space-y-4`}>
                                         <div className="flex justify-between items-center">
-                                            <span className="font-black text-orange-600 text-xs flex items-center gap-2 uppercase tracking-widest">
-                                                <Tag size={16} /> Have a Coupon?
+                                            <span className="font-black text-orange-600 text-[10px] md:text-xs flex items-center gap-2 uppercase tracking-widest">
+                                                <Tag size={14} mdSize={16} /> Have a Coupon?
                                             </span>
                                         </div>
                                         <div className="flex gap-2">
@@ -227,18 +231,18 @@ const PaymentModal = ({
                                                     setCouponStatus(null);
                                                 }}
                                                 placeholder="Enter Code"
-                                                className={`flex-1 p-3 rounded-2xl border outline-none uppercase font-black text-sm ${theme.mode === 'dark' ? 'bg-black/20 border-orange-900/40' : 'bg-white border-orange-200'}`}
+                                                className={`flex-1 p-2 md:p-3 rounded-xl md:rounded-2xl border outline-none uppercase font-black text-xs md:text-sm ${theme.mode === 'dark' ? 'bg-black/20 border-orange-900/40' : 'bg-white border-orange-200'}`}
                                             />
                                             <button
                                                 onClick={applyCoupon}
-                                                className="bg-orange-600 text-white px-6 rounded-2xl font-black text-sm hover:bg-orange-700 transition-all shadow-lg shadow-orange-600/20 active:scale-[0.98]"
+                                                className="bg-orange-600 text-white px-4 md:px-6 rounded-xl md:rounded-2xl font-black text-xs md:text-sm hover:bg-orange-700 transition-all shadow-lg shadow-orange-600/20 active:scale-[0.98]"
                                             >
                                                 Apply
                                             </button>
                                         </div>
                                         {couponStatus && (
                                             <p
-                                                className={`text-[10px] font-black uppercase tracking-widest ${couponStatus.type === "success"
+                                                className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest ${couponStatus.type === "success"
                                                     ? "text-emerald-500"
                                                     : "text-red-500"
                                                     }`}
@@ -250,17 +254,17 @@ const PaymentModal = ({
                                 )}
 
                                 {/* Bill Summary (Compact/Fixed visibility) */}
-                                <div className={`${theme.surfaceBg} p-8 rounded-[40px] border ${theme.borderLight} shadow-xl shadow-black/5 space-y-4`}>
-                                    <div className="space-y-3">
-                                        <div className={`flex justify-between ${theme.textMuted} text-sm font-bold`}>
+                                <div className={`${theme.surfaceBg} p-5 md:p-8 rounded-[30px] md:rounded-[40px] border ${theme.borderLight} shadow-xl shadow-black/5 space-y-3 md:space-y-4`}>
+                                    <div className="space-y-2 md:space-y-3">
+                                        <div className={`flex justify-between ${theme.textMuted} text-xs md:text-sm font-bold`}>
                                             <span>Subtotal</span>
                                             <span className={theme.textPrimary}>{formatCurrency(billDetails.subtotal)}</span>
                                         </div>
                                         
                                         {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
-                                            <div className="space-y-2 py-1">
+                                            <div className="space-y-1.5 md:space-y-2 py-0.5 md:py-1">
                                                 {billDetails.appliedOffers.map((offer, oIdx) => (
-                                                    <div key={oIdx} className="flex justify-between items-center text-xs text-emerald-600 font-black bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 rounded-xl border border-emerald-100 dark:border-emerald-900/40">
+                                                    <div key={oIdx} className="flex justify-between items-center text-[10px] md:text-xs text-emerald-600 font-black bg-emerald-50 dark:bg-emerald-900/20 px-2 md:px-3 py-1.5 md:py-2 rounded-lg md:rounded-xl border border-emerald-100 dark:border-emerald-900/40">
                                                         <span className="uppercase tracking-tight">{offer.name}</span>
                                                         <span>-{formatCurrency(offer.discount)}</span>
                                                     </div>
@@ -269,50 +273,50 @@ const PaymentModal = ({
                                         )}
                                         
                                         {billDetails.discountAmount > 0 && (
-                                            <div className="flex justify-between text-emerald-600 text-sm font-black italic">
+                                            <div className="flex justify-between text-emerald-600 text-xs md:text-sm font-black italic">
                                                 <span>Coupon Discount</span>
                                                 <span>-{formatCurrency(billDetails.discountAmount)}</span>
                                             </div>
                                         )}
 
-                                        <div className={`flex flex-col gap-2 pt-2 border-t border-dashed ${theme.borderLight}`}>
-                                            <div className={`flex justify-between ${theme.textMuted} text-sm font-bold`}>
+                                        <div className={`flex flex-col gap-1.5 md:gap-2 pt-1.5 md:pt-2 border-t border-dashed ${theme.borderLight}`}>
+                                            <div className={`flex justify-between ${theme.textMuted} text-xs md:text-sm font-bold`}>
                                                 <span>Total Tax</span>
                                                 <span className={theme.textPrimary}>{formatCurrency(billDetails.taxAmount)}</span>
                                             </div>
                                             
                                             {billDetails.taxBreakdown && (billDetails.taxBreakdown.cgst > 0 || billDetails.taxBreakdown.sgst > 0) && (
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="p-2 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
-                                                        <p className={`text-[8px] font-black uppercase text-gray-400 mb-0.5`}>CGST</p>
-                                                        <p className={`text-xs font-black ${theme.textPrimary}`}>{formatCurrency(billDetails.taxBreakdown.cgst)}</p>
+                                                <div className="grid grid-cols-2 gap-2 md:gap-4">
+                                                    <div className="p-1.5 md:p-2 rounded-lg md:rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
+                                                        <p className={`text-[7px] md:text-[8px] font-black uppercase text-gray-400 mb-0.5`}>CGST</p>
+                                                        <p className={`text-[10px] md:text-xs font-black ${theme.textPrimary}`}>{formatCurrency(billDetails.taxBreakdown.cgst)}</p>
                                                     </div>
-                                                    <div className="p-2 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
-                                                        <p className={`text-[8px] font-black uppercase text-gray-400 mb-0.5`}>SGST</p>
-                                                        <p className={`text-xs font-black ${theme.textPrimary}`}>{formatCurrency(billDetails.taxBreakdown.sgst)}</p>
+                                                    <div className="p-1.5 md:p-2 rounded-lg md:rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
+                                                        <p className={`text-[7px] md:text-[8px] font-black uppercase text-gray-400 mb-0.5`}>SGST</p>
+                                                        <p className={`text-[10px] md:text-xs font-black ${theme.textPrimary}`}>{formatCurrency(billDetails.taxBreakdown.sgst)}</p>
                                                     </div>
                                                 </div>
                                             )}
                                         </div>
                                         
                                         {billDetails.roundOff !== 0 && (
-                                            <div className={`flex justify-between ${theme.textMuted} text-xs font-bold italic`}>
+                                            <div className={`flex justify-between ${theme.textMuted} text-[10px] md:text-xs font-bold italic`}>
                                                 <span>Round Off</span>
                                                 <span>{formatCurrency(billDetails.roundOff)}</span>
                                             </div>
                                         )}
 
                                         {exchangeCredit > 0 && (
-                                            <div className="flex justify-between text-orange-600 text-sm font-black border-t border-dashed mt-2 pt-3">
+                                            <div className="flex justify-between text-orange-600 text-xs md:text-sm font-black border-t border-dashed mt-1.5 md:mt-2 pt-2 md:pt-3">
                                                 <span>Exchange Credit</span>
                                                 <span>-{formatCurrency(exchangeCredit)}</span>
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className={`flex justify-between items-end pt-4 border-t-4 border-double ${theme.borderLight}`}>
-                                        <span className={`text-sm font-black ${theme.textMuted} uppercase tracking-widest pb-1`}>Amount Due</span>
-                                        <span className={`text-4xl font-black ${theme.textHeading}`}>{formatCurrency(billDetails.finalTotal)}</span>
+                                    <div className={`flex justify-between items-end pt-3 md:pt-4 border-t-4 border-double ${theme.borderLight}`}>
+                                        <span className={`text-[10px] md:text-sm font-black ${theme.textMuted} uppercase tracking-widest pb-1`}>Amount Due</span>
+                                        <span className={`text-2xl md:text-4xl font-black ${theme.textHeading}`}>{formatCurrency(billDetails.finalTotal)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -371,6 +375,29 @@ const PaymentModal = ({
                                                                 </div>
                                                             </div>
                                                         </div>
+                                                        {p.method.id === "upi" ? (
+                                                            <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-white/10 flex items-center justify-between">
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className={`text-xs font-bold ${theme.textPrimary}`}>Scan to Pay via Any UPI App</span>
+                                                                    <span className={`text-[10px] ${theme.textMuted}`}>Amount: {formatCurrency(p.amount)}</span>
+                                                                    {!resolvedUpiId && (
+                                                                        <span className="text-[10px] text-red-500 font-bold uppercase py-1">Missing UPI ID in branch/shop settings</span>
+                                                                    )}
+                                                                </div>
+                                                                {resolvedUpiId && p.amount > 0 ? (
+                                                                    <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100">
+                                                                        <QRCodeSVG 
+                                                                            value={`upi://pay?pa=${resolvedUpiId}&pn=${encodeURIComponent(activeBranch?.name || organization?.name || organization?.businessName || 'Shop')}&am=${p.amount}&cu=INR`} 
+                                                                            size={80} 
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-700">
+                                                                        <Smartphone size={24} className="text-gray-400" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : null}
                                                     </div>
                                                 ))}
 
@@ -529,29 +556,30 @@ const PaymentModal = ({
                 {/* Footer Actions (Compact) */}
                 <div className={`p-6 border-t ${theme.borderLight} ${theme.pageBg} shrink-0`}>
                     {billingStage === "review" && (
-                        <div className="flex flex-col md:flex-row gap-6 max-w-5xl mx-auto w-full">
-                            <div className="flex flex-1 gap-4">
+                        <div className="flex flex-col lg:flex-row gap-4 md:gap-6 max-w-5xl mx-auto w-full">
+                            <div className="flex flex-col sm:flex-row flex-1 gap-3 md:gap-4">
                                 <button
                                     type="button"
                                     onClick={() => onPrintBill?.(printFormat)}
-                                    className="flex-1 py-4 bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 border-2 border-gray-200 dark:border-white/10 rounded-3xl font-black text-lg hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center gap-3 transition-colors active:scale-95"
+                                    className={`flex-1 py-3 md:py-4 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-2 border-indigo-100 dark:border-indigo-900/40 rounded-2xl md:rounded-3xl font-black text-base md:text-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 flex items-center justify-center gap-3 transition-all active:scale-95 shadow-sm`}
                                 >
-                                    <Receipt size={24} className="text-gray-400" />
-                                    <span className="flex flex-col items-start leading-tight">
-                                        <span>Print Bill</span>
-                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic">To {printFormat} printer</span>
-                                    </span>
+                                    <Printer size={22} className="text-indigo-500" />
+                                    <span className="font-black uppercase tracking-tight">Print Bill</span>
                                 </button>
-                                <div className={`px-6 py-4 ${theme.surfaceBg} border ${theme.borderLight} rounded-3xl flex items-center gap-4`}>
-                                    <span className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>Format</span>
-                                    <select
+                                <div className={`px-4 md:px-6 py-3 md:py-4 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl md:rounded-3xl flex items-center justify-between sm:justify-start gap-4`}>
+                                    <span className={`text-[9px] md:text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>Format</span>
+                                    <CommonSelect
+                                        options={[
+                                            { label: "Thermal", value: "thermal" },
+                                            { label: "PDF / A4", value: "a4" }
+                                        ]}
                                         value={printFormat}
-                                        onChange={(e) => setPrintFormat(e.target.value)}
-                                        className={`text-sm font-black px-3 py-1 rounded-xl bg-transparent ${theme.textPrimary} outline-none cursor-pointer`}
-                                    >
-                                        <option value="thermal">Thermal</option>
-                                        <option value="a4">PDF / A4</option>
-                                    </select>
+                                        onChange={(val) => setPrintFormat(val)}
+                                        className="w-28 md:w-32"
+                                        triggerClassName="!px-3 !py-1 !rounded-xl !bg-transparent !border-none !shadow-none !text-xs md:!text-sm"
+                                        labelKey="label"
+                                        valueKey="value"
+                                    />
                                 </div>
                             </div>
 
@@ -561,10 +589,10 @@ const PaymentModal = ({
                                     setBillingStage("payment");
                                     setSelectedPayments([]);
                                 }}
-                                className="w-full md:w-auto md:min-w-[400px] py-4 bg-indigo-600 text-white rounded-3xl font-black text-2xl shadow-2xl shadow-indigo-500/30 hover:bg-indigo-700 flex justify-between px-8 items-center group active:scale-95 transition-all"
+                                className="w-full lg:w-auto lg:min-w-[380px] py-4 bg-indigo-600 text-white rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-2xl shadow-indigo-500/30 hover:bg-indigo-700 flex justify-between px-6 md:px-8 items-center group active:scale-95 transition-all"
                             >
                                 <span className="group-hover:translate-x-1 transition-transform">Proceed to Checkout</span>
-                                <span className="bg-white/20 px-4 py-1.5 rounded-2xl text-lg backdrop-blur-md">
+                                <span className="bg-white/20 px-3 md:px-4 py-1.5 rounded-xl md:rounded-2xl text-base md:text-lg backdrop-blur-md">
                                     {formatCurrency(billDetails.finalTotal)}
                                 </span>
                             </button>

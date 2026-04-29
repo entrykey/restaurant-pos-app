@@ -6,6 +6,8 @@ import { toast } from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
 import { useApp } from "../../context/AppContext";
 
+import CommonSelect from "../../components/ui/CommonSelect";
+
 const UnitSettings = () => {
     const { theme } = useTheme();
     const { currentShopId } = useApp();
@@ -191,16 +193,14 @@ const UnitSettings = () => {
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Category</label>
-                                    <select
-                                        required
-                                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
+                                    <CommonSelect
+                                        options={categories.map(cat => ({ label: cat, value: cat }))}
                                         value={formData.category}
-                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                    >
-                                        {categories.map(cat => (
-                                            <option key={cat} value={cat}>{cat}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => setFormData({ ...formData, category: val })}
+                                        placeholder="Select Category"
+                                        labelKey="label"
+                                        valueKey="value"
+                                    />
                                 </div>
 
                                 <label className={`flex items-center gap-3 cursor-pointer p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl hover:border-indigo-200 transition-colors`}>

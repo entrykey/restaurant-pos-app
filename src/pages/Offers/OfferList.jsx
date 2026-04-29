@@ -38,7 +38,7 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
     const fetchOffers = async () => {
         setIsLoading(true);
         try {
-            const shopId = user?.shop_id;
+            const shopId = user?.shopId || user?.shop_id;
             const branchId = activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null);
             const data = await offerService.getOffers({ shopId, branchId });
             setOffers(data || []);

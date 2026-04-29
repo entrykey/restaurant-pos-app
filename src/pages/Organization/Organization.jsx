@@ -27,12 +27,12 @@ import {
     fetchCurrentLocation,
 } from "./OrganizationService";
 import * as organizationService from './OrganizationService';
-import { shopService } from "../../services/api";
+import { shopService, api } from "../../services/api";
 import { subscriptionService } from '../../services/api/subscriptions';
 import { toast } from 'react-hot-toast';
 
 
-const emptyBranch = (organizationId) => ({
+const emptyBranch = (organizationId, defaultUpiId = null) => ({
     id: null,
     organizationId,
     name: "",
@@ -44,6 +44,7 @@ const emptyBranch = (organizationId) => ({
         allowInterState: true,
     },
     currency: "INR",
+    upiId: defaultUpiId,
     isMainBranch: false,
     status: BRANCH_STATUS.ACTIVE,
 });
@@ -278,7 +279,7 @@ const Organization = ({
         if (user?._id || user?.id) {
             loadData();
         }
-    }, [user?._id, user?.id, user?.shop_id]);
+    }, [user?._id, user?.id, user?.shopId, user?.shop_id]);
 
     React.useEffect(() => {
         if (organization && originalOrg) {
@@ -332,6 +333,7 @@ const Organization = ({
                 defaultCountryCode: organization.defaultCountry || null,
                 defaultCurrencyCode: organization.defaultCurrency || null,
                 defaultTaxSystem: organization.defaultTaxSystem || null,
+                defaultUpiId: organization.defaultUpiId || null,
             };
             await shopService.updateShop(organization.id, updatePayload);
             toast.success("Organization details updated successfully.");
@@ -403,7 +405,7 @@ const Organization = ({
 
     const openAddBranch = () => {
         setEditingBranch(null);
-        setBranchForm(emptyBranch(organization?.id));
+        setBranchForm(emptyBranch(organization?.id, organization?.defaultUpiId));
         setIsBranchModalOpen(true);
     };
 
@@ -423,7 +425,7 @@ const Organization = ({
             await saveBranch(branchForm);
             await loadData();
             setIsBranchModalOpen(false);
-            setBranchForm(emptyBranch(organization?.id));
+            setBranchForm(emptyBranch(organization?.id, organization?.defaultUpiId));
             toast.success("Branch saved successfully.");
         } catch (error) {
             console.error("Failed to save branch:", error);
@@ -523,8 +525,11 @@ const Organization = ({
         if (!file) return;
         setLogoUploading(true);
         try {
-            const res = await shopService.uploadLogo(organization.id, file);
-            const logoUrl = res.logoUrl || res.shop?.logoUrl;
+            const formData = new FormData();
+            formData.append('logo', file);
+            
+            const res = await shopService.uploadLogo(organization.id, formData);
+            const logoUrl = res.logoUrl || res.data?.logoUrl || res.data?.shop?.logoUrl || res.shop?.logoUrl;
             if (logoUrl) {
                 setOrganization(prev => ({ ...prev, logoUrl }));
             }
@@ -650,7 +655,7 @@ const Organization = ({
                                     ) : organization?.logoUrl ? (
                                         <>
                                             <img
-                                                src={organization.logoUrl.startsWith("http") ? organization.logoUrl : `${process.env.REACT_APP_SERVER_URL || 'http://localhost:8000'}${organization.logoUrl}`}
+                                                src={organization.logoUrl.startsWith("http") ? organization.logoUrl : `${(api.defaults.baseURL || '').replace(/\/api\/?$/, "")}${organization.logoUrl}`}
                                                 alt="Shop Logo"
                                                 className="w-full h-full object-contain p-2"
                                             />
@@ -752,6 +757,17 @@ const Organization = ({
                                     valueKey="value"
                                     disabled={!canEditOrg}
                                     triggerClassName={missingProfileKeys.has('defaultTaxSystem') ? 'border-amber-400 ring-1 ring-amber-300' : ''}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default UPI ID</label>
+                                <input
+                                    type="text"
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    value={organization?.defaultUpiId ?? ""}
+                                    onChange={(e) => canEditOrg && setOrganization({ ...organization, defaultUpiId: e.target.value })}
+                                    readOnly={!canEditOrg}
+                                    placeholder="e.g. mobile@upi"
                                 />
                             </div>
                         </div>
@@ -998,6 +1014,15 @@ const Organization = ({
                             placeholder="Select tax system"
                             labelKey="label"
                             valueKey="value"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Branch UPI ID</label>
+                        <input
+                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                            value={branchForm.upiId ?? ""}
+                            onChange={(e) => setBranchForm({ ...branchForm, upiId: e.target.value })}
+                            placeholder="e.g. branch@upi"
                         />
                     </div>
                     {(() => {

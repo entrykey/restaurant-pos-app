@@ -198,18 +198,21 @@ const SalesList = () => {
     };
 
     const fetchSales = useCallback(async () => {
+        const resolvedShopId = user?.shopId || user?.shop_id;
+        if (!resolvedShopId) return;
+
         setLoading(true);
         try {
             if (activeTab === 'history') {
                 const data = await orderService.getOrders({ 
-                    shopId: user.shop_id, 
+                    shopId: resolvedShopId, 
                     search: searchQuery,
                     orderStatus: 'COMPLETED' // showing only completed sales by default
                 });
                 setSales(data);
             } else {
                 const data = await orderService.getOrderReturns({ 
-                    shopId: user.shop_id,
+                    shopId: resolvedShopId,
                     search: searchQuery 
                 });
                 setReturns(data);
@@ -219,7 +222,7 @@ const SalesList = () => {
         } finally {
             setLoading(false);
         }
-    }, [user.shop_id, activeTab, searchQuery]);
+    }, [user?.shopId, user?.shop_id, activeTab, searchQuery]);
 
     useEffect(() => {
         const delaySearch = setTimeout(() => {

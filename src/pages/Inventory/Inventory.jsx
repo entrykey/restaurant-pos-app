@@ -182,22 +182,21 @@ const Inventory = ({
 
     // Define field sets for each mode
     const MENU_FIELD_KEYS = [
-        "item_code", "name", "description", "category_id",
-        "unit_id", "selling_price", "tax_id", "hsn_sac_code", "stock_applicable",
-        "min_stock_alert", "status"
+        "barcode", "item_code", "name", "description", "category_id",
+        "unit_id", "selling_price", "tax_id", "hsn_sac_code", "status"
     ];
 
     // Supplier is per purchase (purchase.model), not per item — same product can have different suppliers per purchase
     const RAW_FIELD_KEYS = [
-        "item_code", "name", "description", "category_id",
+        "barcode", "item_code", "name", "description", "category_id",
         "unit_id", "purchase_price", "selling_price",
-        "stock_applicable", "min_stock_alert", "weight_based", "status"
+        "weight_based", "status"
     ];
 
     const TRADE_FIELD_KEYS = [
-        "item_code", "name", "description", "category_id",
+        "barcode", "item_code", "name", "description", "category_id",
         "unit_id", "purchase_price", "selling_price", "tax_percent",
-        "stock_applicable", "min_stock_alert", "status"
+        "status"
     ];
 
     useEffect(() => {
@@ -328,6 +327,53 @@ const Inventory = ({
                     {item.categoryId?.name || value?.name || "Other Category"}
                 </span>
             )
+        },
+        {
+            header: "Stock",
+            key: "_id",
+            headerClassName: "text-center",
+            className: "text-center",
+            render: (id, item) => {
+                const stock = stockMap[id] ?? stockMap[item._id] ?? null;
+                const qty = stock && typeof stock === 'object' ? stock.qty : (stock ?? item.quantityOnHand ?? null);
+                const damaged = stock && typeof stock === 'object' ? stock.damaged : 0;
+
+                const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
+                const low = qty !== null && qty <= min && min > 0;
+                
+                if (qty === null && damaged === 0) {
+                    return <span className="text-[11px] text-gray-300 font-bold">—</span>;
+                }
+
+                const handleStockClick = (e) => {
+                    e.stopPropagation();
+                    if (!canManage) return;
+                    setSelectedAdjustmentItem(item);
+                    setIsAdjustmentModalOpen(true);
+                };
+
+                return (
+                    <div 
+                        className="flex flex-col items-center gap-1 cursor-pointer group/stock"
+                        onClick={handleStockClick}
+                        title={canManage ? "Click to adjust stock" : ""}
+                    >
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
+                            ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
+                            }`}>
+                            {low && <span title="Low stock">⚠️</span>}
+                            {qty}
+                            <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
+                        </div>
+                        {damaged > 0 && (
+                            <div className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
+                                {damaged} Damaged
+                            </div>
+                        )}
+                    </div>
+                );
+            }
         },
         {
             header: "Price",

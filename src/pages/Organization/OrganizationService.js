@@ -96,6 +96,7 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
       defaultCountry: data.shop.defaultCountryCode ?? null,
       defaultCurrency: data.shop.defaultCurrencyCode ?? null,
       defaultTaxSystem: data.shop.defaultTaxSystem ?? null,
+      defaultUpiId: data.shop.defaultUpiId ?? null,
       // If data.plan is null, set subscriptionPlanId to null so UI knows no plan is active
       subscriptionPlanId: data.plan ? data.plan._id : null,
       subscriptionStatus: data.subscription?.status || 'inactive',
@@ -126,6 +127,7 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
         isGstRegistered: !!b.taxProfile?.registrationNumber,
         allowInterState: b.taxProfile?.isInterStateAllowed || false
       },
+      upiId: b.upiId || "",
       currency: b.currency?.code || "INR",
       isMainBranch: b.isMainBranch,
       status: b.status
@@ -209,7 +211,8 @@ export const saveBranch = async (branchData) => {
       },
       currency: {
         code: branchData.currency
-      }
+      },
+      upiId: branchData.upiId
     };
 
     if (branchData.id) {

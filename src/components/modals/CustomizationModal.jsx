@@ -32,8 +32,34 @@ const CustomizationModal = ({
                 </div>
 
                 <div className="space-y-8 flex-1 overflow-y-auto">
-                    {/* Variant Selection */}
-                    {(item.sellingType === "Portion" || item.sellingType === "Volume") && (
+                    {/* Portion Pricing Selection (New System) */}
+                    {item.portionPricing && item.portionPricing.length > 0 && (
+                        <div>
+                            <label className={`text-xs font-black ${theme.textMuted} uppercase mb-3 block`}>
+                                Select Portion
+                            </label>
+                            <div className="grid grid-cols-2 gap-3">
+                                {item.portionPricing.map((p, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => setCustomVariant(p)}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all ${customVariant?.name === p.name
+                                                ? "border-indigo-600 bg-indigo-50"
+                                                : `${theme.borderLight} hover:border-indigo-200 ${theme.surfaceBg}`
+                                            }`}
+                                    >
+                                        <div className={`font-bold ${theme.textPrimary}`}>{p.name}</div>
+                                        <div className="font-black text-indigo-600">
+                                            {formatCurrency(p.price)}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Variant Selection (Legacy Volume/Portion system) */}
+                    {(item.sellingType === "Portion" || item.sellingType === "Volume") && (!item.portionPricing || item.portionPricing.length === 0) && (
                         <div>
                             <label className={`text-xs font-black ${theme.textMuted} uppercase mb-3 block`}>
                                 Select Size / Portion

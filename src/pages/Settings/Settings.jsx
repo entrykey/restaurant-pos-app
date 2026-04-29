@@ -51,7 +51,6 @@ const Settings = ({
         { id: "payroll", label: "Payroll", icon: Wallet, show: isSuperAdmin || canViewPayroll },
         { id: "attributes", label: "Inventory Settings", icon: Package, show: canViewAttributes },
         { id: "appearance", label: "Appearance", icon: Palette, show: canViewAppearance || isSuperAdmin },
-        { id: "activity", label: "Activity", icon: History, show: canViewGeneral },
     ];
 
     // Initialize state properly by picking the first visible tab
@@ -63,10 +62,7 @@ const Settings = ({
     const [newTableName, setNewTableName] = useState("");
     const [newTableCapacity, setNewTableCapacity] = useState(4);
     const [newTableArea, setNewTableArea] = useState("AC");
-    const [logSearch, setLogSearch] = useState("");
-    const [logDateFilter, setLogDateFilter] = useState(
-        new Date().toISOString().split("T")[0]
-    );
+
 
     // Backend Settings State
     const [backendSettings, setBackendSettings] = useState([]);
@@ -92,7 +88,7 @@ const Settings = ({
         setIsLoadingBackend(true);
         try {
             // Respect currently selected shop context
-            const shopId = currentShopId || currentUser?.shopId || currentUser?.shop_id;
+            const shopId = currentShopId || currentUser?.shopId || currentUser?.shopId || currentUser?.shop_id;
             const data = await settingService.getSettings(shopId);
             setBackendSettings(data || []);
             setOriginalSettings(JSON.parse(JSON.stringify(data || []))); // Deep copy
@@ -110,7 +106,7 @@ const Settings = ({
         } finally {
             setIsLoadingBackend(false);
         }
-    }, [currentShopId, currentUser?.shop_id, currentUser?.shopId, setSettings]);
+    }, [currentShopId, currentUser?.shopId || currentUser?.shop_id, currentUser?.shopId, setSettings]);
 
     const fetchSystemRoles = React.useCallback(async () => {
         try {
@@ -123,14 +119,14 @@ const Settings = ({
 
     const fetchPayrollSettings = React.useCallback(async () => {
         try {
-            const shopId = currentShopId || currentUser?.shop_id || currentUser?.shopId;
+            const shopId = currentShopId || currentUser?.shopId || currentUser?.shop_id || currentUser?.shopId;
             if (!shopId || shopId === 'undefined') return;
             const data = await payrollService.getSettings(shopId);
             if (data) setPayrollSettings(data);
         } catch (error) {
             console.error("Failed to fetch payroll settings:", error);
         }
-    }, [currentShopId, currentUser?.shop_id, currentUser?.shopId]);
+    }, [currentShopId, currentUser?.shopId || currentUser?.shop_id, currentUser?.shopId]);
 
     useEffect(() => {
         if (activeTab === "general" && (isSuperAdmin || canViewGeneral)) {
@@ -147,7 +143,7 @@ const Settings = ({
     const handleSavePayrollSettings = async () => {
         setIsSavingPayroll(true);
         try {
-            const shopId = currentShopId || currentUser?.shop_id || currentUser?.shopId;
+            const shopId = currentShopId || currentUser?.shopId || currentUser?.shop_id || currentUser?.shopId;
             console.log("Attempting to save payroll settings for ShopId:", shopId, "Payload:", payrollSettings);
             if (!shopId || shopId === 'undefined') {
                 alert(`Configuration Error: Shop ID is missing. Please refresh.`);
@@ -170,7 +166,7 @@ const Settings = ({
     const handleSaveBackendSetting = async (setting) => {
         setIsSavingBackend(true);
         try {
-            const shopId = currentShopId || currentUser?.shop_id || currentUser?.shopId;
+            const shopId = currentShopId || currentUser?.shopId || currentUser?.shop_id || currentUser?.shopId;
             const updatedSetting = await settingService.updateSetting(setting.key, {
                 value: setting.value,
                 shopId: shopId
@@ -222,13 +218,7 @@ const Settings = ({
         setNewTableName("");
     };
 
-    const filteredLogs = authLogs.filter((log) => {
-        const matchesSearch =
-            log.role.toLowerCase().includes(logSearch.toLowerCase()) ||
-            log.phone.includes(logSearch);
-        const matchesDate = !logDateFilter || log.date === logDateFilter;
-        return matchesSearch && matchesDate;
-    });
+
 
     const tabs = allTabs.filter(t => t.show !== false);
 
@@ -412,18 +402,10 @@ const Settings = ({
             case "attributes":
                 return (
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-                        {!isSuperAdmin && (
-                            <>
-                                <CategorySettings />
-                            </>
-                        )}
-                        {isSuperAdmin && (
-                            <>
-                                <UnitSettings />
-                                <AttributeSettings />
-                                <TaxSettings />
-                            </>
-                        )}
+                        {isSuperAdmin && <UnitSettings />}
+                        {!isSuperAdmin && <CategorySettings />}
+                        <AttributeSettings />
+                        {isSuperAdmin && <TaxSettings />}
                     </div>
                 );
 
@@ -434,54 +416,7 @@ const Settings = ({
                     </div>
                 );
 
-            case "activity":
-                return (
-                    <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight} space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500`}>
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-3 ${theme.primaryIconBg} rounded-2xl ${theme.primaryIconText}`}>
-                                    <History size={24} />
-                                </div>
-                                <h3 className={`text-xl font-bold ${theme.textHeading}`}>Login Activity Logs</h3>
-                            </div>
-                            <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
-                                <div className="relative">
-                                    <Search
-                                        className={`absolute left-3 top-3 ${theme.textSecondary}`}
-                                        size={16}
-                                    />
-                                    <input
-                                        value={logSearch}
-                                        onChange={(e) => setLogSearch(e.target.value)}
-                                        placeholder="Search Role/Phone..."
-                                        className={`pl-10 p-2.5 border ${theme.inputBorder} rounded-xl ${theme.inputBg} text-sm ${theme.inputFocus} outline-none w-full font-bold ${theme.inputText}`}
-                                    />
-                                </div>
-                                <DatePicker
-                                    value={logDateFilter}
-                                    onChange={val => setLogDateFilter(val)}
-                                />
-                            </div>
-                        </div>
 
-                        <CommonTable
-                            columns={[
-                                {
-                                    header: "Role", key: "role", render: (value) => (
-                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${value === "Admin" ? "bg-purple-100 text-purple-600" :
-                                            value === "Manager" ? "bg-blue-100 text-blue-600" :
-                                                "bg-green-100 text-green-600"
-                                            }`}>{value}</span>
-                                    )
-                                },
-                                { header: "Phone", key: "phone", className: `font-bold ${theme.textPrimary}` },
-                                { header: "Date", key: "date", className: `${theme.textMuted} text-sm` },
-                                { header: "Time", key: "time", className: `font-medium ${theme.textPrimary}` }
-                            ]}
-                            data={filteredLogs}
-                        />
-                    </div>
-                );
 
             case "payroll":
                 return (
@@ -583,7 +518,7 @@ const Settings = ({
                 <SettingsIcon className={`mr-3 ${theme.primaryIconText}`} /> Control Center
             </h2>
 
-            <div className={`inline-flex w-max p-1.5 gap-1 mb-6 shrink-0 no-scrollbar rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} shadow-sm overflow-x-auto`}>
+            <div className={`flex w-full xl:w-max p-1.5 gap-1 mb-6 shrink-0 no-scrollbar rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} shadow-sm overflow-x-auto`}>
                 {tabs.map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;

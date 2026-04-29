@@ -24,30 +24,129 @@ import {
 } from "recharts";
 import { useTheme } from "../../context/ThemeContext";
 import { clientService } from "../../services/api/clients";
+import { printCustomHtml, escapeHtml } from "../../utils/print";
 import toast from "react-hot-toast";
 
 const SuperAdminDashboard = () => {
     const { theme } = useTheme();
     const [stats, setStats] = useState(null);
+    const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchStats();
+        fetchData();
     }, []);
 
-
-
-    const fetchStats = async () => {
+    const fetchData = async () => {
         try {
             setLoading(true);
-            const response = await clientService.getDashboardStats();
-            setStats(response.data);
+            const [statsRes, clientsRes] = await Promise.all([
+                clientService.getDashboardStats(),
+                clientService.getClients()
+            ]);
+            setStats(statsRes.data);
+            setClients(clientsRes.data || []);
         } catch (error) {
-            console.error("Failed to fetch dashboard stats:", error);
+            console.error("Failed to fetch dashboard data:", error);
             toast.error("Failed to load dashboard data");
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleDownloadReport = () => {
+        if (!stats) return;
+
+        const html = `
+            <div style="font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px; color: #1f2937;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 30px;">
+                    <div>
+                        <h1 style="margin: 0; font-size: 28px; font-weight: 900; letter-spacing: -0.025em; color: #111827;">FilePe Platform Report</h1>
+                        <p style="margin: 5px 0 0; font-size: 14px; font-weight: 500; color: #6b7280;">Comprehensive performance and client overview</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <p style="margin: 0; font-size: 12px; font-weight: 800; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.05em;">Generated On</p>
+                        <p style="margin: 0; font-size: 14px; font-weight: 600;">${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</p>
+                    </div>
+                </div>
+
+                <div style="grid-template-columns: repeat(3, 1fr); display: grid; gap: 20px; margin-bottom: 40px;">
+                    <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 20px; border-radius: 16px;">
+                        <p style="margin: 0; font-size: 11px; font-weight: 800; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em;">Total Active Shops</p>
+                        <p style="margin: 10px 0 0; font-size: 24px; font-weight: 900;">${stats.totalShops || 0}</p>
+                    </div>
+                    <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 20px; border-radius: 16px;">
+                        <p style="margin: 0; font-size: 11px; font-weight: 800; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em;">Unique Clients</p>
+                        <p style="margin: 10px 0 0; font-size: 24px; font-weight: 900;">${stats.totalClients || 0}</p>
+                    </div>
+                    <div style="background: #eef2ff; border: 1px solid #c7d2fe; padding: 20px; border-radius: 16px;">
+                        <p style="margin: 0; font-size: 11px; font-weight: 800; color: #4338ca; text-transform: uppercase; letter-spacing: 0.1em;">Total Lifetime Revenue</p>
+                        <p style="margin: 10px 0 0; font-size: 24px; font-weight: 900; color: #4338ca;">₹${(stats.totalRevenue || 0).toLocaleString()}</p>
+                    </div>
+                </div>
+
+                <h2 style="font-size: 18px; font-weight: 800; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                    <span style="background: #4f46e5; width: 4px; height: 18px; border-radius: 2px;"></span>
+                    Monthly Performance Summary
+                </h2>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px;">
+                    <thead>
+                        <tr style="background: #f3f4f6;">
+                            <th style="padding: 12px 15px; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">Month</th>
+                            <th style="padding: 12px 15px; text-align: right; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">New Subscriptions</th>
+                            <th style="padding: 12px 15px; text-align: right; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">Revenue Collected</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${(stats.subscriptionHistory || []).map(h => `
+                            <tr>
+                                <td style="padding: 12px 15px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #f3f4f6;">${h.month}</td>
+                                <td style="padding: 12px 15px; text-align: right; font-size: 13px; border-bottom: 1px solid #f3f4f6;">${h.count}</td>
+                                <td style="padding: 12px 15px; text-align: right; font-size: 13px; font-weight: 700; color: #4f46e5; border-bottom: 1px solid #f3f4f6;">₹${(h.revenue || 0).toLocaleString()}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+
+                <h2 style="font-size: 18px; font-weight: 800; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                    <span style="background: #10b981; width: 4px; height: 18px; border-radius: 2px;"></span>
+                    Detailed Client Registry
+                </h2>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f3f4f6;">
+                            <th style="padding: 12px 15px; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">Client Name</th>
+                            <th style="padding: 12px 15px; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">Phone</th>
+                            <th style="padding: 12px 15px; text-align: left; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">Joined Date</th>
+                            <th style="padding: 12px 15px; text-align: right; font-size: 12px; font-weight: 700; color: #4b5563; border-bottom: 1px solid #e5e7eb;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${clients.map(c => `
+                            <tr>
+                                <td style="padding: 12px 15px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #f3f4f6;">${escapeHtml(c.name)}</td>
+                                <td style="padding: 12px 15px; font-size: 13px; color: #4b5563; border-bottom: 1px solid #f3f4f6;">${escapeHtml(c.phone)}</td>
+                                <td style="padding: 12px 15px; font-size: 12px; color: #6b7280; border-bottom: 1px solid #f3f4f6;">${new Date(c.createdAt).toLocaleDateString()}</td>
+                                <td style="padding: 12px 15px; text-align: right; border-bottom: 1px solid #f3f4f6;">
+                                    <span style="padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; background: ${c.isActive ? '#ecfdf5' : '#fef2f2'}; color: ${c.isActive ? '#059669' : '#dc2626'};">
+                                        ${c.isActive ? 'Active' : 'Inactive'}
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+
+                <div style="margin-top: 60px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
+                    <p style="margin: 0; font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.2em;">Confidential Performance Data • FilePe Modem POS</p>
+                </div>
+            </div>
+        `;
+
+        printCustomHtml({
+            title: `SuperAdmin_Report_${new Date().toISOString().split('T')[0]}`,
+            bodyHtml: html
+        });
     };
 
     if (loading) {
@@ -92,11 +191,14 @@ const SuperAdminDashboard = () => {
                 </div>
 
                 <div className="flex items-center gap-4 bg-white dark:bg-gray-800 p-2 rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm">
-                    <button onClick={fetchStats} className={`p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors ${theme.textSecondary}`}>
+                    <button onClick={fetchData} className={`p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors ${theme.textSecondary}`}>
                         <Calendar size={18} />
                     </button>
                     <div className="h-6 w-[1px] bg-gray-100 dark:bg-gray-700" />
-                    <button className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-600/20">
+                    <button 
+                        onClick={handleDownloadReport}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-600/20"
+                    >
                         Download Report <ArrowDownRight size={14} />
                     </button>
                 </div>

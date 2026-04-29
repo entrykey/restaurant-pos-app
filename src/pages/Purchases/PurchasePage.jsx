@@ -826,7 +826,7 @@ const PurchasePage = () => {
     const handleSubmit = async (e, shouldPrint = false) => {
         if (e && e.preventDefault) e.preventDefault();
 
-        const finalShopId = currentShopId || user?.shop_id;
+        const finalShopId = currentShopId || user?.shopId || user?.shop_id;
         if (!finalShopId) {
             toast.error("Shop session has expired. Please refresh.");
             return;
@@ -910,7 +910,7 @@ const PurchasePage = () => {
 
     const handleSaveSupplier = async (e) => {
         e.preventDefault();
-        const shopId = user?.shop_id || currentShopId;
+        const shopId = user?.shopId || user?.shop_id || currentShopId;
         if (!shopId) {
             toast.error("Shop session is not fully loaded. Please refresh.");
             return;
@@ -963,17 +963,17 @@ const PurchasePage = () => {
     };
 
     const handleOpenBranchModal = () => {
-        if (!user?.shop_id) {
+        if (!user?.shopId && !user?.shop_id) {
             toast.error("Organization details are missing.");
             return;
         }
-        setBranchForm(emptyBranch(user.shop_id));
+        setBranchForm(emptyBranch(user?.shopId || user?.shop_id));
         setIsBranchModalOpen(true);
     };
 
     const handleSaveBranch = async (e) => {
         e.preventDefault();
-        const shopId = user?.shop_id || currentShopId;
+        const shopId = user?.shopId || user?.shop_id || currentShopId;
         if (!shopId) return;
         setSavingBranch(true);
         try {
@@ -1675,15 +1675,19 @@ const PurchasePage = () => {
                                             </td>
                                             {businessTypeData?.features?.sellTradeItems && (
                                                 <td className="py-5 px-2">
-                                                    <select
+                                                    <CommonSelect
+                                                        options={[
+                                                            { label: "STOCK", value: "STOCK" },
+                                                            { label: "TRADE", value: "TRADE" }
+                                                        ]}
                                                         value={it.itemType || "STOCK"}
-                                                        onChange={e => handleItemChange(idx, 'itemType', e.target.value)}
+                                                        onChange={val => handleItemChange(idx, 'itemType', val)}
                                                         disabled={it.isNew}
-                                                        className={`p-1.5 text-[10px] font-black rounded-lg border border-transparent focus:border-indigo-400 outline-none ${theme.inputBg} ${it.itemType === 'TRADE' ? 'text-amber-600' : 'text-gray-600'}`}
-                                                    >
-                                                        <option value="STOCK">STOCK</option>
-                                                        <option value="TRADE">TRADE</option>
-                                                    </select>
+                                                        className="w-full"
+                                                        triggerClassName="!p-1.5 !text-[10px] !font-black !rounded-lg !border-transparent !outline-none"
+                                                        labelKey="label"
+                                                        valueKey="value"
+                                                    />
                                                 </td>
                                             )}
                                             <td className="py-5 px-2 text-sm">

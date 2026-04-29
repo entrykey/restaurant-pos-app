@@ -122,13 +122,13 @@ const TakeawayOrder = ({
                 page: 1,
                 limit: 1000, // Fetch all for POS
                 filters: {
-                    shopId: currentUser?.shop_id,
+                    shopId: currentUser?.shopId || currentUser?.shop_id,
                     branchId: activeBranchId || null,
                     isActive: true,
                 },
             };
             const response = await itemService.getItems(payload);
-            const items = response?.data || [];
+            const items = (response?.data || []).filter(item => item.isSellable !== false);
             const mapped = items.map((item) => ({
                 ...item,
                 id: item._id || item.id,
@@ -223,7 +223,7 @@ const TakeawayOrder = ({
                 const response = await itemService.getItems(payload);
                 if (cancelled) return;
 
-                const items = response?.data || [];
+                const items = (response?.data || []).filter(item => item.isSellable !== false);
 
                 const mapped = items.map((item) => ({
                     ...item,
@@ -270,7 +270,6 @@ const TakeawayOrder = ({
 
     const isSentToKOT = currentOrder.isSentToKOT;
     const hasPendingKitchenItems = (currentOrder.items || []).some((item) => {
-        if (item.itemType !== "MANUFACTURED") return false;
         const previouslySent = item.sentQuantity || 0;
         return (item.quantity || 0) - previouslySent > 0;
     });

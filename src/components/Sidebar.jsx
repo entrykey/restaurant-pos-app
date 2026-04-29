@@ -30,7 +30,7 @@ import {
     Boxes,
     Zap,
     ClipboardList,
-    Wallet
+    Wallet,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
@@ -164,7 +164,7 @@ const Sidebar = ({
         // --- NEW: Grouping Logic ---
         const selfServiceKeys = ['MYATTENDANCE', 'MYLEAVES', 'MYSALARY'];
         const activeSelfService = result.filter(k => selfServiceKeys.includes(k));
-        
+
         if (result.length > 5 && activeSelfService.length > 1) {
             // Replace the first occurrence of any self-service item with 'SELF_SERVICE'
             // and remove the others.
@@ -186,7 +186,7 @@ const Sidebar = ({
         // --- NEW: Sales Grouping Logic ---
         const salesKeys = ['SALE_MARKING', 'SALES_HISTORY'];
         const activeSalesArr = result.filter(k => salesKeys.includes(k));
-        
+
         if (result.length > 5 && activeSalesArr.length > 1) {
             let grouped = false;
             const newResult = [];
@@ -385,13 +385,13 @@ const Sidebar = ({
                                 } ${isAnyChildActive ? theme.sidebarItemActiveBg : theme.sidebarItemHoverBg}`}
                         >
                             <config.icon className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
-                            <div className={`flex-1 flex items-center justify-between overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-0 opacity-0 md:hidden'}`}>
+                            <div className={`flex-1 flex items-center justify-between overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-0 md:opacity-0 md:hidden'}`}>
                                 <span className="font-bold text-sm whitespace-nowrap">{config.label}</span>
                                 {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             </div>
                         </button>
                     </div>
-                    {isOpen && isExpanded && (
+                    {isOpen && (isExpanded || mobileOpen) && (
                         <div className="mt-1 flex flex-col items-stretch space-y-1">
                             {config.children.map(childKey => {
                                 const childConfig = MODULE_CONFIG[childKey];
@@ -492,7 +492,7 @@ const Sidebar = ({
                 </div>
 
                 {/* Desktop logo */}
-                <div 
+                <div
                     onClick={() => { setView("dashboard"); goDashboard(); }}
                     className={`hidden md:flex items-center cursor-pointer hover:opacity-80 transition-all active:scale-95 ${isExpanded ? 'justify-start px-8 gap-4' : 'justify-center'} w-full mb-8`}
                 >
@@ -510,7 +510,7 @@ const Sidebar = ({
                 </div>
 
                 {/* Subscription Status Block */}
-                {!user?.isSuperAdmin && user?.shop_id && (
+                {!user?.isSuperAdmin && (user?.shopId || user?.shop_id) && (
                     <div className={`mt-4 w-full px-4 mb-4 transition-all duration-300 ${isExpanded ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden'}`}>
 
                         <div className={`p-4 rounded-3xl border ${user?.subscription?.active ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
@@ -520,12 +520,12 @@ const Sidebar = ({
                                     {user?.subscription?.active ? `${user?.subscription?.plan} PLAN` : 'NO ACTIVE PLAN'}
                                 </span>
                             </div>
-                            
+
                             {/* Subscription Actions */}
                             {!user?.subscription?.active ? (
                                 user?.isOwner ? (
-                                    <button 
-                                        onClick={() => navigate('/organization')} 
+                                    <button
+                                        onClick={() => navigate('/organization')}
                                         className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-[10px] font-black transition-all shadow-lg shadow-red-500/20"
                                     >
                                         SUBSCRIBE NOW

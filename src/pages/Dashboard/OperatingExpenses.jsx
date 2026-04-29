@@ -84,7 +84,6 @@ const OperatingExpenses = () => {
             setExpenses(finalExpenses);
 
             // Fetch Today's Profit for header
-            // We use the dashboard API which I updated to default to today
             const dashboardData = await dashboardService.getShopDashboard(shopId);
             setTodayProfit(dashboardData.totalProfit || 0);
 
@@ -97,7 +96,7 @@ const OperatingExpenses = () => {
         } finally {
             setLoading(false);
         }
-    }, [user?.shop_id, user?.shopId, selectedBranchId]);
+    }, [user?.shopId, user?.shop_id, selectedBranchId]);
 
     useEffect(() => {
         fetchData();
@@ -111,7 +110,7 @@ const OperatingExpenses = () => {
 
     const handleSave = async (index) => {
         const expense = expenses[index];
-        const shopId = user?.shop_id;
+        const shopId = user?.shopId || user?.shop_id;
         const branchId = selectedBranchId;
 
         if (!branchId) {

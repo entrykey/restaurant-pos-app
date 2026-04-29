@@ -74,7 +74,7 @@ const OfferForm = () => {
 
     const fetchMetadata = async () => {
         try {
-            const shopId = user?.shop_id;
+            const shopId = user?.shopId || user?.shop_id;
             const branchId = activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null);
 
             const [itemsData, catsData] = await Promise.all([
@@ -142,7 +142,7 @@ const OfferForm = () => {
             } else {
                 await offerService.createOffer({
                     ...payload,
-                    shopId: user?.shop_id,
+                    shopId: user?.shopId || user?.shop_id,
                     branchId: activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null)
                 });
             }
