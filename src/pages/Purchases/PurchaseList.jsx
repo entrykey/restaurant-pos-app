@@ -4,7 +4,7 @@ import {
     Plus, Search, Eye, Edit3, Trash2, ShoppingCart, Calendar,
     CheckCircle, CheckCircle2, Clock, AlertCircle, X, Package,
     Calculator, ChevronDown, ReceiptText, XCircle, CreditCard,
-    Printer, Banknote
+    Printer, Coins
 } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
 import { PurchaseService } from "../../services/PurchaseService";
@@ -965,8 +965,8 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         { label: "Total Invoices", value: purchases.length, icon: ReceiptText, color: "indigo" },
                         { label: "Draft", value: purchases.filter(p => p.status === "DRAFT").length, icon: Clock, color: "amber" },
                         { label: "Confirmed", value: purchases.filter(p => p.status === "CONFIRMED").length, icon: CheckCircle, color: "emerald" },
-                        { label: "Total Value", value: fmt(purchases.reduce((a, p) => a + (p.grandTotal || 0), 0), currency), icon: Banknote, color: "indigo" },
-                        { label: "Total Due", value: fmt(purchases.reduce((a, p) => a + (p.balanceAmount || 0), 0), currency), icon: Banknote, color: "red" },
+                        { label: "Total Value", value: fmt(purchases.reduce((a, p) => a + (p.grandTotal || 0), 0), currency), icon: Coins, color: "indigo" },
+                        { label: "Total Due", value: fmt(purchases.reduce((a, p) => a + (p.balanceAmount || 0), 0), currency), icon: Coins, color: "red" },
                     ].map(({ label, value, icon: Icon, color, wide }) => (
                         <div key={label} className={`${theme.surfaceBg} rounded-3xl shadow-sm border ${theme.borderLight} p-6 flex items-center gap-5 ${wide ? "col-span-2 md:col-span-1" : ""}`}>
                             <div className={`p-3 rounded-2xl bg-${color}-50 text-${color}-600`}>

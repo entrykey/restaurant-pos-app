@@ -14,20 +14,34 @@ const DiningCategoryDialog = ({ isOpen, onClose, onSuccess, category, shopId, br
     });
 
     const [tables, setTables] = useState([]);
+    const [existingTables, setExistingTables] = useState([]);
 
     useEffect(() => {
+        const fetchExistingTables = async () => {
+            if (category?._id) {
+                try {
+                    const res = await tableService.getTables({ diningCategoryId: category._id, all: true });
+                    setExistingTables(res || []);
+                } catch (error) {
+                    console.error('Error fetching existing tables:', error);
+                }
+            }
+        };
+
         if (category) {
             setFormData({
                 name: category.name || '',
                 environment: category.environment || 'NON_AC',
             });
-            setTables([]); // Clear tables when editing existing category
+            setTables([]);
+            fetchExistingTables();
         } else {
             setFormData({
                 name: '',
                 environment: 'NON_AC',
             });
             setTables([]);
+            setExistingTables([]);
         }
     }, [category, isOpen]);
 
@@ -78,7 +92,22 @@ const DiningCategoryDialog = ({ isOpen, onClose, onSuccess, category, shopId, br
         try {
             if (category) {
                 await diningCategoryService.updateCategory(category._id, payload);
-                toast.success('Category updated successfully');
+                
+                if (tables.length > 0) {
+                    await Promise.all(tables.map(table =>
+                        tableService.createTable({
+                            ...table,
+                            diningCategoryId: category._id,
+                            shopId,
+                            branchId,
+                            status: 'AVAILABLE',
+                            isActive: true
+                        })
+                    ));
+                    toast.success(`Category updated and ${tables.length} new tables added!`);
+                } else {
+                    toast.success('Category updated successfully');
+                }
             } else {
                 const createdCategory = await diningCategoryService.createCategory(payload);
                 const categoryId = createdCategory._id || createdCategory.id;
@@ -180,72 +209,89 @@ const DiningCategoryDialog = ({ isOpen, onClose, onSuccess, category, shopId, br
                         </div>
 
                         {/* Summary / Stats (Optional decoration) */}
-                        {!category && (
-                            <div className={`p-4 rounded-2xl border-2 border-dashed ${theme.borderLight} flex flex-col items-center justify-center text-center gap-2 bg-gray-50/50 dark:bg-black/10`}>
-                                <div className="text-3xl font-black text-indigo-600">{tables.length}</div>
-                                <div className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Tables to be Added</div>
+                        <div className={`p-4 rounded-2xl border-2 border-dashed ${theme.borderLight} flex flex-col items-center justify-center text-center gap-2 bg-gray-50/50 dark:bg-black/10`}>
+                            <div className="text-3xl font-black text-indigo-600">{existingTables.length + tables.length}</div>
+                            <div className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Total Tables Registered</div>
+                        </div>
+                    </div>
+
+                    {/* Tables Section */}
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center border-b pb-2">
+                            <h3 className={`text-xs font-black uppercase tracking-widest ${theme.textPrimary}`}>Configure Tables</h3>
+                            <button
+                                type="button"
+                                onClick={handleAddTable}
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-95"
+                            >
+                                <Plus size={14} /> Add Table
+                            </button>
+                        </div>
+
+                        {existingTables.length === 0 && tables.length === 0 ? (
+                            <div className={`text-center py-8 px-4 rounded-2xl border-2 border-dashed ${theme.borderLight} ${theme.textMuted} text-xs font-bold italic`}>
+                                No tables added yet. Click "+ Add Table" to start.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Existing Tables */}
+                                {existingTables.map((t, idx) => (
+                                    <div key={t._id} className={`p-4 rounded-2xl border ${theme.borderLight} bg-gray-100/50 dark:bg-white/5 opacity-80 shadow-sm`}>
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 px-3 py-1 rounded-lg text-[10px] font-black uppercase">Table {t.tableNumber}</div>
+                                            <div className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Existing</div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <p className={`text-[9px] font-black uppercase text-gray-400 mb-1`}>Name</p>
+                                                <p className={`text-sm font-bold ${theme.textPrimary}`}>{t.tableNumber}</p>
+                                            </div>
+                                            <div>
+                                                <p className={`text-[9px] font-black uppercase text-gray-400 mb-1`}>Seats</p>
+                                                <p className={`text-sm font-bold ${theme.textPrimary}`}>{t.capacity}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* New Tables */}
+                                {tables.map((t, idx) => (
+                                    <div key={idx} className={`p-4 rounded-2xl border border-indigo-200 bg-indigo-50/30 dark:bg-indigo-900/10 shadow-sm group hover:border-indigo-400 transition-all`}>
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase italic animate-pulse">New Table</div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveTable(idx)}
+                                                className="text-gray-400 hover:text-red-500 transition-colors"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className={`block text-[10px] font-black uppercase tracking-widest mb-1 ${theme.textMuted}`}>Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={t.tableNumber}
+                                                    onChange={(e) => handleTableChange(idx, 'tableNumber', e.target.value)}
+                                                    className={`w-full px-3 py-2 rounded-lg border ${theme.inputBorder} ${theme.inputBg} text-sm font-bold focus:border-indigo-400 outline-none`}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={`block text-[10px] font-black uppercase tracking-widest mb-1 ${theme.textMuted}`}>Seats</label>
+                                                <input
+                                                    type="number"
+                                                    value={t.capacity}
+                                                    onChange={(e) => handleTableChange(idx, 'capacity', parseInt(e.target.value || 0))}
+                                                    className={`w-full px-3 py-2 rounded-lg border ${theme.inputBorder} ${theme.inputBg} text-sm font-bold focus:border-indigo-400 outline-none`}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
-
-                    {/* Tables Section - Only for Creation */}
-                    {!category && (
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center border-b pb-2">
-                                <h3 className={`text-xs font-black uppercase tracking-widest ${theme.textPrimary}`}>Configure Tables</h3>
-                                <button
-                                    type="button"
-                                    onClick={handleAddTable}
-                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-95"
-                                >
-                                    <Plus size={14} /> Add Table
-                                </button>
-                            </div>
-
-                            {tables.length === 0 ? (
-                                <div className={`text-center py-8 px-4 rounded-2xl border-2 border-dashed ${theme.borderLight} ${theme.textMuted} text-xs font-bold italic`}>
-                                    No tables added yet. Click "+ Add Table" to start.
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {tables.map((t, idx) => (
-                                        <div key={idx} className={`p-4 rounded-2xl border ${theme.borderLight} bg-white dark:bg-white/5 shadow-sm group hover:border-indigo-300 transition-all`}>
-                                            <div className="flex justify-between items-start mb-3">
-                                                <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 px-3 py-1 rounded-lg text-[10px] font-black uppercase">Table #{idx + 1}</div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemoveTable(idx)}
-                                                    className="text-gray-400 hover:text-red-500 transition-colors"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className={`block text-[10px] font-black uppercase tracking-widest mb-1 ${theme.textMuted}`}>Name</label>
-                                                    <input
-                                                        type="text"
-                                                        value={t.tableNumber}
-                                                        onChange={(e) => handleTableChange(idx, 'tableNumber', e.target.value)}
-                                                        className={`w-full px-3 py-2 rounded-lg border ${theme.inputBorder} ${theme.inputBg} text-sm font-bold focus:border-indigo-400 outline-none`}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className={`block text-[10px] font-black uppercase tracking-widest mb-1 ${theme.textMuted}`}>Seats</label>
-                                                    <input
-                                                        type="number"
-                                                        value={t.capacity}
-                                                        onChange={(e) => handleTableChange(idx, 'capacity', parseInt(e.target.value || 0))}
-                                                        className={`w-full px-3 py-2 rounded-lg border ${theme.inputBorder} ${theme.inputBg} text-sm font-bold focus:border-indigo-400 outline-none`}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
 
                 {/* Footer */}

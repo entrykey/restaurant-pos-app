@@ -7,6 +7,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { leaveService } from "../../services/api";
 import CommonTable from "../../components/CommonTable";
 import CommonSelect from "../../components/ui/CommonSelect";
+import DatePicker from "../../components/ui/DatePicker";
 
 const MyLeaves = () => {
     const { user } = useAuth();
@@ -225,22 +226,18 @@ const MyLeaves = () => {
                                 </div>
                                 <div>
                                     <label className={`block text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2 pl-1`}>Start Date</label>
-                                    <input 
-                                        type="date"
-                                        required
+                                    <DatePicker 
                                         value={formData.startDate}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
-                                        className={`w-full p-4 rounded-[20px] border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} font-bold focus:border-indigo-500 outline-none transition-all`}
+                                        onChange={(val) => setFormData(prev => ({ ...prev, startDate: val }))}
+                                        placeholder="Start Date"
                                     />
                                 </div>
                                 <div>
                                     <label className={`block text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2 pl-1`}>End Date</label>
-                                    <input 
-                                        type="date"
-                                        required
+                                    <DatePicker 
                                         value={formData.endDate}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, endDate: e.target.value }))}
-                                        className={`w-full p-4 rounded-[20px] border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} font-bold focus:border-indigo-500 outline-none transition-all`}
+                                        onChange={(val) => setFormData(prev => ({ ...prev, endDate: val }))}
+                                        placeholder="End Date"
                                     />
                                 </div>
                                 <div className="md:col-span-2">

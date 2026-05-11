@@ -22,7 +22,7 @@ const PlanManagement = () => {
     };
 
     return (
-        <div className="h-full w-full">
+        <div className="flex flex-col h-full w-full overflow-hidden">
             {view === 'list' ? (
                 <PlanList onEdit={handleEdit} onAddNew={handleAddNew} />
             ) : (

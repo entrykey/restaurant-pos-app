@@ -1,4 +1,4 @@
-import { Package, Receipt, Calendar, Wallet, ArrowRightCircle, RotateCcw } from 'lucide-react';
+import { Package, ReceiptText, Calendar, Wallet, ArrowRightCircle, RotateCcw } from 'lucide-react';
 import { formatDate, formatCurrency } from '../utils/format';
 import { useTheme } from '../context/ThemeContext';
 
@@ -44,7 +44,7 @@ const HistoryTimeline = ({ events = [], onAction, onReturn }) => {
                             ? 'bg-indigo-600 text-white'
                             : 'bg-emerald-500 text-white'
                             }`}>
-                            {event.type === 'PURCHASE' ? <Package size={18} /> : <Receipt size={18} />}
+                            {event.type === 'PURCHASE' ? <Package size={18} /> : <ReceiptText size={18} />}
                         </div>
 
                         {/* Event Card */}

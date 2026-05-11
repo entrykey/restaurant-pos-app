@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { X, Plus, Minus, Calculator, FileText, Calendar } from 'lucide-react';
+import { X, Plus, Minus, Calculator, FileText, Calendar, Coins } from 'lucide-react';
 import ThemeLoader from '../ui/ThemeLoader';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { inventoryService } from '../../services/api';
 import { shopExpenseService } from '../../services/api/shopExpenses';
 import { useApp } from '../../context/AppContext';
+import DatePicker from '../ui/DatePicker';
 
 const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuccess, formatCurrency: propFormatCurrency }) => {
     const { theme } = useTheme();
@@ -147,7 +148,9 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                             <span className="text-red-500 mr-1">*</span> At Price
                         </label>
                         <div className="relative group">
-                            <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-black group-focus-within:text-blue-500 transition-colors ${theme.textMuted}`}>{currency === 'INR' ? '₹' : (currency === 'USD' ? '$' : currency)}</span>
+                            <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-black group-focus-within:text-blue-500 transition-colors ${theme.textMuted} flex items-center`}>
+                                <Coins size={18} />
+                            </span>
                             <input
                                 type="number"
                                 required
@@ -181,15 +184,11 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                         <label className={`block text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>
                             Adjustment Date
                         </label>
-                        <div className="relative group">
-                            <Calendar className={`absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-blue-500 transition-colors ${theme.textMuted}`} size={20} />
-                            <input
-                                type="date"
-                                value={adjustmentDate}
-                                onChange={(e) => setAdjustmentDate(e.target.value)}
-                                className={`w-full pl-12 pr-4 py-4 rounded-2xl border-2 border-transparent outline-none focus:border-blue-500 transition-all font-black ${theme.inputBg} ${theme.textPrimary} [color-scheme:light]`}
-                            />
-                        </div>
+                        <DatePicker
+                            value={adjustmentDate}
+                            onChange={(val) => setAdjustmentDate(val)}
+                            className={`w-full px-4 py-4 rounded-2xl border-2 border-transparent outline-none focus:border-blue-500 transition-all font-black ${theme.inputBg} ${theme.textPrimary}`}
+                        />
                     </div>
 
                     {/* Actions */}

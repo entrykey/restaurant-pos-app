@@ -10,7 +10,23 @@ export const ALL_FIELDS = {
     category_id: { key: "categoryId", label: "Category", type: "select", section: "Common" }, // Will be populated dynamically
     brand_id: { key: "brandId", label: "Brand", type: "select", section: "Common" }, // Will be populated dynamically
     supplier_id: { key: "supplierId", label: "Supplier", type: "select", section: "Common" }, // Will be populated dynamically
-    unit_id: { key: "unitId", label: "Unit", type: "select", required: true, section: "Common" }, // Will be populated dynamically
+    unit_id: { key: "unitId", label: "Unit", type: "select", required: true, section: "Units" }, // Will be populated dynamically
+    secondary_unit_id: { key: "secondaryUnitId", label: "Secondary Unit", type: "select", section: "Units" },
+    conversion_factor: { key: "conversionFactor", label: "Conversion Factor", type: "number", section: "Units" },
+    default_purchase_unit: { 
+        key: "defaultPurchaseUnit", 
+        label: "Default Purchase Unit", 
+        type: "select", 
+        options: [{ label: "Primary", value: "PRIMARY" }, { label: "Secondary", value: "SECONDARY" }], 
+        section: "Units" 
+    },
+    default_sales_unit: { 
+        key: "defaultSalesUnit", 
+        label: "Default Sales Unit", 
+        type: "select", 
+        options: [{ label: "Primary", value: "PRIMARY" }, { label: "Secondary", value: "SECONDARY" }], 
+        section: "Units" 
+    },
 
     item_type: {
         key: "itemType",

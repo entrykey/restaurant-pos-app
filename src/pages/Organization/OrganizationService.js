@@ -52,7 +52,7 @@ export const SUBSCRIPTION_PLANS = [
     name: "Growth",
     price: 1999,
     currency: "INR",
-    priceLabel: "₹1,999/mo",
+    priceLabel: "INR 1,999/mo",
     branchesLimit: 5,
     features: ["Up to 5 Branches", "Everything in Starter", "Advanced Reports", "Multi-branch KDS", "Priority support"],
     highlighted: true,
@@ -62,7 +62,7 @@ export const SUBSCRIPTION_PLANS = [
     name: "Enterprise",
     price: 4999,
     currency: "INR",
-    priceLabel: "₹4,999/mo",
+    priceLabel: "INR 4,999/mo",
     branchesLimit: -1,
     branchesLabel: "Unlimited",
     features: ["Unlimited Branches", "Everything in Growth", "Dedicated account manager", "Custom integrations", "SLA & onboarding"],
@@ -104,7 +104,7 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
       subscriptionEndDate: data.subscription?.end_date || null,
       planName: data.plan ? (data.plan.name === 'Trail' ? 'Trial' : data.plan.name) : 'No Active Plan',
       planPriceLabel: data.plan
-        ? `${data.plan.currency === 'INR' ? '₹' : data.plan.currency} ${data.plan.pricing?.find(p => p.cycle === 'monthly')?.price ?? data.plan.price ?? 0}/mo`
+        ? `${data.plan.currency} ${data.plan.pricing?.find(p => p.cycle === 'monthly')?.price ?? data.plan.price ?? 0}/mo`
         : 'Subscribe to use',
       businessType: data.shop.businessType?._id || data.shop.businessType || null,
     };
@@ -140,7 +140,7 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
         name: p.name,
         price: monthlyPrice,
         currency: p.currency,
-        priceLabel: `${p.currency === 'INR' ? '₹' : p.currency} ${monthlyPrice}/mo`,
+        priceLabel: `${p.currency} ${monthlyPrice}/mo`,
         branchesLimit: p.limits.branches,
         branchesLabel: `${p.limits.branches} Branches`,
         features: [

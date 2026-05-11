@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Users, ExternalLink, Mail, Phone, Calendar, Store, CreditCard, ChevronDown, ChevronUp } from 'lucide-react';
 import { clientService } from '../../services/api/clients';
 import { useTheme } from '../../context/ThemeContext';
+import { useApp } from '../../context/AppContext';
 import CommonTable from '../../components/CommonTable';
 
 const ClientManagement = () => {
@@ -10,6 +11,7 @@ const ClientManagement = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [expandedClient, setExpandedClient] = useState(null);
     const { theme } = useTheme();
+    const { formatCurrency } = useApp();
 
     useEffect(() => {
         fetchClients();
@@ -89,7 +91,7 @@ const ClientManagement = () => {
             className: "text-right",
             render: (value) => (
                 <span className={`font-black text-sm ${theme.textPrimary}`}>
-                    ₹{value.toLocaleString()}
+                    {formatCurrency(value)}
                 </span>
             )
         },
@@ -156,7 +158,7 @@ const ClientManagement = () => {
                                     
                                     <div className={`mt-4 pt-4 border-t ${theme.mode === 'dark' ? 'border-indigo-500/20' : 'border-gray-100 flex justify-between items-center'}`}>
                                         <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Monthly Amount</span>
-                                        <span className="font-black text-lg text-indigo-500">₹{shop.subscription?.amount?.toLocaleString() || 0}</span>
+                                        <span className="font-black text-lg text-indigo-500">{formatCurrency(shop.subscription?.amount || 0)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -168,7 +170,7 @@ const ClientManagement = () => {
     };
 
     return (
-        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
+        <div className={`flex flex-col h-full overflow-y-auto custom-scrollbar p-4 md:p-8 ${theme.pageBg}`}>
             <div className="w-full mx-auto space-y-8">
                 {/* ── Page Header ── */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -235,7 +237,7 @@ const ClientManagement = () => {
                             <div>
                                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Running Monthly revenue</p>
                                 <h3 className={`text-3xl font-black text-indigo-500`}>
-                                    ₹{clients.reduce((sum, c) => sum + c.totalRevenue, 0).toLocaleString()}
+                                        {formatCurrency(clients.reduce((sum, c) => sum + c.totalRevenue, 0))}
                                 </h3>
                             </div>
                         </div>

@@ -3,10 +3,13 @@ import { Wallet, Info, CheckCircle2, AlertCircle, FileText, ChevronDown, Chevron
 import { payrollService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useApp } from '../../context/AppContext';
+
 
 const MySalary = () => {
     const { user } = useAuth();
     const { theme } = useTheme();
+    const { formatCurrency } = useApp();
     const [salaryRecords, setSalaryRecords] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [expandedRecord, setExpandedRecord] = useState(null);
@@ -100,10 +103,10 @@ const MySalary = () => {
 
                                         <div className="flex items-center gap-10">
                                             <div className="text-right">
-                                                <div className={`text-4xl font-black ${theme.textPrimary}`}>₹{record.calculatedSalary.toLocaleString()}</div>
+                                                <div className={`text-4xl font-black ${theme.textPrimary}`}>{formatCurrency(record.calculatedSalary)}</div>
                                                 {isDeducted && (
                                                     <div className="text-xs font-black text-red-500 uppercase tracking-wider flex items-center justify-end gap-1">
-                                                        <AlertCircle size={12} /> -₹{deduction.toLocaleString()} Deduction
+                                                        <AlertCircle size={12} /> -{formatCurrency(deduction)} Deduction
                                                     </div>
                                                 )}
                                             </div>
@@ -150,12 +153,12 @@ const MySalary = () => {
                                                         <div className="flex flex-wrap justify-between items-center gap-6">
                                                             <div className="space-y-1">
                                                                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Gross Monthly Salary</span>
-                                                                <div className="text-3xl font-black text-gray-900">₹{record.baseSalary.toLocaleString()}</div>
+                                                                <div className="text-3xl font-black text-gray-900">{formatCurrency(record.baseSalary)}</div>
                                                             </div>
                                                             <div className="hidden sm:block text-gray-200">|</div>
                                                             <div className="space-y-1">
                                                                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Per Day Value</span>
-                                                                <div className="text-2xl font-black text-gray-800">₹{perDay.toLocaleString()}</div>
+                                                                <div className="text-2xl font-black text-gray-800">{formatCurrency(perDay)}</div>
                                                             </div>
                                                         </div>
 
@@ -163,12 +166,12 @@ const MySalary = () => {
                                                             <div className="p-6 rounded-[1.5rem] bg-red-50 border border-red-100 space-y-3">
                                                                 <div className="flex justify-between items-center">
                                                                     <span className="text-sm font-black text-red-700 uppercase">Deduction Split-up (Lost)</span>
-                                                                    <span className="font-black text-red-600 text-lg">- ₹{deduction.toLocaleString()}</span>
+                                                                    <span className="font-black text-red-600 text-lg">- {formatCurrency(deduction)}</span>
                                                                 </div>
                                                                 <div className="text-xs font-bold text-red-500/70 leading-relaxed">
                                                                     Reason: {record.unpaidLeaves > 0 ? `${record.unpaidLeaves} Unpaid Leave(s) deducted based on LOP policy.` : 'Attendance mismatch or partial day deductions.'}
                                                                     <br />
-                                                                    Formula: ({record.unpaidLeaves} days) × ₹{perDay} daily rate.
+                                                                    Formula: ({record.unpaidLeaves} days) × {formatCurrency(perDay)} daily rate.
                                                                 </div>
                                                             </div>
                                                         )}
@@ -176,7 +179,7 @@ const MySalary = () => {
                                                         <div className="flex items-center justify-between pt-6 border-t-2 border-indigo-50">
                                                             <div>
                                                                 <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Final Net Payable</span>
-                                                                <div className="text-4xl font-black text-indigo-700">₹{record.calculatedSalary.toLocaleString()}</div>
+                                                                <div className="text-4xl font-black text-indigo-700">{formatCurrency(record.calculatedSalary)}</div>
                                                             </div>
                                                             <div className="text-[10px] font-black tracking-widest uppercase py-2 px-4 bg-emerald-100 text-emerald-700 rounded-2xl shadow-sm">
                                                                 Payment Processed

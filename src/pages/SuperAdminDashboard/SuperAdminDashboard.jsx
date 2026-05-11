@@ -2,13 +2,13 @@ import React, { useState, useEffect } from "react";
 import { 
     Users, 
     Store, 
-    CreditCard, 
     TrendingUp, 
     ArrowDownRight,
     Calendar,
     ChevronRight,
     Bell,
-    LayoutDashboard
+    LayoutDashboard,
+    Coins
 } from "lucide-react";
 import {
     AreaChart,
@@ -23,12 +23,14 @@ import {
     Cell
 } from "recharts";
 import { useTheme } from "../../context/ThemeContext";
+import { useApp } from "../../context/AppContext";
 import { clientService } from "../../services/api/clients";
 import { printCustomHtml, escapeHtml } from "../../utils/print";
 import toast from "react-hot-toast";
 
 const SuperAdminDashboard = () => {
     const { theme } = useTheme();
+    const { formatCurrency } = useApp();
     const [stats, setStats] = useState(null);
     const [clients, setClients] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -81,7 +83,7 @@ const SuperAdminDashboard = () => {
                     </div>
                     <div style="background: #eef2ff; border: 1px solid #c7d2fe; padding: 20px; border-radius: 16px;">
                         <p style="margin: 0; font-size: 11px; font-weight: 800; color: #4338ca; text-transform: uppercase; letter-spacing: 0.1em;">Total Lifetime Revenue</p>
-                        <p style="margin: 10px 0 0; font-size: 24px; font-weight: 900; color: #4338ca;">₹${(stats.totalRevenue || 0).toLocaleString()}</p>
+                        <p style="margin: 10px 0 0; font-size: 24px; font-weight: 900; color: #4338ca;">${formatCurrency ? formatCurrency(stats.totalRevenue || 0) : (stats.totalRevenue || 0).toLocaleString()}</p>
                     </div>
                 </div>
 
@@ -102,7 +104,7 @@ const SuperAdminDashboard = () => {
                             <tr>
                                 <td style="padding: 12px 15px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #f3f4f6;">${h.month}</td>
                                 <td style="padding: 12px 15px; text-align: right; font-size: 13px; border-bottom: 1px solid #f3f4f6;">${h.count}</td>
-                                <td style="padding: 12px 15px; text-align: right; font-size: 13px; font-weight: 700; color: #4f46e5; border-bottom: 1px solid #f3f4f6;">₹${(h.revenue || 0).toLocaleString()}</td>
+                                <td style="padding: 12px 15px; text-align: right; font-size: 13px; font-weight: 700; color: #4f46e5; border-bottom: 1px solid #f3f4f6;">${formatCurrency ? formatCurrency(h.revenue || 0) : (h.revenue || 0).toLocaleString()}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -165,7 +167,7 @@ const SuperAdminDashboard = () => {
             return (
                 <div className={`p-4 rounded-2xl shadow-xl border ${theme.mode === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                     <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>{label}</p>
-                    <p className="text-xl font-black text-indigo-500">₹{payload[0].value.toLocaleString()}</p>
+                    <p className="text-xl font-black text-indigo-500">{formatCurrency ? formatCurrency(payload[0].value) : payload[0].value.toLocaleString()}</p>
                     <p className={`text-[10px] font-bold ${theme.textMuted}`}>{payload[1]?.value} Subscriptions</p>
                 </div>
             );
@@ -252,16 +254,16 @@ const SuperAdminDashboard = () => {
                     <div className="relative z-10 text-white">
                         <div className="flex items-center justify-between mb-6">
                             <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-white">
-                                <CreditCard size={28} />
+                                <Coins size={28} />
                             </div>
                             <button className="p-2 hover:bg-white/20 rounded-xl transition-colors">
                                 <ChevronRight size={20} />
                             </button>
                         </div>
                         <p className="text-[11px] font-black text-indigo-100 uppercase tracking-[0.2em] mb-1">Total Lifetime Revenue</p>
-                        <h3 className="text-4xl font-black">₹{(stats?.totalRevenue || 0).toLocaleString()}</h3>
+                        <h3 className="text-4xl font-black">{formatCurrency(stats?.totalRevenue || 0)}</h3>
                         <div className="mt-6 flex items-center gap-2 text-[11px] font-bold text-indigo-100/70">
-                            Current Month Contribution: <span className="text-white">₹{stats?.subscriptionHistory?.[5]?.revenue?.toLocaleString() || 0}</span>
+                            Current Month Contribution: <span className="text-white">{formatCurrency(stats?.subscriptionHistory?.[5]?.revenue || 0)}</span>
                         </div>
                     </div>
                 </div>
@@ -304,7 +306,7 @@ const SuperAdminDashboard = () => {
                                     fontSize={10} 
                                     tickLine={false} 
                                     axisLine={false}
-                                    tickFormatter={(value) => `₹${value / 1000}k`}
+                                    tickFormatter={(value) => formatCurrency ? formatCurrency(value).split('.')[0] : value}
                                 />
                                 <Tooltip content={<CustomTooltip />} />
                                 <Area 

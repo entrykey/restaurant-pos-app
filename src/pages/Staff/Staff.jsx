@@ -9,6 +9,7 @@ import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import CommonSelect from "../../components/ui/CommonSelect";
 import { useAuth } from "../../context/AuthContext";
 import { roleService, shopService, branchService, subscriptionService, employeeService, attendanceService } from "../../services/api";
+import DatePicker from "../../components/ui/DatePicker";
 import { useTheme } from "../../context/ThemeContext";
 import SubscriptionNoticeModal from "../../components/modals/SubscriptionNoticeModal";
 import AttendanceCorrectionModal from "../../components/modals/AttendanceCorrectionModal";
@@ -1265,20 +1266,16 @@ const Staff = ({
                             </div>
                             <div className="flex flex-col gap-2">
                                 <label className={`text-sm font-bold ${theme.textSecondary}`}>Start</label>
-                                <input
-                                    type="date"
+                                <DatePicker
                                     value={attendanceStartDate}
-                                    onChange={(e) => setAttendanceStartDate(e.target.value)}
-                                    className={`p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-bold`}
+                                    onChange={(val) => setAttendanceStartDate(val)}
                                 />
                             </div>
                             <div className="flex flex-col gap-2">
                                 <label className={`text-sm font-bold ${theme.textSecondary}`}>End</label>
-                                <input
-                                    type="date"
+                                <DatePicker
                                     value={attendanceEndDate}
-                                    onChange={(e) => setAttendanceEndDate(e.target.value)}
-                                    className={`p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-bold`}
+                                    onChange={(val) => setAttendanceEndDate(val)}
                                 />
                             </div>
                         </div>
@@ -1680,11 +1677,9 @@ const Staff = ({
                             </div>
                             <div>
                                 <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Effective From *</label>
-                                <input
-                                    type="date"
+                                <DatePicker
                                     value={assignForm.effectiveFrom}
-                                    onChange={(e) => setAssignForm((p) => ({ ...p, effectiveFrom: e.target.value }))}
-                                    className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-bold`}
+                                    onChange={(val) => setAssignForm((p) => ({ ...p, effectiveFrom: val }))}
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">

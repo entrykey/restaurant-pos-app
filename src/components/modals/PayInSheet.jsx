@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { 
-    X, CreditCard, Banknote, Smartphone, Receipt, CheckCircle2 
+    X, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2 
 } from "lucide-react";
 import { formatCurrency } from "../../utils/format";
 import { orderService } from "../../services/api";
@@ -70,10 +70,10 @@ const PayInSheet = ({ isOpen, onClose, order, onSuccess }) => {
     };
 
     const METHODS = [
-        { id: "CASH", label: "Cash", icon: Banknote, color: "text-emerald-500 bg-emerald-50" },
+        { id: "CASH", label: "Cash", icon: Coins, color: "text-emerald-500 bg-emerald-50" },
         { id: "CARD", label: "Card", icon: CreditCard, color: "text-blue-500 bg-blue-50" },
         { id: "UPI", label: "UPI", icon: Smartphone, color: "text-orange-500 bg-orange-50" },
-        { id: "OTHER", label: "Other", icon: Receipt, color: "text-slate-500 bg-slate-50" },
+        { id: "OTHER", label: "Other", icon: ReceiptText, color: "text-slate-500 bg-slate-50" },
     ];
 
     return (
@@ -121,7 +121,9 @@ const PayInSheet = ({ isOpen, onClose, order, onSuccess }) => {
                                     <div className="space-y-1.5 flex flex-col justify-end">
                                         <label className={`text-[10px] font-black uppercase tracking-widest pl-1 ${theme.textMuted}`}>Amount</label>
                                         <div className="relative">
-                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-gray-400">{currency === 'INR' ? '₹' : '$'}</span>
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-gray-400 flex items-center">
+                                                <Coins size={16} />
+                                            </span>
                                             <input
                                                 type="number"
                                                 value={p.amount}

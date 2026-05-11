@@ -8,7 +8,7 @@ export const useOrder = () => useContext(OrderContext);
 
 const COUPONS = [
     { code: "SAVE10", type: "percent", value: 10, description: "10% Off" },
-    { code: "FLAT100", type: "flat", value: 100, description: "Flat ₹100 Off" },
+    { code: "FLAT100", type: "flat", value: 100, description: "Flat Discount" },
     {
         code: "FESTIVE20",
         type: "percent",
@@ -45,7 +45,13 @@ export const OrderProvider = ({ children }) => {
         } else if (item.sellingType === "Weight") {
             basePrice = item.pricePerUnit || item.sellingPrice || item.price || 0;
         }
-        const itemBaseCost = basePrice * item.quantity;
+        const itemBaseCost = (() => {
+            let p = basePrice;
+            if (item.selectedUnit === "SECONDARY" && item.conversionFactor > 0) {
+                p = basePrice * item.conversionFactor;
+            }
+            return p * item.quantity;
+        })();
         const extrasCost = (item.selectedExtras || []).reduce(
             (acc, e) => acc + e.price * e.quantity,
             0
@@ -99,10 +105,14 @@ export const OrderProvider = ({ children }) => {
         ).toFixed(4));
 
         // ... existing offer logic ...
+        const appliedOfferItemIds = new Set();
         let offerDiscountTotal = 0;
         const currentAppliedOffers = [];
         if (offers.length > 0) {
-            offers.forEach(offer => {
+            // Sort by priority (1 is highest)
+            const sortedOffers = [...offers].sort((a, b) => (a.priority || 1) - (b.priority || 1));
+            
+            sortedOffers.forEach(offer => {
                 const condition = offer.condition;
                 const reward = offer.reward;
                 if (!condition || !reward) return;
@@ -116,12 +126,33 @@ export const OrderProvider = ({ children }) => {
 
                     if (totalQty >= (condition.minQuantity || 1)) {
                         isApplicable = true;
+                        matchingItems.forEach(i => appliedOfferItemIds.add(i.id || i._id));
                         const itemsAmount = matchingItems.reduce((acc, i) => acc + getBaseLineTotal(i), 0);
 
                         if (reward.rewardType === "PERCENT_DISCOUNT") {
                             potentialDiscount = (itemsAmount * reward.discountPercent) / 100;
                         } else if (reward.rewardType === "FLAT_DISCOUNT") {
                             potentialDiscount = reward.discountAmount;
+                        } else if (reward.rewardType === "FREE_ITEM") {
+                            const buyQty = condition.minQuantity || 1;
+                            const freeQty = reward.rewardQuantity || 1;
+                            const isBogoStyle = offer.name.toLowerCase().includes("buy") && offer.name.toLowerCase().includes("get");
+
+                            if (isBogoStyle) {
+                                // Calculate number of free items based on full sets (e.g., for BOGO, need 2 items for 1 free)
+                                const setSize = buyQty + freeQty;
+                                const numSets = Math.floor(totalQty / setSize);
+                                const numFreeItems = numSets * freeQty;
+                                potentialDiscount = (itemsAmount / totalQty) * numFreeItems;
+                            } else {
+                                // Standard logic: Value of cheapest/reward item up to rewardQuantity
+                                if (reward.rewardSelectionStrategy === "CHEAPEST") {
+                                    const cheapest = matchingItems.sort((a, b) => getBaseLineTotal(a)/a.quantity - getBaseLineTotal(b)/b.quantity)[0];
+                                    potentialDiscount = (getBaseLineTotal(cheapest) / cheapest.quantity) * (reward.rewardQuantity || 1);
+                                } else {
+                                    potentialDiscount = 0; 
+                                }
+                            }
                         }
                     }
                 } else if (condition.applyOn === "CATEGORY") {
@@ -130,12 +161,26 @@ export const OrderProvider = ({ children }) => {
 
                     if (totalQty >= (condition.minQuantity || 1)) {
                         isApplicable = true;
+                        matchingItems.forEach(i => appliedOfferItemIds.add(i.id || i._id));
                         const itemsAmount = matchingItems.reduce((acc, i) => acc + getBaseLineTotal(i), 0);
 
                         if (reward.rewardType === "PERCENT_DISCOUNT") {
                             potentialDiscount = (itemsAmount * reward.discountPercent) / 100;
                         } else if (reward.rewardType === "FLAT_DISCOUNT") {
                             potentialDiscount = reward.discountAmount;
+                        } else if (reward.rewardType === "FREE_ITEM") {
+                            const buyQty = condition.minQuantity || 1;
+                            const freeQty = reward.rewardQuantity || 1;
+                            const isBogoStyle = offer.name.toLowerCase().includes("buy") && offer.name.toLowerCase().includes("get");
+
+                            if (isBogoStyle) {
+                                const setSize = buyQty + freeQty;
+                                const numSets = Math.floor(totalQty / setSize);
+                                const numFreeItems = numSets * freeQty;
+                                potentialDiscount = (itemsAmount / totalQty) * numFreeItems;
+                            } else {
+                                potentialDiscount = 0; // Default flat fallback
+                            }
                         }
                     }
                 } else if (condition.applyOn === "BILL") {
@@ -150,10 +195,13 @@ export const OrderProvider = ({ children }) => {
                 }
 
                 if (isApplicable && potentialDiscount > 0) {
+                    // Check if this offer provides a better discount than already applied ones if they overlap
+                    // For now, we allow stacking but prioritize by evaluating in priority order
                     offerDiscountTotal += potentialDiscount;
                     currentAppliedOffers.push({
                         name: offer.name,
-                        discount: potentialDiscount
+                        discount: potentialDiscount,
+                        priority: offer.priority
                     });
                 }
             });
@@ -177,8 +225,18 @@ export const OrderProvider = ({ children }) => {
 
         const taxBreakdown = { cgst: 0, sgst: 0, igst: 0 };
 
+        const discountFactor = subtotal > 0 ? (1 - finalDiscount / subtotal) : 1;
+        
         const totalTaxAmount = parseFloat(orderItems.reduce((acc, item) => {
-            const lineTotal = calculateItemTotal(item);
+            const originalLineTotal = calculateItemTotal(item);
+            // Proportional tax reduction based on total discount
+            const lineTotal = parseFloat((originalLineTotal * discountFactor).toFixed(4));
+            
+            // Debugging log to verify tax calculation on discounted items
+            if (finalDiscount > 0) {
+                console.log(`Tax Calc for ${item.name}: Original=${originalLineTotal}, Factor=${discountFactor}, TaxableLine=${lineTotal}`);
+            }
+
             const lineRate = (item.taxPercent !== undefined && item.taxPercent !== null)
                 ? Number(item.taxPercent)
                 : taxPercent;
@@ -237,7 +295,8 @@ export const OrderProvider = ({ children }) => {
             total,
             roundOff,
             finalTotal,
-            exchangeCredit
+            exchangeCredit,
+            appliedOfferItemIds: Array.from(appliedOfferItemIds)
         };
     };
 

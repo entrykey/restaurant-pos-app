@@ -823,6 +823,15 @@ export const inventoryService = {
             console.error("Error fetching item history:", error);
             throw error.response ? error.response.data : error;
         }
+    },
+    repackItem: async (payload) => {
+        try {
+            const response = await api.post('/inventory/repack', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error repacking item:", error);
+            throw error.response ? error.response.data : error;
+        }
     }
 };
 

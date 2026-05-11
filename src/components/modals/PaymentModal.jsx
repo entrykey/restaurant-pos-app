@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Tag, CreditCard, Banknote, Smartphone, Receipt, CheckCircle2, ChevronLeft, Plus, Trash2, Printer } from "lucide-react";
+import { X, Tag, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2, ChevronLeft, Plus, Trash2, Printer } from "lucide-react";
 import ThemeLoader from "../ui/ThemeLoader";
 import { formatCurrency } from "../../utils/format";
 import { useOrder } from "../../context/OrderContext";
@@ -101,10 +101,10 @@ const PaymentModal = ({
     const remainingBalance = getRemainingBalance();
 
     const PAYMENT_METHODS = [
-        { id: "cash", label: "Cash", icon: Banknote, color: "text-green-600 bg-green-50" },
+        { id: "cash", label: "Cash", icon: Coins, color: "text-green-600 bg-green-50" },
         { id: "card", label: "Card", icon: CreditCard, color: "text-blue-600 bg-blue-50" },
         { id: "upi", label: "UPI", icon: Smartphone, color: "text-orange-600 bg-orange-50" },
-        { id: "other", label: "Other", icon: Receipt, color: "text-gray-600 bg-gray-100" },
+        { id: "other", label: "Other", icon: ReceiptText, color: "text-gray-600 bg-gray-100" },
     ];
 
     const addPaymentMethod = (method) => {
@@ -355,7 +355,9 @@ const PaymentModal = ({
                                                                 <div className="space-y-2">
                                                                     <label className={`text-[10px] font-black ${theme.textMuted} tracking-widest uppercase`}>{p.method.label} Amount</label>
                                                                     <div className="relative">
-                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-gray-400">₹</span>
+                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-gray-400 flex items-center">
+                                                                            <Coins size={14} />
+                                                                        </span>
                                                                         <input
                                                                             type="number"
                                                                             value={p.amount}

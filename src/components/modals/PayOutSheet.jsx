@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { 
-    X, CreditCard, Banknote, Smartphone, Receipt, CheckCircle2 
+    X, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2 
 } from "lucide-react";
 import { formatCurrency } from "../../utils/format";
 import { PurchaseService } from "../../services/PurchaseService";
@@ -54,7 +54,7 @@ const PayOutSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
     };
 
     const paymentMethods = [
-        { id: "cash", label: "Cash", icon: Banknote, color: theme.mode === 'dark' ? "text-emerald-400 bg-emerald-900/30" : "text-emerald-600 bg-emerald-50" },
+        { id: "cash", label: "Cash", icon: Coins, color: theme.mode === 'dark' ? "text-emerald-400 bg-emerald-900/30" : "text-emerald-600 bg-emerald-50" },
         { id: "bank_transfer", label: "Bank", icon: CreditCard, color: theme.mode === 'dark' ? "text-blue-400 bg-blue-900/30" : "text-blue-600 bg-blue-50" },
         { id: "upi", label: "UPI", icon: Smartphone, color: theme.mode === 'dark' ? "text-orange-400 bg-orange-900/30" : "text-orange-600 bg-orange-50" },
         { id: "card", label: "Card", icon: CreditCard, color: theme.mode === 'dark' ? "text-indigo-400 bg-indigo-900/30" : "text-indigo-600 bg-indigo-50" },
@@ -145,7 +145,9 @@ const PayOutSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
                                 )}
                             </label>
                             <div className="relative">
-                                <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-bold text-lg ${theme.textMuted}`}>{currency === 'INR' ? '₹' : (currency === 'USD' ? '$' : currency)}</span>
+                                <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-bold text-lg ${theme.textMuted} flex items-center`}>
+                                    <Coins size={18} />
+                                </span>
                                 <input
                                     type="number"
                                     value={amount}

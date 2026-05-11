@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Wallet, Plus, RefreshCw, Settings, Trash2, CheckCircle, Clock, X, ChevronDown, ChevronUp, Landmark, Banknote, CreditCard, AlertCircle } from 'lucide-react';
+import { Wallet, Plus, RefreshCw, Settings, Trash2, CheckCircle, Clock, X, ChevronDown, ChevronUp, Landmark, Coins, CreditCard, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import CommonTable from '../../components/CommonTable';
 import CommonSelect from '../../components/ui/CommonSelect';
 import { payrollService } from '../../services/api';
+import { useApp } from '../../context/AppContext';
+
 
 const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
+    const { formatCurrency } = useApp();
     const [payrollData, setPayrollData] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -24,7 +27,7 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
         workingDaysInMonth: 30
     });
 
-    const fetchPayroll = async () => {
+    const fetchPayroll = React.useCallback(async () => {
         try {
             setIsLoading(true);
             const data = await payrollService.getPayroll(selectedMonth, shopId);
@@ -34,21 +37,21 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [selectedMonth, shopId]);
 
-    const fetchSettings = async () => {
+    const fetchSettings = React.useCallback(async () => {
         try {
             const data = await payrollService.getSettings(shopId);
             if (data) setSettings(data);
         } catch (err) {
             console.error("Failed to fetch payroll settings");
         }
-    };
+    }, [shopId]);
 
     useEffect(() => {
         fetchPayroll();
         fetchSettings();
-    }, [selectedMonth, shopId]);
+    }, [fetchPayroll, fetchSettings]);
 
     const handleGenerate = async () => {
         try {
@@ -63,16 +66,6 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
         }
     };
 
-    const handleUpdateStatus = async (id, status) => {
-        try {
-            await payrollService.updateStatus(id, status);
-            toast.success(`Payroll marked as ${status}`);
-            fetchPayroll();
-            setSelectedIds(prev => prev.filter(sid => sid !== id));
-        } catch (err) {
-            toast.error("Status update failed");
-        }
-    };
 
     const handleBulkPay = async () => {
         try {
@@ -139,7 +132,7 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                             onClick={() => setIsPayModalOpen(true)}
                             className={`px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold flex items-center gap-2 hover:bg-emerald-700 animate-in zoom-in-50 duration-200`}
                         >
-                            <Banknote size={18} />
+                            <Coins size={18} />
                             Pay Selected ({selectedIds.length})
                         </button>
                     )}
@@ -252,10 +245,10 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                                                 </div>
                                             </td>
                                             <td className="p-4 text-right">
-                                                <span className={`text-sm font-bold ${theme.textSecondary}`}>₹{item.baseSalary.toLocaleString()}</span>
+                                                <span className={`text-sm font-bold ${theme.textSecondary}`}>{formatCurrency(item.baseSalary)}</span>
                                             </td>
                                             <td className="p-4 text-right">
-                                                <span className={`text-lg font-black text-indigo-600`}>₹{item.calculatedSalary.toLocaleString()}</span>
+                                                <span className={`text-lg font-black text-indigo-600`}>{formatCurrency(item.calculatedSalary)}</span>
                                             </td>
                                             <td className="p-4 text-center">
                                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black tracking-widest ${
@@ -324,12 +317,12 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                                                                     <div className="flex flex-wrap justify-between items-center gap-6">
                                                                         <div className="space-y-1">
                                                                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Base/Scale</span>
-                                                                            <div className={`text-2xl font-black ${theme.textPrimary}`}>₹{item.baseSalary.toLocaleString()}</div>
+                                                                            <div className={`text-2xl font-black ${theme.textPrimary}`}>{formatCurrency(item.baseSalary)}</div>
                                                                         </div>
                                                                         <div className="hidden sm:block text-indigo-200">|</div>
                                                                         <div className="space-y-1">
                                                                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Daily Value</span>
-                                                                            <div className={`text-xl font-black ${theme.textPrimary}`}>₹{Math.round(item.baseSalary / item.totalWorkingDays).toLocaleString()}</div>
+                                                                            <div className={`text-xl font-black ${theme.textPrimary}`}>{formatCurrency(Math.round(item.baseSalary / item.totalWorkingDays))}</div>
                                                                         </div>
                                                                     </div>
                                                                     
@@ -339,10 +332,10 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                                                                                 <span className="font-extrabold text-red-700 uppercase tracking-tighter italic flex items-center gap-1">
                                                                                     <AlertCircle size={14} /> Exceptions Applied (Lost)
                                                                                 </span>
-                                                                                <span className="font-black text-red-600 text-lg">- ₹{(item.baseSalary - item.calculatedSalary).toLocaleString()}</span>
+                                                                                <span className="font-black text-red-600 text-lg">- {formatCurrency(item.baseSalary - item.calculatedSalary)}</span>
                                                                             </div>
                                                                             <div className="text-[10px] font-bold text-red-500 leading-relaxed pl-5 border-l border-red-300">
-                                                                                Reason: {item.unpaidLeaves > 0 ? `${item.unpaidLeaves} day(s) LOP × ₹${Math.round(item.baseSalary / item.totalWorkingDays)} rate.` : 'Manual adjustment or miss punch penalty applied.'}
+                                                                                Reason: {item.unpaidLeaves > 0 ? `${item.unpaidLeaves} day(s) LOP × ${formatCurrency(Math.round(item.baseSalary / item.totalWorkingDays))} rate.` : 'Manual adjustment or miss punch penalty applied.'}
                                                                             </div>
                                                                         </div>
                                                                     )}
@@ -350,7 +343,7 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                                                                     <div className="pt-6 border-t border-indigo-100 flex justify-between items-end">
                                                                         <div>
                                                                             <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Final Disbursement</span>
-                                                                            <div className="text-4xl font-black text-indigo-700 tracking-tight">₹{item.calculatedSalary.toLocaleString()}</div>
+                                                                            <div className="text-4xl font-black text-indigo-700 tracking-tight">{formatCurrency(item.calculatedSalary)}</div>
                                                                         </div>
                                                                         <div className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-2xl text-[10px] font-black tracking-widest uppercase">
                                                                             Draft Verified
@@ -376,7 +369,7 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                     <div className={`${theme.surfaceBg} rounded-[2.5rem] w-full max-w-2xl shadow-2xl border ${theme.borderLight} overflow-hidden flex flex-col max-h-[90vh]`}>
                         <div className={`p-6 border-b ${theme.borderLight} flex justify-between items-center bg-emerald-50/50`}>
                             <div className="flex items-center gap-3 text-emerald-600">
-                                <Banknote size={28} />
+                                <Coins size={28} />
                                 <h3 className={`text-2xl font-black ${theme.textHeading}`}>Confirm Payroll Payment</h3>
                             </div>
                             <button onClick={() => setIsPayModalOpen(false)} className={theme.textSecondary}><X size={28} /></button>
@@ -399,7 +392,7 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                                                     </div>
                                                     <div className="text-left">
                                                         <div className={`font-black ${theme.textPrimary}`}>{record.employeeId?.userId?.name}</div>
-                                                        <div className="text-xs font-bold text-indigo-600">₹{record.calculatedSalary.toLocaleString()}</div>
+                                                        <div className="text-xs font-bold text-indigo-600">{formatCurrency(record.calculatedSalary)}</div>
                                                     </div>
                                                 </div>
                                                 {expandedBreakdown === record._id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -409,7 +402,7 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                                                 <div className={`p-5 bg-gray-50/50 space-y-3 border-t ${theme.borderLight} animate-in slide-in-from-top-2 duration-300`}>
                                                     <div className="flex justify-between text-sm uppercase tracking-wider">
                                                         <span className={`font-bold ${theme.textSecondary}`}>Base Monthly Salary</span>
-                                                        <span className={`font-black ${theme.textPrimary}`}>₹{record.baseSalary.toLocaleString()}</span>
+                                                        <span className={`font-black ${theme.textPrimary}`}>{formatCurrency(record.baseSalary)}</span>
                                                     </div>
                                                     <div className="grid grid-cols-2 gap-4">
                                                         <div className="p-3 rounded-2xl bg-white border border-emerald-100">
@@ -443,7 +436,7 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                                 <label className={`block text-xs font-black uppercase tracking-[0.2em] ${theme.textSecondary}`}>Select Payment Method</label>
                                 <div className="grid grid-cols-3 gap-4">
                                     {[
-                                        { id: 'CASH', label: 'Cash', icon: Banknote },
+                                        { id: 'CASH', label: 'Cash', icon: Coins },
                                         { id: 'BANK', label: 'Bank Transfer', icon: Landmark },
                                         { id: 'UPI', label: 'UPI / Digital', icon: CreditCard }
                                     ].map((method) => (
@@ -468,7 +461,7 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                             <div>
                                 <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Total Payable</div>
                                 <div className="text-3xl font-black text-indigo-600 leading-tight">
-                                    ₹{payrollData.filter(d => selectedIds.includes(d._id)).reduce((acc, curr) => acc + curr.calculatedSalary, 0).toLocaleString()}
+                                    {formatCurrency(payrollData.filter(d => selectedIds.includes(d._id)).reduce((acc, curr) => acc + curr.calculatedSalary, 0))}
                                 </div>
                             </div>
                             <div className="flex gap-4">

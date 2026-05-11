@@ -7,7 +7,7 @@ const SubscriptionManagement = () => {
     const [subscriptionToEdit, setSubscriptionToEdit] = useState(null);
 
     return (
-        <div className="h-full w-full">
+        <div className="flex flex-col h-full w-full overflow-hidden">
             {view === 'list' && (
                 <SubscriptionList
                     setView={setView}

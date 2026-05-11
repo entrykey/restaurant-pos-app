@@ -4,7 +4,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { dashboardService } from '../../services/api';
 import { PurchaseService } from '../../services/PurchaseService';
 import { formatCurrency } from '../../utils/format';
-import { ArrowLeft, Truck, ChevronDown, Calendar, Package, Receipt, ArrowRightCircle, Building, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Truck, ChevronDown, Calendar, Package, ReceiptText, ArrowRightCircle, Building, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PayOutSheet from '../../components/modals/PayOutSheet';
 import PurchaseReturnSheet from '../../components/modals/PurchaseReturnSheet';
@@ -308,7 +308,7 @@ const PayOutList = () => {
                                     <td colSpan={5} className="p-20 text-center">
                                         <div className="max-w-md mx-auto space-y-4">
                                             <div className={`w-20 h-20 ${theme.pageBg} rounded-full flex items-center justify-center mx-auto ${theme.textMuted}`}>
-                                                {activeTab === 'pending' ? <Truck size={40} /> : <Receipt size={40} />}
+                                                {activeTab === 'pending' ? <Truck size={40} /> : <ReceiptText size={40} />}
                                             </div>
                                             <h3 className={`text-xl font-black ${theme.textHeading}`}>
                                                 {activeTab === 'pending' ? 'All Clear' : 'No History Found'}

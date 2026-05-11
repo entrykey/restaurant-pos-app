@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, User, Smartphone, Calendar, Wrench, ShieldCheck, Box, Banknote } from "lucide-react";
+import { ArrowLeft, User, Smartphone, Calendar, Wrench, ShieldCheck, Box, Coins } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useApp } from "../../context/AppContext";
 import { formatCurrency } from "../../utils/format";
@@ -143,7 +143,7 @@ const ServiceDetails = ({ hasPermissionFor }) => {
                     {/* Cost Summary */}
                     <div className={`${theme.surfaceBg} rounded-xl shadow-sm border ${theme.borderLight} p-4`}>
                         <h3 className={`font-semibold ${theme.textHeading} mb-4 flex items-center gap-2`}>
-                            <Banknote className="w-4 h-4" /> Billing
+                            <Coins className="w-4 h-4" /> Billing
                         </h3>
                         <div className="space-y-2 text-sm">
                             <div className={`flex justify-between ${theme.textPrimary}`}>

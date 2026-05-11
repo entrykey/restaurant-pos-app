@@ -7,6 +7,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { attendanceService } from "../../services/api";
 import CommonTable from "../../components/CommonTable";
 import CommonDialog from "../../components/modals/CommonDialog";
+import DatePicker from "../../components/ui/DatePicker";
 
 const MyAttendance = () => {
     const { user } = useAuth();
@@ -78,20 +79,18 @@ const MyAttendance = () => {
                 <div className="flex items-end gap-3 flex-wrap">
                     <div className="flex flex-col gap-1">
                         <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary}`}>From</label>
-                        <input 
-                            type="date"
+                        <DatePicker 
                             value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className={`p-2 rounded-xl border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} text-xs font-bold outline-none`}
+                            onChange={(val) => setStartDate(val)}
+                            className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-bold outline-none h-[38px] w-[140px]"
                         />
                     </div>
                     <div className="flex flex-col gap-1">
                         <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary}`}>To</label>
-                        <input 
-                            type="date"
+                        <DatePicker 
                             value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className={`p-2 rounded-xl border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} text-xs font-bold outline-none`}
+                            onChange={(val) => setEndDate(val)}
+                            className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-bold outline-none h-[38px] w-[140px]"
                         />
                     </div>
                     <button 

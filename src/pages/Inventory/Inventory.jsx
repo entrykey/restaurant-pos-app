@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History } from 'lucide-react';
+import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen } from 'lucide-react';
 import ThemeLoader from '../../components/ui/ThemeLoader';
 import { BUSINESS_FEATURES } from '../../config/businessTypes';
 import CommonTable from '../../components/CommonTable';
@@ -16,6 +16,7 @@ import Modal from '../../components/ui/Modal';
 import CommonSelect from '../../components/ui/CommonSelect';
 import BulkUploadModal from '../../components/modals/BulkUploadModal';
 import StockAdjustmentModal from '../../components/modals/StockAdjustmentModal';
+import RepackModal from '../../components/modals/RepackModal';
 
 const Inventory = ({
     menu,
@@ -76,6 +77,10 @@ const Inventory = ({
     // Stock Adjustment State
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
     const [selectedAdjustmentItem, setSelectedAdjustmentItem] = useState(null);
+
+    // Repack State
+    const [isRepackModalOpen, setIsRepackModalOpen] = useState(false);
+    const [selectedRepackItem, setSelectedRepackItem] = useState(null);
 
     // Item History State
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -307,6 +312,11 @@ const Inventory = ({
                 <>
                     <div className={`font-black text-lg ${theme.textHeading}`}>{value}</div>
                     <div className={`text-xs font-bold ${theme.textSecondary}`}>Code: {item.itemCode || item.id}</div>
+                    {item.secondaryUnitId && item.conversionFactor > 1 && (
+                        <div className="mt-1 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 text-[10px] font-black w-fit">
+                            1 {item.secondaryUnitId.name || item.secondaryUnitId.code} = {item.conversionFactor} {item.unitId?.name || item.unitId?.code}
+                        </div>
+                    )}
                     {item.ingredients && item.ingredients.length > 0 && (
                         <div className="flex gap-1 mt-1 flex-wrap">
                             {item.ingredients.map((ing, i) => (
@@ -358,13 +368,24 @@ const Inventory = ({
                         onClick={handleStockClick}
                         title={canManage ? "Click to adjust stock" : ""}
                     >
-                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
-                            ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
-                            }`}>
-                            {low && <span title="Low stock">⚠️</span>}
-                            {qty}
-                            <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
+                        <div className="flex items-center gap-2">
+                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
+                                ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
+                                : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
+                                }`}>
+                                {low && <span title="Low stock">⚠️</span>}
+                                {qty}
+                                <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
+                            </div>
+                            {canManage && (
+                                <button
+                                    onClick={handleStockClick}
+                                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white shadow-sm active:scale-90`}
+                                    title="Adjust Stock"
+                                >
+                                    <Plus size={14} />
+                                </button>
+                            )}
                         </div>
                         {damaged > 0 && (
                             <div className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
@@ -424,6 +445,11 @@ const Inventory = ({
                 <>
                     <div className={`font-black text-lg ${theme.textHeading}`}>{value}</div>
                     <div className={`text-xs font-bold ${theme.textSecondary}`}>Code: {item.itemCode || item.id}</div>
+                    {item.secondaryUnitId && item.conversionFactor > 1 && (
+                        <div className="mt-1 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black w-fit">
+                            1 {item.secondaryUnitId.name || item.secondaryUnitId.code} = {item.conversionFactor} {item.unitId?.name || item.unitId?.code}
+                        </div>
+                    )}
                 </>
             )
         },
@@ -466,13 +492,24 @@ const Inventory = ({
                         onClick={handleStockClick}
                         title={canManage ? "Click to adjust stock" : ""}
                     >
-                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
-                            ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
-                            }`}>
-                            {low && <span title="Low stock">⚠️</span>}
-                            {qty}
-                            <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
+                        <div className="flex items-center gap-2">
+                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
+                                ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
+                                : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
+                                }`}>
+                                {low && <span title="Low stock">⚠️</span>}
+                                {qty}
+                                <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
+                            </div>
+                            {canManage && (
+                                <button
+                                    onClick={handleStockClick}
+                                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white shadow-sm active:scale-90`}
+                                    title="Adjust Stock"
+                                >
+                                    <Plus size={14} />
+                                </button>
+                            )}
                         </div>
                         {damaged > 0 && (
                             <div className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
@@ -544,6 +581,19 @@ const Inventory = ({
                 >
                     <History size={18} />
                 </button>
+                {canManage && activeTab === "raw" && (
+                    <button
+                        onClick={(e) => { 
+                            e.stopPropagation(); 
+                            setSelectedRepackItem(item);
+                            setIsRepackModalOpen(true);
+                        }}
+                        className={`p-3 ${theme.inputBg} text-blue-500 hover:bg-blue-500 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95`}
+                        title="Repack Item"
+                    >
+                        <PackageOpen size={18} />
+                    </button>
+                )}
                 {canManage && (
                     <>
                         <button
@@ -838,6 +888,21 @@ const Inventory = ({
                     </div>
                 </div>
             )}
+
+            {/* Repack Modal */}
+            <RepackModal
+                isOpen={isRepackModalOpen}
+                onClose={() => {
+                    setIsRepackModalOpen(false);
+                    setSelectedRepackItem(null);
+                }}
+                sourceItem={selectedRepackItem}
+                sourceStock={selectedRepackItem ? (stockMap[selectedRepackItem._id || selectedRepackItem.id]?.qty ?? selectedRepackItem.quantityOnHand ?? 0) : 0}
+                onRepackComplete={() => {
+                    // Refresh data
+                    setRefreshTrigger(prev => prev + 1);
+                }}
+            />
         </div>
     );
 };

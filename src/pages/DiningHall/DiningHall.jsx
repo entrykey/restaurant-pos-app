@@ -30,7 +30,7 @@ const DiningHall = ({
   const { theme, themeName } = useTheme();
   const navigate = useNavigate();
   const { can } = usePermission();
-  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('all');
 
   // Modal State
   const [dialogConfig, setDialogConfig] = useState({ 
@@ -46,7 +46,7 @@ const DiningHall = ({
 
   useEffect(() => {
     if (categories.length > 0 && !selectedCategoryId) {
-      setSelectedCategoryId(categories[0]._id);
+      setSelectedCategoryId('all');
     }
   }, [categories, selectedCategoryId]);
 
@@ -60,7 +60,7 @@ const DiningHall = ({
   const isAdmin = currentUser?.role === "Admin";
 
   // Filter tables by selected category
-  const filteredTables = selectedCategoryId
+  const filteredTables = selectedCategoryId && selectedCategoryId !== 'all'
     ? propsTables.filter(t => t.diningCategoryId?._id === selectedCategoryId || t.diningCategoryId === selectedCategoryId)
     : propsTables;
 
@@ -209,18 +209,29 @@ const DiningHall = ({
             ))}
           </div>
         ) : (
-          categories.map((cat) => (
+          <>
             <button
-              key={cat._id}
-              onClick={() => setSelectedCategoryId(cat._id)}
-              className={`px-6 py-2.5 rounded-xl font-bold whitespace-nowrap transition-all duration-200 shadow-sm border ${selectedCategoryId === cat._id
+              onClick={() => setSelectedCategoryId('all')}
+              className={`px-6 py-2.5 rounded-xl font-bold whitespace-nowrap transition-all duration-200 shadow-sm border ${selectedCategoryId === 'all'
                 ? "bg-indigo-600 text-white border-indigo-600 shadow-indigo-200"
                 : `${theme.surfaceBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-400 ${theme.sidebarItemHoverBg}`
                 }`}
             >
-              {cat.name} ({propsTables.filter(t => t.diningCategoryId?._id === cat._id || t.diningCategoryId === cat._id).length})
+              All ({propsTables.length})
             </button>
-          ))
+            {categories.map((cat) => (
+              <button
+                key={cat._id}
+                onClick={() => setSelectedCategoryId(cat._id)}
+                className={`px-6 py-2.5 rounded-xl font-bold whitespace-nowrap transition-all duration-200 shadow-sm border ${selectedCategoryId === cat._id
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-indigo-200"
+                  : `${theme.surfaceBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-400 ${theme.sidebarItemHoverBg}`
+                  }`}
+              >
+                {cat.name} ({propsTables.filter(t => t.diningCategoryId?._id === cat._id || t.diningCategoryId === cat._id).length})
+              </button>
+            ))}
+          </>
         )}
       </div>
 

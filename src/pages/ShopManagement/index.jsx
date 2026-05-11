@@ -22,7 +22,7 @@ const ShopManagement = () => {
     };
 
     return (
-        <div className="h-full w-full">
+        <div className="flex flex-col h-full w-full overflow-hidden">
             {view === 'list' ? (
                 <ShopList onEdit={handleEdit} onAddNew={handleAddNew} />
             ) : (

@@ -6,12 +6,12 @@ import {
     Utensils,
     Package,
     CreditCard,
-    Receipt,
+    ReceiptText,
     UserCheck,
     LayoutDashboard,
     Clock,
     Globe,
-    Banknote,
+    Coins,
     Zap,
     Users,
     ChevronRight
@@ -424,12 +424,12 @@ const Reports = ({
         { id: "items", label: "Item-wise Sales", icon: <Utensils size={16} /> },
         { id: "category", label: "Category-wise", icon: <Package size={16} /> },
         { id: "payments", label: "Payment Modes", icon: <CreditCard size={16} /> },
-        { id: "tax", label: "Tax / GST", icon: <Receipt size={16} /> },
+        { id: "tax", label: "Tax / GST", icon: <ReceiptText size={16} /> },
         { id: "staff_report", label: "Staff Performance", icon: <UserCheck size={16} /> },
         { id: "table_report", label: "Table Revenue", icon: <LayoutDashboard size={16} /> },
         { id: "hourly", label: "Peak Hours", icon: <Clock size={16} /> },
         { id: "online_report", label: "Online Orders", icon: <Globe size={16} /> },
-        { id: "expenses", label: "Expense Ledger", icon: <Banknote size={16} /> },
+        { id: "expenses", label: "Expense Ledger", icon: <Coins size={16} /> },
         { id: "parties", label: "Parties Report", icon: <Users size={16} /> },
     ];
 
@@ -709,7 +709,7 @@ const Reports = ({
                                                             ? (themeName === 'dark' ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-100 text-indigo-600")
                                                             : (themeName === 'dark' ? "bg-blue-900/40 text-blue-400" : "bg-blue-100 text-blue-600")
                                                 }`}>
-                                                    {method === "Cash" ? <Banknote size={20} /> : method === "UPI" ? <Zap size={20} /> : <CreditCard size={20} />}
+                                                    {method === "Cash" ? <Coins size={20} /> : method === "UPI" ? <Zap size={20} /> : <CreditCard size={20} />}
                                                 </div>
                                                 <div>
                                                     <p className={`font-bold ${theme.textPrimary}`}>{method}</p>

@@ -11,7 +11,8 @@ import {
     Percent,
     CheckCircle2,
     Loader2,
-    Info
+    Info,
+    Building2
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -23,11 +24,13 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import CommonSelect from "../../components/ui/CommonSelect";
+import DatePicker from "../../components/ui/DatePicker";
 
 const OfferForm = () => {
     const { theme } = useTheme();
     const { user } = useAuth();
-    const { activeBranchId, businessTypeData } = useApp();
+    const { activeBranchId, businessTypeData, branches } = useApp();
+    const [applyToAllBranches, setApplyToAllBranches] = useState(false);
     const navigate = useNavigate();
     const { id } = useParams();
     const isEdit = !!id;
@@ -116,6 +119,7 @@ const OfferForm = () => {
                     businessTypes: data.businessTypes || ["RESTAURANT"],
                     isActive: data.isActive
                 });
+                setApplyToAllBranches(!data.branchId);
                 if (data.condition) setCondition(data.condition);
                 if (data.reward) setReward(data.reward);
             }
@@ -138,12 +142,15 @@ const OfferForm = () => {
                 reward
             };
             if (isEdit) {
-                await offerService.updateOffer(id, payload);
+                await offerService.updateOffer(id, {
+                    ...payload,
+                    branchId: applyToAllBranches ? null : (activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null))
+                });
             } else {
                 await offerService.createOffer({
                     ...payload,
                     shopId: user?.shopId || user?.shop_id,
-                    branchId: activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null)
+                    branchId: applyToAllBranches ? null : (activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null))
                 });
             }
             navigate("/offers");
@@ -164,19 +171,34 @@ const OfferForm = () => {
         );
     }
 
-    const offerTypes = [
-        { value: "BUY_X_GET_Y", label: "Buy X Get Y Free" },
-        { value: "PERCENT_DISCOUNT", label: "Percentage Discount" },
-        { value: "FLAT_DISCOUNT", label: "Flat Amount Discount" },
-        { value: "BILL_VALUE_DISCOUNT", label: "Bill Value Discount" },
-        { value: "CATEGORY_DISCOUNT", label: "Category Discount" },
-        { value: "COMBO_PRICE", label: "Combo Price" }
-    ];
+    const offerTypeConfig = {
+        "BUY_X_GET_Y": { rewardType: "FREE_ITEM", applyOn: "ITEM", label: "Buy X Get Y Free" },
+        "PERCENT_DISCOUNT": { rewardType: "PERCENT_DISCOUNT", applyOn: "BILL", label: "Percentage Discount" },
+        "FLAT_DISCOUNT": { rewardType: "FLAT_DISCOUNT", applyOn: "BILL", label: "Flat Amount Discount" },
+        "BILL_VALUE_DISCOUNT": { rewardType: "PERCENT_DISCOUNT", applyOn: "BILL", label: "Bill Value Discount" },
+        "CATEGORY_DISCOUNT": { rewardType: "PERCENT_DISCOUNT", applyOn: "CATEGORY", label: "Category Discount" },
+        "COMBO_PRICE": { rewardType: "SET_PRICE", applyOn: "ITEM", label: "Combo Price" }
+    };
+
+    const handleOfferTypeChange = (val) => {
+        const config = offerTypeConfig[val];
+        setOfferData(prev => ({ ...prev, offerType: val }));
+        
+        if (config) {
+            setReward(prev => ({ 
+                ...prev, 
+                rewardType: config.rewardType,
+                // Automatically set strategy for BOGO
+                ...(val === 'BUY_X_GET_Y' ? { rewardSelectionStrategy: 'SAME_ITEM' } : {})
+            }));
+            setCondition(prev => ({ ...prev, applyOn: config.applyOn }));
+        }
+    };
 
     return (
         <div className={`p-4 md:p-8 h-full flex flex-col ${theme.pageBg} animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto custom-scrollbar`}>
             {/* Header */}
-            <div className="flex items-center justify-between mb-8 max-w-5xl mx-auto w-full">
+            <div className="flex items-center justify-between mb-8 w-full">
                 <div className="flex items-center gap-4">
                     <button
                         onClick={() => navigate("/offers")}
@@ -203,7 +225,7 @@ const OfferForm = () => {
                 </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="max-w-5xl mx-auto w-full space-y-6 pb-20">
+            <form onSubmit={handleSubmit} className="w-full space-y-6 pb-20">
 
                 {/* Section: General Information */}
                 <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight} transition-all hover:shadow-2xl`}>
@@ -229,74 +251,59 @@ const OfferForm = () => {
                         <div className="space-y-2">
                             <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>Offer Type</label>
                             <CommonSelect
-                                options={offerTypes}
+                                options={Object.entries(offerTypeConfig).map(([value, cfg]) => ({ value, label: cfg.label }))}
                                 value={offerData.offerType}
-                                onChange={val => setOfferData({ ...offerData, offerType: val })}
+                                onChange={handleOfferTypeChange}
                                 className="w-full h-[58px]"
                             />
                         </div>
 
                         <div className="space-y-2">
                             <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>Start Date</label>
-                            <div className="relative">
-                                <Calendar className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
-                                <input
-                                    type="date"
-                                    value={offerData.startDate}
-                                    onChange={e => setOfferData({ ...offerData, startDate: e.target.value })}
-                                    className={`w-full pl-12 p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>End Date</label>
-                            <div className="relative">
-                                <Calendar className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
-                                <input
-                                    type="date"
-                                    value={offerData.endDate}
-                                    onChange={e => setOfferData({ ...offerData, endDate: e.target.value })}
-                                    className={`w-full pl-12 p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>Priority (1 is highest)</label>
-                            <input
-                                type="number"
-                                min="1"
-                                value={offerData.priority}
-                                onChange={e => setOfferData({ ...offerData, priority: parseInt(e.target.value) })}
-                                className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
+                            <DatePicker
+                                value={offerData.startDate}
+                                onChange={val => setOfferData({ ...offerData, startDate: val })}
+                                placeholder="dd-mm-yyyy"
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>Status</label>
-                            <div className="flex items-center gap-4 h-[58px]">
-                                <label className="flex items-center gap-2 cursor-pointer group">
-                                    <div
-                                        onClick={() => setOfferData({ ...offerData, isActive: true })}
-                                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${offerData.isActive ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}
-                                    >
-                                        {offerData.isActive && <div className="w-3 h-3 rounded-full bg-green-500" />}
-                                    </div>
-                                    <span className={`font-bold ${offerData.isActive ? 'text-green-600' : theme.textSecondary}`}>Active</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer group">
-                                    <div
-                                        onClick={() => setOfferData({ ...offerData, isActive: false })}
-                                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${!offerData.isActive ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}
-                                    >
-                                        {!offerData.isActive && <div className="w-3 h-3 rounded-full bg-red-500" />}
-                                    </div>
-                                    <span className={`font-bold ${!offerData.isActive ? 'text-red-600' : theme.textSecondary}`}>Inactive</span>
-                                </label>
-                            </div>
+                            <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>End Date</label>
+                            <DatePicker
+                                value={offerData.endDate}
+                                onChange={val => setOfferData({ ...offerData, endDate: val })}
+                                placeholder="dd-mm-yyyy"
+                            />
                         </div>
                     </div>
+
+                    {/* Branch Specific Toggle */}
+                    {(user?.allBranches || user?.isOwner || user?.isSuperAdmin) && branches.length > 1 && (
+                        <div className={`mt-6 pt-6 border-t ${theme.borderLight}`}>
+                            <div className={`flex items-center justify-between p-4 rounded-2xl ${applyToAllBranches ? theme.successBg + '/10' : theme.inputBg} border ${applyToAllBranches ? theme.successBorder : theme.inputBorder} transition-all`}>
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-xl ${applyToAllBranches ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+                                        <Building2 size={20} />
+                                    </div>
+                                    <div>
+                                        <h4 className={`text-sm font-black ${theme.textHeading} uppercase tracking-tight`}>Whole Shop Offer</h4>
+                                        <p className={`text-[10px] ${theme.textSecondary} font-bold`}>
+                                            {applyToAllBranches 
+                                                ? "This offer will be available in ALL branches of your shop." 
+                                                : `This offer will ONLY be available in ${branches.find(b => String(b._id || b.id) === String(activeBranchId))?.name || "the selected branch"}.`}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setApplyToAllBranches(!applyToAllBranches)}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${applyToAllBranches ? 'bg-green-500' : 'bg-gray-200'}`}
+                                >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${applyToAllBranches ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Section: Conditions */}
@@ -421,11 +428,11 @@ const OfferForm = () => {
                                 options={[
                                     { value: "PERCENT_DISCOUNT", label: "Percentage Discount" },
                                     { value: "FLAT_DISCOUNT", label: "Flat Amount Discount" },
-                                    { value: "FREE_ITEM", label: "Free Item(s)" },
-                                    { value: "SET_PRICE", label: "Fixed Set Price" }
+                                    { value: "FREE_ITEM", label: "Free Item" },
+                                    { value: "SET_PRICE", label: "Fixed Total Price" }
                                 ]}
                                 value={reward.rewardType}
-                                onChange={val => setReward({ ...reward, rewardType: val })}
+                                onChange={(val) => setReward({ ...reward, rewardType: val })}
                                 className="w-full h-[58px]"
                             />
                         </div>
@@ -520,15 +527,6 @@ const OfferForm = () => {
                     </div>
                 </div>
 
-                {/* Submit Feedback */}
-                <div className="flex justify-end pt-6">
-                    <div className="flex items-center gap-4 p-4 rounded-3xl bg-indigo-50 border border-indigo-100 max-w-md">
-                        <CheckCircle2 className="text-indigo-500 shrink-0" size={24} />
-                        <p className="text-xs text-indigo-800 font-bold leading-relaxed">
-                            Your changes will be applied to all branches within the selected business type. Make sure to double-check the validity dates.
-                        </p>
-                    </div>
-                </div>
 
             </form>
         </div>

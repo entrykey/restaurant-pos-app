@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { dashboardService } from '../../services/api';
-import { TrendingUp, TrendingDown, Banknote, Users, ShoppingBag, ArrowRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Coins, Users, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 
@@ -49,7 +49,7 @@ const ShopDashboard = () => {
         { label: 'Total Sales', value: formatCurrency(data?.totalSales || 0), icon: ShoppingBag, color: 'text-blue-600', bg: 'bg-blue-50', link: '/dashboard/sales' },
         { label: 'Today Profit', value: formatCurrency(data?.totalProfit || 0), icon: TrendingUp, color: (data?.totalProfit || 0) >= 0 ? 'text-green-600' : 'text-red-600', bg: (data?.totalProfit || 0) >= 0 ? 'bg-green-50' : 'bg-red-50', link: '/dashboard/operating-expenses' },
         { label: 'Pay In (Customers)', value: formatCurrency(data?.payIn || 0), icon: Users, color: 'text-orange-600', bg: 'bg-orange-50', link: '/dashboard/pay-in' },
-        { label: 'Pay Out (Suppliers)', value: formatCurrency(data?.payOut || 0), icon: Banknote, color: 'text-red-600', bg: 'bg-red-50', link: '/dashboard/pay-out' },
+        { label: 'Pay Out (Suppliers)', value: formatCurrency(data?.payOut || 0), icon: Coins, color: 'text-red-600', bg: 'bg-red-50', link: '/dashboard/pay-out' },
     ];
 
     return (

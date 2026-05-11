@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, Check, ChevronDown } from 'lucide-react';
 import { useTheme } from '../../../src/context/ThemeContext';
 
@@ -22,7 +23,10 @@ const CommonSelect = ({
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [activeIndex, setActiveIndex] = useState(0);
+    const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
     const dropdownRef = useRef(null);
+    const triggerRef = useRef(null);
+    const menuRef = useRef(null);
 
     const filteredOptions = options.filter(opt => {
         const label = typeof opt === 'object' ? opt[labelKey] : String(opt);
@@ -38,7 +42,10 @@ const CommonSelect = ({
 
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+            const isInsideTrigger = dropdownRef.current && dropdownRef.current.contains(event.target);
+            const isInsideMenu = menuRef.current && menuRef.current.contains(event.target);
+            
+            if (!isInsideTrigger && !isInsideMenu) {
                 setIsOpen(false);
             }
         };
@@ -50,7 +57,38 @@ const CommonSelect = ({
     // Reset activeIndex when filteredOptions changes or dropdown opens
     useEffect(() => {
         setActiveIndex(0);
+        if (isOpen && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            setCoords({
+                top: rect.bottom + window.scrollY,
+                left: rect.left + window.scrollX,
+                width: rect.width
+            });
+        }
     }, [searchTerm, isOpen]);
+
+    // Update position on scroll/resize
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const updatePosition = () => {
+            if (triggerRef.current) {
+                const rect = triggerRef.current.getBoundingClientRect();
+                setCoords({
+                    top: rect.bottom + window.scrollY,
+                    left: rect.left + window.scrollX,
+                    width: rect.width
+                });
+            }
+        };
+
+        window.addEventListener('scroll', updatePosition, true);
+        window.addEventListener('resize', updatePosition);
+        return () => {
+            window.removeEventListener('scroll', updatePosition, true);
+            window.removeEventListener('resize', updatePosition);
+        };
+    }, [isOpen]);
 
     const handleSelect = (opt) => {
         if (!opt || disabled) return;
@@ -90,6 +128,7 @@ const CommonSelect = ({
                     }
                     if (onKeyDown) onKeyDown(e);
                 }}
+                ref={triggerRef}
                 className={`w-full px-4 py-3 flex items-center justify-between cursor-pointer border-2 rounded-2xl outline-none transition-all font-bold common-select-trigger ${isOpen ? 'border-indigo-500' : (triggerClassName ? '' : 'border-transparent')} ${triggerClassName} ${theme.inputBg} ${theme.textPrimary} ${disabled ? 'pointer-events-none' : ''}`}
                 tabIndex={disabled ? -1 : 0}
             >
@@ -109,8 +148,18 @@ const CommonSelect = ({
                 />
             )}
 
-            {isOpen && (
-                <div className={`absolute top-full left-0 right-0 mt-2 rounded-2xl shadow-2xl border z-50 overflow-hidden divide-y animate-in slide-in-from-top-2 duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}>
+            {isOpen && createPortal(
+                <div 
+                    ref={menuRef}
+                    className={`fixed rounded-2xl shadow-2xl border z-[3000] overflow-hidden divide-y animate-in fade-in slide-in-from-top-2 duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}
+                    style={{ 
+                        top: coords.top - window.scrollY, 
+                        left: coords.left, 
+                        width: coords.width,
+                        marginTop: '8px'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
                     <div className={`p-3 border-b pointer-events-auto ${theme.borderLight} ${theme.sectionBg}`}>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -121,7 +170,6 @@ const CommonSelect = ({
                                 onKeyDown={handleSearchKeyDown}
                                 placeholder={searchPlaceholder}
                                 className={`w-full pl-9 pr-3 py-2 text-sm border rounded-xl outline-none focus:border-indigo-500 transition-all font-medium ${theme.inputBg} ${theme.inputBorder} ${theme.textPrimary}`}
-                                onClick={(e) => e.stopPropagation()}
                             />
                         </div>
                     </div>
@@ -168,7 +216,8 @@ const CommonSelect = ({
                             {extraAction}
                         </div>
                     )}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

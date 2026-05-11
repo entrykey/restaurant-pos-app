@@ -5,7 +5,7 @@ import { toast } from 'react-hot-toast';
 import { X } from 'lucide-react';
 import CommonSelect from '../../../components/ui/CommonSelect';
 
-const TableDialog = ({ isOpen, onClose, onSuccess, table, categories, shopId, branchId }) => {
+const TableDialog = ({ isOpen, onClose, onSuccess, table, categories, shopId, branchId, initialCategoryId }) => {
     const { theme } = useTheme();
     const [loading, setLoading] = useState(false);
 
@@ -26,10 +26,10 @@ const TableDialog = ({ isOpen, onClose, onSuccess, table, categories, shopId, br
             setFormData({
                 tableNumber: '',
                 capacity: 4,
-                diningCategoryId: categories?.[0]?._id || '',
+                diningCategoryId: initialCategoryId || categories?.[0]?._id || '',
             });
         }
-    }, [table, categories, isOpen]);
+    }, [table, categories, isOpen, initialCategoryId]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;

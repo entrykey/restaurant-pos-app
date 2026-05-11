@@ -11,10 +11,11 @@ import { toast } from 'react-hot-toast';
 import DatePicker from '../../components/ui/DatePicker';
 import CommonSelect from '../../components/ui/CommonSelect';
 import Modal from '../../components/ui/Modal';
+import BarcodePrintDialog from '../../components/modals/BarcodePrintDialog';
 
 const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialog, onClose, fixedBranchId, prefillData, activeTabOverride, id: propId, sourcePage: propSourcePage, returnState: propReturnState, returnUrl: propReturnUrl }) => {
     const { user } = useAuth();
-    const { activeBranchId, branches, organization, currentShopId, businessTypeData } = useApp();
+    const { activeBranchId, branches, organization, currentShopId, businessTypeData, formatCurrency } = useApp();
     const { theme } = useTheme();
     const navigate = useNavigate();
     const { id: paramId } = useParams();
@@ -100,9 +101,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         isDefault: false
     });
 
-    const CORE_FIELD_KEYS = asDialog 
-        ? ["barcode", "name", "category_id", "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type", "is_sellable"]
-        : ["barcode", "name", "category_id", "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type", "is_sellable"];
+    const baseCoreFields = ["barcode", "name", "category_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type", "is_sellable"];
+    const CORE_FIELD_KEYS = showAdvanced ? baseCoreFields : ["unit_id", ...baseCoreFields];
 
     // Determine visible fields based on activeTab
     const getVisibleFields = () => {
@@ -110,23 +110,26 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         if (activeTab === "menu") {
             fields = [
                 "barcode", "item_code", "name", "description", "category_id",
-                "unit_id", "selling_price", "mrp", "tax_percent", "hsn_sac_code", "stock_applicable",
+                "unit_id", "secondary_unit_id", "conversion_factor", "selling_price", "mrp", "tax_percent", "hsn_sac_code", "stock_applicable",
                 "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking"
             ];
         } else if (activeTab === "raw") {
             fields = [
                 "barcode", "item_code", "name", "description", "category_id",
-                "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "hsn_sac_code",
+                "unit_id", "secondary_unit_id", "conversion_factor", "purchase_price", "selling_price", "mrp", "tax_percent", "hsn_sac_code",
                 "stock_applicable", "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking", "is_sellable"
             ];
         } else {
             // Trade tab
             fields = [
                 "barcode", "item_code", "name", "description", "category_id",
-                "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "hsn_sac_code",
+                "unit_id", "secondary_unit_id", "conversion_factor", "purchase_price", "selling_price", "mrp", "tax_percent", "hsn_sac_code",
                 "stock_applicable", "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking", "status"
             ];
         }
+
+        // Add default unit preferences to all tabs
+        fields.push("default_purchase_unit", "default_sales_unit");
 
         if (!isGSTApplicable) {
             fields = fields.filter(f => f !== 'hsn_sac_code');
@@ -280,10 +283,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     parts.push(`<div class="slot barcode"><img class="barcode-img" src="${barcode.fullUrl}" alt="Barcode" /></div>`);
                 }
                 if (key === "price" && includePrice && item?.sellingPrice != null) {
-                    parts.push(`<div class="slot line price">${showPriceLabel ? 'Price: ' : ''}₹${Number(item.sellingPrice).toFixed(2)}</div>`);
+                    parts.push(`<div class="slot line price">${showPriceLabel ? 'Price: ' : ''}${formatCurrency ? formatCurrency(item.sellingPrice) : Number(item.sellingPrice).toFixed(2)}</div>`);
                 }
                 if (key === "mrp" && includeMRP && item?.mrp != null) {
-                    parts.push(`<div class="slot line mrp">${showMRPLabel ? 'MRP: ' : ''}₹${Number(item.mrp).toFixed(2)}</div>`);
+                    parts.push(`<div class="slot line mrp">${showMRPLabel ? 'MRP: ' : ''}${formatCurrency ? formatCurrency(item.mrp) : Number(item.mrp).toFixed(2)}</div>`);
                 }
                 if (key === "name" && includeName && item?.name) {
                     parts.push(`<div class="slot line name">${showNameLabel ? 'Item: ' : ''}${item.name}</div>`);
@@ -405,7 +408,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         const barcodeInput = document.getElementById(fieldId);
         if (barcodeInput) {
             barcodeInput.focus();
-            toast.info("Scanner ready. Please scan your item.");
+            toast("Scanner ready. Please scan your item.");
         }
     };
 
@@ -438,6 +441,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         _id: String(full._id),
                         categoryId: full.categoryId?._id || full.categoryId,
                         unitId: full.unitId?._id || full.unitId,
+                        secondaryUnitId: full.secondaryUnitId?._id || full.secondaryUnitId || "",
+                        conversionFactor: full.conversionFactor ?? 1,
+                        defaultPurchaseUnit: full.defaultPurchaseUnit || "PRIMARY",
+                        defaultSalesUnit: full.defaultSalesUnit || "PRIMARY",
                         supplierId: full.supplierId?._id || full.supplierId,
                         brandId: full.brandId?._id || full.brandId,
                         purchasePrice: full.pricing?.purchasePrice ?? full.purchasePrice ?? 0,
@@ -470,7 +477,17 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         };
 
         fetchItemData();
-    }, [id, isEditing]);
+    }, [id, isEditing, location.state]);
+
+    useEffect(() => {
+        if (!isLoading && id && formData._id) {
+            const searchParams = new URLSearchParams(location.search);
+            if (searchParams.get('printBarcode') === 'true') {
+                handlePrintBarcode();
+                navigate(location.pathname, { replace: true, state: location.state });
+            }
+        }
+    }, [isLoading, id, formData._id, location.search, navigate, handlePrintBarcode]);
 
     useEffect(() => {
         if (!isEditing && !formData.barcode && !isLoading) {
@@ -614,7 +631,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             ];
         } else if (fieldKey === "supplier_id") {
             options = suppliers.map(s => ({ label: s.name, value: s._id }));
-        } else if (fieldKey === "unit_id") {
+        } else if (fieldKey === "unit_id" || fieldKey === "secondary_unit_id") {
             options = units.map(u => ({ label: u.name || u.code, value: u._id }));
         } else if (fieldKey === "tax_percent") {
             options = shopTaxes.map(t => {
@@ -803,7 +820,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             status: formData.status || "ACTIVE",
             ingredients: finalIngredients,
             attributes: itemAttributes,
-            portionPricing: formData.portionPricing || []
+            portionPricing: formData.portionPricing || [],
+            secondaryUnitId: formData.secondaryUnitId || null,
+            conversionFactor: parseFloat(formData.conversionFactor) || 1,
+            defaultPurchaseUnit: formData.defaultPurchaseUnit || "PRIMARY",
+            defaultSalesUnit: formData.defaultSalesUnit || "PRIMARY"
         };
 
         try {
@@ -994,7 +1015,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 let options = field.options || [];
                                 if (fieldKey === 'category_id') {
                                     options = categories.map(c => ({ label: c.name, value: c._id }));
-                                } else if (fieldKey === 'unit_id') {
+                                } else if (fieldKey === 'unit_id' || fieldKey === 'secondary_unit_id') {
                                     options = units.map(u => ({ label: u.name, value: u._id }));
                                 } else if (fieldKey === 'tax_percent') {
                                     options = shopTaxes.map(t => {
@@ -1135,8 +1156,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         {showAdvanced && (
                             <div className="space-y-12 animate-in slide-in-from-top-4 duration-300">
                                 {Object.entries(groupedFields).map(([section, fields]) => {
-                                    // Filter fields that are NOT in CORE_FIELD_KEYS and filter redundant tax_id duplicate
-                                    const advancedFieldsInSection = fields.filter(f => !CORE_FIELD_KEYS.includes(f.originalKey) && f.originalKey !== 'tax_id');
+                                    const advancedFieldsInSection = fields.filter(f => {
+                                        if (section === 'Units' && f.originalKey === 'unit_id') return true;
+                                        return !CORE_FIELD_KEYS.includes(f.originalKey) && f.originalKey !== 'tax_id';
+                                    });
                                     
                                     if (advancedFieldsInSection.length === 0) return null;
 
@@ -1152,7 +1175,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     let options = field.options || [];
                                                     if (field.originalKey === 'category_id') {
                                                         options = categories.map(c => ({ label: c.name, value: c._id }));
-                                                    } else if (field.originalKey === 'unit_id') {
+                                                    } else if (field.originalKey === 'unit_id' || field.originalKey === 'secondary_unit_id') {
                                                         options = units.map(u => ({ label: u.name, value: u._id }));
                                                     } else if (field.originalKey === 'tax_id') {
                                                         options = shopTaxes.map(t => {
@@ -1192,7 +1215,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                                         type="button"
                                                                         onClick={() => {
                                                                             const inp = document.getElementById('field-input-barcode-adv');
-                                                                            if (inp) { inp.focus(); toast.info("Scanner ready."); }
+                                                                            if (inp) { inp.focus(); toast("Scanner ready."); }
                                                                         }}
                                                                         className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-xl transition-all"
                                                                         title="Scan with Scanner"
@@ -1247,6 +1270,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                                 className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
                                                                 placeholder={field.placeholder || field.label}
                                                             />
+                                                        )}
+                                                        {field.originalKey === 'conversion_factor' && formData.secondaryUnitId && formData.unitId && formData.conversionFactor > 1 && (
+                                                            <div className="mt-2 text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-100 flex items-center gap-1.5 w-fit animate-in fade-in slide-in-from-top-1 duration-300">
+                                                                1 {units.find(u => u._id === formData.secondaryUnitId)?.name || 'Secondary'} = {formData.conversionFactor} {units.find(u => u._id === formData.unitId)?.name || 'Primary'}
+                                                            </div>
                                                         )}
                                                         {errors[field.originalKey] && (
                                                             <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors[field.originalKey]}</p>
@@ -1537,8 +1565,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                         x{portion.quantityFactor}
                                                     </span>
                                                 </td>
-                                                <td className="p-4">₹{portion.price}</td>
-                                                <td className="p-4 text-gray-400">₹{portion.mrp || 0}</td>
+                                                <td className="p-4">{formatCurrency(portion.price)}</td>
+                                                <td className="p-4 text-gray-400">{formatCurrency(portion.mrp || 0)}</td>
                                                 <td className="p-4 text-center">
                                                     <input 
                                                         type="radio" 
@@ -1630,425 +1658,13 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 </div>
             )}
             {/* Barcode Print Dialog */}
-            <Modal
+            <BarcodePrintDialog
                 isOpen={barcodePrintDialog.isOpen}
                 onClose={() => setBarcodePrintDialog(prev => ({ ...prev, isOpen: false }))}
-                title="Print Barcodes"
-                className="max-w-4xl"
-            >
-                <div className="flex flex-col md:flex-row gap-8">
-                    {/* Left Panel: Settings */}
-                    <div className="flex-1 space-y-6">
-                        <div className="grid grid-cols-2 gap-6">
-                            <div className="space-y-1 col-span-2">
-                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Selected Item</label>
-                                <div className={`text-sm font-black ${theme.textPrimary} p-3 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border ${theme.borderLight} min-h-[44px] flex items-center`}>
-                                    {barcodePrintDialog.item?.name || "—"}
-                                </div>
-                            </div>
-                            <div className="space-y-1">
-                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Number of Copies</label>
-                                <input
-                                    type="number"
-                                    min={1}
-                                    value={barcodePrintDialog.copies}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, copies: e.target.value }))}
-                                    className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-sm`}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Label Size (W×H mm)</label>
-                                <div className="flex items-center gap-2">
-                                    <div className="relative flex-1">
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            value={barcodePrintDialog.labelWidth}
-                                            onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelWidth: parseFloat(e.target.value || 0) }))}
-                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs pl-3 pr-6`}
-                                        />
-                                        <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>W</span>
-                                    </div>
-                                    <span className={theme.textMuted}>×</span>
-                                    <div className="relative flex-1">
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            value={barcodePrintDialog.labelHeight}
-                                            onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelHeight: parseFloat(e.target.value || 0) }))}
-                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs pl-3 pr-6`}
-                                        />
-                                        <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>H</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {barcodePrintDialog.printMode === 'ROLL' && (
-                                <div className="space-y-1">
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Labels per Row (e.g. 2 for 2-up rolls)</label>
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        max={10}
-                                        value={barcodePrintDialog.labelsPerRow}
-                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelsPerRow: parseInt(e.target.value || 1) }))}
-                                        className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-sm`}
-                                    />
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Barcode Size (%)</label>
-                                    <input
-                                        type="number"
-                                        min={10}
-                                        max={100}
-                                        value={barcodePrintDialog.barcodeHeight}
-                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, barcodeHeight: parseInt(e.target.value || 0) }))}
-                                        className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs`}
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Font Size (px)</label>
-                                    <input
-                                        type="number"
-                                        min={6}
-                                        max={30}
-                                        value={barcodePrintDialog.baseFontSize}
-                                        onChange={e => setBarcodePrintDialog(prev => ({ ...prev, baseFontSize: parseInt(e.target.value || 0) }))}
-                                        className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs`}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {Number(barcodePrintDialog.copies) > 1 && (
-                            <div className="grid grid-cols-2 gap-4 p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/50">
-                                <div className="space-y-1 col-span-2">
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Printer / Paper Type</label>
-                                    <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
-                                        <button
-                                            type="button"
-                                            onClick={() => setBarcodePrintDialog(prev => ({ ...prev, printMode: 'ROLL' }))}
-                                            className={`flex-1 py-1.5 text-[9px] font-black rounded-lg transition-all ${barcodePrintDialog.printMode === 'ROLL' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600' : theme.textMuted}`}
-                                        >
-                                            THERMAL ROLL (1 label / page)
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setBarcodePrintDialog(prev => ({ ...prev, printMode: 'SHEET' }))}
-                                            className={`flex-1 py-1.5 text-[9px] font-black rounded-lg transition-all ${barcodePrintDialog.printMode === 'SHEET' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600' : theme.textMuted}`}
-                                        >
-                                            A4 / STICKER SHEETS
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="space-y-2 col-span-2 mt-2">
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Layout Direction</label>
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "ROWS" }))}
-                                            className={`flex-1 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${barcodePrintDialog.layout === "ROWS"
-                                                ? (theme.mode === 'dark' ? "border-indigo-400 text-indigo-300 bg-indigo-400/10" : "border-indigo-500 text-indigo-600 bg-indigo-50")
-                                                : `${theme.borderLight} ${theme.textSecondary} ${theme.surfaceBg}`
-                                                }`}
-                                        >
-                                            Row-wise
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setBarcodePrintDialog(prev => ({ ...prev, layout: "COLUMNS" }))}
-                                            className={`flex-1 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${barcodePrintDialog.layout === "COLUMNS"
-                                                ? (theme.mode === 'dark' ? "border-indigo-400 text-indigo-300 bg-indigo-400/10" : "border-indigo-500 text-indigo-600 bg-indigo-50")
-                                                : `${theme.borderLight} ${theme.textSecondary} ${theme.surfaceBg}`
-                                                }`}
-                                        >
-                                            Column-wise
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="space-y-1 col-span-2">
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Label Gaps (H / V mm)</label>
-                                    <div className="flex items-center gap-2">
-                                        <div className="relative flex-1">
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                value={barcodePrintDialog.labelGapX}
-                                                onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelGapX: parseFloat(e.target.value || 0) }))}
-                                                className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs pl-3 pr-6`}
-                                            />
-                                            <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>X</span>
-                                        </div>
-                                        <div className="relative flex-1">
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                value={barcodePrintDialog.labelGapY}
-                                                onChange={e => setBarcodePrintDialog(prev => ({ ...prev, labelGapY: parseFloat(e.target.value || 0) }))}
-                                                className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs pl-3 pr-6`}
-                                            />
-                                            <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold ${theme.textMuted}`}>Y</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <label className={`flex items-center gap-2 p-3 rounded-xl border ${theme.borderLight} cursor-pointer hover:${theme.inputBg} transition-colors`}>
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeLogo}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeLogo: e.target.checked }))}
-                                    className="rounded text-indigo-500"
-                                />
-                                <span className={`text-xs font-black uppercase ${theme.textSecondary}`}>Logo</span>
-                            </label>
-                            <label className={`flex items-center gap-2 p-3 rounded-xl border ${theme.borderLight} cursor-pointer hover:${theme.inputBg} transition-colors`}>
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeName}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeName: e.target.checked }))}
-                                    className="rounded text-indigo-500"
-                                />
-                                <span className={`text-xs font-black uppercase ${theme.textSecondary}`}>Name</span>
-                            </label>
-                            <label className={`flex items-center gap-2 p-3 rounded-xl border ${theme.borderLight} cursor-pointer hover:${theme.inputBg} transition-colors`}>
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeCode}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeCode: e.target.checked }))}
-                                    className="rounded text-indigo-500"
-                                />
-                                <span className={`text-xs font-black uppercase ${theme.textSecondary}`}>Item Code</span>
-                            </label>
-                            <label className={`flex items-center gap-2 p-3 rounded-xl border ${theme.borderLight} cursor-pointer hover:${theme.inputBg} transition-colors`}>
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includePrice}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includePrice: e.target.checked }))}
-                                    className="rounded text-indigo-500"
-                                />
-                                <span className={`text-xs font-black uppercase ${theme.textSecondary}`}>Price</span>
-                            </label>
-                            <label className={`flex items-center gap-2 p-3 rounded-xl border ${theme.borderLight} cursor-pointer hover:${theme.inputBg} transition-colors`}>
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeMRP}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeMRP: e.target.checked }))}
-                                    className="rounded text-indigo-500"
-                                />
-                                <span className={`text-xs font-black uppercase ${theme.textSecondary}`}>MRP</span>
-                            </label>
-                            <label className={`flex items-center gap-2 p-3 rounded-xl border ${theme.borderLight} cursor-pointer hover:${theme.inputBg} transition-colors`}>
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeBatch}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeBatch: e.target.checked }))}
-                                    className="rounded text-indigo-500"
-                                />
-                                <span className={`text-xs font-black uppercase ${theme.textSecondary}`}>Batch</span>
-                            </label>
-                            <label className={`flex items-center gap-2 p-3 rounded-xl border ${theme.borderLight} cursor-pointer hover:${theme.inputBg} transition-colors`}>
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeExpiry}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeExpiry: e.target.checked }))}
-                                    className="rounded text-indigo-500"
-                                />
-                                <span className={`text-xs font-black uppercase ${theme.textSecondary}`}>Expiry</span>
-                            </label>
-                            <label className={`flex items-center gap-2 p-3 rounded-xl border ${theme.borderLight} cursor-pointer hover:${theme.inputBg} transition-colors`}>
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeUnit}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeUnit: e.target.checked }))}
-                                    className="rounded text-indigo-500"
-                                />
-                                <span className={`text-xs font-black uppercase ${theme.textSecondary}`}>Unit/Qty</span>
-                            </label>
-                            <label className={`flex items-center gap-2 p-3 rounded-xl border ${theme.borderLight} cursor-pointer hover:${theme.inputBg} transition-colors`}>
-                                <input
-                                    type="checkbox"
-                                    checked={barcodePrintDialog.includeShopName}
-                                    onChange={e => setBarcodePrintDialog(prev => ({ ...prev, includeShopName: e.target.checked }))}
-                                    className="rounded text-indigo-500"
-                                />
-                                <span className={`text-xs font-black uppercase ${theme.textSecondary}`}>Shop Name</span>
-                            </label>
-                        </div>
-
-                        {/* Label Toggles Section */}
-                        <div className="space-y-4 p-4 rounded-2xl bg-gray-50/50 dark:bg-gray-800/10 border ${theme.borderLight}">
-                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-2`}>Include Label Text (e.g. "Price: ₹100")</label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                {[
-                                    { key: 'showNameLabel', label: 'Item Name', enabled: barcodePrintDialog.includeName },
-                                    { key: 'showCodeLabel', label: 'Item Code', enabled: barcodePrintDialog.includeCode },
-                                    { key: 'showPriceLabel', label: 'Price', enabled: barcodePrintDialog.includePrice },
-                                    { key: 'showMRPLabel', label: 'MRP', enabled: barcodePrintDialog.includeMRP },
-                                    { key: 'showBatchLabel', label: 'Batch', enabled: barcodePrintDialog.includeBatch },
-                                    { key: 'showExpiryLabel', label: 'Expiry', enabled: barcodePrintDialog.includeExpiry },
-                                    { key: 'showUnitLabel', label: 'Unit/Qty', enabled: barcodePrintDialog.includeUnit }
-                                ].map(item => (
-                                    <label 
-                                        key={item.key} 
-                                        className={`flex items-center gap-2 cursor-pointer transition-opacity ${!item.enabled ? 'opacity-40 pointer-events-none' : 'hover:opacity-80'}`}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={barcodePrintDialog[item.key]}
-                                            onChange={e => setBarcodePrintDialog(prev => ({ ...prev, [item.key]: e.target.checked }))}
-                                            disabled={!item.enabled}
-                                            className="w-3.5 h-3.5 rounded text-indigo-500"
-                                        />
-                                        <span className={`text-[9px] font-bold uppercase ${theme.textSecondary}`}>{item.label}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        {(barcodePrintDialog.includeBatch || barcodePrintDialog.includeExpiry || barcodePrintDialog.includeUnit) && (
-                            <div className="grid grid-cols-2 gap-4">
-                                {barcodePrintDialog.includeBatch && (
-                                    <div className="space-y-1">
-                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Batch Override</label>
-                                        <input
-                                            type="text"
-                                            value={barcodePrintDialog.batchOverride ?? ""}
-                                            onChange={e => setBarcodePrintDialog(prev => ({ ...prev, batchOverride: e.target.value }))}
-                                            placeholder="Enter batch"
-                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs`}
-                                        />
-                                    </div>
-                                )}
-                                {barcodePrintDialog.includeExpiry && (
-                                    <div className="space-y-1">
-                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Expiry Override</label>
-                                        <DatePicker
-                                            value={barcodePrintDialog.expiryOverride ?? ""}
-                                            onChange={val => setBarcodePrintDialog(prev => ({ ...prev, expiryOverride: val }))}
-                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs`}
-                                        />
-                                    </div>
-                                )}
-                                {barcodePrintDialog.includeUnit && (
-                                    <div className="space-y-1">
-                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Unit/Qty Override</label>
-                                        <input
-                                            type="text"
-                                            value={barcodePrintDialog.unitValueOverride ?? ""}
-                                            onChange={e => setBarcodePrintDialog(prev => ({ ...prev, unitValueOverride: e.target.value }))}
-                                            placeholder="e.g. 500g, 1 Box"
-                                            className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs`}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="space-y-1">
-                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Custom Text</label>
-                            <input
-                                type="text"
-                                value={barcodePrintDialog.customText}
-                                onChange={e => setBarcodePrintDialog(prev => ({ ...prev, customText: e.target.value }))}
-                                placeholder="Additional text to show on label"
-                                className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-black text-xs`}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Right Panel: Preview */}
-                    <div className="w-full md:w-[320px] space-y-6 md:sticky md:top-8 h-fit transition-all">
-                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Label Preview</label>
-                        <div className="flex flex-col items-center justify-center gap-4">
-                            <div
-                                className={`${theme.surfaceBg} border-2 border-dashed ${theme.borderLight} rounded-2xl flex items-center justify-center overflow-auto p-4`}
-                                style={{ width: "240px", height: "180px" }}
-                            >
-                                <div
-                                    className="bg-white text-black shadow-lg"
-                                    style={{
-                                        width: `${barcodePrintDialog.labelWidth * 3}px`,
-                                        minHeight: `${barcodePrintDialog.labelHeight * 3}px`,
-                                        padding: "10px",
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        textAlign: "center",
-                                        fontSize: `${barcodePrintDialog.baseFontSize}px`,
-                                        boxSizing: "border-box"
-                                    }}
-                                >
-                                    {barcodePrintDialog.elementsOrder.map((key) => {
-                                        const actualShopName = organization?.name || organization?.businessName;
-                                        if (key === "shopName" && barcodePrintDialog.includeShopName && actualShopName) {
-                                            return <div key="shopName" style={{ fontWeight: 800, fontSize: `${barcodePrintDialog.baseFontSize * 1.05}px`, textTransform: 'uppercase', marginBottom: '2px', lineHeight: 1, textAlign: "center", width: "100%" }}>{actualShopName}</div>;
-                                        }
-                                        if (key === "logo" && barcodePrintDialog.includeLogo && organization?.logoUrl) {
-                                            const root = (api.defaults.baseURL || "").replace(/\/api\/?$/, "");
-                                            const logoUrl = organization.logoUrl.startsWith("http") ? organization.logoUrl : `${root}${organization.logoUrl}`;
-                                            return <img key="logo" src={logoUrl} alt="Logo" style={{ maxHeight: "40px", maxWidth: "80%", objectFit: "contain", marginBottom: "4px" }} />;
-                                        }
-                                        if (key === "barcode" && barcodePrintDialog.barcode?.fullUrl) {
-                                            return <img key="barcode" src={barcodePrintDialog.barcode.fullUrl} alt="Barcode" style={{ maxHeight: `${barcodePrintDialog.labelHeight * 3 * (barcodePrintDialog.barcodeHeight / 100)}px`, maxWidth: "95%", height: "auto", marginBottom: "2px" }} />;
-                                        }
-                                        if (key === "price" && barcodePrintDialog.includePrice && barcodePrintDialog.item?.sellingPrice != null) {
-                                            return <div key="price" style={{ fontWeight: 800, fontSize: `${barcodePrintDialog.baseFontSize * 0.9}px`, lineHeight: 1, textAlign: "center", width: "100%" }}>{barcodePrintDialog.showPriceLabel ? 'Price: ' : ''}₹{Number(barcodePrintDialog.item.sellingPrice).toFixed(2)}</div>;
-                                        }
-                                        if (key === "mrp" && barcodePrintDialog.includeMRP && barcodePrintDialog.item?.mrp != null) {
-                                            return <div key="mrp" style={{ fontWeight: 800, fontSize: `${barcodePrintDialog.baseFontSize * 0.9}px`, lineHeight: 1, textAlign: "center", width: "100%" }}>{barcodePrintDialog.showMRPLabel ? 'MRP: ' : ''}₹{Number(barcodePrintDialog.item.mrp).toFixed(2)}</div>;
-                                        }
-                                        if (key === "name" && barcodePrintDialog.includeName && barcodePrintDialog.item?.name) {
-                                            return <div key="name" style={{ fontWeight: 700, lineHeight: 1, textAlign: "center", width: "100%" }}>{barcodePrintDialog.showNameLabel ? 'Item: ' : ''}{barcodePrintDialog.item.name}</div>;
-                                        }
-                                        if (key === "code" && barcodePrintDialog.includeCode && barcodePrintDialog.item?.itemCode) {
-                                            return <div key="code" style={{ fontSize: `${barcodePrintDialog.baseFontSize * 0.8}px`, lineHeight: 1, textAlign: "center", width: "100%" }}>{barcodePrintDialog.showCodeLabel ? 'Code: ' : ''}{barcodePrintDialog.item.itemCode}</div>;
-                                        }
-                                        if (key === "unit" && barcodePrintDialog.includeUnit && barcodePrintDialog.unitValueOverride) {
-                                            return <div key="unit" style={{ fontWeight: 600, fontSize: `${barcodePrintDialog.baseFontSize * 0.85}px`, lineHeight: 1, textAlign: "center", width: "100%" }}>{barcodePrintDialog.showUnitLabel ? 'Qty: ' : ''}{barcodePrintDialog.unitValueOverride}</div>;
-                                        }
-                                        if (key === "batch" && barcodePrintDialog.includeBatch && (barcodePrintDialog.batchOverride)) {
-                                            return <div key="batch" style={{ fontSize: `${barcodePrintDialog.baseFontSize * 0.8}px`, lineHeight: 1, textAlign: "center", width: "100%" }}>{barcodePrintDialog.showBatchLabel ? 'Batch: ' : ''}{barcodePrintDialog.batchOverride}</div>;
-                                        }
-                                        if (key === "expiry" && barcodePrintDialog.includeExpiry && (barcodePrintDialog.expiryOverride)) {
-                                            return <div key="expiry" style={{ fontSize: `${barcodePrintDialog.baseFontSize * 0.8}px`, lineHeight: 1, textAlign: "center", width: "100%" }}>{barcodePrintDialog.showExpiryLabel ? 'Exp: ' : ''}{barcodePrintDialog.expiryOverride}</div>;
-                                        }
-                                        if (key === "custom" && barcodePrintDialog.customText) {
-                                            return <div key="custom" style={{ fontSize: "8px", lineHeight: 1 }}>{barcodePrintDialog.customText}</div>;
-                                        }
-                                        return null;
-                                    })}
-                                </div>
-                            </div>
-                            <p className={`text-[10px] ${theme.textMuted} text-center`}>
-                                Drag elements to reorder or click print to send to your label printer.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className={`mt-10 py-4 border-t ${theme.borderLight} flex justify-end gap-3`}>
-                    <button
-                        onClick={() => setBarcodePrintDialog(prev => ({ ...prev, isOpen: false }))}
-                        className={`px-8 py-3 rounded-xl font-bold ${theme.textSecondary} hover:${theme.inputBg.replace('bg-', '')} transition-colors`}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleConfirmBarcodePrint}
-                        className={`${theme.buttonBg} ${theme.buttonText} px-10 py-3 rounded-xl font-black shadow-lg shadow-indigo-200 flex items-center gap-2 active:scale-95 transition-all`}
-                    >
-                        <Printer size={20} />
-                        Print Labels
-                    </button>
-                </div>
-            </Modal>
+                dialogState={barcodePrintDialog}
+                setDialogState={setBarcodePrintDialog}
+                onConfirmPrint={handleConfirmBarcodePrint}
+            />
         </div>
     );
 };

@@ -38,6 +38,7 @@ const TakeawayOrder = ({
     setBillingStage,
     initiateAddItem,
     updateItemQuantity,
+    updateItemUnit,
     openNoteModal,
     takeawayCustName,
     setTakeawayCustName,
@@ -141,6 +142,10 @@ const TakeawayOrder = ({
                     ? "Weight"
                     : item.sellingType || "Standard",
                 unitId: item.unitId,
+                secondaryUnitId: item.secondaryUnitId,
+                secondaryUnitName: item.secondaryUnitId?.name || "",
+                conversionFactor: item.conversionFactor || 1,
+                selectedUnit: item.defaultSalesUnit || "PRIMARY",
                 quantityOnHand: item.quantityOnHand ?? 0,
             }));
             setLocalMenu(mapped);
@@ -237,6 +242,10 @@ const TakeawayOrder = ({
                         ? "Weight"
                         : item.sellingType || "Standard",
                     unitId: item.unitId,
+                    secondaryUnitId: item.secondaryUnitId,
+                    secondaryUnitName: item.secondaryUnitId?.name || "",
+                    conversionFactor: item.conversionFactor || 1,
+                    selectedUnit: item.defaultSalesUnit || "PRIMARY",
                     quantityOnHand: item.quantityOnHand ?? 0,
                 }));
 
@@ -273,6 +282,14 @@ const TakeawayOrder = ({
         const previouslySent = item.sentQuantity || 0;
         return (item.quantity || 0) - previouslySent > 0;
     });
+
+    const billDetails = calculateBillDetails(
+        currentOrder.items,
+        billDiscount,
+        settings?.defaultTaxPercent || 0,
+        false,
+        isTakeaway ? exchangeCredit : 0
+    );
 
     return (
         <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg}`}>
@@ -571,11 +588,40 @@ const TakeawayOrder = ({
                                                             {formatCurrency(calculateItemTotal(item))}
                                                         </span>
                                                     </div>
-                                                    {item.selectedVariant && (
-                                                        <div className="mt-1">
-                                                            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
-                                                                {item.selectedVariant.name}
+                                                    {/* Unit Selector for multi-unit items */}
+                                                    {(item.unitId && item.secondaryUnitId) && (
+                                                        <div className="mt-1 flex items-center gap-2">
+                                                            <div className={`flex rounded-lg border ${theme.borderLight} overflow-hidden text-[10px] font-black`}>
+                                                                <button
+                                                                    onClick={() => updateItemUnit(idx, "PRIMARY")}
+                                                                    className={`px-2 py-0.5 ${item.selectedUnit !== "SECONDARY" ? "bg-indigo-600 text-white" : `${theme.surfaceBg} ${theme.textMuted}`}`}
+                                                                >
+                                                                    {item.unitName || "Pri"}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => updateItemUnit(idx, "SECONDARY")}
+                                                                    className={`px-2 py-0.5 border-l ${theme.borderLight} ${item.selectedUnit === "SECONDARY" ? "bg-indigo-600 text-white" : `${theme.surfaceBg} ${theme.textMuted}`}`}
+                                                                >
+                                                                    {item.secondaryUnitName || "Sec"}
+                                                                </button>
+                                                            </div>
+                                                            <span className={`text-[9px] ${theme.textMuted}`}>
+                                                                {item.selectedUnit === "SECONDARY" ? `1 ${item.secondaryUnitName} = ${item.conversionFactor} ${item.unitName}` : ""}
                                                             </span>
+                                                        </div>
+                                                    )}
+                                                    {(item.selectedVariant || billDetails.appliedOfferItemIds?.includes(item.id || item._id)) && (
+                                                        <div className="mt-1 flex flex-wrap gap-1">
+                                                            {item.selectedVariant && (
+                                                                <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
+                                                                    {item.selectedVariant.name}
+                                                                </span>
+                                                            )}
+                                                            {billDetails.appliedOfferItemIds?.includes(item.id || item._id) && (
+                                                                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide flex items-center gap-1">
+                                                                    <Check size={10} strokeWidth={4} /> Offer Applied
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     )}
                                                     {item.suggestion && (
@@ -603,14 +649,6 @@ const TakeawayOrder = ({
 
                     <div className={`p-4 md:p-6 ${theme.surfaceBg} border-t ${theme.borderLight} shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 space-y-3`}>
                         {(() => {
-                            const billDetails = calculateBillDetails(
-                                currentOrder.items,
-                                billDiscount,
-                                settings?.defaultTaxPercent || 0,
-                                false,
-                                isTakeaway ? exchangeCredit : 0
-                            );
-
                             return (
                                 <>
                                     <div className={`flex justify-between items-center text-sm ${theme.textMuted}`}>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { subscriptionService } from '../../services/api/subscriptions';
 import { useTheme } from '../../context/ThemeContext';
 import { ArrowLeft, Save, CreditCard, Calendar, FileText } from 'lucide-react';
+import DatePicker from '../../components/ui/DatePicker';
 
 const SubscriptionForm = ({ subscriptionToEdit, onBack }) => {
     const { theme } = useTheme();
@@ -146,22 +147,16 @@ const SubscriptionForm = ({ subscriptionToEdit, onBack }) => {
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>End Date</label>
-                                <input
-                                    type="date"
-                                    name="end_date"
+                                <DatePicker
                                     value={formData.end_date}
-                                    onChange={handleChange}
-                                    className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
+                                    onChange={(val) => setFormData(prev => ({ ...prev, end_date: val }))}
                                 />
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Next Billing Date</label>
-                                <input
-                                    type="date"
-                                    name="next_billing_date"
+                                <DatePicker
                                     value={formData.next_billing_date}
-                                    onChange={handleChange}
-                                    className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
+                                    onChange={(val) => setFormData(prev => ({ ...prev, next_billing_date: val }))}
                                 />
                             </div>
                         </div>

@@ -123,7 +123,7 @@ const ShopList = ({ onEdit, onAddNew }) => {
     ];
 
     return (
-        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
+        <div className={`flex flex-col h-full overflow-y-auto custom-scrollbar p-4 md:p-8 ${theme.pageBg}`}>
             <div className="w-full mx-auto space-y-8">
                 {/* ── Page Header ── */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">

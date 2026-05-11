@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { shopExpenseService } from '../../services/api/shopExpenses';
 import { dashboardService } from '../../services/api';
 import OperatingExpenseCard from '../../components/cards/OperatingExpenseCard';
-import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, Banknote, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, Coins, TrendingDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import CommonSelect from '../../components/ui/CommonSelect';
 

@@ -10,17 +10,14 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
     const isGrid = viewMode === "grid";
 
     // Get currency from branch
-    const currencyData = useMemo(() => {
+    const currencyCode = useMemo(() => {
         const branch = branches.find(b => b.id === activeBranchId || b._id === activeBranchId);
-        return {
-            symbol: branch?.currency?.symbol || "₹",
-            code: branch?.currency?.code || "INR"
-        };
+        return branch?.currency?.code || "INR";
     }, [branches, activeBranchId]);
 
     const formatPriceWithCurrency = (price) => {
-        if (price === undefined || price === null) return "0.00";
-        return `${currencyData.symbol}${parseFloat(price).toFixed(2)}`;
+        if (price === undefined || price === null) return formatCurrency ? formatCurrency(0) : "0.00";
+        return formatCurrency ? formatCurrency(price) : parseFloat(price).toFixed(2);
     };
 
     const isOutOfStock = useMemo(() => {
@@ -101,6 +98,11 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
                             {item.name}
                         </p>
                     </div>
+                    {item.secondaryUnitId && item.conversionFactor > 1 && (
+                        <div className="mt-0.5 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 text-[8px] font-black w-fit uppercase tracking-tighter">
+                            1 {item.secondaryUnitName || 'Sec'} = {item.conversionFactor} {item.unitName || 'Pri'}
+                        </div>
+                    )}
 
                     <div className="mt-2 flex items-center justify-between">
                         <div className="flex-1">

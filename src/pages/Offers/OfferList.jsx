@@ -9,7 +9,8 @@ import {
     Filter,
     Calendar,
     ArrowRight,
-    Loader2
+    Loader2,
+    Building2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { offerService } from "../../services/api";
@@ -22,7 +23,7 @@ import CommonSelect from "../../components/ui/CommonSelect";
 const OfferList = ({ hasPermissionFor, formatCurrency }) => {
     const { theme } = useTheme();
     const { user } = useAuth();
-    const { activeBranchId } = useApp();
+    const { activeBranchId, branches } = useApp();
     const navigate = useNavigate();
     const [offers, setOffers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -80,9 +81,16 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
             header: "Offer Name",
             key: "name",
             render: (val, row) => (
-                <div className="flex flex-col">
-                    <span className={`font-black ${theme.textHeading}`}>{val}</span>
-                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full w-max mt-1 ${row.offerType === 'BUY_X_GET_Y' ? 'bg-indigo-100 text-indigo-600' :
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                        <span className={`font-black ${theme.textHeading}`}>{val}</span>
+                        {!row.branchId && (
+                            <span className="text-[8px] font-black uppercase bg-green-500 text-white px-1.5 py-0.5 rounded italic shadow-sm flex items-center gap-1">
+                                <Building2 size={8} /> Whole Shop
+                            </span>
+                        )}
+                    </div>
+                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full w-max ${row.offerType === 'BUY_X_GET_Y' ? 'bg-indigo-100 text-indigo-600' :
                         row.offerType === 'PERCENT_DISCOUNT' ? 'bg-orange-100 text-orange-600' :
                             'bg-blue-100 text-blue-600'
                         }`}>
@@ -131,6 +139,16 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
                     {val ? "Active" : "Inactive"}
                 </span>
             )
+        },
+        {
+            header: "Applied At",
+            key: "branchId",
+            hidden: branches.length <= 1,
+            render: (val) => {
+                if (!val) return <span className="text-xs font-black text-green-600 uppercase tracking-widest flex items-center gap-1"><Building2 size={12}/> All Branches</span>;
+                const branch = branches.find(b => String(b._id || b.id) === String(val));
+                return <span className={`text-xs font-bold ${theme.textPrimary}`}>{branch?.name || "Unknown Branch"}</span>;
+            }
         },
         {
             header: "Actions",

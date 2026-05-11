@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera } from "lucide-react";
+import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera, Coins, Layers } from "lucide-react";
 import { useNavigate, useParams, useLocation, Link } from "react-router-dom";
 import { PurchaseService } from "../../services/PurchaseService";
 import { SupplierService } from "../Suppliers/SupplierService";
-import api, { itemService, shopService, taxService } from "../../services/api";
+import api, { itemService, shopService, taxService, unitService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -55,6 +55,7 @@ const PurchasePage = () => {
     const [stockItems, setStockItems] = useState([]);
     const [shopInfo, setShopInfo] = useState(null);
     const [shopTaxes, setShopTaxes] = useState([]);
+    const [units, setUnits] = useState([]);
 
     const [formData, setFormData] = useState({
         supplierId: "",
@@ -166,7 +167,7 @@ const PurchasePage = () => {
         try {
             const branchId = branchIdArg || formData.branchId || activeBranchId;
             console.log("FETCH_INITIAL_DATA_FOR_BRANCH:", branchId);
-            const [suppliersData, shopData, itemsRes, taxesRes] = await Promise.all([
+            const [suppliersData, shopData, itemsRes, taxesRes, unitsRes] = await Promise.all([
                 SupplierService.getSuppliers(currentShopId),
                 shopService.getShopById(currentShopId),
                 itemService.getItems({
@@ -177,7 +178,8 @@ const PurchasePage = () => {
                     },
                     limit: 100
                 }),
-                taxService.getTaxes({ branchId })
+                taxService.getTaxes({ branchId }),
+                unitService.getUnits()
             ]);
             console.log("PURCHASE_ENTRY_ITEMS_FETCHED:", itemsRes.data?.length || 0, itemsRes.data);
             console.log("PURCHASE_ENTRY_SUPPLIERS_FETCHED:", suppliersData?.length || 0, suppliersData);
@@ -185,6 +187,7 @@ const PurchasePage = () => {
             setShopInfo(shopData);
             setStockItems(itemsRes.data || []);
             setShopTaxes(taxesRes.filter(t => t.isActive !== false));
+            setUnits(unitsRes || []);
         } catch (error) {
             console.error("Error fetching form data:", error);
         }
@@ -201,13 +204,23 @@ const PurchasePage = () => {
                 branchId: p.branchId?._id || p.branchId,
                 invoiceDate: new Date(p.invoiceDate).toISOString().split('T')[0],
                 dueDate: p.dueDate ? new Date(p.dueDate).toISOString().split('T')[0] : "",
-                items: data.items.map(it => ({
-                    ...it,
-                    itemId: it.itemId?._id || it.itemId,
-                    name: it.itemId?.name || "Unknown Item",
-                    itemCode: it.itemId?.itemCode || "",
-                    taxPercent: it.taxPercent || it.itemId?.taxPercent || 0
-                }))
+                items: data.items.map(it => {
+                    const productMaster = it.itemId;
+                    return {
+                        ...it,
+                        itemId: productMaster?._id || productMaster,
+                        name: productMaster?.name || it.itemName || "Unknown Item",
+                        itemCode: productMaster?.itemCode || "",
+                        taxPercent: it.taxPercent || productMaster?.taxPercent || 0,
+                        unitId: it.unitId || productMaster?.unitId?._id || productMaster?.unitId,
+                        primaryUnitName: productMaster?.unitId?.name || it.unitName || "",
+                        unitName: it.unitName || productMaster?.unitId?.name || "",
+                        secondaryUnitId: it.secondaryUnitId || productMaster?.secondaryUnitId?._id || productMaster?.secondaryUnitId,
+                        secondaryUnitName: it.secondaryUnitName || productMaster?.secondaryUnitId?.name || "",
+                        conversionFactor: it.conversionFactor || productMaster?.conversionFactor || 1,
+                        selectedUnit: it.selectedUnit || productMaster?.defaultPurchaseUnit || "PRIMARY"
+                    };
+                })
             });
 
             if (p.supplierId?.name) setSupplierSearch(p.supplierId.name);
@@ -253,7 +266,14 @@ const PurchasePage = () => {
                 const r = item.taxPercent || 0;
                 if (!r) return 0;
                 return parseFloat((isExclusive ? (p * r) / 100 : p - (p / (1 + r / 100))).toFixed(4));
-            })()
+            })(),
+            unitId: item.unitId?._id || item.unitId,
+            primaryUnitName: item.unitId?.name || (units.find(u => (u._id || u.id) === (item.unitId?._id || item.unitId))?.name) || "",
+            unitName: item.unitId?.name || (units.find(u => (u._id || u.id) === (item.unitId?._id || item.unitId))?.name) || "",
+            secondaryUnitId: item.secondaryUnitId?._id || item.secondaryUnitId,
+            secondaryUnitName: item.secondaryUnitId?.name || (units.find(u => (u._id || u.id) === (item.secondaryUnitId?._id || item.secondaryUnitId))?.name) || "",
+            conversionFactor: item.conversionFactor || 1,
+            selectedUnit: item.defaultPurchaseUnit || "PRIMARY"
         };
 
         setFormData(prev => ({
@@ -261,7 +281,7 @@ const PurchasePage = () => {
             items: [...prev.items, newItem]
         }));
         setItemSearch("");
-    }, [formData.items, shopTaxes]);
+    }, [formData.items, shopTaxes, units]);
 
     useEffect(() => {
         if (user && (user.shop_id || currentShopId)) {
@@ -385,7 +405,7 @@ const PurchasePage = () => {
                 name: data.supplierName
             }));
             setIsSupplierModalOpen(true);
-            toast.info(`Supplier "${data.supplierName}" not found. Please create it.`);
+            toast(`Supplier "${data.supplierName}" not found. Please create it.`);
         }
 
         const preferTrade = !!businessTypeData?.features?.sellTradeItems;
@@ -428,7 +448,14 @@ const PurchasePage = () => {
                             batchTracking: match.tracking?.batchTracking || false,
                             expiryTracking: match.tracking?.expiryTracking || false,
                             existingBarcode: match.barcode || "",
-                            itemType: match.itemType || "STOCK"
+                            itemType: match.itemType || "STOCK",
+                            unitId: match.unitId?._id || match.unitId,
+                            primaryUnitName: match.unitId?.name || (units.find(u => (u._id || u.id) === (match.unitId?._id || match.unitId))?.name) || "",
+                            unitName: match.unitId?.name || (units.find(u => (u._id || u.id) === (match.unitId?._id || match.unitId))?.name) || "",
+                            secondaryUnitId: match.secondaryUnitId?._id || match.secondaryUnitId,
+                            secondaryUnitName: match.secondaryUnitId?.name || (units.find(u => (u._id || u.id) === (match.secondaryUnitId?._id || match.secondaryUnitId))?.name) || "",
+                            conversionFactor: match.conversionFactor || 1,
+                            selectedUnit: match.defaultPurchaseUnit || "PRIMARY"
                         });
                     } else {
                         alreadyExists.quantity += (extractedItem.quantity || 0);
@@ -533,16 +560,30 @@ const PurchasePage = () => {
 
     const handleItemChange = async (index, field, value) => {
         let updatedItems = [...formData.items];
-        
+
         if (typeof field === 'object') {
             updatedItems[index] = { ...updatedItems[index], ...field };
         } else {
+            // If unit is changing, adjust the price automatically
+            if (field === 'selectedUnit') {
+                const row = updatedItems[index];
+                const oldUnit = row.selectedUnit;
+                if (value === 'SECONDARY' && oldUnit !== 'SECONDARY') {
+                    // Changing from Primary to Secondary: multiply price
+                    updatedItems[index].purchasePrice = parseFloat((row.purchasePrice * row.conversionFactor).toFixed(4));
+                    updatedItems[index].unitName = row.secondaryUnitName;
+                } else if (value === 'PRIMARY' && oldUnit !== 'PRIMARY') {
+                    // Changing from Secondary to Primary: divide price
+                    updatedItems[index].purchasePrice = parseFloat((row.purchasePrice / row.conversionFactor).toFixed(4));
+                    updatedItems[index].unitName = row.primaryUnitName;
+                }
+            }
             updatedItems[index][field] = value;
         }
 
-        const needsRecalc = typeof field === 'object' 
-            ? ('purchasePrice' in field || 'taxPercent' in field || 'quantity' in field || 'taxId' in field)
-            : (field === 'purchasePrice' || field === 'taxPercent' || field === 'quantity' || field === 'taxId');
+        const needsRecalc = typeof field === 'object'
+            ? ('purchasePrice' in field || 'taxPercent' in field || 'quantity' in field || 'taxId' in field || 'selectedUnit' in field)
+            : (field === 'purchasePrice' || field === 'taxPercent' || field === 'quantity' || field === 'taxId' || field === 'selectedUnit');
 
         // Recalculate taxAmount if price or taxPercent changes
         if (needsRecalc) {
@@ -558,18 +599,18 @@ const PurchasePage = () => {
             }
         }
 
-        setFormData(prev => ({ 
-            ...prev, 
-            items: prev.items.map((it, i) => i === index ? updatedItems[index] : it) 
+        setFormData(prev => ({
+            ...prev,
+            items: prev.items.map((it, i) => i === index ? updatedItems[index] : it)
         }));
 
         const isTaxPercentChanged = typeof field === 'object' ? ('taxPercent' in field) : (field === 'taxPercent');
-        
+
         // If taxPercent is changed, update product master
         if (isTaxPercentChanged) {
             try {
                 const row = updatedItems[index];
-                await itemService.updateItem(row.itemId, { 
+                await itemService.updateItem(row.itemId, {
                     taxPercent: typeof field === 'object' ? field.taxPercent : value,
                     taxId: row.taxId || null
                 });
@@ -771,10 +812,10 @@ const PurchasePage = () => {
               <td style="text-align: center;">${it.quantity}</td>
               <td style="text-align: right;">${formatCurrency(it.purchasePrice)}</td>
               <td style="text-align: right; font-weight: 600;">${(() => {
-                  const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
-                  const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
-                  return formatCurrency(isExclusive ? (it.quantity * it.purchasePrice) + (it.taxAmount || 0) : (it.quantity * it.purchasePrice));
-              })()}</td>
+                const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
+                const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+                return formatCurrency(isExclusive ? (it.quantity * it.purchasePrice) + (it.taxAmount || 0) : (it.quantity * it.purchasePrice));
+            })()}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -1142,7 +1183,7 @@ const PurchasePage = () => {
                     parts.push(`<div class="slot line code">${item.itemCode}</div>`);
                 }
                 if (key === "price" && includePrice && item?.purchasePrice != null) {
-                    parts.push(`<div class="slot line price">₹${Number(item.purchasePrice).toFixed(2)}</div>`);
+                    parts.push(`<div class="slot line price">${formatCurrency ? formatCurrency(item.purchasePrice) : Number(item.purchasePrice).toFixed(2)}</div>`);
                 }
                 if (key === "batch" && includeBatch && effectiveBatch) {
                     parts.push(`<div class="slot line batch">Batch: ${effectiveBatch}</div>`);
@@ -1593,7 +1634,14 @@ const PurchasePage = () => {
                                                     </span>
                                                 )}
                                             </div>
-                                            <div className={`text-[10px] font-bold uppercase ${theme.textSecondary}`}>{item.itemCode}</div>
+                                            <div className="flex items-center justify-between">
+                                                <div className={`text-[10px] font-bold uppercase ${theme.textSecondary}`}>{item.itemCode}</div>
+                                                {item.secondaryUnitId && item.conversionFactor > 1 && (
+                                                    <div className="text-[9px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                                        1 {item.secondaryUnitId.name || item.secondaryUnitId.code} = {item.conversionFactor} {item.unitId?.name || item.unitId?.code}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                     extraAction={(
@@ -1616,24 +1664,22 @@ const PurchasePage = () => {
                         </div>
 
                         {/* Items Table */}
-                        <div className="overflow-x-auto no-scrollbar max-h-[400px] overflow-y-auto relative">
+                        <div className="overflow-x-auto no-scrollbar max-h-[500px] overflow-y-auto relative pb-48">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className={`text-[10px] font-black uppercase tracking-widest border-b ${theme.textMuted} ${theme.borderLight}`}>
                                         <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2`}>#</th>
                                         <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2`}>Item Description</th>
-                                        {businessTypeData?.features?.sellTradeItems && (
-                                            <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-24`}>Item Type</th>
-                                        )}
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-24`}>Qty</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28 text-center`}>Qty</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-36`}>Unit</th>
                                         <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Purchase Price</th>
                                         <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Selling Price</th>
                                         <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>MRP</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Margin (%)</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-24`}>Margin (%)</th>
                                         <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Batch / Exp</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-48`}>Barcode / Print</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Tax (%)</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 text-right`}>Total</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-44`}>Barcode / Print</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-32`}>Tax (%)</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 text-right w-32`}>Total</th>
                                         <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 text-right w-12`}></th>
                                     </tr>
                                 </thead>
@@ -1673,67 +1719,80 @@ const PurchasePage = () => {
                                                     )}
                                                 </div>
                                             </td>
-                                            {businessTypeData?.features?.sellTradeItems && (
-                                                <td className="py-5 px-2">
-                                                    <CommonSelect
-                                                        options={[
-                                                            { label: "STOCK", value: "STOCK" },
-                                                            { label: "TRADE", value: "TRADE" }
-                                                        ]}
-                                                        value={it.itemType || "STOCK"}
-                                                        onChange={val => handleItemChange(idx, 'itemType', val)}
-                                                        disabled={it.isNew}
-                                                        className="w-full"
-                                                        triggerClassName="!p-1.5 !text-[10px] !font-black !rounded-lg !border-transparent !outline-none"
-                                                        labelKey="label"
-                                                        valueKey="value"
+
+                                            <td className="py-5 px-2">
+                                                <div className="relative group/qty w-full">
+                                                    <input
+                                                        type="number"
+                                                        value={it.quantity}
+                                                        onChange={e => handleItemChange(idx, 'quantity', parseFloat(e.target.value || 0))}
+                                                        className={`w-full p-3 rounded-2xl font-black text-indigo-600 border-2 border-transparent focus:border-indigo-500 outline-none text-center transition-all ${theme.inputBg} text-sm shadow-sm`}
                                                     />
-                                                </td>
-                                            )}
-                                            <td className="py-5 px-2 text-sm">
-                                                <input
-                                                    type="number"
-                                                    value={it.quantity}
-                                                    onChange={e => handleItemChange(idx, 'quantity', parseFloat(e.target.value || 0))}
-                                                    className={`w-full p-2 rounded-lg font-black text-indigo-600 border border-transparent focus:border-indigo-400 outline-none text-center ${theme.inputBg}`}
-                                                />
+                                                    <div className={`absolute -top-2 -right-2 px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[8px] font-black uppercase shadow-lg opacity-0 group-focus-within/qty:opacity-100 transition-opacity pointer-events-none`}>
+                                                        Qty
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td className="py-5 px-2">
-                                                <div className="relative">
-                                                    <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-xs ${theme.textMuted}`}>₹</span>
+                                                <div className={`flex flex-col gap-1.5 ${it.secondaryUnitId ? 'min-w-[150px]' : 'min-w-[90px]'}`}>
+                                                    <div className={`flex rounded-2xl border-2 ${theme.borderLight} overflow-hidden font-black text-[10px] shadow-sm bg-white dark:bg-gray-800`}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleItemChange(idx, 'selectedUnit', 'PRIMARY')}
+                                                            className={`flex-1 px-3 py-3 transition-all ${it.selectedUnit !== 'SECONDARY' ? 'bg-indigo-600 text-white shadow-lg' : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
+                                                        >
+                                                            {it.primaryUnitName || "Primary"}
+                                                        </button>
+                                                        {it.secondaryUnitId && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleItemChange(idx, 'selectedUnit', 'SECONDARY')}
+                                                                className={`flex-1 px-3 py-3 border-l-2 ${theme.borderLight} transition-all ${it.selectedUnit === 'SECONDARY' ? 'bg-indigo-600 text-white shadow-lg' : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
+                                                            >
+                                                                {it.secondaryUnitName || "Secondary"}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {it.selectedUnit === 'SECONDARY' && it.conversionFactor > 1 && (
+                                                        <div className={`text-[8px] font-black text-indigo-500/70 text-center uppercase tracking-wider flex items-center justify-center gap-1 bg-indigo-50/50 dark:bg-indigo-900/20 py-1 rounded-lg`}>
+                                                            <Layers size={8} /> 1 {it.secondaryUnitName} = {it.conversionFactor} {it.unitName}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="py-5 px-2">
+                                                <div className="relative group/price w-full">
                                                     <input
                                                         type="number"
                                                         value={it.purchasePrice}
                                                         onChange={e => handleItemChange(idx, 'purchasePrice', parseFloat(e.target.value || 0))}
-                                                        className={`w-full pl-6 p-2 rounded-lg font-black border border-transparent focus:border-indigo-400 outline-none ${theme.inputBg} ${theme.textPrimary}`}
+                                                        className={`w-full p-3 rounded-2xl font-black border-2 border-transparent focus:border-indigo-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
                                                     />
                                                 </div>
                                             </td>
                                             <td className="py-5 px-2">
-                                                <div className="relative">
-                                                    <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-xs ${theme.textMuted}`}>₹</span>
+                                                <div className="relative group/price w-full">
                                                     <input
                                                         type="number"
                                                         value={it.sellingPrice || ""}
                                                         onChange={e => handleItemChange(idx, 'sellingPrice', parseFloat(e.target.value || 0))}
-                                                        className={`w-full pl-6 p-2 rounded-lg font-black border border-transparent focus:border-green-400 outline-none ${theme.inputBg} ${theme.textPrimary}`}
+                                                        className={`w-full p-3 rounded-2xl font-black border-2 border-transparent focus:border-emerald-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
                                                     />
                                                 </div>
                                             </td>
                                             <td className="py-5 px-2">
-                                                <div className="relative">
-                                                    <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-xs ${theme.textMuted}`}>₹</span>
+                                                <div className="relative group/price w-full">
                                                     <input
                                                         type="number"
                                                         value={it.mrp || ""}
                                                         onChange={e => handleItemChange(idx, 'mrp', parseFloat(e.target.value || 0))}
-                                                        className={`w-full pl-6 p-2 rounded-lg font-black border border-transparent focus:border-blue-400 outline-none ${theme.inputBg} ${theme.textPrimary}`}
+                                                        className={`w-full p-3 rounded-2xl font-black border-2 border-transparent focus:border-blue-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
                                                     />
                                                 </div>
                                             </td>
                                             <td className="py-5 px-2">
                                                 <div className={`flex flex-col text-xs font-black p-2 rounded bg-opacity-10 ${((it.sellingPrice || 0) - (it.purchasePrice || 0)) >= 0 ? 'text-green-500 bg-green-500' : 'text-red-500 bg-red-500'}`}>
-                                                    <span>₹{((it.sellingPrice || 0) - (it.purchasePrice || 0)).toFixed(2)}</span>
+                                                    <span>{formatCurrency((it.sellingPrice || 0) - (it.purchasePrice || 0))}</span>
                                                     <span className="opacity-70">
                                                         {it.sellingPrice > 0
                                                             ? `${(((it.sellingPrice - it.purchasePrice) / it.sellingPrice) * 100).toFixed(1)}%`
@@ -1811,21 +1870,21 @@ const PurchasePage = () => {
                                                             const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
                                                             return { label: `${t.name} (${t.percentage}% - ${typeStr})`, value: String(t._id) };
                                                         })
-                                                    ]}
-                                                    value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
-                                                    onChange={(val) => {
-                                                        if (val === "0" || val === 0) {
-                                                            handleItemChange(idx, { taxId: null, taxPercent: 0 });
-                                                        } else {
-                                                            const selectedTax = shopTaxes.find(t => t._id === val);
-                                                            if (selectedTax) {
-                                                                handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage });
-                                                            }
-                                                        }
-                                                    }}
-                                                    className="w-full text-sm font-bold min-w-[150px]"
-                                                />
-                                            </td>
+                                                     ]}
+                                                     value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
+                                                     onChange={(val) => {
+                                                         if (val === "0" || val === 0) {
+                                                             handleItemChange(idx, { taxId: null, taxPercent: 0 });
+                                                         } else {
+                                                             const selectedTax = shopTaxes.find(t => t._id === val);
+                                                             if (selectedTax) {
+                                                                 handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage });
+                                                             }
+                                                         }
+                                                     }}
+                                                     className="w-full text-[11px] font-black"
+                                                 />
+                                             </td>
                                             <td className="py-5 px-2 text-right font-black">
                                                 {(() => {
                                                     const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
@@ -1895,7 +1954,7 @@ const PurchasePage = () => {
                         <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 border ${theme.borderLight} space-y-4`}>
                             <div className="flex justify-between items-center px-2">
                                 <span className={`font-bold uppercase text-[10px] tracking-widest ${theme.textMuted}`}>Subtotal</span>
-                                <span className={`font-black ${theme.textHeading}`}>{formatCurrency ? formatCurrency(formData.subtotal) : `₹${formData.subtotal.toFixed(4)}`}</span>
+                                <span className={`font-black ${theme.textHeading}`}>{formatCurrency ? formatCurrency(formData.subtotal) : formData.subtotal.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between items-center px-2">
                                 <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest font-black">Tax Total (+)</span>
@@ -1920,7 +1979,7 @@ const PurchasePage = () => {
                             <div className="flex justify-between items-center bg-gray-900 rounded-3xl p-6 text-white shadow-2xl">
                                 <div className="space-y-1">
                                     <div className="text-[10px] font-black uppercase tracking-widest opacity-50">Grand Total</div>
-                                    <div className="text-3xl font-black">{formatCurrency ? formatCurrency(formData.grandTotal) : `₹${formData.grandTotal.toFixed(4)}`}</div>
+                                    <div className="text-3xl font-black">{formatCurrency ? formatCurrency(formData.grandTotal) : formData.grandTotal.toFixed(2)}</div>
                                 </div>
                                 <Calculator size={32} className="opacity-20" />
                             </div>
@@ -2257,7 +2316,7 @@ const PurchasePage = () => {
                                     return <div key={key} className="text-[7px] text-gray-600">{barcodePrintDialog.item.itemCode}</div>;
                                 }
                                 if (key === "price" && barcodePrintDialog.includePrice && barcodePrintDialog.item?.purchasePrice != null) {
-                                    return <div key={key} className="text-[8px] font-black mt-0.5">₹{Number(barcodePrintDialog.item.purchasePrice).toFixed(2)}</div>;
+                                    return <div key={key} className="text-[8px] font-black mt-0.5">{formatCurrency ? formatCurrency(barcodePrintDialog.item.purchasePrice) : Number(barcodePrintDialog.item.purchasePrice).toFixed(2)}</div>;
                                 }
                                 if (key === "batch" && barcodePrintDialog.includeBatch && (barcodePrintDialog.batchOverride || barcodePrintDialog.item?.batchNo)) {
                                     return <div key={key} className="text-[7px] font-medium">B: {barcodePrintDialog.batchOverride || barcodePrintDialog.item?.batchNo}</div>;

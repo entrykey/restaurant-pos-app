@@ -73,8 +73,14 @@ const TableCard = ({
           <span className={`font-black text-2xl md:text-3xl leading-tight tracking-tight ${table.status === 'occupied' ? 'text-white' : theme.textHeading}`}>
             {table.name}
           </span>
-          <div className="flex items-center gap-2 mt-1 opacity-80">
-            <span className="text-[10px] md:text-xs font-bold flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full">
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-lg border ${table.status === 'occupied' 
+              ? 'bg-white/10 border-white/20 text-white' 
+              : (themeName === 'dark' ? 'bg-indigo-900/40 border-indigo-800/50 text-indigo-300' : 'bg-indigo-50 border-indigo-100 text-indigo-600')
+            }`}>
+               {table.diningCategoryId?.name || 'Area'}
+            </span>
+            <span className={`text-[10px] md:text-xs font-bold flex items-center gap-1 ${table.status === 'occupied' ? 'bg-white/20 text-white' : `${theme.sidebarItemHoverBg} ${theme.textSecondary}`} px-2 py-0.5 rounded-full`}>
               <Users size={12} /> {table.capacity}
             </span>
             {table.isParent && <span className="text-[10px] font-black uppercase bg-white/30 px-2 py-0.5 rounded-full">Master</span>}

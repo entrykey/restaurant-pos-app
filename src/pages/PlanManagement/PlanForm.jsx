@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Save, Briefcase, Settings, List, Banknote, Layers, CheckSquare, Square } from 'lucide-react';
+import { ArrowLeft, Save, Briefcase, Settings, List, Coins, Layers, CheckSquare, Square } from 'lucide-react';
 import { planService } from '../../services/api/plans';
 import { businessTypesService } from '../../services/api/businessTypes';
 import { shopService } from '../../services/api/shops';
@@ -372,7 +372,7 @@ const PlanForm = ({ planToEdit, onBack }) => {
                     <div className={`${theme.surfaceBg} p-8 rounded-[32px] border ${theme.borderLight} shadow-sm space-y-6`}>
                         <div className={`flex items-center gap-3 border-b ${theme.borderLight} pb-4`}>
                             <div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl text-emerald-600 dark:text-emerald-400">
-                                <Banknote size={20} />
+                                <Coins size={20} />
                             </div>
                             <h3 className={`text-xl font-bold ${theme.textHeading}`}>Billing configuration</h3>
                         </div>

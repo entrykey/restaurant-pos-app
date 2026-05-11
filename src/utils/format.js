@@ -2,15 +2,16 @@ export const formatCurrency = (amount, currency = "INR") => {
     if (isNaN(amount) || amount === null) amount = 0;
     const code = (typeof currency === 'object' && currency !== null) ? (currency.code || currency.id || 'USD') : (currency || 'INR');
     try {
+        // Use decimal style to avoid regional symbols like $ or ₹
+        // The commonised 'Coins' icon in the UI handles the visual representation
         return new Intl.NumberFormat("en-IN", {
-            style: "currency",
-            currency: code,
+            style: "decimal",
             minimumFractionDigits: 2,
-            maximumFractionDigits: 4
-        }).format(amount);
+            maximumFractionDigits: 2
+        }).format(amount) + " " + code;
     } catch (e) {
         console.error("formatCurrency error:", e);
-        return code + " " + Number(amount).toFixed(2);
+        return Number(amount).toFixed(2) + " " + code;
     }
 };
 

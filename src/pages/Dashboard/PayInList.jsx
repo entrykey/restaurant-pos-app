@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { dashboardService, orderService } from '../../services/api';
 import { formatCurrency } from '../../utils/format';
-import { ArrowLeft, Wallet, ChevronDown, ChevronUp, User, Package, Receipt, Calendar, ArrowRightCircle, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Wallet, ChevronDown, ChevronUp, User, Package, ReceiptText, Calendar, ArrowRightCircle, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PayInSheet from '../../components/modals/PayInSheet';
 import OrderReturnSheet from '../../components/modals/OrderReturnSheet';
@@ -307,7 +307,7 @@ const PayInList = () => {
                                     <td colSpan={5} className="p-20 text-center">
                                         <div className="max-w-md mx-auto space-y-4">
                                             <div className={`w-20 h-20 ${theme.pageBg} rounded-full flex items-center justify-center mx-auto ${theme.textMuted}`}>
-                                                {activeTab === 'pending' ? <User size={40} /> : <Receipt size={40} />}
+                                                {activeTab === 'pending' ? <User size={40} /> : <ReceiptText size={40} />}
                                             </div>
                                             <h3 className={`text-xl font-black ${theme.textHeading}`}>
                                                 {activeTab === 'pending' ? 'All Clear' : 'No History Found'}

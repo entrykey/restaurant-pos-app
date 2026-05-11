@@ -826,9 +826,25 @@ const AppContent = () => {
     const activeOrderCustomerId = activeTable?.order?.customerId || null;
 
     const addToCart = (item, quantity, variant, extras, enteredUnit = null) => {
+        let finalQuantity = parseFloat(quantity);
+
+        // Auto-handle Buy 1 Get 1 (BOGO) logic
+        // If it's a BOGO offer and the user is adding 1 item, we automatically make it 2.
+        const bogoOffer = (offers || []).find(o => 
+            o.isActive && 
+            o.condition?.applyOn === "ITEM" && 
+            (o.condition?.itemIds || []).includes(item.id || item._id) &&
+            (o.name?.toLowerCase().includes("buy 1 get 1") || o.name?.toLowerCase().includes("bogo"))
+        );
+
+        if (bogoOffer && finalQuantity === 1) {
+            finalQuantity = 2;
+            toast.success(`${bogoOffer.name} Applied: Quantity set to 2`);
+        }
+
         const orderItem = {
             ...item,
-            quantity: parseFloat(quantity),
+            quantity: finalQuantity,
             selectedVariant: variant,
             selectedExtras: extras,
             suggestion: "",
@@ -989,6 +1005,40 @@ const AppContent = () => {
         }
     };
 
+    const updateItemUnit = (itemIndex, selectedUnit) => {
+        const updateList = (items) => {
+            const item = items[itemIndex];
+            if (!item) return items;
+            const newItems = [...items];
+            newItems[itemIndex] = {
+                ...item,
+                selectedUnit,
+            };
+            return newItems;
+        };
+
+        if (isTakeaway) {
+            setTakeawayOrder((prev) => ({
+                ...prev,
+                items: updateList(prev.items),
+                isSentToKOT: false,
+            }));
+        } else {
+            setTables((prev) =>
+                prev.map((t) => {
+                    if ((String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) && t.order) {
+                        const newItems = updateList(t.order.items);
+                        return {
+                            ...t,
+                            order: { ...t.order, items: newItems, isSentToKOT: false },
+                        };
+                    }
+                    return t;
+                })
+            );
+        }
+    };
+
     const handleSendToKOT = async () => {
         const nowTs = Date.now();
         const table = !isTakeaway
@@ -1027,7 +1077,9 @@ const AppContent = () => {
                     quantityFactor: item.selectedVariant ? (item.selectedVariant.quantityFactor || 1) : 1,
                     notes: item.suggestion,
                     taxPercent: itemTaxPercent,
-                    taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
+                    taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100),
+                    selectedUnit: item.selectedUnit || "PRIMARY",
+                    conversionFactor: item.conversionFactor || 1
                 };
             });
 
@@ -1189,7 +1241,9 @@ const AppContent = () => {
                 return {
                     ...item,
                     taxPercent: itemTaxPercent,
-                    taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
+                    taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100),
+                    selectedUnit: item.selectedUnit || "PRIMARY",
+                    conversionFactor: item.conversionFactor || 1
                 };
             }),
             payments: payments // Store payment breakdown in history too
@@ -1228,7 +1282,9 @@ const AppContent = () => {
                             quantityFactor: item.selectedVariant ? (item.selectedVariant.quantityFactor || 1) : 1,
                             notes: item.suggestion,
                             taxPercent: itemTaxPercent,
-                            taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
+                            taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100),
+                            selectedUnit: item.selectedUnit || "PRIMARY",
+                            conversionFactor: item.conversionFactor || 1
                         };
                     }),
                     subtotal: billDetails.subtotal,
@@ -1429,6 +1485,7 @@ const AppContent = () => {
                         setBillingStage={setBillingStage}
                         initiateAddItem={initiateAddItem}
                         updateItemQuantity={updateItemQuantity}
+                        updateItemUnit={updateItemUnit}
                         openNoteModal={openNoteModal}
                         takeawayCustName={takeawayCustName}
                         setTakeawayCustName={setTakeawayCustName}
