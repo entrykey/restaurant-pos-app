@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
-import { ROUTE_KEY_TO_PATH } from "../constants/routeAccess";
+import { ROUTE_KEY_TO_PATH, ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
+import { usePermission } from "../auth/usePermission";
 import toast from "react-hot-toast";
 import Layout from "./Layout";
 import AppRoutes from "../routes/AppRoutes";
@@ -135,7 +136,7 @@ const AppContent = () => {
     const {
         isTakeaway, setIsTakeaway, takeawayOrder, setTakeawayOrder,
         takeawayCustName, setTakeawayCustName, takeawayCustPhone, setTakeawayCustPhone,
-        resetTakeaway
+        resetTakeaway, tableId
     } = useTakeaway();
 
     const {
@@ -382,12 +383,31 @@ const AppContent = () => {
         return toShopSegment(settings?.shopName);
     };
 
+    const { can, canModule } = usePermission();
+
+    const getFirstAllowedPath = () => {
+        for (const key of ROUTE_KEYS_ORDER) {
+            const r = ROUTE_ACCESS[key];
+            if (!r) continue;
+
+            const hasAccess = r.action
+                ? can(r.module, r.action)
+                : canModule(r.module);
+
+            if (hasAccess) {
+                return ROUTE_KEY_TO_PATH[key] || "/dashboard";
+            }
+        }
+        return "/dashboard";
+    };
+
     // If authenticated user lands on /login, move them into app dashboard.
     useEffect(() => {
         if (!isAuthenticated) return;
 
         const rawPath = String(location.pathname || "/");
         const isLoginScopedPath =
+            rawPath === "/" || // Add root path to login scoped for redirection
             rawPath === "/login" ||
             rawPath.startsWith("/login/") ||
             rawPath.endsWith("/login") ||
@@ -405,12 +425,21 @@ const AppContent = () => {
         }
 
         if (currentUser?.isOwner) {
+            const shops = Array.isArray(currentUser?.shops) ? currentUser.shops : [];
+            if (shops.length === 1) {
+                const shop = shops[0];
+                const shopSegment = toShopSegment(shop.name || shop.shopName || shop.businessName);
+                const firstPath = getFirstAllowedPath();
+                navigate(`/${shopSegment}${firstPath}`, { replace: true });
+                return;
+            }
             navigate("/owner-dashboard", { replace: true });
             return;
         }
 
         const shopSegment = getCurrentShopSegment();
-        navigate(shopSegment ? `/${shopSegment}/dashboard` : "/dashboard", { replace: true });
+        const firstPath = getFirstAllowedPath();
+        navigate(shopSegment ? `/${shopSegment}${firstPath}` : firstPath, { replace: true });
     }, [isAuthenticated, currentUser, location.pathname, navigate, organization?.businessName, settings?.shopName]);
 
     // Normalize unauthenticated login URL to plain /login (avoid stale scoped login paths).
@@ -468,6 +497,13 @@ const AppContent = () => {
             setView(entry[0]);
         }
     }, [location.pathname, setView]);
+
+    // Sync tableId from TakeawayContext to DiningContext when tab changes
+    useEffect(() => {
+        if (tableId !== activeTableId) {
+            setActiveTableId(tableId);
+        }
+    }, [tableId, activeTableId, setActiveTableId]);
     const [orderSearch, setOrderSearch] = useState("");
     const [isCustomizationModalOpen, setIsCustomizationModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -828,19 +864,55 @@ const AppContent = () => {
     const addToCart = (item, quantity, variant, extras, enteredUnit = null) => {
         let finalQuantity = parseFloat(quantity);
 
-        // Auto-handle Buy 1 Get 1 (BOGO) logic
-        // If it's a BOGO offer and the user is adding 1 item, we automatically make it 2.
-        const bogoOffer = (offers || []).find(o => 
+        // --- Advanced Offer Logic (Auto-Add & BOGO) ---
+        // We find all "FREE_ITEM" reward offers triggered by this item
+        const triggeredOffers = (offers || []).filter(o => 
             o.isActive && 
             o.condition?.applyOn === "ITEM" && 
             (o.condition?.itemIds || []).includes(item.id || item._id) &&
-            (o.name?.toLowerCase().includes("buy 1 get 1") || o.name?.toLowerCase().includes("bogo"))
+            o.reward?.rewardType === "FREE_ITEM"
         );
 
-        if (bogoOffer && finalQuantity === 1) {
-            finalQuantity = 2;
-            toast.success(`${bogoOffer.name} Applied: Quantity set to 2`);
-        }
+        triggeredOffers.forEach(offer => {
+            const buyQty = offer.condition.minQuantity || 1;
+            const freeQty = offer.reward.rewardQuantity || 1;
+            
+            // Check if it's the same item (BOGO style) or a different item (Cross-item)
+            const rewardItemIds = offer.reward.itemIds || (offer.reward.specificItemId ? [offer.reward.specificItemId] : []);
+            const isSameItem = rewardItemIds.length === 0 || rewardItemIds.includes(item.id || item._id);
+            
+            if (isSameItem) {
+                // For BOGO: If adding 'buyQty' multiples, we can automatically add the 'freeQty' multiples
+                // Example: Buy 1 Get 1. User adds 1 -> we make it 2. User adds 2 -> we make it 4.
+                if (quantity % buyQty === 0) {
+                    const numSets = quantity / buyQty;
+                    const totalFreeToAdd = numSets * freeQty;
+                    finalQuantity = quantity + totalFreeToAdd;
+                    toast.success(`${offer.name} Applied: Added ${totalFreeToAdd} extra free ${item.name}`, { 
+                        icon: '🎁',
+                        duration: 3000
+                    });
+                }
+            } else {
+                // Cross-item offer (Buy Pepsi, Get Lays Free)
+                const freeItemId = rewardItemIds[0];
+                const freeItem = menu.find(m => m.id === freeItemId || m._id === freeItemId);
+                
+                if (freeItem && quantity >= buyQty) {
+                    const numSets = Math.floor(quantity / buyQty);
+                    const totalFreeToAdd = numSets * freeQty;
+
+                    // Add the free items with a small delay to separate the cart additions
+                    setTimeout(() => {
+                        addToCart(freeItem, totalFreeToAdd, null, []);
+                        toast.success(`${offer.name} Applied: ${totalFreeToAdd} ${freeItem.name} added as a gift!`, { 
+                            icon: '🎁',
+                            duration: 3000
+                        });
+                    }, 100);
+                }
+            }
+        });
 
         const orderItem = {
             ...item,

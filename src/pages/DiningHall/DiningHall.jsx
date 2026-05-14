@@ -9,6 +9,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { diningHallService } from "./DiningHallService";
 import CommonDialog from "../../components/modals/CommonDialog";
 import { toast } from "react-hot-toast";
+import { useTakeaway } from "../Takeaway/TakeawayContext";
 
 const DiningHall = ({
   tables: propsTables,
@@ -30,6 +31,7 @@ const DiningHall = ({
   const { theme, themeName } = useTheme();
   const navigate = useNavigate();
   const { can } = usePermission();
+  const { addTableTab } = useTakeaway();
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
 
   // Modal State
@@ -54,7 +56,7 @@ const DiningHall = ({
     if (refreshData) {
       refreshData();
     }
-  }, [refreshData]);
+  }, []); // Refresh every time we enter the Dining Hall component
 
   const today = new Date().toISOString().split("T")[0];
   const isAdmin = currentUser?.role === "Admin";
@@ -82,15 +84,18 @@ const DiningHall = ({
       }
     } else {
       // Normal Navigation Logic
+      const tableName = table.tableNumber ? `Table ${table.tableNumber}` : table.name || "Table";
+      
       if (table.parentTableId) {
         // Redirect to parent table if this is a child
-        setActiveTableId(table.parentTableId);
+        const parentTable = propsTables.find(pt => pt.id === table.parentTableId);
+        const pName = parentTable?.tableNumber ? `Table ${parentTable.tableNumber}` : "Combined Table";
+        addTableTab(table.parentTableId, pName);
         setView("order");
         setOrderSearch("");
         navigate(`/dininghall/table/${table.parentTableId}`);
       } else {
-        setIsTakeaway(false);
-        setActiveTableId(table.id);
+        addTableTab(table.id, tableName);
         setView("order");
         setOrderSearch("");
         navigate(`/dininghall/table/${table.id}`);
@@ -235,7 +240,7 @@ const DiningHall = ({
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4 md:gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 md:gap-10">
         {(() => {
           const renderedTableIds = new Set();
           const processedMergeGroups = new Set();

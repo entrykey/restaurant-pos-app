@@ -13,7 +13,7 @@ import { toast } from 'react-hot-toast';
 const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const { theme } = useTheme();
     const { user } = useAuth();
-    const { activeBranchId } = useApp();
+    const { activeBranchId, enabledModules } = useApp();
     const { can } = usePermission();
     
     const [categories, setCategories] = useState([]);
@@ -36,6 +36,11 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const shopId = user?.shop_id || user?.shopId || user?.shop;
 
     const fetchData = useCallback(async () => {
+        if (!enabledModules?.DINING) {
+            setIsLoading(false);
+            return;
+        }
+
         setIsLoading(true);
         try {
             const params = { all: true };
@@ -50,15 +55,19 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
             setTables(tableRes || []);
         } catch (error) {
             console.error('Error fetching data:', error);
-            toast.error('Failed to load data');
+            // Don't show toast if it's just a permission error from stale state
+            if (!error.message?.includes("not enabled")) {
+                toast.error('Failed to load data');
+            }
         } finally {
             setIsLoading(false);
         }
-    }, [branchId]);
+    }, [branchId, enabledModules?.DINING]);
 
     useEffect(() => {
+        if (!enabledModules || Object.keys(enabledModules).length === 0) return;
         fetchData();
-    }, [fetchData]);
+    }, [fetchData, enabledModules]);
 
     useEffect(() => {
         if (triggerCreate) {

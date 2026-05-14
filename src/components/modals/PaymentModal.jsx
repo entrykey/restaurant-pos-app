@@ -591,12 +591,9 @@ const PaymentModal = ({
                                     setBillingStage("payment");
                                     setSelectedPayments([]);
                                 }}
-                                className="w-full lg:w-auto lg:min-w-[380px] py-4 bg-indigo-600 text-white rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-2xl shadow-indigo-500/30 hover:bg-indigo-700 flex justify-between px-6 md:px-8 items-center group active:scale-95 transition-all"
+                                className="w-full lg:w-auto lg:min-w-[380px] py-4 bg-indigo-600 text-white rounded-2xl md:rounded-3xl font-black text-base md:text-xl shadow-2xl shadow-indigo-500/30 hover:bg-indigo-700 flex justify-center px-6 items-center group active:scale-95 transition-all"
                             >
                                 <span className="group-hover:translate-x-1 transition-transform">Proceed to Checkout</span>
-                                <span className="bg-white/20 px-3 md:px-4 py-1.5 rounded-xl md:rounded-2xl text-base md:text-lg backdrop-blur-md">
-                                    {formatCurrency(billDetails.finalTotal)}
-                                </span>
                             </button>
                         </div>
                     )}

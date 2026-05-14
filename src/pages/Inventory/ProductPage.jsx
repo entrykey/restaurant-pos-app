@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { ALL_FIELDS } from '../../config/itemFields';
-import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft, ClipboardList, ChevronDown, Package, FilePlus, Barcode, Scan, Printer, Tag } from 'lucide-react';
+import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft, ClipboardList, ChevronDown, Package, FilePlus, Barcode, Scan, Printer, Tag, Layers } from 'lucide-react';
 import { api, attributeService, unitService, shopService, categoryService, itemService, branchService, taxService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
@@ -15,7 +15,7 @@ import BarcodePrintDialog from '../../components/modals/BarcodePrintDialog';
 
 const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialog, onClose, fixedBranchId, prefillData, activeTabOverride, id: propId, sourcePage: propSourcePage, returnState: propReturnState, returnUrl: propReturnUrl }) => {
     const { user } = useAuth();
-    const { activeBranchId, branches, organization, currentShopId, businessTypeData, formatCurrency } = useApp();
+    const { activeBranchId, branches, organization, currentShopId, businessTypeData, formatCurrency, settings } = useApp();
     const { theme } = useTheme();
     const navigate = useNavigate();
     const { id: paramId } = useParams();
@@ -117,7 +117,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             fields = [
                 "barcode", "item_code", "name", "description", "category_id",
                 "unit_id", "secondary_unit_id", "conversion_factor", "purchase_price", "selling_price", "mrp", "tax_percent", "hsn_sac_code",
-                "stock_applicable", "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking", "is_sellable"
+                "stock_applicable", "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking"
             ];
         } else {
             // Trade tab
@@ -408,6 +408,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         const barcodeInput = document.getElementById(fieldId);
         if (barcodeInput) {
             barcodeInput.focus();
+            barcodeInput.select();
             toast("Scanner ready. Please scan your item.");
         }
     };
@@ -494,7 +495,19 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             generateItemBarcode();
         }
     }, [isEditing, isLoading, formData.barcode]);
- 
+    useEffect(() => {
+        if (!isEditing && !isLoading && settings) {
+            const defaultIsSellable = activeTab === 'raw' 
+                ? settings.ENABLE_STOCK_ITEMS !== false 
+                : (activeTab === 'menu' ? settings.ENABLE_MANUFACTURED_ITEMS !== false : settings.ENABLE_TRADE_ITEMS !== false);
+            
+            setFormData(prev => ({
+                ...prev,
+                isSellable: prev.isSellable !== undefined ? prev.isSellable : defaultIsSellable
+            }));
+        }
+    }, [isEditing, isLoading, activeTab, settings]);
+
     useEffect(() => {
         if (!isEditing && prefillData) {
             const pp = prefillData.purchasePrice ?? 0;
@@ -511,7 +524,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 hsnSacCode: prefillData.hsnSacCode || "",
                 ...(tp !== undefined && tp !== null && tp !== "" ? { taxPercent: Number(tp) } : {}),
                 itemType: prefillData.itemType || "STOCK",
-                isSellable: true,
+                isSellable: prefillData.itemType === 'MANUFACTURED' ? settings?.ENABLE_MANUFACTURED_ITEMS !== false : (prefillData.itemType === 'TRADE' ? settings?.ENABLE_TRADE_ITEMS !== false : settings?.ENABLE_STOCK_ITEMS !== false),
                 status: "ACTIVE"
             }));
         }
@@ -836,6 +849,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             }
 
             const newItem = { ...savedItem, id: savedItem._id || savedItem.id };
+            toast.success(`${newItem.name} saved successfully!`);
 
             // Update in-memory collections if passed via props, otherwise they will refresh on list page mount
             if (activeTab === "menu" && setMenu && menu) {
@@ -853,7 +867,13 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             }
 
             if (asDialog && onClose) {
-                onClose(newItem);
+                if (!isEditing) {
+                    // Notify parent to refresh, but stay open for next item
+                    onClose(newItem, true); 
+                    handleReset();
+                } else {
+                    onClose(newItem);
+                }
             } else if (sourcePage === 'purchase' || returnUrl) {
                 // Return to source page with the new product and original state
                 navigate(returnUrl || '/purchases/new', { 
@@ -869,6 +889,24 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             console.error("Failed to save product:", error);
             toast.error("Failed to save product. Please check console for details.");
         }
+    };
+
+    const handleReset = () => {
+        setFormData({
+            itemType: activeTab === 'menu' ? 'MANUFACTURED' : (activeTab === 'raw' ? 'STOCK' : 'TRADE'),
+            isSellable: true,
+            status: 'ACTIVE',
+            stockApplicable: true,
+            conversionFactor: 1,
+            taxPercent: 0,
+            purchasePrice: 0,
+            sellingPrice: 0,
+            mrp: 0
+        });
+        setIngredients([]);
+        setItemAttributes({});
+        setErrors({});
+        // Barcode will be regenerated by useEffect since formData.barcode is now missing
     };
 
     const handleCreateCategory = async (e) => {
@@ -946,7 +984,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
     return (
         <div 
-            className={`flex flex-col ${asDialog ? "h-full max-h-screen" : "h-full"} ${theme.pageBg} overflow-hidden`}
+            className={`flex flex-col flex-1 min-h-0 ${asDialog ? "" : "h-full"} ${theme.pageBg} overflow-hidden`}
             onKeyDown={handleKeyDown}
         >
             {/* Header Section */}
@@ -972,31 +1010,43 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     </div>
 
                     {/* ITEM TYPE SWITCHER */}
-                    {!isEditing && sourcePage === 'purchase' && businessTypeData?.features?.sellTradeItems !== false && (
+                    {!isEditing && (asDialog || sourcePage === 'purchase') && (
                         <div className={`flex p-1 rounded-2xl shadow-sm border ${theme.borderLight} ${theme.surfaceBg}`}>
+                            {businessTypeData?.features?.sellManufacturedItems !== false && (
+                                <button
+                                    onClick={() => setCurrentTab('menu')}
+                                    className={`px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'menu' 
+                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20' 
+                                        : `${theme.textMuted} hover:opacity-70`}`}
+                                >
+                                    <Layers size={14} /> Manufactured
+                                </button>
+                            )}
                             <button
                                 onClick={() => setCurrentTab('raw')}
-                                className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'raw' 
+                                className={`px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'raw' 
                                     ? 'bg-orange-500 text-white shadow-lg shadow-orange-200 dark:shadow-orange-900/20' 
                                     : `${theme.textMuted} hover:opacity-70`}`}
                             >
-                                <Plus size={16} /> Stock Item
+                                <Plus size={14} /> Stock
                             </button>
-                            <button
-                                onClick={() => setCurrentTab('trade')}
-                                className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'trade' 
-                                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20' 
-                                    : `${theme.textMuted} hover:opacity-70`}`}
-                            >
-                                <Package size={16} /> Trade Item
-                            </button>
+                            {businessTypeData?.features?.sellTradeItems !== false && (
+                                <button
+                                    onClick={() => setCurrentTab('trade')}
+                                    className={`px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'trade' 
+                                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20' 
+                                        : `${theme.textMuted} hover:opacity-70`}`}
+                                >
+                                    <Package size={14} /> Trade
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
             </div>
 
             {/* Scrollable Content */}
-            <div className={`flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar`}>
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar min-h-0">
                 <div className="space-y-12">
                     {/* CORE FIELDS SECTION */}
                     <div>
@@ -1062,6 +1112,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     type="text"
                                                     value={formData[field.key] !== undefined ? formData[field.key] : ""}
                                                     onChange={(e) => handleChange(fieldKey, e.target.value)}
+                                                    onFocus={(e) => e.target.select()}
                                                     className={`w-full p-4 pr-24 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
                                                     placeholder="Scan or enter barcode..."
                                                 />
@@ -1207,6 +1258,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                                     type="text"
                                                                     value={formData[field.key] !== undefined ? formData[field.key] : ""}
                                                                     onChange={(e) => handleChange(field.originalKey, e.target.value)}
+                                                                    onFocus={(e) => e.target.select()}
                                                                     className={`w-full p-4 pr-24 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
                                                                     placeholder="Scan or enter barcode..."
                                                                 />
@@ -1600,7 +1652,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             </div>
 
             {/* Sticky Footer */}
-            <div className={`flex gap-4 p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 sticky bottom-0`}>
+            <div className={`flex gap-4 p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 shrink-0`}>
                 <button
                     onClick={() => asDialog && onClose ? onClose() : navigate('/inventory')}
                     className={`flex-1 py-4 font-black ${theme.textSecondary} hover:${theme.textPrimary} transition-colors border-2 ${theme.borderLight} rounded-[24px]`}

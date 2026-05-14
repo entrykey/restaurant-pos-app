@@ -23,7 +23,8 @@ const CommonSelect = ({
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [activeIndex, setActiveIndex] = useState(0);
-    const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+    const [coords, setCoords] = useState({ top: 0, bottom: 0, left: 0, width: 0 });
+    const [placement, setPlacement] = useState('bottom');
     const dropdownRef = useRef(null);
     const triggerRef = useRef(null);
     const menuRef = useRef(null);
@@ -54,33 +55,39 @@ const CommonSelect = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Reset activeIndex when filteredOptions changes or dropdown opens
-    useEffect(() => {
-        setActiveIndex(0);
-        if (isOpen && triggerRef.current) {
+    const updatePosition = () => {
+        if (triggerRef.current) {
             const rect = triggerRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            const menuHeight = 350; // Threshold for switching to top placement
+
+            if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
+                setPlacement('top');
+            } else {
+                setPlacement('bottom');
+            }
+
             setCoords({
-                top: rect.bottom + window.scrollY,
+                top: rect.top + window.scrollY,
+                bottom: rect.bottom + window.scrollY,
                 left: rect.left + window.scrollX,
                 width: rect.width
             });
+        }
+    };
+
+    // Reset activeIndex when filteredOptions changes or dropdown opens
+    useEffect(() => {
+        setActiveIndex(0);
+        if (isOpen) {
+            updatePosition();
         }
     }, [searchTerm, isOpen]);
 
     // Update position on scroll/resize
     useEffect(() => {
         if (!isOpen) return;
-
-        const updatePosition = () => {
-            if (triggerRef.current) {
-                const rect = triggerRef.current.getBoundingClientRect();
-                setCoords({
-                    top: rect.bottom + window.scrollY,
-                    left: rect.left + window.scrollX,
-                    width: rect.width
-                });
-            }
-        };
 
         window.addEventListener('scroll', updatePosition, true);
         window.addEventListener('resize', updatePosition);
@@ -151,12 +158,12 @@ const CommonSelect = ({
             {isOpen && createPortal(
                 <div 
                     ref={menuRef}
-                    className={`fixed rounded-2xl shadow-2xl border z-[3000] overflow-hidden divide-y animate-in fade-in slide-in-from-top-2 duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}
+                    className={`fixed rounded-2xl shadow-2xl border z-[3000] overflow-hidden divide-y animate-in fade-in ${placement === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'} duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}
                     style={{ 
-                        top: coords.top - window.scrollY, 
+                        top: placement === 'bottom' ? coords.bottom - window.scrollY + 8 : undefined,
+                        bottom: placement === 'top' ? window.innerHeight - (coords.top - window.scrollY) + 8 : undefined,
                         left: coords.left, 
-                        width: coords.width,
-                        marginTop: '8px'
+                        width: coords.width
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >

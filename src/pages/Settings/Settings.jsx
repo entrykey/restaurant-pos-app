@@ -36,7 +36,7 @@ const Settings = ({
     currentUser,
 }) => {
     const { theme, themeName } = useTheme();
-    const { activeBranchId, branches, currentShopId } = useApp();
+    const { activeBranchId, branches, currentShopId, businessTypeData } = useApp();
     const currentBranchId = activeBranchId || (branches.length > 0 ? (branches[0]._id || branches[0].id) : null);
     const canViewGeneral = hasPermissionFor?.(ROUTE_ACCESS.SETTINGS.module, ROUTE_ACCESS.SETTINGS.resource, ROUTE_ACCESS.SETTINGS.action);
     const canViewSaleSettings = hasPermissionFor?.(ROUTE_ACCESS.SALE_SETTINGS.module, ROUTE_ACCESS.SALE_SETTINGS.resource, ROUTE_ACCESS.SALE_SETTINGS.action);
@@ -349,6 +349,12 @@ const Settings = ({
                                     if (isSuperAdmin) return s.isSystem;
                                     // For shop owners, show them all settings EXCEPT superadmin-only or specific tab settings
                                     if (['DEFAULT_SHOP_OWNER_ROLE', 'ALLOW_UNSAFE_REGISTRATION', 'SALE_MARKING_TYPE', 'SALE_MARKING_TIME'].includes(s.key)) return false;
+                                    
+                                    // Filter based on business type features
+                                    if (s.key === 'ENABLE_STOCK_ITEMS' && businessTypeData?.features?.sellStockItems === false) return false;
+                                    if (s.key === 'ENABLE_MANUFACTURED_ITEMS' && businessTypeData?.features?.sellManufacturedItems === false) return false;
+                                    if (s.key === 'ENABLE_TRADE_ITEMS' && businessTypeData?.features?.sellTradeItems === false) return false;
+
                                     return true;
                                 }).map((setting) => (
                                     <div key={setting.key} className={`p-6 ${theme.inputBg} rounded-3xl border ${theme.inputBorder} flex flex-col md:flex-row md:items-center justify-between gap-4`}>

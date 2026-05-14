@@ -9,7 +9,7 @@ const DiningContext = createContext();
 export const useDining = () => useContext(DiningContext);
 
 export const DiningProvider = ({ children }) => {
-    const { currentTime, branches, activeBranchId } = useApp();
+    const { currentTime, branches, activeBranchId, enabledModules } = useApp();
     const { user } = useAuth();
     const [tables, setTables] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -19,34 +19,55 @@ export const DiningProvider = ({ children }) => {
 
     const fetchDiningData = useCallback(async (isPolling = false) => {
         const branchId = activeBranchId;
+        
+        // Wait until modules are loaded to avoid calling APIs with wrong defaults
+        if (!enabledModules || Object.keys(enabledModules).length === 0) {
+            if (!isPolling) setLoading(false);
+            return;
+        }
+
+        const isDiningEnabled = enabledModules?.DINING;
+        const isReservationsEnabled = enabledModules?.RESERVATIONS;
+        const isKdsEnabled = enabledModules?.KDS;
+
+        if (!isDiningEnabled && !isReservationsEnabled) {
+            if (!isPolling) setLoading(false);
+            return;
+        }
 
         if (!isPolling) setLoading(true);
         try {
-            const [tablesRes, categoriesRes, reservationsRes, ordersRes, kotsRes] = await Promise.all([
-                tableService.getTables({ branchId: branchId || null }),
-                diningCategoryService.getCategories({ branchId: branchId || null }),
-                reservationsService.getReservations({
+            const promises = [
+                isDiningEnabled ? tableService.getTables({ branchId: branchId || null }) : Promise.resolve({ data: [] }),
+                isDiningEnabled ? diningCategoryService.getCategories({ branchId: branchId || null }) : Promise.resolve({ data: [] }),
+                isReservationsEnabled ? reservationsService.getReservations({
                     branchId: branchId || null,
                     date: new Date().toISOString().split("T")[0],
                     status: 'CONFIRMED'
-                }),
-                // Fetch active orders (OPEN or IN_PROGRESS)
-                api.get('/orders', { params: { branchId: branchId || null, orderStatus: ['OPEN', 'IN_PROGRESS', 'READY', 'SERVED'] } }),
-                // Fetch active KOTs (not COMPLETED)
-                api.get('/kitchen/kots', { params: { branchId: branchId || null, status: { $ne: 'COMPLETED' } } })
-            ]);
+                }) : Promise.resolve({ data: [] }),
+                // Fetch active orders (OPEN or IN_PROGRESS) - only if dining enabled or takeaway enabled
+                (isDiningEnabled || enabledModules?.TAKEAWAY) 
+                    ? api.get('/orders', { params: { branchId: branchId || null, orderStatus: ['OPEN', 'IN_PROGRESS', 'READY', 'SERVED'] } })
+                    : Promise.resolve({ data: [] }),
+                // Fetch active KOTs (not COMPLETED) - only if KDS or DINING enabled
+                (isKdsEnabled || isDiningEnabled)
+                    ? api.get('/kitchen/kots', { params: { branchId: branchId || null, status: { $ne: 'COMPLETED' } } })
+                    : Promise.resolve({ data: [] })
+            ];
+
+            const [tablesRes, categoriesRes, reservationsRes, ordersRes, kotsRes] = await Promise.all(promises);
 
             const activeOrders = ordersRes.data || [];
             const activeKots = kotsRes.data || [];
 
             // Map backend _id to id for frontend consistency and merge active orders
-            const mappedTables = (tablesRes.data || tablesRes).map(t => {
+            const mappedTables = ((tablesRes.data || tablesRes) || []).map(t => {
                 const tableId = t._id;
                 const activeOrderForTable = activeOrders.find(o =>
                     o.tableId === tableId || (o.tableId && (o.tableId._id === tableId || o.tableId.id === tableId))
                 );
 
-                let status = t.status;
+                let status = t.status || "available";
                 let order = null;
 
                 if (activeOrderForTable) {
@@ -161,17 +182,25 @@ export const DiningProvider = ({ children }) => {
                     };
                 });
             });
-            setCategories(categoriesRes.data || categoriesRes);
+            setCategories(categoriesRes.data || categoriesRes || []);
             setReservations(mappedReservations);
         } catch (error) {
             console.error("Failed to fetch dining data:", error);
         } finally {
             if (!isPolling) setLoading(false);
         }
-    }, [activeBranchId, branches, activeTableId, user]);
+    }, [activeBranchId, branches, activeTableId, user, enabledModules]);
 
     useEffect(() => {
         if (!user) {
+            setLoading(false);
+            return;
+        }
+
+        const isDiningEnabled = enabledModules?.DINING;
+        const isReservationsEnabled = enabledModules?.RESERVATIONS;
+
+        if (!isDiningEnabled && !isReservationsEnabled) {
             setLoading(false);
             return;
         }
@@ -184,7 +213,7 @@ export const DiningProvider = ({ children }) => {
         }, 10000);
 
         return () => clearInterval(intervalId);
-    }, [user, fetchDiningData]);
+    }, [user, fetchDiningData, enabledModules]);
 
     const getTableDuration = (startTime) => {
         if (!startTime) return null;

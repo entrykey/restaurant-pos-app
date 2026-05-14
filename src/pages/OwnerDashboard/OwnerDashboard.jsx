@@ -104,7 +104,7 @@ const OwnerDashboard = () => {
             const shopSegment = toShopSegment(shop);
 
             if ((user?.shopId || user?.shop_id) === shopId) {
-                navigate(`/${shopSegment}/organization`);
+                navigate(`/${shopSegment}/dashboard`);
                 return;
             }
 
@@ -125,7 +125,7 @@ const OwnerDashboard = () => {
 
             // Small timeout to allow context to update before navigation
             setTimeout(() => {
-                navigate(`/${shopSegment}/organization`);
+                navigate(`/${shopSegment}/dashboard`);
             }, 50);
 
         } catch (err) {
@@ -133,7 +133,7 @@ const OwnerDashboard = () => {
             // Fallback to simple navigation if switch fails
             const shop = shops.find((s) => String(s._id) === String(shopId));
             const shopSegment = toShopSegment(shop);
-            navigate(`/${shopSegment}/organization`, { state: { shopId } });
+            navigate(`/${shopSegment}/dashboard`, { state: { shopId } });
         }
     };
 

@@ -114,10 +114,7 @@ export const AppProvider = ({ children }) => {
 
     // End branch selection state
 
-    const [enabledModules, setEnabledModules] = useState(() => {
-        // const stored = localStorage.getItem("pos_enabledModules");
-        return getDefaultModules(BUSINESS_TYPES.RESTAURANT, "fine_dining");
-    });
+    const [enabledModules, setEnabledModules] = useState({});
 
     // Persist changes to localStorage
     useEffect(() => {
@@ -133,6 +130,12 @@ export const AppProvider = ({ children }) => {
             setBusinessType(organization.businessType);
         }
     }, [organization?.businessType, businessType]);
+
+    // Update enabled modules when business type or subtype changes
+    useEffect(() => {
+        const modules = getDefaultModules(businessType, businessSubtype);
+        setEnabledModules(modules);
+    }, [businessType, businessSubtype]);
 
     // Fetch allowed branches globally
     useEffect(() => {

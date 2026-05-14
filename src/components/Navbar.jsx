@@ -126,10 +126,24 @@ const Navbar = ({
                 >
                     <Menu size={20} />
                 </button>
-                <div className="flex items-center gap-2 md:ml-10">
-                    <UserCheck size={18} className={theme.primaryIconText} />
+
+                {/* Owner Back to Portfolio Button */}
+                {isOwner && (
+                    <button
+                        onClick={() => navigate("/owner-dashboard")}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${theme.inputBorder} ${theme.inputBg} hover:shadow-md transition-all active:scale-95 group`}
+                        title="Back to Shop Portfolio"
+                    >
+                        <Building2 size={16} className={theme.primaryIconText} />
+                        <span className={`text-[10px] md:text-xs font-bold ${theme.textPrimary} uppercase tracking-tight`}>
+                            My Shops
+                        </span>
+                    </button>
+                )}
+
+                <div className="flex items-center gap-2 md:ml-6">
                     <span className={`text-[10px] md:text-sm font-black ${theme.textPrimary} tracking-tight`}>
-                        {currentUser?.role}: {currentUser?.phone}
+                        {currentUser?.role} {currentUser?.phone}
                     </span>
                 </div>
 

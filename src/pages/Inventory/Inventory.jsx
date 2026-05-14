@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen } from 'lucide-react';
+import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen, ShoppingBag } from 'lucide-react';
 import ThemeLoader from '../../components/ui/ThemeLoader';
 import { BUSINESS_FEATURES } from '../../config/businessTypes';
 import CommonTable from '../../components/CommonTable';
@@ -267,6 +267,21 @@ const Inventory = ({
         }
     };
 
+    const toggleSellableStatus = async (item) => {
+        const itemId = item._id || item.id;
+        const newSellable = item.isSellable === false ? true : false;
+
+        try {
+            setLoadingItemId(itemId);
+            await itemService.updateItem(itemId, { isSellable: newSellable });
+            setRefreshTrigger(prev => prev + 1);
+        } catch (error) {
+            console.error("Failed to toggle sellable status:", error);
+        } finally {
+            setLoadingItemId(null);
+        }
+    };
+
     const handleEditItem = async (item) => {
         const itemId = item._id || item.id || item.itemId;
         if (!itemId) {
@@ -277,11 +292,14 @@ const Inventory = ({
         setIsProductModalOpen(true);
     };
 
-    const handleProductModalClose = (savedItem) => {
-        setIsProductModalOpen(false);
-        setEditingProductId(null);
+    const handleProductModalClose = (savedItem, keepOpen = false) => {
         if (savedItem) {
             setRefreshTrigger(prev => prev + 1);
+        }
+        
+        if (!keepOpen) {
+            setIsProductModalOpen(false);
+            setEditingProductId(null);
         }
     };
 
@@ -404,6 +422,35 @@ const Inventory = ({
             render: (_, item) => (
                 <div className={`font-black ${theme.textHeading}`}>{formatCurrency(item.sellingPrice || item.pricing?.sellingPrice || 0)}</div>
             )
+        },
+        {
+            header: "Show on Sale",
+            key: "isSellable",
+            headerClassName: "text-center",
+            className: "text-center",
+            render: (value, item) => {
+                const isSellable = value !== false;
+                const isToggling = loadingItemId === (item._id || item.id);
+                return (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSellableStatus(item);
+                        }}
+                        disabled={isToggling}
+                        className={`group relative p-3 rounded-2xl transition-all ${isSellable
+                            ? "bg-indigo-100 text-indigo-600 hover:bg-indigo-200"
+                            : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                            } ${isToggling ? "opacity-50 cursor-wait" : ""}`}
+                        title={isSellable ? "Hide from Sale Page" : "Show on Sale Page"}
+                    >
+                        {isToggling ? <ThemeLoader size="xs" /> : <ShoppingBag size={20} />}
+                        {isSellable && !isToggling && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-indigo-500 border-2 border-white rounded-full"></div>
+                        )}
+                    </button>
+                );
+            }
         },
         {
             header: "Status",
@@ -533,6 +580,35 @@ const Inventory = ({
                     </span>
                 </div>
             )
+        },
+        {
+            header: "Show on Sale",
+            key: "isSellable",
+            headerClassName: "text-center",
+            className: "text-center",
+            render: (value, item) => {
+                const isSellable = value !== false;
+                const isToggling = loadingItemId === (item._id || item.id);
+                return (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSellableStatus(item);
+                        }}
+                        disabled={isToggling}
+                        className={`group relative p-3 rounded-2xl transition-all ${isSellable
+                            ? "bg-orange-100 text-orange-600 hover:bg-orange-200"
+                            : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                            } ${isToggling ? "opacity-50 cursor-wait" : ""}`}
+                        title={isSellable ? "Hide from Sale Page" : "Show on Sale Page"}
+                    >
+                        {isToggling ? <ThemeLoader size="xs" /> : <ShoppingBag size={20} />}
+                        {isSellable && !isToggling && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 border-2 border-white rounded-full"></div>
+                        )}
+                    </button>
+                );
+            }
         },
         {
             header: "Status",
@@ -760,7 +836,7 @@ const Inventory = ({
                             <X size={24} />
                         </button>
                         
-                        <div className="flex-1 overflow-y-auto">
+                        <div className="flex-1 overflow-hidden flex flex-col">
                              <ProductPage 
                                 id={editingProductId}
                                 activeTabOverride={activeTab}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
     Menu as MenuIcon,
     ShoppingCart,
@@ -13,6 +13,7 @@ import {
     LayoutGrid,
     List as ListIcon,
     Loader2,
+    Info,
 } from "lucide-react";
 import FoodItemCard from "../../components/FoodItemCard";
 import { useApp } from "../../context/AppContext";
@@ -22,6 +23,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useOrder } from "../../context/OrderContext";
 import { useTakeaway } from "./TakeawayContext";
+import { toast } from "react-hot-toast";
 
 const TakeawayOrder = ({
     isTakeaway,
@@ -71,6 +73,8 @@ const TakeawayOrder = ({
     const location = useLocation();
     const navigate = useNavigate();
     const initRef = useRef(false);
+    const scanBufferRef = useRef("");
+    const lastScanKeyTimeRef = useRef(Date.now());
 
     // Effect to initialize exchange state from navigation state (fallback/initial)
     useEffect(() => {
@@ -86,8 +90,8 @@ const TakeawayOrder = ({
                 setReturnedItems(location.state.returnedItems);
             }
             if (location.state.customer) {
-                setTakeawayCustName(location.state.customer.name || "");
-                setTakeawayCustPhone(location.state.customer.phone || "");
+                setTakeawayCustName(location.state.customer?.name || "");
+                setTakeawayCustPhone(location.state.customer?.phone || "");
             }
 
             // Clear the state from location to prevent re-initialization on re-renders
@@ -115,6 +119,7 @@ const TakeawayOrder = ({
     const [remoteMenu, setRemoteMenu] = useState(null); // null → use local menu
     const [localMenu, setLocalMenu] = useState([]);
     const [isMenuLoading, setIsMenuLoading] = useState(false);
+    const [activeOfferTip, setActiveOfferTip] = useState(null); // { x: number, y: number, offer: any }
 
     const fetchMenu = React.useCallback(async () => {
         setIsMenuLoading(true);
@@ -184,7 +189,7 @@ const TakeawayOrder = ({
     };
 
     const selectCustomer = (customer) => {
-        setTakeawayCustName(customer.name);
+        setTakeawayCustName(customer?.name || "");
         setTakeawayCustPhone(customer.phone);
         setSelectedCustomer(customer);
         setShowCustomerDropdown(null);
@@ -264,8 +269,107 @@ const TakeawayOrder = ({
         };
     }, [orderSearch, currentUser?.shop_id, activeBranchId]);
 
-    // Derive categories dynamically from the menu prop (already normalized in AppContent)
     const activeMenu = remoteMenu || localMenu || menu || [];
+
+    // Global Barcode Listener for POS
+    const handleBarcodeSearch = useCallback(async (code) => {
+        if (!code) return;
+        
+        const cleanCode = String(code).trim().toLowerCase();
+        
+        // 1. Search in local active menu first
+        const found = activeMenu.find(it => 
+            (it.itemCode && String(it.itemCode).toLowerCase() === cleanCode) || 
+            (it.barcode && String(it.barcode).toLowerCase() === cleanCode)
+        );
+
+        if (found) {
+            initiateAddItem(found);
+            toast.success(`Added ${found.name} to cart`, {
+                icon: '🛒',
+                duration: 2000,
+                style: {
+                    borderRadius: '12px',
+                    background: '#333',
+                    color: '#fff',
+                    fontWeight: '900',
+                    textTransform: 'uppercase',
+                    fontSize: '12px'
+                },
+            });
+            return;
+        }
+
+        // 2. Fallback: Search via API (maybe item is not in local menu yet)
+        try {
+            const response = await itemService.getItems({
+                limit: 1,
+                filters: {
+                    shopId: currentUser?.shopId || currentUser?.shop_id,
+                    branchId: activeBranchId || undefined,
+                    $or: [
+                        { itemCode: code },
+                        { barcode: code }
+                    ]
+                }
+            });
+            const itemsList = response.data || response.items || response;
+            const itemsArray = Array.isArray(itemsList) ? itemsList : (itemsList.data ? itemsList.data : []);
+            const foundRemote = itemsArray[0];
+
+            if (foundRemote) {
+                // Normalize for POS
+                const normalizedItem = {
+                    ...foundRemote,
+                    id: foundRemote._id || foundRemote.id,
+                    price: foundRemote.pricing?.sellingPrice ?? foundRemote.price ?? 0,
+                    category: foundRemote.categoryId?.name || foundRemote.category || "Uncategorized",
+                    unitName: foundRemote.unitId?.name || foundRemote.unitName || "Unit",
+                };
+                initiateAddItem(normalizedItem);
+                toast.success(`Added ${normalizedItem.name} to cart`, { icon: '🛒' });
+            } else {
+                toast.error(`Code "${code}" not found`);
+            }
+        } catch (error) {
+            console.error("POS Barcode search failed:", error);
+            toast.error(`Search failed for "${code}"`);
+        }
+    }, [activeMenu, initiateAddItem, currentUser?.shop_id, activeBranchId]);
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            const currentTime = Date.now();
+            
+            // If more than 50ms between keys, it's likely manual typing
+            // Scanners usually pulse at 10-30ms
+            if (currentTime - lastScanKeyTimeRef.current > 50) {
+                scanBufferRef.current = "";
+            }
+
+            lastScanKeyTimeRef.current = currentTime;
+
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                if (scanBufferRef.current.length >= 3) {
+                    // Prevent default only if we have a valid buffer that looks like a barcode
+                    // This prevents accidental submission of other forms
+                    const code = scanBufferRef.current;
+                    scanBufferRef.current = "";
+                    e.preventDefault();
+                    handleBarcodeSearch(code);
+                } else {
+                    scanBufferRef.current = "";
+                }
+            } else if (e.key.length === 1) {
+                scanBufferRef.current += e.key;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true); // Use capture phase to catch it early
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [handleBarcodeSearch]);
+
+    // Derive categories dynamically from the menu prop (already normalized in AppContent)
     const categories = ["All", ...new Set(activeMenu.map((item) => item.category || "Uncategorized"))];
 
     const currentOrder = isTakeaway
@@ -540,7 +644,7 @@ const TakeawayOrder = ({
                                 <p className={`text-sm font-bold uppercase tracking-widest ${theme.textMuted}`}>Cart is empty</p>
                             </div>
                         ) : (
-                            <div className={`divide-y ${theme.borderLight} border rounded-xl overflow-hidden`}>
+                            <div className={`divide-y ${theme.borderLight} border rounded-xl`}>
                                 {currentOrder.items.map((item, idx) => (
                                     <div key={item.id + idx} className={`p-3 hover:${themeName === 'dark' ? 'bg-gray-800' : 'bg-gray-50'} transition-colors ${theme.surfaceBg}`}>
                                         <div className="flex justify-between items-start gap-2">
@@ -610,20 +714,65 @@ const TakeawayOrder = ({
                                                             </span>
                                                         </div>
                                                     )}
-                                                    {(item.selectedVariant || billDetails.appliedOfferItemIds?.includes(item.id || item._id)) && (
-                                                        <div className="mt-1 flex flex-wrap gap-1">
-                                                            {item.selectedVariant && (
-                                                                <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
-                                                                    {item.selectedVariant.name}
-                                                                </span>
-                                                            )}
-                                                            {billDetails.appliedOfferItemIds?.includes(item.id || item._id) && (
-                                                                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide flex items-center gap-1">
-                                                                    <Check size={10} strokeWidth={4} /> Offer Applied
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    )}
+                                                    {(() => {
+                                                        const freeItemInfo = billDetails.freeItems?.find(fi => fi.itemId === (item.id || item._id));
+                                                        const isOfferApplied = billDetails.appliedOfferItemIds?.includes(item.id || item._id);
+                                                        
+                                                        if (!item.selectedVariant && !isOfferApplied && !freeItemInfo) return null;
+
+                                                        return (
+                                                            <div className="mt-1 flex flex-wrap gap-1">
+                                                                {item.selectedVariant && (
+                                                                    <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
+                                                                        {item.selectedVariant.name}
+                                                                    </span>
+                                                                )}
+                                                                
+                                                                {freeItemInfo ? (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-tighter flex items-center gap-1 shadow-sm">
+                                                                            <Plus size={10} strokeWidth={4} /> {freeItemInfo.quantity} FREE
+                                                                        </span>
+                                                                        <span className="text-[9px] text-emerald-600 font-bold uppercase truncate max-w-[120px]">
+                                                                            {freeItemInfo.offerName}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : isOfferApplied ? (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide flex items-center gap-1">
+                                                                            <Check size={10} strokeWidth={4} /> Offer Applied
+                                                                        </span>
+                                                                        <div className="relative">
+                                                                            <button 
+                                                                                onClick={(e) => {
+                                                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                                                    if (activeOfferTip) {
+                                                                                        setActiveOfferTip(null);
+                                                                                    } else {
+                                                                                        const offer = offers.find(o => 
+                                                                                            o.condition?.itemIds?.includes(item.id || item._id) || 
+                                                                                            o.condition?.categoryIds?.includes(item.categoryId || item.category_id)
+                                                                                        );
+                                                                                        if (offer) {
+                                                                                            setActiveOfferTip({
+                                                                                                x: rect.right,
+                                                                                                y: rect.bottom,
+                                                                                                offer
+                                                                                            });
+                                                                                        }
+                                                                                    }
+                                                                                }}
+                                                                                className={`p-1 ${activeOfferTip?.offer?._id === (offers.find(o => o.condition?.itemIds?.includes(item.id || item._id) || o.condition?.categoryIds?.includes(item.categoryId || item.category_id))?._id) ? 'bg-indigo-100 text-indigo-700' : 'text-emerald-600 hover:bg-emerald-50'} rounded-full transition-all`}
+                                                                                title="View Offer Info"
+                                                                            >
+                                                                                <Info size={12} />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : null}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                     {item.suggestion && (
                                                         <div className="text-[11px] text-orange-600 italic mt-1 truncate">
                                                             Note: {item.suggestion}
@@ -659,7 +808,7 @@ const TakeawayOrder = ({
                                     {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
                                         <div className="space-y-1">
                                             <div className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Applied Offers</div>
-                                            {billDetails.appliedOffers.map((offer, oIdx) => (
+                                            {billDetails.appliedOffers.map((offer, oIdx) => offer && (
                                                 <div key={oIdx} className="flex justify-between items-center text-sm text-green-600 font-medium bg-green-50 px-2 py-1 rounded-lg">
                                                     <span>{offer.name}</span>
                                                     <span>-{formatCurrency(offer.discount)}</span>
@@ -729,6 +878,46 @@ const TakeawayOrder = ({
                     </div>
                 </div>
             </div>
+            {/* Global Offer Tooltip (Fixed Position to avoid clipping) */}
+            {activeOfferTip?.offer && (
+                <div 
+                    className="fixed z-[9999] animate-in fade-in slide-in-from-top-2 duration-200"
+                    style={{ 
+                        top: activeOfferTip.y + 10, 
+                        left: Math.max(10, activeOfferTip.x - 230), // Ensure it doesn't go off-screen left
+                        width: '220px'
+                    }}
+                >
+                    <div className={`${themeName === 'dark' ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'} shadow-2xl rounded-2xl border p-4`}>
+                        <div className="flex justify-between items-start mb-3">
+                            <h4 className="text-xs font-black uppercase tracking-tight truncate mr-2">{activeOfferTip.offer.name || 'Offer Details'}</h4>
+                            <button onClick={() => setActiveOfferTip(null)} className="text-gray-400 hover:text-red-500 p-1 shrink-0"><X size={12} /></button>
+                        </div>
+                        
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Offer Type</span>
+                                <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">{activeOfferTip.offer.condition?.applyOn || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Reward Type</span>
+                                <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{activeOfferTip.offer.reward?.rewardType?.replace('_', ' ') || 'N/A'}</span>
+                            </div>
+                            {activeOfferTip.offer.description && (
+                                <div className={`mt-3 pt-3 border-t border-dashed ${theme.borderLight}`}>
+                                    <p className={`text-[11px] leading-relaxed italic ${theme.textMuted}`}>{activeOfferTip.offer.description}</p>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className={`mt-3 text-[9px] ${theme.textMuted} text-right font-mono`}>
+                            Ref: {activeOfferTip.offer._id?.slice(-8).toUpperCase() || 'N/A'}
+                        </div>
+                    </div>
+                    {/* Tiny arrow */}
+                    <div className={`absolute top-[-6px] right-4 w-3 h-3 ${themeName === 'dark' ? 'bg-gray-900 border-l border-t border-gray-700' : 'bg-white border-l border-t border-gray-200'} rotate-45`}></div>
+                </div>
+            )}
         </div>
     );
 };

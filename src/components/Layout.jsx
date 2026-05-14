@@ -50,23 +50,6 @@ const Layout = ({
     return (
         <div className={`h-screen w-screen flex flex-col overflow-hidden ${theme.pageBg} font-sans`}>
 
-            {/* ✅ Full width navbar */}
-            <div className=" w-full">
-                <Navbar
-                    currentUser={currentUser}
-                    sessionInfo={sessionInfo}
-                    isOnlineOrderingEnabled={isOnlineOrderingEnabled}
-                    setIsOnlineOrderingEnabled={setIsOnlineOrderingEnabled}
-                    shopName={shopName}
-                    onMobileSidebarOpen={() => setIsMobileSidebarOpen(true)}
-                    businessType={businessType}
-                    businessSubtype={businessSubtype}
-                    enabledModules={enabledModules}
-                    onBusinessTypeChange={onBusinessTypeChange}
-                    onSwitchShop={onSwitchShop}
-                />
-            </div>
-
             {/* Sidebar + Content */}
             <div className="flex flex-1 overflow-hidden">
 
@@ -92,9 +75,26 @@ const Layout = ({
                 />
 
                 {/* Main Content */}
-                <div className={`flex-1 min-h-0 ml-0 transition-all duration-300 ${isSidebarExpanded ? 'md:ml-64' : 'md:ml-24'} overflow-hidden flex flex-col custom-scrollbar relative bg-gray-50/30 dark:bg-transparent`}>
-                    <PosTabBar view={view} />
-                    {children}
+                <div className={`flex-1 min-h-0 ml-0 transition-all duration-300 ${isSidebarExpanded ? 'md:ml-64' : 'md:ml-24'} overflow-hidden relative flex flex-col bg-gray-50/30 dark:bg-transparent`}>
+                    <Navbar
+                        currentUser={currentUser}
+                        sessionInfo={sessionInfo}
+                        isOnlineOrderingEnabled={isOnlineOrderingEnabled}
+                        setIsOnlineOrderingEnabled={setIsOnlineOrderingEnabled}
+                        shopName={shopName}
+                        onMobileSidebarOpen={() => setIsMobileSidebarOpen(true)}
+                        businessType={businessType}
+                        businessSubtype={businessSubtype}
+                        enabledModules={enabledModules}
+                        onBusinessTypeChange={onBusinessTypeChange}
+                        onSwitchShop={onSwitchShop}
+                    />
+                    <div className="absolute top-16 left-0 right-0 z-30 pointer-events-none">
+                        <PosTabBar view={view} />
+                    </div>
+                    <div className="flex-1 overflow-auto custom-scrollbar">
+                        {children}
+                    </div>
                 </div>
             </div>
         </div>

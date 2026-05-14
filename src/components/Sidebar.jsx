@@ -215,22 +215,22 @@ const Sidebar = ({
         DINING: {
             icon: Utensils, label: "Dining Hall",
             onClick: () => { setView("tables"); setIsTakeaway(false); navigate("/dininghall"); closeMobile(); },
-            isActive: view === "tables" || (view === "order" && !isTakeaway)
+            isActive: view === "DINING" || view === "tables" || (view === "order" && !isTakeaway)
         },
         TAKEAWAY: {
             icon: ShoppingBag, label: "Takeaway",
             onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'TAKEAWAY' }); setOrderSearch(""); navigate("/takeaway"); closeMobile(); },
-            isActive: view === "order" && isTakeaway && takeawayOrder?.orderType === 'TAKEAWAY'
+            isActive: (view === "TAKEAWAY" || view === "order") && isTakeaway && takeawayOrder?.orderType === 'TAKEAWAY'
         },
         DIRECT_SALE: {
             icon: ShoppingCart, label: "Direct Sale",
             onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'DIRECT_SALE' }); setOrderSearch(""); navigate("/takeaway"); closeMobile(); },
-            isActive: view === "order" && isTakeaway && takeawayOrder?.orderType === 'DIRECT_SALE'
+            isActive: (view === "DIRECT_SALE" || view === "TAKEAWAY" || view === "order") && isTakeaway && takeawayOrder?.orderType === 'DIRECT_SALE'
         },
         WHOLESALE: {
             icon: Store, label: "Wholesale",
             onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'WHOLESALE' }); setOrderSearch(""); navigate("/wholesale"); closeMobile(); },
-            isActive: view === "order" && isTakeaway && takeawayOrder?.orderType === 'WHOLESALE'
+            isActive: (view === "WHOLESALE" || view === "order") && isTakeaway && takeawayOrder?.orderType === 'WHOLESALE'
         },
         ONLINE_ORDERS: {
             icon: Globe, label: "Online Orders",

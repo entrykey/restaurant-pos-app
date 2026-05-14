@@ -13,13 +13,16 @@ const INITIAL_TAB_DATA = {
     takeawayCustName: "",
     takeawayCustPhone: "",
     selectedCustomer: null,
-    isTakeaway: false
+    isTakeaway: true,
+    tableId: null
 };
 
-const createTab = (id, name) => ({
+const createTab = (id, name, tableId = null) => ({
     id,
     name: name || `Tab ${id}`,
-    ...JSON.parse(JSON.stringify(INITIAL_TAB_DATA))
+    ...JSON.parse(JSON.stringify(INITIAL_TAB_DATA)),
+    tableId: tableId || null,
+    isTakeaway: !tableId // If there's a tableId, it's not a takeaway tab
 });
 
 export const TakeawayProvider = ({ children }) => {
@@ -47,20 +50,22 @@ export const TakeawayProvider = ({ children }) => {
     const [takeawayCustName, setTakeawayCustName] = useState("");
     const [takeawayCustPhone, setTakeawayCustPhone] = useState("");
     const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const [tableId, setTableId] = useState(null);
 
-    // Initial Load: Load active tab data into states when component mounts
+    // Sync: Load active tab data into states when activeTabId changes
     useEffect(() => {
         const targetTab = tabs.find(t => t.id === activeTabId);
         if (targetTab) {
             setIsTakeaway(targetTab.isTakeaway);
             setTakeawayOrder(targetTab.takeawayOrder);
-            setTakeawayCustName(targetTab.takeawayCustName);
-            setTakeawayCustPhone(targetTab.takeawayCustPhone);
-            setSelectedCustomer(targetTab.selectedCustomer);
+            setTakeawayCustName(targetTab.takeawayCustName || "");
+            setTakeawayCustPhone(targetTab.takeawayCustPhone || "");
+            setSelectedCustomer(targetTab.selectedCustomer || null);
+            setTableId(targetTab.tableId || null);
         }
-    }, []);
+    }, [activeTabId]);
 
-    // Persistence: Sync state to tabs and localStorage
+    // Persistence: Sync active states to the tabs array and localStorage
     useEffect(() => {
         const updatedTabs = tabs.map(t => {
             if (t.id === activeTabId) {
@@ -70,50 +75,47 @@ export const TakeawayProvider = ({ children }) => {
                     takeawayOrder,
                     takeawayCustName,
                     takeawayCustPhone,
-                    selectedCustomer
+                    selectedCustomer,
+                    tableId
                 };
             }
             return t;
         });
-        setTabs(updatedTabs);
-        localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
+        
+        // Only update if something actually changed to avoid unnecessary renders
+        const isDifferent = JSON.stringify(updatedTabs) !== JSON.stringify(tabs);
+        if (isDifferent) {
+            setTabs(updatedTabs);
+            localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
+        }
         localStorage.setItem('pos_active_tab_id', activeTabId.toString());
-    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, activeTabId]);
+    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, tableId, activeTabId]);
 
     const addTab = () => {
         const nextId = Math.max(...tabs.map(t => t.id), 0) + 1;
         const newTab = createTab(nextId);
         setTabs(prev => [...prev, newTab]);
-        switchTab(nextId);
+        setActiveTabId(nextId);
+    };
+
+    const addTableTab = (tId, tName) => {
+        // Check if tab for this table already exists
+        const existingTab = tabs.find(t => t.tableId === tId);
+        if (existingTab) {
+            setActiveTabId(existingTab.id);
+            return;
+        }
+
+        // Create new tab for the table
+        const nextId = Math.max(...tabs.map(t => t.id), 0) + 1;
+        const newTab = createTab(nextId, tName, tId);
+        setTabs(prev => [...prev, newTab]);
+        setActiveTabId(nextId);
     };
 
     const switchTab = (id) => {
         if (id === activeTabId) return;
-
-        // Save current states to the current active tab before switching
-        setTabs(prev => prev.map(t => {
-            if (t.id === activeTabId) {
-                return {
-                    ...t,
-                    isTakeaway,
-                    takeawayOrder,
-                    takeawayCustName,
-                    takeawayCustPhone,
-                    selectedCustomer
-                };
-            }
-            return t;
-        }));
-
-        const targetTab = tabs.find(t => t.id === id);
-        if (targetTab) {
-            setIsTakeaway(targetTab.isTakeaway);
-            setTakeawayOrder(targetTab.takeawayOrder);
-            setTakeawayCustName(targetTab.takeawayCustName);
-            setTakeawayCustPhone(targetTab.takeawayCustPhone);
-            setSelectedCustomer(targetTab.selectedCustomer);
-            setActiveTabId(id);
-        }
+        setActiveTabId(id);
     };
 
     const closeTab = (id, e) => {
@@ -137,7 +139,15 @@ export const TakeawayProvider = ({ children }) => {
         setTakeawayCustName("");
         setTakeawayCustPhone("");
         setSelectedCustomer(null);
-        setIsTakeaway(false);
+        setIsTakeaway(true);
+        setTableId(null);
+    };
+
+    const clearAllTabs = () => {
+        const resetTab = createTab(1);
+        setTabs([resetTab]);
+        setActiveTabId(1);
+        resetTakeaway();
     };
 
     return (
@@ -153,13 +163,17 @@ export const TakeawayProvider = ({ children }) => {
                 setTakeawayCustPhone,
                 selectedCustomer,
                 setSelectedCustomer,
+                tableId,
+                setTableId,
                 resetTakeaway,
                 // Multi-tab exports
                 tabs,
                 activeTabId,
                 addTab,
+                addTableTab,
                 switchTab,
-                closeTab
+                closeTab,
+                clearAllTabs
             }}
         >
             {children}

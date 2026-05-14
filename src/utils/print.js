@@ -15,25 +15,40 @@ function getPrintDocumentHtml({ title = "", html }) {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)}</title>
     <style>
-      @page { size: 80mm auto; margin: 0mm; }
+      @media print {
+        @page { size: 80mm auto; margin: 0; }
+        body { margin: 0; padding: 0; }
+      }
       html, body { padding: 0; margin: 0; }
-      body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-      .paper { width: 80mm; padding: 10px 10px 12px; box-sizing: border-box; }
+      body { 
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
+        font-weight: 600;
+        color: #000;
+      }
+      .paper { width: 80mm; padding: 0 8px 12px; box-sizing: border-box; }
       .center { text-align: center; }
-      .muted { color: #555; }
-      .bold { font-weight: 700; }
-      .tiny { font-size: 10px; line-height: 1.2; }
-      .sm { font-size: 12px; line-height: 1.25; }
-      .md { font-size: 14px; line-height: 1.3; }
+      .muted { color: #333; }
+      .bold { font-weight: 900; }
+      .tiny { font-size: 12px; line-height: 1.2; }
+      .sm { font-size: 16px; line-height: 1.25; }
+      .md { font-size: 19px; line-height: 1.3; }
+      .lg { font-size: 22px; line-height: 1.2; }
       .row { display: flex; justify-content: space-between; gap: 8px; }
-      .hr { border-top: 1px dashed #333; margin: 8px 0; }
+      .hr { border-top: 1px dashed #000; margin: 8px 0; }
       table { width: 100%; border-collapse: collapse; }
-      th, td { padding: 4px 0; vertical-align: top; }
-      th { font-size: 11px; border-bottom: 1px dashed #333; text-align: left; }
-      td { font-size: 12px; }
+      th, td { padding: 5px 0; vertical-align: top; }
+      th { font-size: 13px; border-bottom: 2px dashed #000; text-align: left; font-weight: 900; }
+      td { font-size: 15px; font-weight: 700; }
       .right { text-align: right; }
       .wrap { word-break: break-word; }
-      img.logo { max-height: 50px; max-width: 70mm; object-fit: contain; display: block; margin: 0 auto 4px; }
+      img.logo { 
+        max-height: 120px; 
+        max-width: 80mm; 
+        object-fit: contain; 
+        display: block; 
+        margin: -8px auto 6px; 
+        padding: 0;
+      }
     </style>
   </head>
   <body>
@@ -131,9 +146,9 @@ function buildHeaderHtml({ logoUrl, shopName, branchName, contact, addressLines 
   return `
     <div class="center">
       ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />` : ""}
-      ${shopName ? `<div class="md bold">${escapeHtml(shopName)}</div>` : ""}
-      ${branchName ? `<div class="sm bold">${escapeHtml(branchName)}</div>` : ""}
-      ${contact ? `<div class="tiny muted">${escapeHtml(contact)}</div>` : ""}
+      ${shopName ? `<div class="lg bold">${escapeHtml(shopName)}</div>` : ""}
+      ${branchName ? `<div class="md bold">${escapeHtml(branchName)}</div>` : ""}
+      ${contact ? `<div class="sm bold">${escapeHtml(contact)}</div>` : ""}
       ${addr ? `<div class="tiny muted">${addr}</div>` : ""}
     </div>
   `;
@@ -151,10 +166,11 @@ export function printKot({
     meta?.printedAt,
   ].filter(Boolean);
 
-  const rows = (items || []).map((it) => {
+  const rows = (items || []).map((it, idx) => {
     const notes = it?.notes ? `<div class="tiny muted wrap">Note: ${escapeHtml(it.notes)}</div>` : "";
     return `
       <tr>
+        <td style="width: 25px;">${idx + 1}</td>
         <td class="wrap">
           <div class="bold">${escapeHtml(it.name)}</div>
           ${it.variant ? `<div class="tiny muted">${escapeHtml(it.variant)}</div>` : ""}
@@ -175,6 +191,7 @@ export function printKot({
       <table>
         <thead>
           <tr>
+            <th style="width: 25px;">#</th>
             <th>Item</th>
             <th class="right">Qty</th>
           </tr>
@@ -203,10 +220,11 @@ export function printBill({
     meta?.printedAt,
   ].filter(Boolean);
 
-  const rows = (items || []).map((it) => {
+  const rows = (items || []).map((it, idx) => {
     const lineTotal = it?.lineTotal ?? 0;
     return `
       <tr>
+        <td style="width: 25px;">${idx + 1}</td>
         <td class="wrap">
           <div class="bold">${escapeHtml(it.name)}</div>
           ${it.variant ? `<div class="tiny muted">${escapeHtml(it.variant)}</div>` : ""}
@@ -228,6 +246,7 @@ export function printBill({
       <table>
         <thead>
           <tr>
+            <th style="width: 25px;">#</th>
             <th>Item</th>
             <th class="right">Qty</th>
             <th class="right">Amt</th>

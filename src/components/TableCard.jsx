@@ -98,8 +98,37 @@ const TableCard = ({
 
       {/* Middle: Status Badges & Reservation Actions */}
       <div className="flex-1 flex flex-col gap-2 mt-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {table.order?.kotStatus === 'preparing' && (
+            <div className="bg-orange-400 text-white px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-md animate-pulse border border-orange-500/20">
+              <div className="w-1 h-1 bg-white rounded-full animate-ping" />
+              Preparing
+            </div>
+          )}
+
+          {table.order?.kotStatus === 'ready' && (
+            <div className="bg-green-400 text-white px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-md animate-bounce border border-green-500/20">
+              <div className="w-1 h-1 bg-white rounded-full" />
+              Ready
+            </div>
+          )}
+
+          {table.order?.kotStatus === 'served' && (
+            <div className="bg-blue-500 text-white px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-md border border-blue-600/20">
+              <Check size={10} />
+              Served
+            </div>
+          )}
+
+          {duration && (
+            <div className={`px-2 py-1 rounded-lg flex items-center gap-1 text-[9px] font-black uppercase tracking-tight bg-white/20 text-white border border-white/10 shadow-sm`}>
+              <Timer size={12} /> {duration.label}
+            </div>
+          )}
+        </div>
+
         {hasReservation && !table.isMaintenance && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 mt-1">
             <div className="bg-yellow-400 text-yellow-900 self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm border border-yellow-500/20">
               <CalendarCheck size={12} /> {hasReservation.time || 'Reserved'}
             </div>
@@ -128,43 +157,16 @@ const TableCard = ({
             )}
           </div>
         )}
-
-        {table.order?.kotStatus === 'preparing' && (
-          <div className="bg-orange-400 text-white self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-orange-500/20 animate-pulse border border-orange-500/20">
-            <div className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
-            Preparing...
-          </div>
-        )}
-
-        {table.order?.kotStatus === 'ready' && (
-          <div className="bg-green-400 text-white self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-green-500/20 animate-bounce border border-green-500/20">
-            <div className="w-1.5 h-1.5 bg-white rounded-full" />
-            Ready to Serve
-          </div>
-        )}
-
-        {table.order?.kotStatus === 'served' && (
-          <div className="bg-blue-500 text-white self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-blue-500/20 border border-blue-600/20">
-            <Check size={12} />
-            Food Served
-          </div>
-        )}
       </div>
 
-      {/* Footer: Time and Total */}
-      <div className="flex justify-between items-end mt-4">
-        <div>
-          {duration && (
-            <div className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-[10px] md:text-xs font-black uppercase tracking-tight ${duration.colorClass.replace('bg-', 'bg-patch-').includes('text-white') ? duration.colorClass : 'bg-white/20 text-white'}`}>
-              <Timer size={14} /> {duration.label}
-            </div>
-          )}
-        </div>
-
+      {/* Footer: Total */}
+      <div className="flex justify-end items-end mt-2">
         {totalLabel && (
-          <div className="text-right flex flex-col">
-            <span className="text-[10px] font-bold uppercase opacity-60 leading-none mb-1">Total</span>
-            <span className="text-xl md:text-3xl font-black tracking-tighter leading-none">{totalLabel}</span>
+          <div className="text-right flex flex-col items-end">
+            <span className="text-[10px] font-bold uppercase opacity-60 leading-none mb-1">Total Amount</span>
+            <span className="text-xl md:text-3xl font-black tracking-tighter leading-none whitespace-nowrap">
+              {totalLabel}
+            </span>
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera, Coins, Layers } from "lucide-react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera, Coins, Layers, Scan } from "lucide-react";
 import { useNavigate, useParams, useLocation, Link } from "react-router-dom";
 import { PurchaseService } from "../../services/PurchaseService";
 import { SupplierService } from "../Suppliers/SupplierService";
@@ -98,7 +98,8 @@ const PurchasePage = () => {
     const [isLocationLoading, setIsLocationLoading] = useState(false);
     const [productPrefillData, setProductPrefillData] = useState(null);
     const [editNote, setEditNote] = useState("");
-    const [lastScannedInvoice, setLastScannedInvoice] = useState(null);
+    const [barcodeInput, setBarcodeInput] = useState("");
+
 
     const [barcodePrintDialog, setBarcodePrintDialog] = useState({
         isOpen: false,
@@ -283,6 +284,97 @@ const PurchasePage = () => {
         setItemSearch("");
     }, [formData.items, shopTaxes, units]);
 
+    const handleBarcodeSearch = useCallback(async (code) => {
+        if (!code) return;
+
+        // 1. Try to find in already loaded stockItems
+        const foundLocal = stockItems.find(it => 
+            (it.itemCode && it.itemCode.toLowerCase() === code.toLowerCase()) || 
+            (it.barcode && it.barcode.toLowerCase() === code.toLowerCase())
+        );
+
+        if (foundLocal) {
+            handleAddItem(foundLocal);
+            setBarcodeInput("");
+            toast.success(`Added ${foundLocal.name}`);
+            return;
+        }
+
+        // 2. If not found locally, try searching via API
+        try {
+            const response = await itemService.getItems({
+                limit: 1,
+                filters: {
+                    shopId: user.shop_id,
+                    $or: [
+                        { itemCode: code },
+                        { barcode: code }
+                    ]
+                }
+            });
+            const itemsList = response.data || response.items || response;
+            const itemsArray = Array.isArray(itemsList) ? itemsList : (itemsList.data ? itemsList.data : []);
+            const foundRemote = itemsArray[0];
+
+            if (foundRemote) {
+                handleAddItem(foundRemote);
+                setBarcodeInput("");
+                toast.success(`Added ${foundRemote.name}`);
+            } else {
+                // Not found -> Open creation modal with prefilled barcode
+                setProductPrefillData({
+                    barcode: code,
+                    itemCode: code,
+                    itemType: "TRADE",
+                    name: "" 
+                });
+                setIsProductModalOpen(true);
+                toast(`Item "${code}" not found. Opening creation dialog.`);
+            }
+        } catch (error) {
+            console.error("Barcode search failed:", error);
+            toast.error("Search failed. Please try again.");
+        }
+    }, [stockItems, user.shop_id, handleAddItem]);
+
+    // Global Barcode Listener
+    useEffect(() => {
+        let buffer = "";
+        let lastKeyTime = Date.now();
+
+        const handleKeyDown = (e) => {
+            // Ignore if in common inputs that might need fast typing (e.g. searching suppliers)
+            // But usually we want to allow scanning even if in search
+            const target = e.target;
+            const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+            
+            const currentTime = Date.now();
+            
+            // Scanners are extremely fast (< 30ms between keys)
+            // Manual typing is usually > 80ms
+            const diff = currentTime - lastKeyTime;
+            
+            if (diff > 100) {
+                buffer = "";
+            }
+
+            if (e.key === 'Enter') {
+                if (buffer.length >= 3) {
+                    e.preventDefault();
+                    handleBarcodeSearch(buffer);
+                    buffer = "";
+                }
+            } else if (e.key.length === 1) {
+                buffer += e.key;
+            }
+
+            lastKeyTime = currentTime;
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handleBarcodeSearch]);
+
     useEffect(() => {
         if (user && (user.shop_id || currentShopId)) {
             fetchInitialData(activeBranchId);
@@ -352,10 +444,7 @@ const PurchasePage = () => {
     // --- Handlers ---
 
 
-    const handleProductDialogClose = async (newProduct) => {
-        setIsProductModalOpen(false);
-        setProductPrefillData(null);
-
+    const handleProductDialogClose = async (newProduct, keepOpen = false) => {
         if (newProduct && (newProduct._id || newProduct.id) && newProduct.name) {
             try {
                 // Refresh stock items list to get the full item details
@@ -392,6 +481,11 @@ const PurchasePage = () => {
                 console.error("Failed to refresh items after adding product:", error);
                 handleAddItem(newProduct);
             }
+        }
+
+        if (!keepOpen) {
+            setIsProductModalOpen(false);
+            setProductPrefillData(null);
         }
     };
 
@@ -536,11 +630,7 @@ const PurchasePage = () => {
             };
         });
 
-        setLastScannedInvoice({
-            ...data,
-            preferTrade,
-            syncedAt: new Date().toISOString()
-        });
+
 
         if (data.supplierName) setSupplierSearch(data.supplierName);
         toast.success("Invoice scanned and synced! Please review the details.");
@@ -1609,9 +1699,23 @@ const PurchasePage = () => {
                     {/* section: Item Entry */}
                     <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 md:p-12 border ${theme.borderLight} flex flex-col gap-8`}>
                         <div className={`flex flex-col gap-6 border-b pb-8 ${theme.borderLight}`}>
-                            <h2 className={`text-xl font-black flex items-center gap-3 uppercase tracking-tight ${theme.textHeading}`}>
-                                <Package className="text-indigo-600" /> Items List
-                            </h2>
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                                <h2 className={`text-xl font-black flex items-center gap-3 uppercase tracking-tight ${theme.textHeading}`}>
+                                    <Package className="text-indigo-600" /> Items List
+                                </h2>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setProductPrefillData(null);
+                                            setIsProductModalOpen(true);
+                                        }}
+                                        className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${theme.mode === 'dark' ? 'bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/20' : 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100'}`}
+                                    >
+                                        <Plus size={14} /> Add New Item
+                                    </button>
+                                </div>
+                            </div>
 
                             {/* Search for Adding Items - Now Full Width */}
                             <div className="relative w-full z-[30]">
@@ -1624,6 +1728,24 @@ const PurchasePage = () => {
                                     labelKey="name"
                                     valueKey="_id"
                                     className="w-full"
+                                    extraAction={(
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setProductPrefillData(null);
+                                                setIsProductModalOpen(true);
+                                            }}
+                                            className={`w-full p-4 text-left hover:bg-emerald-50 dark:hover:bg-emerald-900/20 flex items-center justify-between group transition-colors border-t ${theme.borderLight}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-emerald-100 dark:bg-emerald-900/40 p-2 rounded-xl text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                                                    <Plus size={18} />
+                                                </div>
+                                                <div className="font-black text-emerald-600 dark:text-emerald-400">Add New Product</div>
+                                            </div>
+                                            <ChevronRight size={18} className="text-emerald-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
+                                        </button>
+                                    )}
                                     renderOption={(item) => (
                                         <div>
                                             <div className="flex items-center justify-between">
@@ -1643,21 +1765,6 @@ const PurchasePage = () => {
                                                 )}
                                             </div>
                                         </div>
-                                    )}
-                                    extraAction={(
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsProductModalOpen(true)}
-                                            className={`w-full p-3 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between group transition-colors rounded-xl`}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="bg-indigo-100 dark:bg-indigo-900/40 p-2 rounded-xl text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                                    <Plus size={18} />
-                                                </div>
-                                                <div className="font-black text-indigo-600 dark:text-indigo-400">Add New Product</div>
-                                            </div>
-                                            <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
-                                        </button>
                                     )}
                                 />
                             </div>
@@ -2373,7 +2480,7 @@ const PurchasePage = () => {
                         >
                             <X size={24} />
                         </button>
-                        <div className="flex-1 w-full relative overflow-hidden">
+                        <div className="flex-1 w-full relative overflow-hidden flex flex-col">
                             <ProductPage
                                 asDialog={true}
                                 onClose={handleProductDialogClose}
