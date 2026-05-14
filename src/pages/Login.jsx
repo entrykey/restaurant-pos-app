@@ -51,6 +51,9 @@ export default function Login({
 
       // 1. Store token
       localStorage.setItem("accessToken", data.accessToken);
+      if (data.refreshToken) {
+        localStorage.setItem("refreshToken", data.refreshToken);
+      }
       const user = data.user;
 
       // 2. Normalize permissions:

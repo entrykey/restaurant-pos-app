@@ -61,28 +61,32 @@ api.interceptors.response.use(
             isRefreshing = true;
 
             try {
-                // Call the refresh endpoint (which reads the httpOnly cookie)
-                const rs = await axios.post(`${api.defaults.baseURL}/auth/refresh`, {}, {
-                    withCredentials: true
-                });
+                // Call the refresh endpoint (reads httpOnly cookie AND body fallback)
+                const storedRefreshToken = localStorage.getItem('refreshToken');
+                const rs = await axios.post(`${api.defaults.baseURL}/auth/refresh`, 
+                    { refreshToken: storedRefreshToken }, 
+                    { withCredentials: true }
+                );
 
-                const newAccessToken = rs.data.accessToken;
+                const { accessToken, refreshToken: newRefreshToken } = rs.data;
 
                 // Update storage explicitly so future requests get it
-                localStorage.setItem('accessToken', newAccessToken);
+                localStorage.setItem('accessToken', accessToken);
+                if (newRefreshToken) {
+                    localStorage.setItem('refreshToken', newRefreshToken);
+                }
 
                 // Update default headers and current request
-                api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
-                originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+                originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
-                processQueue(null, newAccessToken);
+                processQueue(null, accessToken);
                 return api(originalRequest);
             } catch (_error) {
                 processQueue(_error, null);
-                // The refresh token is invalid or expired.
                 // Clear auth-related storage and let the UI fall back to the login screen
-                // without forcing a hard reload (avoids infinite refresh loops).
                 localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
                 localStorage.removeItem('restaurant_pos_auth_v1');
                 return Promise.reject(_error);
             } finally {

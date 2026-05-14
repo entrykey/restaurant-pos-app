@@ -598,6 +598,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 setShopTaxes(taxesRes.filter(t => t.isActive !== false));
             } catch (error) {
                 console.error("Failed to load attributes/units", error);
+                toast.error("Failed to load item configuration (units/categories). Please try refreshing.");
             }
         };
 
