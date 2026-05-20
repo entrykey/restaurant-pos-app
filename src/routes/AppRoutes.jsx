@@ -744,70 +744,70 @@ const AppRoutes = (props) => {
           element={
             <>
               {view === "dashboard" && (
-                <Navigate to="dashboard" replace />
+                <Navigate to="/dashboard" replace />
               )}
               {view === "tables" && (
-                <Navigate to="dininghall" replace />
+                <Navigate to="/dininghall" replace />
               )}
               {view === "order" && isTakeaway && (
-                <Navigate to={takeawayOrder?.orderType === "WHOLESALE" ? "wholesale" : "takeaway"} replace />
+                <Navigate to={takeawayOrder?.orderType === "WHOLESALE" ? "/wholesale" : "/takeaway"} replace />
               )}
               {view === "order" && !isTakeaway && (
-                <Navigate to={`dininghall/table/${activeTableId}`} replace />
+                <Navigate to={`/dininghall/table/${activeTableId}`} replace />
               )}
               {view === "online-orders" && (
-                <Navigate to="online-orders" replace />
+                <Navigate to="/online-orders" replace />
               )}
               {view === "reservations" && (
-                <Navigate to="reservations" replace />
+                <Navigate to="/reservations" replace />
               )}
               {view === "kds" && (
-                <Navigate to="kds" replace />
+                <Navigate to="/kds" replace />
               )}
               {view === "inventory" && (
-                <Navigate to="inventory" replace />
+                <Navigate to="/inventory" replace />
               )}
               {view === "reports" && (
-                <Navigate to="reports" replace />
+                <Navigate to="/reports" replace />
               )}
               {view === "organization" && (
-                <Navigate to="organization" replace />
+                <Navigate to="/organization" replace />
               )}
               {view === "suppliers" && (
-                <Navigate to="suppliers" replace />
+                <Navigate to="/suppliers" replace />
               )}
               {view === "parties" && (
-                <Navigate to="parties" replace />
+                <Navigate to="/parties" replace />
               )}
               {view === "service" && (
-                <Navigate to="service" replace />
+                <Navigate to="/service" replace />
               )}
               {view === "purchases" && (
-                <Navigate to="purchases" replace />
+                <Navigate to="/purchases" replace />
               )}
               {view === "business-types" && (
-                <Navigate to="business-types" replace />
+                <Navigate to="/business-types" replace />
               )}
               {view === "shop-management" && (
-                <Navigate to="shop-management" replace />
+                <Navigate to="/shop-management" replace />
               )}
               {view === "plan-management" && (
-                <Navigate to="plan-management" replace />
+                <Navigate to="/plan-management" replace />
               )}
               {view === "client-management" && (
-                <Navigate to="client-management" replace />
+                <Navigate to="/client-management" replace />
               )}
               {view === "table-management" && (
-                <Navigate to="table-management" replace />
+                <Navigate to="/table-management" replace />
               )}
               {view === "offers" && (
-                <Navigate to="offers" replace />
+                <Navigate to="/offers" replace />
               )}
               {view === "owner-dashboard" && (
-                <Navigate to="owner-dashboard" replace />
+                <Navigate to="/owner-dashboard" replace />
               )}
               {view === "my-salary" && (
-                <Navigate to="my-salary" replace />
+                <Navigate to="/my-salary" replace />
               )}
               {view !== "dashboard" && view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "parties" && view !== "service" && view !== "purchases" && view !== "business-types" && view !== "shop-management" && view !== "client-management" && view !== "plan-management" && view !== "table-management" && view !== "owner-dashboard" && view !== "offers" && props.children}
             </>

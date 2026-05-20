@@ -49,6 +49,7 @@ export const ALL_FIELDS = {
 
     // Stock Settings
     stock_applicable: { key: "stockApplicable", label: "Stock Applicable", type: "boolean", defaultValue: true, section: "Stock" },
+    opening_stock: { key: "openingStock", label: "Opening Stock Qty", type: "number", section: "Stock", placeholder: "Initial quantity on hand" },
     min_stock_alert: { key: "minStockAlert", label: "Min Stock Alert", type: "number", section: "Stock" },
     allow_negative_stock: { key: "allowNegativeStock", label: "Allow Negative Stock", type: "boolean", defaultValue: false, section: "Stock" },
 

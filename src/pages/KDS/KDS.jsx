@@ -124,31 +124,49 @@ const KDS = ({
                 {totalOrders > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-12">
                         {/* Table Orders First */}
-                        {tableKOTs.map((k) => (
-                            <KDSCard
-                                key={k._id}
-                                order={k}
-                                type="table"
-                                onUpdateStatus={handleUpdateStatus}
-                                onStartPrep={handleStartPrep}
-                                currentTime={currentTime}
-                                canManage={canManage}
-                                canServe={canServe}
-                            />
-                        ))}
+                        {tableKOTs.map((k, index) => {
+                            const tableIdStr = k.tableId?._id || k.tableId;
+                            const orderIdStr = k.orderId?._id || k.orderId;
+                            const isAdditional = tableKOTs.findIndex(t => 
+                                (t.tableId?._id || t.tableId) === tableIdStr && 
+                                (t.orderId?._id || t.orderId) === orderIdStr
+                            ) < index;
+                            
+                            return (
+                                <KDSCard
+                                    key={k._id}
+                                    order={k}
+                                    type="table"
+                                    isAdditional={isAdditional}
+                                    onUpdateStatus={handleUpdateStatus}
+                                    onStartPrep={handleStartPrep}
+                                    currentTime={currentTime}
+                                    canManage={canManage}
+                                    canServe={canServe}
+                                />
+                            );
+                        })}
                         {/* Online Orders Next */}
-                        {onlineKOTs.map((o) => (
-                            <KDSCard
-                                key={o._id}
-                                order={o}
-                                type="online"
-                                onUpdateStatus={handleUpdateStatus}
-                                onStartPrep={handleStartPrep}
-                                currentTime={currentTime}
-                                canManage={canManage}
-                                canServe={canServe}
-                            />
-                        ))}
+                        {onlineKOTs.map((o, index) => {
+                            const orderIdStr = o.orderId?._id || o.orderId;
+                            const isAdditional = onlineKOTs.findIndex(t => 
+                                (t.orderId?._id || t.orderId) === orderIdStr
+                            ) < index;
+                            
+                            return (
+                                <KDSCard
+                                    key={o._id}
+                                    order={o}
+                                    type="online"
+                                    isAdditional={isAdditional}
+                                    onUpdateStatus={handleUpdateStatus}
+                                    onStartPrep={handleStartPrep}
+                                    currentTime={currentTime}
+                                    canManage={canManage}
+                                    canServe={canServe}
+                                />
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="h-[60vh] flex flex-col items-center justify-center text-center">

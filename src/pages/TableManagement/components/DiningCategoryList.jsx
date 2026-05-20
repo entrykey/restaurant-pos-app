@@ -13,7 +13,7 @@ import { toast } from 'react-hot-toast';
 const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const { theme } = useTheme();
     const { user } = useAuth();
-    const { activeBranchId, enabledModules } = useApp();
+    const { activeBranchId } = useApp();
     const { can } = usePermission();
     
     const [categories, setCategories] = useState([]);
@@ -36,7 +36,9 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const shopId = user?.shop_id || user?.shopId || user?.shop;
 
     const fetchData = useCallback(async () => {
-        if (!enabledModules?.DINING) {
+        if (!branchId) {
+            setCategories([]);
+            setTables([]);
             setIsLoading(false);
             return;
         }
@@ -62,12 +64,11 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
         } finally {
             setIsLoading(false);
         }
-    }, [branchId, enabledModules?.DINING]);
+    }, [branchId]);
 
     useEffect(() => {
-        if (!enabledModules || Object.keys(enabledModules).length === 0) return;
         fetchData();
-    }, [fetchData, enabledModules]);
+    }, [fetchData]);
 
     useEffect(() => {
         if (triggerCreate) {
@@ -330,7 +331,9 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                             }) : (
                                 <tr>
                                     <td colSpan={5} className="p-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
-                                        No categories found. Create one to begin.
+                                        {!branchId
+                                            ? "Select a branch from the top bar to view dining categories."
+                                            : "No categories found for this branch. Create one to begin."}
                                     </td>
                                 </tr>
                             )}

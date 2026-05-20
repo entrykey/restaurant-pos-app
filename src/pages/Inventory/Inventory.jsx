@@ -224,10 +224,21 @@ const Inventory = ({
         return () => window.removeEventListener('inventoryFieldsUpdated', handleUpdates);
     }, []);
 
-    // filteredData is now simply the paginated local items
-    const filteredData = localItems;
+    // Sort items so out of stock items are pushed to the end
+    const filteredData = [...localItems].sort((a, b) => {
+        const stockA = stockMap[a._id || a.id] ?? null;
+        const qtyA = stockA && typeof stockA === 'object' ? stockA.qty : (stockA ?? a.quantityOnHand ?? 0);
+        
+        const stockB = stockMap[b._id || b.id] ?? null;
+        const qtyB = stockB && typeof stockB === 'object' ? stockB.qty : (stockB ?? b.quantityOnHand ?? 0);
 
-    const inventoryAccess = ROUTE_ACCESS.INVENTORY; // Assuming this points to module 'inventory'
+        const aHasStock = qtyA > 0;
+        const bHasStock = qtyB > 0;
+
+        if (aHasStock && !bHasStock) return -1;
+        if (!aHasStock && bHasStock) return 1;
+        return 0;
+    });
     const menuAccess = ROUTE_ACCESS.MENU || { module: "inventory", resource: "menu" };
 
     const canView = activeTab === "menu" ? canViewMenu : (activeTab === "raw" ? canViewItems : canViewTradeItems);

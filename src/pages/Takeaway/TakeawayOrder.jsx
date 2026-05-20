@@ -14,10 +14,13 @@ import {
     List as ListIcon,
     Loader2,
     Info,
+    Mic,
+    MicOff,
 } from "lucide-react";
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import FoodItemCard from "../../components/FoodItemCard";
 import { useApp } from "../../context/AppContext";
-import { itemService, customerService } from "../../services/api";
+import { itemService, customerService, api } from "../../services/api";
 import { DEFAULT_ITEM_IMAGE, getBingImage } from "../../utils/getImage";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -75,6 +78,52 @@ const TakeawayOrder = ({
     const initRef = useRef(false);
     const scanBufferRef = useRef("");
     const lastScanKeyTimeRef = useRef(Date.now());
+
+    // --- Voice Recognition Logic ---
+    const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
+    const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+
+    const startListening = () => {
+        resetTranscript();
+        SpeechRecognition.startListening({ continuous: true, language: 'en-IN' });
+    };
+
+    const stopListening = async () => {
+        SpeechRecognition.stopListening();
+        if (!transcript) return;
+
+        setIsProcessingVoice(true);
+        try {
+            const res = await api.post('/items/voice-search', {
+                text: transcript,
+                branchId: activeBranchId,
+                shopId: currentUser?.shopId || currentUser?.shop_id
+            });
+
+            const data = res.data;
+            if (data.product) {
+                initiateAddItem(data.product, data.quantity || 1);
+                toast.success(`Voice added: ${data.quantity || 1} ${data.product.name}`);
+            } else {
+                toast.error("Could not find matching product from voice input.");
+            }
+        } catch (error) {
+            console.error("Voice processing error:", error);
+            toast.error("Failed to process voice input.");
+        } finally {
+            setIsProcessingVoice(false);
+            resetTranscript();
+            setOrderSearch(""); // Clear the search bar
+        }
+    };
+
+    // Live visual feedback: show what is being spoken in the search bar
+    useEffect(() => {
+        if (listening && transcript) {
+            setOrderSearch(transcript);
+        }
+    }, [transcript, listening, setOrderSearch]);
+    // --------------------------------
 
     // Effect to initialize exchange state from navigation state (fallback/initial)
     useEffect(() => {
@@ -525,7 +574,7 @@ const TakeawayOrder = ({
                             <input
                                 value={orderSearch}
                                 onChange={(e) => setOrderSearch(e.target.value)}
-                                placeholder="Search menu with AI..."
+                                placeholder={listening ? "Listening... say '2 Pepsi' or '3 Lays'..." : "Search menu with AI or click Mic to say '2 Lays'..."}
                                 className={`w-full pl-10 pr-9 p-3 border ${theme.borderLight} rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 ${theme.inputBg} ${theme.textPrimary}`}
                             />
                             {isSearchingRemote && (
@@ -541,7 +590,27 @@ const TakeawayOrder = ({
                                 </button>
                             )}
                         </div>
-                        <div className={`inline-flex rounded-xl ${theme.surfaceBg} shadow-sm border ${theme.borderLight} overflow-hidden`}>
+
+                        {/* Voice Billing Button */}
+                        {browserSupportsSpeechRecognition && (
+                            <button
+                                type="button"
+                                onClick={listening ? stopListening : startListening}
+                                disabled={isProcessingVoice}
+                                className={`p-3 rounded-xl flex items-center justify-center transition-all shrink-0 ${
+                                    listening 
+                                        ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse' 
+                                        : isProcessingVoice 
+                                            ? 'bg-amber-500 text-white opacity-70' 
+                                            : `bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50`
+                                }`}
+                                title={listening ? "Click to process voice command" : "Start Voice Billing. E.g., '2 Pepsi', '1 Lays'"}
+                            >
+                                {isProcessingVoice ? <Loader2 size={20} className="animate-spin" /> : (listening ? <MicOff size={20} /> : <Mic size={20} />)}
+                            </button>
+                        )}
+
+                        <div className={`inline-flex rounded-xl ${theme.surfaceBg} shadow-sm border ${theme.borderLight} overflow-hidden shrink-0`}>
                             <button
                                 type="button"
                                 onClick={() => setViewMode("grid")}
@@ -599,6 +668,13 @@ const TakeawayOrder = ({
                                     activeMenuCategory === "All" ||
                                     item.category === activeMenuCategory
                                 )
+                                .sort((a, b) => {
+                                    const aHasStock = a.quantityOnHand > 0;
+                                    const bHasStock = b.quantityOnHand > 0;
+                                    if (aHasStock && !bHasStock) return -1;
+                                    if (!aHasStock && bHasStock) return 1;
+                                    return 0;
+                                })
                                 .map((item) => (
                                     <FoodItemCard
                                         key={item.id}

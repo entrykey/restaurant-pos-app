@@ -289,7 +289,8 @@ const Organization = ({
                 organization.ownerEmail !== originalOrg.ownerEmail ||
                 organization.defaultCountry !== originalOrg.defaultCountry ||
                 organization.defaultCurrency !== originalOrg.defaultCurrency ||
-                organization.defaultTaxSystem !== originalOrg.defaultTaxSystem;
+                organization.defaultTaxSystem !== originalOrg.defaultTaxSystem ||
+                organization.defaultUpiId !== originalOrg.defaultUpiId;
             setIsDirty(hasChanges);
         }
     }, [organization, originalOrg]);

@@ -1335,7 +1335,25 @@ export const reportsService = {
             console.error("Error fetching party items:", error);
             throw error.response ? error.response.data : error;
         }
-    }
+    },
+    getProfitLossReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/profit-loss', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching profit & loss report:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getBalanceSheetReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/balance-sheet', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching balance sheet report:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
 };
 
 export const reservationService = {

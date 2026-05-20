@@ -109,7 +109,7 @@ const AppContent = () => {
         salesHistory, setSalesHistory, rolesList, staffList, setRolesList, setStaffList,
         organization, setOrganization, branches, setBranches,
         businessType, setBusinessType, businessTypeData, businessSubtype, setBusinessSubtype,
-        activeBranchId, currentShopId,
+        activeBranchId, setActiveBranchId, currentShopId,
         enabledModules, setEnabledModules, setInventoryItems,
         inventoryItems, globalLoading, loadingMessage
     } = useApp();
@@ -637,6 +637,8 @@ const AppContent = () => {
         setIsMultipleShopsModalOpen(false);
         if (!shopId) return;
         try {
+            localStorage.removeItem("pos_activeBranchId");
+            setActiveBranchId(null);
             const data = await shopService.switchShop(shopId);
             if (data && data.user) {
                 auth.login(data.user);
@@ -988,7 +990,7 @@ const AppContent = () => {
         }
     };
 
-    const initiateAddItem = (menuItem) => {
+    const initiateAddItem = (menuItem, quantity = 1) => {
         const hasNewPortions = menuItem.portionPricing && menuItem.portionPricing.length > 0;
         const hasLegacyVariants = ["Portion", "Volume", "Weight"].includes(menuItem.sellingType);
         const hasExtras = menuItem.availableExtras && menuItem.availableExtras.length > 0;
@@ -998,22 +1000,22 @@ const AppContent = () => {
             if (hasNewPortions) {
                 const defPortion = menuItem.portionPricing.find(p => p.isDefault) || menuItem.portionPricing[0];
                 setCustomVariant(defPortion);
-                setCustomWeightInput(1);
+                setCustomWeightInput(quantity);
             } else if (menuItem.sellingType === "Weight") {
-                setCustomWeightInput(1);
+                setCustomWeightInput(quantity);
                 setCustomWeightUnit("kg");
                 setCustomVariant(null);
             } else if (hasLegacyVariants) {
                 setCustomVariant(menuItem.variants[0]);
-                setCustomWeightInput(1);
+                setCustomWeightInput(quantity);
             } else {
                 setCustomVariant(null);
-                setCustomWeightInput(1);
+                setCustomWeightInput(quantity);
             }
             setCustomExtras({});
             setIsCustomizationModalOpen(true);
         } else {
-            addToCart(menuItem, 1, null, []);
+            addToCart(menuItem, quantity, null, []);
         }
     };
 
@@ -1174,7 +1176,8 @@ const AppContent = () => {
                 originalOrderId: originalOrderId,
                 isExchange: isExchange,
                 returnedItems: returnedItems,
-                createdBy: currentUser._id
+                createdBy: currentUser._id,
+                notes: "Additional items added via KOT"
             };
 
             if (existingOrderId) {

@@ -102,6 +102,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     });
 
     const baseCoreFields = ["barcode", "name", "category_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type", "is_sellable"];
+    if (!isEditing) baseCoreFields.push("opening_stock");
     const CORE_FIELD_KEYS = showAdvanced ? baseCoreFields : ["unit_id", ...baseCoreFields];
 
     // Determine visible fields based on activeTab
@@ -130,6 +131,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         // Add default unit preferences to all tabs
         fields.push("default_purchase_unit", "default_sales_unit");
+        if (!isEditing) fields.push("opening_stock");
 
         if (!isGSTApplicable) {
             fields = fields.filter(f => f !== 'hsn_sac_code');

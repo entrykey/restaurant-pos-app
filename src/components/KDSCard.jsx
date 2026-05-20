@@ -1,7 +1,7 @@
 import { Clock, Check, Play, AlertCircle } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
-const KDSCard = ({ order, type = 'table', onUpdateStatus, onStartPrep, currentTime, canManage, canServe }) => {
+const KDSCard = ({ order, type = 'table', isAdditional = false, onUpdateStatus, onStartPrep, currentTime, canManage, canServe }) => {
     const { theme, themeName } = useTheme();
     const status = order.status || 'PENDING';
     const referenceTime = status === 'PREPARING' ? order.startedAt : order.createdAt;
@@ -36,8 +36,11 @@ const KDSCard = ({ order, type = 'table', onUpdateStatus, onStartPrep, currentTi
             {/* Card Header */}
             <div className={`p-4 ${theme.pageBg} border-b ${theme.borderLight} flex justify-between items-center`}>
                 <div className="min-w-0 flex-1">
-                    <h3 className={`text-xl font-black ${theme.textHeading} truncate`}>
-                        {type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online'}
+                    <h3 className={`text-xl font-black ${theme.textHeading} truncate flex items-center`}>
+                        <span>{type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online'}</span>
+                        {isAdditional && (
+                            <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full uppercase tracking-widest border border-red-200 shadow-sm align-middle">Add-on</span>
+                        )}
                     </h3>
                     <div className="flex flex-col">
                         <span className="text-xs font-black text-indigo-600 uppercase tracking-tighter">

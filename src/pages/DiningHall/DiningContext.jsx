@@ -9,7 +9,7 @@ const DiningContext = createContext();
 export const useDining = () => useContext(DiningContext);
 
 export const DiningProvider = ({ children }) => {
-    const { currentTime, branches, activeBranchId, enabledModules } = useApp();
+    const { currentTime, activeBranchId, enabledModules } = useApp();
     const { user } = useAuth();
     const [tables, setTables] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -20,8 +20,9 @@ export const DiningProvider = ({ children }) => {
     const fetchDiningData = useCallback(async (isPolling = false) => {
         const branchId = activeBranchId;
         
-        // Wait until modules are loaded to avoid calling APIs with wrong defaults
-        if (!enabledModules || Object.keys(enabledModules).length === 0) {
+        // Only return early if enabledModules is null/undefined. 
+        // If it's an empty object, we proceed so the module checks below can handle it.
+        if (!enabledModules) {
             if (!isPolling) setLoading(false);
             return;
         }
@@ -189,7 +190,7 @@ export const DiningProvider = ({ children }) => {
         } finally {
             if (!isPolling) setLoading(false);
         }
-    }, [activeBranchId, branches, activeTableId, user, enabledModules]);
+    }, [activeBranchId, activeTableId, user, enabledModules]);
 
     useEffect(() => {
         if (!user) {

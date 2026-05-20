@@ -14,7 +14,9 @@ import {
     Coins,
     Zap,
     Users,
-    ChevronRight
+    ChevronRight,
+    Scale,
+    Landmark
 } from 'lucide-react';
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from '../../components/CommonTable';
@@ -27,6 +29,7 @@ import api, { reportsService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { printCustomHtml, escapeHtml } from "../../utils/print";
+import ProfitLossAccordion from "./ProfitLossAccordion";
 
 const toAbsoluteLogoUrl = (logoUrl) => {
     if (!logoUrl) return null;
@@ -62,6 +65,9 @@ const Reports = ({
     const [selectedParty, setSelectedParty] = useState(null); // { id, name, type }
     const [partyStatement, setPartyStatement] = useState([]);
     const [partyItems, setPartyItems] = useState([]);
+    const [profitLossReport, setProfitLossReport] = useState(null);
+    const [balanceSheetReport, setBalanceSheetReport] = useState(null);
+    const [expandedPlSections, setExpandedPlSections] = useState({});
     const [loading, setLoading] = useState(false);
     const resolvedShopId = shopId || currentShopId;
     
@@ -72,21 +78,23 @@ const Reports = ({
         ? branches 
         : branches.filter(b => permittedBranchIds.includes(String(b._id || b.id)));
 
-    const [reportBranchFilter, setReportBranchFilter] = useState(
-        availableBranches.length === 1 ? String(availableBranches[0]._id || availableBranches[0].id) : "all"
-    );
+    const [reportBranchFilter, setReportBranchFilter] = useState("all");
 
     const unwrapApiData = (payload) => payload?.data || payload || [];
 
-    // Sync filter if branch list changes and we are a single-branch user
+    // Sync filter when branch list is first loaded or changes:
+    // - If single-branch user, auto-select that branch.
+    // - If multi-branch, keep "all" unless user has manually changed it.
+    // Only depends on availableBranches to avoid loop with reportBranchFilter.
     useEffect(() => {
-        if (availableBranches.length === 1 && reportBranchFilter === "all") {
+        if (availableBranches.length === 1) {
             const onlyBranchId = String(availableBranches[0]._id || availableBranches[0].id);
             if (onlyBranchId) {
-                setReportBranchFilter(onlyBranchId);
+                setReportBranchFilter(prev => prev === onlyBranchId ? prev : onlyBranchId);
             }
         }
-    }, [availableBranches, reportBranchFilter]);
+        // Do NOT auto-reset to 'all' if branches list grows â€” user may have chosen a branch
+    }, [availableBranches.length]);
 
     const fetchData = React.useCallback(async () => {
         console.log("DEBUG_REPORTS_FETCH_DATA_START:", { resolvedShopId, reportBranchFilter, filterStartDate, filterEndDate });
@@ -103,12 +111,14 @@ const Reports = ({
                 endDate: filterEndDate
             };
 
-            const [salesRes, expensesRes, perfRes, custRes, suppRes] = await Promise.all([
+            const [salesRes, expensesRes, perfRes, custRes, suppRes, plRes, bsRes] = await Promise.all([
                 reportsService.getSalesReport(params),
                 reportsService.getExpensesReport(params),
                 reportsService.getPerformanceReport(params),
                 reportsService.getCustomerReport(params),
-                reportsService.getSupplierReport(params)
+                reportsService.getSupplierReport(params),
+                reportsService.getProfitLossReport(params),
+                reportsService.getBalanceSheetReport(params),
             ]);
             console.log("DEBUG_REPORTS_DATA_RESPONSES:", {
                 sales: salesRes.data,
@@ -122,6 +132,8 @@ const Reports = ({
             setPerformanceReport(unwrapApiData(perfRes));
             setCustomerReport(unwrapApiData(custRes));
             setSupplierReport(unwrapApiData(suppRes));
+            setProfitLossReport(plRes?.data || plRes || null);
+            setBalanceSheetReport(bsRes?.data || bsRes || null);
         } catch (error) {
             console.error("Failed to fetch report data:", error);
         } finally {
@@ -160,6 +172,18 @@ const Reports = ({
         if (!dateStr) return false;
         // YYYY-MM-DD strings can be safely compared lexicographically
         return dateStr >= filterStartDate && dateStr <= filterEndDate;
+    };
+
+    const salesInRange = React.useMemo(
+        () => salesHistory.filter((s) => isWithinRange(s.date)),
+        [salesHistory, filterStartDate, filterEndDate]
+    );
+
+    const togglePlSection = (sectionId) => {
+        setExpandedPlSections((prev) => ({
+            ...prev,
+            [sectionId]: !prev[sectionId],
+        }));
     };
 
     const rangeLabel = filterStartDate === filterEndDate
@@ -206,7 +230,7 @@ const Reports = ({
                 .forEach((sale) => {
                     if (sale.items) {
                         sale.items.forEach((item) => {
-                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
+                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "â€”");
                             if (!itemStats[itemName])
                                 itemStats[itemName] = { qty: 0, revenue: 0, profit: 0 };
                             itemStats[itemName].qty += (item.quantity || 0);
@@ -320,7 +344,7 @@ const Reports = ({
                             ? Number(item.taxPercent) 
                             : (settings?.defaultTaxPercent || 0);
                         const taxType = item.taxType || (item.isExclusiveTax ? "EXCLUSIVE" : "INCLUSIVE");
-                        const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
+                        const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "â€”");
                         
                         const aggKey = `${system}|${taxP}|${taxType}|${itemName}`;
                         
@@ -364,6 +388,29 @@ const Reports = ({
                 e.type,
                 formatCurrency(e.amount, currency)
             ]);
+        } else if (reportCategory === "profit_loss" && profitLossReport?.sections) {
+            columns = ["Section", "Detail", "Amount"];
+            rows = (profitLossReport.sections || []).flatMap((sec) => [
+                [sec.label, "Total", formatCurrency(sec.total, currency)],
+                ...(sec.items || []).map((item) => [
+                    sec.label,
+                    item.label,
+                    formatCurrency(item.amount, currency),
+                ]),
+            ]);
+            rows.push(["Net Profit", "â€”", formatCurrency(profitLossReport.netProfit, currency)]);
+        } else if (reportCategory === "balance_sheet" && balanceSheetReport) {
+            columns = ["Section", "Account", "Amount"];
+            const bs = balanceSheetReport;
+            rows = [
+                ["Assets", "Cash & Bank", formatCurrency(bs.assets?.cashAndBank, currency)],
+                ["Assets", "Accounts Receivable", formatCurrency(bs.assets?.accountsReceivable, currency)],
+                ["Assets", "Inventory", formatCurrency(bs.assets?.inventory, currency)],
+                ["Assets", "Total Assets", formatCurrency(bs.assets?.total, currency)],
+                ["Liabilities", "Accounts Payable", formatCurrency(bs.liabilities?.accountsPayable, currency)],
+                ["Liabilities", "Total Liabilities", formatCurrency(bs.liabilities?.total, currency)],
+                ["Equity", "Owner's Equity", formatCurrency(bs.equity?.total, currency)],
+            ];
         }
 
         if (!columns.length) return;
@@ -430,8 +477,30 @@ const Reports = ({
         { id: "hourly", label: "Peak Hours", icon: <Clock size={16} /> },
         { id: "online_report", label: "Online Orders", icon: <Globe size={16} /> },
         { id: "expenses", label: "Expense Ledger", icon: <Coins size={16} /> },
+        { id: "profit_loss", label: "Profit & Loss", icon: <Scale size={16} /> },
+        { id: "balance_sheet", label: "Balance Sheet", icon: <Landmark size={16} /> },
         { id: "parties", label: "Parties Report", icon: <Users size={16} /> },
     ];
+
+    const renderBalanceSection = (title, section, accentClass) => (
+        <div className="space-y-3">
+            <h4 className={`text-xs font-black uppercase tracking-widest ${accentClass}`}>{title}</h4>
+            <div className="space-y-2">
+                {(section?.items || []).map((item) => (
+                    <div key={item.label} className={`flex justify-between py-2 px-3 rounded-lg ${theme.pageBg}`}>
+                        <span className={`text-sm font-bold ${theme.textSecondary}`}>{item.label}</span>
+                        <span className={`text-sm font-black tabular-nums ${theme.textPrimary}`}>
+                            {formatCurrency(item.amount, currency)}
+                        </span>
+                    </div>
+                ))}
+                <div className={`flex justify-between py-3 px-4 rounded-xl border-2 ${theme.borderLight} font-black`}>
+                    <span className={theme.textHeading}>Total {title}</span>
+                    <span className={`tabular-nums ${accentClass}`}>{formatCurrency(section?.total, currency)}</span>
+                </div>
+            </div>
+        </div>
+    );
 
     return (
         <div className={`p-4 md:p-8 h-full overflow-y-auto ${theme.pageBg}`}>
@@ -475,6 +544,64 @@ const Reports = ({
                         <Download size={18} />
                         <span>Export</span>
                     </button>
+                </div>
+            </div>
+
+            {/* Global Summary Widgets */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className={`p-5 ${theme.infoBg} rounded-2xl border ${theme.infoBorder} shadow-sm`}>
+                    <div className="flex items-center gap-3 mb-2">
+                        <TrendingUp size={20} className={theme.infoText} />
+                        <p className={`text-xs font-bold ${theme.infoText} opacity-70 uppercase`}>Total Revenue</p>
+                    </div>
+                    <p className={`text-2xl font-black ${theme.infoText}`}>
+                        {formatCurrency(
+                            salesHistory
+                                .filter((s) => isWithinRange(s.date))
+                                .reduce((a, b) => a + b.amount, 0),
+                            currency
+                        )}
+                    </p>
+                </div>
+                <div className={`p-5 ${theme.successBg} rounded-2xl border ${theme.successBorder || 'border-green-100'} shadow-sm`}>
+                    <div className="flex items-center gap-3 mb-2">
+                        <ReceiptText size={20} className={theme.successText} />
+                        <p className={`text-xs font-bold ${theme.successText} opacity-70 uppercase`}>Total Orders</p>
+                    </div>
+                    <p className={`text-2xl font-black ${theme.successText}`}>
+                        {salesHistory.filter((s) => isWithinRange(s.date)).length}
+                    </p>
+                </div>
+                <div className={`p-5 ${theme.warningBg} rounded-2xl border ${theme.warningBorder} shadow-sm`}>
+                    <div className="flex items-center gap-3 mb-2">
+                        <Coins size={20} className={theme.warningText} />
+                        <p className={`text-xs font-bold ${theme.warningText} opacity-70 uppercase`}>Total Expenses</p>
+                    </div>
+                    <p className={`text-2xl font-black ${theme.warningText}`}>
+                        {formatCurrency(
+                            expensesHistory
+                                .filter((e) => isWithinRange(e.date))
+                                .reduce((a, b) => a + b.amount, 0),
+                            currency
+                        )}
+                    </p>
+                </div>
+                <div className={`p-5 ${theme.surfaceBg} rounded-2xl border ${theme.borderLight} shadow-sm`}>
+                    <div className="flex items-center gap-3 mb-2">
+                        <Scale size={20} className="text-indigo-600" />
+                        <p className={`text-xs font-bold text-indigo-600 opacity-70 uppercase`}>Net Profit</p>
+                    </div>
+                    <p className={`text-2xl font-black text-indigo-600`}>
+                        {formatCurrency(
+                            salesHistory
+                                .filter((s) => isWithinRange(s.date))
+                                .reduce((a, b) => a + b.amount, 0) -
+                            expensesHistory
+                                .filter((e) => isWithinRange(e.date))
+                                .reduce((a, b) => a + b.amount, 0),
+                            currency
+                        )}
+                    </p>
                 </div>
             </div>
 
@@ -639,7 +766,7 @@ const Reports = ({
                                         .forEach((sale) => {
                                             if (sale.items) {
                                                 sale.items.forEach((item) => {
-                                                    const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
+                                                    const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "â€”");
                                                     if (!itemStats[itemName])
                                                         itemStats[itemName] = { qty: 0, revenue: 0, profit: 0 };
                                                     itemStats[itemName].qty += (item.quantity || 0);
@@ -744,7 +871,7 @@ const Reports = ({
                                                 ? Number(item.taxPercent) 
                                                 : (settings?.defaultTaxPercent || 0);
                                             const taxType = item.taxType || (item.isExclusiveTax ? "EXCLUSIVE" : "INCLUSIVE");
-                                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
+                                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "â€”");
                                             const taxAmount = (item.taxAmount || 0);
 
                                             // Skip zero-amount NONE profiles
@@ -1044,6 +1171,59 @@ const Reports = ({
                                     ));
                                 })()}
                             </div>
+                        </div>
+                    )}
+
+                    {/* PROFIT & LOSS */}
+                    {reportCategory === "profit_loss" && (
+                        <div className="space-y-6">
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
+                                Profit & Loss Statement ({rangeLabel})
+                            </h3>
+                            {profitLossReport ? (
+                                <ProfitLossAccordion
+                                    profitLossReport={profitLossReport}
+                                    salesInRange={salesInRange}
+                                    expandedPlSections={expandedPlSections}
+                                    togglePlSection={togglePlSection}
+                                    formatCurrency={formatCurrency}
+                                    currency={currency}
+                                    theme={theme}
+                                />
+                            ) : (
+                                <p className={`text-sm font-bold ${theme.textMuted}`}>No profit & loss data for this period.</p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* BALANCE SHEET */}
+                    {reportCategory === "balance_sheet" && (
+                        <div className="space-y-6">
+                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
+                                Balance Sheet (as of {balanceSheetReport?.asOfDate || filterEndDate})
+                            </h3>
+                            {balanceSheetReport ? (
+                                <>
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        {renderBalanceSection('Assets', balanceSheetReport.assets, 'text-indigo-600')}
+                                        {renderBalanceSection('Liabilities', balanceSheetReport.liabilities, 'text-red-600')}
+                                        {renderBalanceSection('Equity', balanceSheetReport.equity, 'text-emerald-600')}
+                                    </div>
+                                    <div className={`p-4 rounded-2xl border-2 ${theme.borderLight} flex flex-wrap justify-between gap-4 font-black`}>
+                                        <span className={theme.textHeading}>
+                                            Total Assets: {formatCurrency(balanceSheetReport.totalAssets, currency)}
+                                        </span>
+                                        <span className={theme.textMuted}>
+                                            Liabilities + Equity: {formatCurrency(balanceSheetReport.totalLiabilitiesAndEquity, currency)}
+                                        </span>
+                                    </div>
+                                    <p className={`text-xs ${theme.textMuted} font-medium`}>
+                                        Snapshot as of the end date. Cash is estimated from cumulative customer receipts minus supplier payments. Inventory uses current on-hand quantity at average cost.
+                                    </p>
+                                </>
+                            ) : (
+                                <p className={`text-sm font-bold ${theme.textMuted}`}>No balance sheet data available.</p>
+                            )}
                         </div>
                     )}
 
