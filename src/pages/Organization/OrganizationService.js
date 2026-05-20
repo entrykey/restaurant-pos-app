@@ -102,11 +102,33 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
       subscriptionStatus: data.subscription?.status || 'inactive',
       isTrial: data.subscription?.is_trial || false,
       subscriptionEndDate: data.subscription?.end_date || null,
-      planName: data.plan ? (data.plan.name === 'Trail' ? 'Trial' : data.plan.name) : 'No Active Plan',
-      planPriceLabel: data.plan
-        ? `${data.plan.currency} ${data.plan.pricing?.find(p => p.cycle === 'monthly')?.price ?? data.plan.price ?? 0}/mo`
-        : 'Subscribe to use',
+      planName: data.subscriptionMethod === 'trial_run'
+        ? (
+          (data.trialRunStatus === 'approved' && 'Trial Run Approved') ||
+          (data.trialRunStatus === 'pending' && 'Trial Run Pending') ||
+          (data.trialRunStatus === 'rejected' && 'Trial Run Rejected') ||
+          'Trial Run Not Requested'
+        )
+        : data.subscription?.status === 'pending_payment' || data.subscription?.payment_status === 'pending'
+          ? 'Waiting for payment confirmation'
+        : data.plan
+          ? (data.plan.name === 'Trail' ? 'Trial' : data.plan.name)
+          : 'No Active Plan',
+      planPriceLabel: data.subscriptionMethod === 'trial_run'
+        ? (
+          data.trialRunStatus === 'approved'
+            ? 'Full access per business type (unlimited users/branches)'
+            : 'Waiting for super admin approval'
+        )
+        : (data.subscription?.status === 'pending_payment' || data.subscription?.payment_status === 'pending')
+          ? 'Super admin payment confirmation is pending'
+        : data.plan
+          ? `${data.plan.currency} ${data.plan.pricing?.find(p => p.cycle === 'monthly')?.price ?? data.plan.price ?? 0}/mo`
+          : 'Subscribe to use',
       businessType: data.shop.businessType?._id || data.shop.businessType || null,
+      subscriptionMethod: data.subscriptionMethod || 'normal',
+      trialRunStatus: data.trialRunStatus || data.shop?.trialRunStatus || 'none',
+      canWrite: data.access?.canWrite ?? false,
     };
 
     const branchData = data.branches.map(b => ({

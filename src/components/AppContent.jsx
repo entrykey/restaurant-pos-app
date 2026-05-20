@@ -33,12 +33,12 @@ import FullOrderSummaryModal from "./modals/FullOrderSummaryModal";
 import MultipleShopsModal from "./modals/MultipleShopsModal";
 import SubscriptionNoticeModal from "./modals/SubscriptionNoticeModal";
 import { sendBrowserNotification } from "../utils/notifications";
+import { computeUserHasActiveSubscription } from "../utils/subscriptionStatus";
 
 /** Set only when user dismisses SubscriptionNoticeModal — never on open (avoids React Strict Mode + false "already notified"). */
 const POS_SUBSCRIPTION_MODAL_DISMISSED_KEY = "pos_subscription_modal_dismissed";
 const SHOW_MULTI_SHOP_MODAL = false;
 
-const LIVE_SUBSCRIPTION_STATUSES = ["active", "trial", "grace", "base", "free"];
 const ROOT_PATH_SEGMENTS = new Set([
     "dashboard",
     "dininghall",
@@ -72,28 +72,6 @@ const ROOT_PATH_SEGMENTS = new Set([
     "sales-history",
     "login",
 ]);
-
-/**
- * Prefer organization payload (same source as Organization page) over JWT user snapshot,
- * which can be stale or out of sync with "No Active Plan" in the UI.
- */
-const computeUserHasActiveSubscription = (user, organization) => {
-    const orgId = organization?.id ?? organization?._id;
-    if (orgId != null && orgId !== "") {
-        const st = String(organization.subscriptionStatus || "inactive").toLowerCase();
-        if (LIVE_SUBSCRIPTION_STATUSES.includes(st)) {
-            const endRaw = organization.subscriptionEndDate;
-            if (endRaw) {
-                const end = new Date(endRaw);
-                if (!Number.isNaN(end.getTime()) && end < new Date()) return false;
-            }
-            return true;
-        }
-        // If organization data exists but status is inactive, we trust it over JWT
-        return false;
-    }
-    return user?.subscription?.active === true;
-};
 
 const AppContent = () => {
     const { theme } = useTheme();
@@ -291,6 +269,27 @@ const AppContent = () => {
         };
         fetchOrg();
     }, [isAuthenticated, currentShopId, currentUser?._id, currentUser?.id, currentUser?.shopId, currentUser?.shop_id]);
+
+    useEffect(() => {
+        if (!isAuthenticated || !(currentUser?._id || currentUser?.id)) return;
+
+        const refetchOnVisible = async () => {
+            if (document.visibilityState !== 'visible') return;
+            try {
+                const { organization: org, branches: brs } = await fetchOrganizationData(
+                    currentUser._id || currentUser.id,
+                    currentShopId
+                );
+                if (org) setOrganization(org);
+                if (brs) setBranches(brs);
+            } catch {
+                /* ignore */
+            }
+        };
+
+        document.addEventListener('visibilitychange', refetchOnVisible);
+        return () => document.removeEventListener('visibilitychange', refetchOnVisible);
+    }, [isAuthenticated, currentShopId, currentUser?._id, currentUser?.id, setOrganization, setBranches]);
 
     // Local UI State
     const [view, setView] = useState("dashboard");
@@ -511,6 +510,7 @@ const AppContent = () => {
     const [isFullOrderSummaryOpen, setIsFullOrderSummaryOpen] = useState(false);
     const [isMultipleShopsModalOpen, setIsMultipleShopsModalOpen] = useState(false);
     const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+    const [subscriptionRequiredMessage, setSubscriptionRequiredMessage] = useState(null);
     const [isProfileHintExpanded, setIsProfileHintExpanded] = useState(false);
     const [previewOrder, setPreviewOrder] = useState(null); // For KDS/Online
 
@@ -579,21 +579,44 @@ const AppContent = () => {
             return;
         }
 
+        // Normal mode: lists work without a plan; only block writes (handled via API dialog).
+        if (organization?.subscriptionMethod === 'normal') {
+            setIsSubscriptionModalOpen(false);
+            return;
+        }
+
         const dismissedSubscriptionModal =
             localStorage.getItem(POS_SUBSCRIPTION_MODAL_DISMISSED_KEY) === "1";
         if (dismissedSubscriptionModal) return;
 
         const isOwner = currentUser.isOwner || isSuperAdmin;
 
+        if (organization?.subscriptionMethod === 'trial_run') {
+            const ownerBody =
+                organization?.trialRunStatus === 'pending'
+                    ? "Your trial run request is pending super admin approval."
+                    : "Trial run access is not approved yet. Request trial run from Organization page.";
+            const staffBody =
+                organization?.trialRunStatus === 'pending'
+                    ? "Shop trial run is pending super admin approval."
+                    : "Shop trial run is not approved yet. Contact the owner.";
+            sendBrowserNotification("Trial Run Status", {
+                body: isOwner ? ownerBody : staffBody,
+                icon: "/logo192.png",
+            });
+            setIsSubscriptionModalOpen(true);
+            return;
+        }
+
         if (isOwner) {
             sendBrowserNotification("Subscription Alert", {
-                body: "Your subscription is inactive. Please upgrade your plan to maintain access.",
+                body: "Your shop is not subscribed. Subscribe and wait for super admin payment confirmation.",
                 icon: "/logo192.png",
             });
             setIsSubscriptionModalOpen(true);
         } else {
             sendBrowserNotification("Subscription Required", {
-                body: "The shop subscription is inactive. Please contact the owner.",
+                body: "This shop has no active subscription. Ask the owner to subscribe.",
                 icon: "/logo192.png",
             });
             setIsSubscriptionModalOpen(true);
@@ -605,7 +628,19 @@ const AppContent = () => {
         organization?._id,
         organization?.subscriptionStatus,
         organization?.subscriptionEndDate,
+        organization?.subscriptionMethod,
     ]);
+
+    useEffect(() => {
+        const onSubscriptionRequired = (event) => {
+            setSubscriptionRequiredMessage(
+                event?.detail?.message ||
+                    "You haven't subscribed. Please subscribe to a plan to perform this action."
+            );
+        };
+        window.addEventListener('pos-subscription-required', onSubscriptionRequired);
+        return () => window.removeEventListener('pos-subscription-required', onSubscriptionRequired);
+    }, []);
 
     const hasPermission = (permissionKey) => {
         return checkPermission(currentUser, permissionKey);
@@ -1697,10 +1732,33 @@ const AppContent = () => {
                 onClose={handleCloseSubscriptionNotice}
                 user={currentUser}
                 isOwner={currentUser?.isOwner}
+                title={organization?.subscriptionMethod === 'trial_run' ? 'Trial run access required' : undefined}
+                message={organization?.subscriptionMethod === 'trial_run'
+                    ? (
+                        organization?.trialRunStatus === 'pending'
+                            ? 'Your trial run request is pending super admin approval. You can continue viewing lists, but write actions stay blocked.'
+                            : 'Trial run is not approved yet. Request trial run access from Organization.'
+                    )
+                    : undefined}
+                showSubscribeButton={organization?.subscriptionMethod !== 'trial_run'}
                 elevateForProfile={showProfileCompletionOverlay}
                 onSubscribe={() => {
                     setIsSubscriptionModalOpen(false);
                     setView('organization');
+                }}
+            />
+            <SubscriptionNoticeModal
+                isOpen={!!subscriptionRequiredMessage}
+                onClose={() => setSubscriptionRequiredMessage(null)}
+                user={currentUser}
+                isOwner={currentUser?.isOwner}
+                title="Subscription required"
+                message={subscriptionRequiredMessage}
+                elevateForProfile={showProfileCompletionOverlay}
+                onSubscribe={() => {
+                    setSubscriptionRequiredMessage(null);
+                    setView('organization');
+                    navigate(ROUTE_KEY_TO_PATH.ORGANIZATION || '/organization');
                 }}
             />
             {showProfileCompletionOverlay && (

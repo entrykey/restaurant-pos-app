@@ -333,6 +333,12 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
             <span>Tax (+)</span>
             <span>${fmt(purchase.taxTotal, currency)}</span>
           </div>
+          ${purchase.otherCharges ? `
+          <div class="total-row">
+            <span>Additional Charges (+)</span>
+            <span>${fmt(purchase.otherCharges, currency)}</span>
+          </div>
+          ` : ''}
           <div class="total-row">
             <span>Discount (-)</span>
             <span>${fmt(purchase.discountTotal, currency)}</span>
@@ -494,11 +500,12 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
                                     {[
                                         { label: "Subtotal", value: purchase.subtotal, cls: "text-gray-700" },
                                         { label: "Tax", value: purchase.taxTotal, cls: "text-blue-600" },
+                                        purchase.otherCharges ? { label: "Additional Charges (+)", value: purchase.otherCharges, cls: "text-gray-700" } : null,
                                         { label: "Discount", value: purchase.discountTotal, cls: "text-orange-500" },
                                         { label: "Grand Total", value: purchase.grandTotal, cls: "text-indigo-700 font-black text-base" },
                                         { label: "Paid", value: purchase.paidAmount, cls: "text-emerald-600" },
                                         { label: "Balance Due", value: purchase.balanceAmount, cls: "text-red-600 font-black" },
-                                    ].map(({ label, value, cls }) => (
+                                    ].filter(Boolean).map(({ label, value, cls }) => (
                                         <div key={label} className="flex justify-between items-center text-sm">
                                             <span className="text-gray-400 font-bold">{label}</span>
                                             <span className={`font-bold ${cls}`}>{fmt(value, currency)}</span>

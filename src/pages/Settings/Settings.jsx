@@ -348,7 +348,7 @@ const Settings = ({
                                 {backendSettings.filter(s => {
                                     if (isSuperAdmin) return s.isSystem;
                                     // For shop owners, show them all settings EXCEPT superadmin-only or specific tab settings
-                                    if (['DEFAULT_SHOP_OWNER_ROLE', 'ALLOW_UNSAFE_REGISTRATION', 'SALE_MARKING_TYPE', 'SALE_MARKING_TIME'].includes(s.key)) return false;
+                                    if (['DEFAULT_SHOP_OWNER_ROLE', 'SUBSCRIPTION_METHOD', 'ALLOW_UNSAFE_REGISTRATION', 'SALE_MARKING_TYPE', 'SALE_MARKING_TIME'].includes(s.key)) return false;
                                     
                                     // Filter based on business type features
                                     if (s.key === 'ENABLE_STOCK_ITEMS' && businessTypeData?.features?.sellStockItems === false) return false;

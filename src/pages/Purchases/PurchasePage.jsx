@@ -68,6 +68,7 @@ const PurchasePage = () => {
         subtotal: 0,
         taxTotal: 0,
         discountTotal: 0,
+        otherCharges: 0,
         grandTotal: 0,
         paidAmount: 0,
         balanceAmount: 0
@@ -201,6 +202,7 @@ const PurchasePage = () => {
             const p = data.purchase;
             setFormData({
                 ...p,
+                otherCharges: p.otherCharges || 0,
                 supplierId: p.supplierId?._id || p.supplierId,
                 branchId: p.branchId?._id || p.branchId,
                 invoiceDate: new Date(p.invoiceDate).toISOString().split('T')[0],
@@ -430,7 +432,7 @@ const PurchasePage = () => {
 
     useEffect(() => {
         setFormData(prev => {
-            const grand = subtotal + taxTotal - (Number(prev.discountTotal) || 0);
+            const grand = subtotal + taxTotal + (Number(prev.otherCharges) || 0) - (Number(prev.discountTotal) || 0);
             return {
                 ...prev,
                 subtotal: parseFloat(subtotal.toFixed(4)),
@@ -439,7 +441,7 @@ const PurchasePage = () => {
                 balanceAmount: parseFloat((grand - (Number(prev.paidAmount) || 0)).toFixed(4))
             };
         });
-    }, [subtotal, taxTotal, formData.discountTotal, formData.paidAmount]);
+    }, [subtotal, taxTotal, formData.otherCharges, formData.discountTotal, formData.paidAmount]);
 
     // --- Handlers ---
 
@@ -921,6 +923,12 @@ const PurchasePage = () => {
             <span>Tax (+)</span>
             <span>${formatCurrency(formData.taxTotal)}</span>
           </div>
+          ${formData.otherCharges ? `
+          <div class="total-row">
+            <span>Additional Charges (+)</span>
+            <span>${formatCurrency(formData.otherCharges)}</span>
+          </div>
+          ` : ''}
           <div class="total-row">
             <span>Discount (-)</span>
             <span>${formatCurrency(formData.discountTotal)}</span>
@@ -2070,6 +2078,15 @@ const PurchasePage = () => {
                                     step="0.0001"
                                     value={formData.taxTotal}
                                     onChange={e => setFormData({ ...formData, taxTotal: parseFloat(parseFloat(e.target.value || 0).toFixed(4)) })}
+                                    className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} min-w-[80px] p-2 rounded-lg outline-none border ${theme.borderLight}`}
+                                />
+                            </div>
+                            <div className="flex justify-between items-center px-2">
+                                <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest font-black">Additional Charges (+)</span>
+                                <input
+                                    type="number"
+                                    value={formData.otherCharges}
+                                    onChange={e => setFormData({ ...formData, otherCharges: parseFloat(e.target.value || 0) })}
                                     className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} min-w-[80px] p-2 rounded-lg outline-none border ${theme.borderLight}`}
                                 />
                             </div>

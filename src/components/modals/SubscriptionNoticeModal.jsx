@@ -19,6 +19,9 @@ const SubscriptionNoticeModal = ({
     isOwner: isOwnerProp,
     onSubscribe,
     elevateForProfile = false,
+    title,
+    message,
+    showSubscribeButton = true,
 }) => {
     const navigate = useNavigate();
     const { theme } = useTheme();
@@ -96,15 +99,15 @@ const SubscriptionNoticeModal = ({
                     </div>
                     <div className="flex-1 min-w-0">
                         <p className={`text-sm font-bold ${theme.textPrimary}`}>
-                            {showOwnerSubscribeFlow ? "No active subscription" : "Subscription inactive"}
+                            {title || (showOwnerSubscribeFlow ? "No active subscription" : "Subscription inactive")}
                         </p>
                         <p className={`text-xs mt-1 leading-relaxed ${theme.textSecondary}`}>
-                            {showOwnerSubscribeFlow
+                            {message || (showOwnerSubscribeFlow
                                 ? "Subscribe to unlock all features. Open Organization → Subscription & Plans to choose a plan."
-                                : "This shop has no active plan. Ask the shop owner to subscribe from Organization → Subscription & Plans."}
+                                : "This shop has no active plan. Ask the shop owner to subscribe from Organization → Subscription & Plans.")}
                         </p>
 
-                        {showOwnerSubscribeFlow ? (
+                        {showOwnerSubscribeFlow && showSubscribeButton ? (
                             <button
                                 type="button"
                                 onClick={handleSubscribeClick}

@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { subscriptionService } from '../../services/api/subscriptions';
-import { Search, Edit2, Wallet, AlertCircle, CheckCircle, Clock, Trash2 } from 'lucide-react';
+import { Search, Edit2, Wallet, AlertCircle, CheckCircle, Clock, Trash2, Sparkles } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
 
 const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
     const { theme } = useTheme();
     const [subscriptions, setSubscriptions] = useState([]);
+    const [trialRunRequests, setTrialRunRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [trialRequestsLoading, setTrialRequestsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
 
     useEffect(() => {
         fetchSubscriptions();
+        fetchTrialRunRequests();
     }, []);
 
     const fetchSubscriptions = async () => {
@@ -24,6 +27,52 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
             console.error("Failed to fetch subscriptions:", error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const fetchTrialRunRequests = async () => {
+        try {
+            setTrialRequestsLoading(true);
+            const res = await subscriptionService.getTrialRunRequests('all');
+            setTrialRunRequests(res.data || []);
+        } catch (error) {
+            console.error('Failed to fetch trial run requests:', error);
+        } finally {
+            setTrialRequestsLoading(false);
+        }
+    };
+
+    const handleApproveTrialRun = async (requestId) => {
+        if (!window.confirm('Approve trial run access for this shop? They will receive full business-type capabilities.')) return;
+        try {
+            await subscriptionService.approveTrialRunRequest(requestId);
+            await fetchTrialRunRequests();
+        } catch (error) {
+            console.error('Approve trial run failed:', error);
+            alert(error?.response?.data?.message || 'Failed to approve trial run request');
+        }
+    };
+
+    const handleRejectTrialRun = async (requestId) => {
+        if (!window.confirm('Reject this trial run request?')) return;
+        try {
+            await subscriptionService.rejectTrialRunRequest(requestId);
+            await fetchTrialRunRequests();
+        } catch (error) {
+            console.error('Reject trial run failed:', error);
+            alert(error?.response?.data?.message || 'Failed to reject trial run request');
+        }
+    };
+
+    const handleConfirmSubscriptionPayment = async (subscriptionId) => {
+        if (!window.confirm('Confirm payment and activate this subscription now?')) return;
+        try {
+            await subscriptionService.confirmSubscriptionPayment(subscriptionId);
+            await fetchSubscriptions();
+            alert('Payment confirmed. Subscription is now active.');
+        } catch (error) {
+            console.error('Confirm payment failed:', error);
+            alert(error?.response?.data?.message || 'Failed to confirm payment');
         }
     };
 
@@ -65,6 +114,17 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
         if (!dateString) return "N/A";
         return new Date(dateString).toLocaleDateString('en-US', {
             year: 'numeric', month: 'short', day: 'numeric'
+        });
+    };
+
+    const formatDateTime = (dateString) => {
+        if (!dateString) return "N/A";
+        return new Date(dateString).toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
         });
     };
 
@@ -162,6 +222,18 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
                             <Trash2 size={16} strokeWidth={2.5} />
                         </button>
                     )}
+                    {(sub.status === 'pending_payment' || (sub.status === 'trial' && sub.payment_status === 'pending')) && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleConfirmSubscriptionPayment(sub._id);
+                            }}
+                            className={`p-2 rounded-xl text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors`}
+                            title="Confirm Payment"
+                        >
+                            <CheckCircle size={16} strokeWidth={2.5} />
+                        </button>
+                    )}
                 </div>
             )
         }
@@ -216,6 +288,88 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
                             <p className={`text-xs mt-2 ${theme.textMuted}`}>Past accounts</p>
                         </div>
                     </div>
+                </div>
+
+                {/* Trial run requests */}
+                <div className={`${theme.surfaceBg} p-6 rounded-[24px] border ${theme.borderLight} shadow-sm space-y-4`}>
+                    <div className="flex items-center gap-3">
+                        <Sparkles className="text-amber-500" size={22} />
+                        <h3 className={`text-lg font-black ${theme.textHeading}`}>Trial run requests</h3>
+                    </div>
+                    <CommonTable
+                        columns={[
+                            {
+                                header: 'Shop',
+                                key: 'shop',
+                                render: (_, row) => row.shopId?.name || 'Unknown',
+                            },
+                            {
+                                header: 'Owner',
+                                key: 'owner',
+                                render: (_, row) => row.requestedBy?.name || row.requestedBy?.email || '—',
+                            },
+                            {
+                                header: 'Requested',
+                                key: 'createdAt',
+                                render: (_, row) => formatDateTime(row.createdAt),
+                            },
+                            {
+                                header: 'Status',
+                                key: 'status',
+                                render: (_, row) => (
+                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                        row.status === 'approved'
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : row.status === 'rejected'
+                                                ? 'bg-red-100 text-red-700'
+                                                : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        {row.status}
+                                    </span>
+                                ),
+                            },
+                            {
+                                header: 'Reviewed',
+                                key: 'reviewedAt',
+                                render: (_, row) => row.reviewedAt ? formatDateTime(row.reviewedAt) : '—',
+                            },
+                            {
+                                header: 'Actions',
+                                key: 'actions',
+                                className: 'text-right',
+                                headerClassName: 'text-right',
+                                render: (_, row) => (
+                                    <div className="flex justify-end gap-2">
+                                        {row.status === 'pending' ? (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleApproveTrialRun(row._id)}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700"
+                                                >
+                                                    Accept
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRejectTrialRun(row._id)}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-700"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <span className="text-xs text-gray-500 font-medium">Reviewed</span>
+                                        )}
+                                    </div>
+                                ),
+                            },
+                        ]}
+                        data={trialRunRequests}
+                        rowKey="_id"
+                        isLoading={trialRequestsLoading}
+                        loadingMessage="Loading trial run requests..."
+                        emptyMessage="No trial run requests"
+                    />
                 </div>
 
                 {/* Filters */}

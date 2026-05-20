@@ -94,6 +94,18 @@ api.interceptors.response.use(
             }
         }
 
+        if (error.response?.data?.code === 'SUBSCRIPTION_REQUIRED') {
+            window.dispatchEvent(
+                new CustomEvent('pos-subscription-required', {
+                    detail: {
+                        message:
+                            error.response.data.message ||
+                            "You haven't subscribed. Please subscribe to a plan to perform this action.",
+                    },
+                })
+            );
+        }
+
         return Promise.reject(error);
     }
 );

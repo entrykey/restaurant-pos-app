@@ -83,6 +83,7 @@ const Organization = ({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [trialLoading, setTrialLoading] = useState(null);
+    const [trialRunRequestLoading, setTrialRunRequestLoading] = useState(false);
     const [planLoading, setPlanLoading] = useState(false);
     const [isLocationLoading, setIsLocationLoading] = useState(false);
 
@@ -348,6 +349,24 @@ const Organization = ({
         }
     };
 
+    const isTrialRunMode = organization?.subscriptionMethod === 'trial_run';
+    const trialRunStatus = organization?.trialRunStatus || 'none';
+
+    const handleRequestTrialRun = () => {
+        confirmToast('Send a trial run access request to the system administrator?', async () => {
+            setTrialRunRequestLoading(true);
+            try {
+                await subscriptionService.createTrialRunRequest();
+                toast.success('Trial run request submitted. You will be notified once approved.');
+                await loadData();
+            } catch (error) {
+                toast.error(error?.response?.data?.message || error?.message || 'Failed to submit trial run request');
+            } finally {
+                setTrialRunRequestLoading(false);
+            }
+        });
+    };
+
     const handleStartTrial = (plan) => {
         confirmToast(`Start your ${plan.trialDurationDays} day trial for the ${plan.name} plan?`, async () => {
             setTrialLoading(plan.id);
@@ -372,20 +391,25 @@ const Organization = ({
     const handlePlanChange = (plan) => {
         const isCurrent = organization?.subscriptionPlanId === plan.id;
         const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
-        const actionText = isCurrent ? (isExpired ? "renew" : "standardize") : "upgrade to";
+        const actionText = isCurrent ? (isExpired ? "renew" : "subscribe to") : "subscribe to";
 
-        confirmToast(`Are you sure you want to ${actionText} the ${plan.name} plan?`, async () => {
+        confirmToast(`Subscribe to ${plan.name}? We will send a payment confirmation request to super admin.`, async () => {
             setPlanLoading(true);
             try {
                 await subscriptionService.createSubscription({
                     shop_id: organization.id,
                     plan_id: plan.id,
-                    billing_cycle: 'monthly'
+                    billing_cycle: 'monthly',
+                    subscription_intent: 'subscribe',
                 });
-                toast.success(`Successfully ${isCurrent ? "renewed" : "upgraded to"} ${plan.name} plan!`);
+                toast.success("Payment request sent. Subscription will activate after super admin confirmation.");
                 localStorage.removeItem("subscription_notified");
                 localStorage.removeItem("pos_subscription_modal_dismissed");
                 await loadData();
+                try {
+                    const refreshed = await shopService.switchShop(organization.id);
+                    if (refreshed?.user) login(refreshed.user);
+                } catch (_) { /* session refresh optional */ }
             } catch (error) {
                 console.error("Failed to change plan:", error);
                 toast.error(error.message || "Failed to change plan");
@@ -397,7 +421,8 @@ const Organization = ({
 
     const checkSubscriptionAndOpen = (openModalFn) => {
         const isOwner = user?.isOwner || user?.roles?.some(r => r.name === 'Owner' || r.name === 'Admin');
-        if (!user?.isSuperAdmin && !isOwner && !user?.subscription?.active) {
+        const hasWriteAccess = organization?.canWrite || organization?.trialRunStatus === 'approved' || user?.subscription?.active;
+        if (!user?.isSuperAdmin && !isOwner && !hasWriteAccess) {
             setIsSubscriptionNoticeOpen(true);
             return;
         }
@@ -790,7 +815,9 @@ const Organization = ({
 
                     <div className={`p-6 rounded-3xl mb-8 flex flex-col md:flex-row justify-between items-center gap-4 border ${themeName === 'dark' ? 'bg-slate-900/50 border-slate-700' : 'bg-indigo-50/80 border-indigo-100/70'}`}>
                         <div>
-                            <p className={`text-xs font-black uppercase mb-1 ${theme.primaryIconText}`}>Current Plan</p>
+                            <p className={`text-xs font-black uppercase mb-1 ${theme.primaryIconText}`}>
+                                {isTrialRunMode ? 'Access status' : 'Current Plan'}
+                            </p>
                             <h4 className={`text-2xl font-black ${theme.textHeading}`}>{organization?.planName}</h4>
                             <p className={`font-medium ${theme.textSecondary || 'text-gray-500'}`}>{organization?.planPriceLabel}</p>
                         </div>
@@ -801,7 +828,45 @@ const Organization = ({
                         */}
                     </div>
 
-                    {plans.length > 0 && (
+                    {isTrialRunMode && trialRunStatus !== 'approved' && (
+                        <div className={`p-6 rounded-3xl mb-8 border ${themeName === 'dark' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-amber-50 border-amber-200'}`}>
+                            <div className="flex items-start gap-3 mb-4">
+                                <Sparkles className="text-amber-600 shrink-0" size={22} />
+                                <div>
+                                    <h4 className={`font-black ${theme.textHeading}`}>Trial run access</h4>
+                                    <p className={`text-sm mt-1 ${theme.textSecondary}`}>
+                                        Request full platform access for your business type. A super admin must approve before you can create sales, purchases, and other records.
+                                    </p>
+                                </div>
+                            </div>
+                            {trialRunStatus === 'pending' ? (
+                                <p className={`text-sm font-bold ${theme.primaryIconText}`}>Your trial run request is pending approval.</p>
+                            ) : trialRunStatus === 'rejected' ? (
+                                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                                    <p className="text-sm font-bold text-red-600">Your previous request was not approved.</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => canEditOrg && handleRequestTrialRun()}
+                                        disabled={!canEditOrg || trialRunRequestLoading}
+                                        className="px-5 py-2.5 rounded-xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                                    >
+                                        {trialRunRequestLoading ? 'Submitting…' : 'Request again'}
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => canEditOrg && handleRequestTrialRun()}
+                                    disabled={!canEditOrg || trialRunRequestLoading}
+                                    className="px-5 py-2.5 rounded-xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    {trialRunRequestLoading ? 'Submitting…' : 'Request trial run access'}
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {!isTrialRunMode && plans.length > 0 && (
                         <>
                             <p className={`font-medium mb-6 ${theme.textSecondary || 'text-gray-500'}`}>Upgrade your plan for more branches and features</p>
 
@@ -874,7 +939,7 @@ const Organization = ({
                                                 : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
                                                 }`}
                                         >
-                                            {isCurrent ? (isExpired ? "Renew Plan" : "Move to Paid") : "Upgrade"}
+                                            {isCurrent ? (isExpired ? "Subscribe" : "Subscribe") : "Subscribe"}
                                         </button>
                                     )}
                                 </div>

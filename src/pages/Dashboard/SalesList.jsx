@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { orderService, dashboardService } from '../../services/api';
@@ -175,6 +177,7 @@ const ReturnDetailModal = ({ isOpen, onClose, returnData, theme, formatCurrency,
 };
 
 const SalesList = () => {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const { theme } = useTheme();
     const [activeTab, setActiveTab] = useState('history'); // 'history' | 'returns'
@@ -255,7 +258,7 @@ const SalesList = () => {
                     <p className={`${theme.textMuted} mt-1 font-medium`}>Manage your shop's sales records and processed returns</p>
                 </div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
                     <div className="relative flex-1 md:w-80">
                         <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={20} />
                         <input
@@ -266,28 +269,51 @@ const SalesList = () => {
                             className={`w-full pl-12 pr-4 py-3.5 rounded-2xl border outline-none transition-all font-bold ${theme.surfaceBg} ${theme.borderLight} focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10`}
                         />
                     </div>
-                    <button className={`p-3.5 rounded-2xl border ${theme.borderLight} ${theme.textPrimary} hover:bg-gray-50 dark:hover:bg-white/5 transition-colors`}>
+                    <button
+                        type="button"
+                        className={`p-3.5 rounded-2xl border ${theme.borderLight} ${theme.textPrimary} hover:bg-gray-50 dark:hover:bg-white/5 transition-colors`}
+                    >
                         <Filter size={22} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/sales/new')}
+                        className="px-6 py-3.5 rounded-2xl font-black text-sm uppercase tracking-widest bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 whitespace-nowrap"
+                    >
+                        <Plus size={18} />
+                        Add Sale
                     </button>
                 </div>
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-2 p-1.5 bg-gray-100/50 dark:bg-white/5 rounded-[22px] w-fit">
+            <div className={`flex flex-wrap gap-4 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'history'}
                     onClick={() => setActiveTab('history')}
-                    className={`px-8 py-3 rounded-[18px] text-sm font-black transition-all ${activeTab === 'history' 
-                        ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm ring-1 ring-black/5' 
-                        : `${theme.textMuted} hover:text-gray-900 dark:hover:text-white`}`}
+                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${
+                        activeTab === 'history'
+                            ? `${theme.primaryIconBg} ${theme.primaryIconText}`
+                            : `${theme.textSecondary} hover:opacity-80`
+                    }`}
                 >
+                    <ShoppingBag size={18} />
                     All Sales
                 </button>
                 <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'returns'}
                     onClick={() => setActiveTab('returns')}
-                    className={`px-8 py-3 rounded-[18px] text-sm font-black transition-all ${activeTab === 'returns' 
-                        ? 'bg-white dark:bg-slate-800 text-orange-600 shadow-sm ring-1 ring-black/5' 
-                        : `${theme.textMuted} hover:text-gray-900 dark:hover:text-white`}`}
+                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${
+                        activeTab === 'returns'
+                            ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
+                            : `${theme.textSecondary} hover:opacity-80`
+                    }`}
                 >
+                    <RotateCcw size={18} />
                     Sales Returns
                 </button>
             </div>

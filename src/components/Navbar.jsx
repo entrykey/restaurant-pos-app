@@ -8,6 +8,7 @@ import { usePermission } from "../auth/usePermission";
 import { MODULES } from "../constants/modules";
 import { ACTIONS } from "../constants/actions";
 import { notificationService } from "../services/notificationService";
+import { computeUserHasActiveSubscription, isSubscriptionPaymentPending } from "../utils/subscriptionStatus";
 
 const Navbar = ({
     currentUser,
@@ -25,6 +26,10 @@ const Navbar = ({
     const { activeBranchId, setActiveBranchId, branches, currentShopId, organization } = useApp();
     const { theme } = useTheme();
     const { can } = usePermission();
+    const subscriptionOk = computeUserHasActiveSubscription(currentUser, organization);
+    const paymentPendingNav = isSubscriptionPaymentPending(organization);
+    const showSubscriptionBadge =
+        !currentUser?.isSuperAdmin && !subscriptionOk;
     const [isBusinessTypeModalOpen, setIsBusinessTypeModalOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -257,7 +262,7 @@ const Navbar = ({
                         requestNotificationPermission();
                         setIsNotificationsOpen(!isNotificationsOpen);
                     }} />
-                    {(notifications.filter(n => !n.isRead).length > 0 || (currentUser?.subscription && !currentUser?.subscription?.active)) && (
+                    {(notifications.filter(n => !n.isRead).length > 0 || showSubscriptionBadge) && (
                          <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-900 group-hover:scale-110 transition-transform"></span>
                     )}
                     
@@ -313,8 +318,21 @@ const Navbar = ({
                                 </div>
                             ))}
 
-                            {/* Subscription Warning */}
-                            {currentUser?.subscription && !currentUser?.subscription?.active && (
+                            {paymentPendingNav ? (
+                                <div className="flex gap-3 items-start p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 hover:scale-[1.02] transition-all">
+                                    <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-600">
+                                        <AlertTriangle size={14} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className={`text-[11px] font-bold ${theme.textPrimary} leading-relaxed`}>
+                                            Payment submitted. Waiting for super admin confirmation.
+                                        </p>
+                                        <span className="text-[9px] font-medium text-amber-500 mt-1 block font-black uppercase tracking-tighter">Pending</span>
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {!subscriptionOk && !paymentPendingNav && currentUser && !currentUser?.isSuperAdmin ? (
                                 <div className="flex gap-3 items-start p-3 rounded-2xl bg-red-500/10 border border-red-500/20 hover:scale-[1.02] transition-all">
                                     <div className="p-1.5 rounded-lg bg-red-500/20 text-red-500">
                                         <AlertTriangle size={14} />
@@ -326,7 +344,7 @@ const Navbar = ({
                                         <span className="text-[9px] font-medium text-red-400 mt-1 block font-black uppercase tracking-tighter">Urgent</span>
                                     </div>
                                 </div>
-                            )}
+                            ) : null}
                         </div>
                         
                         <div className={`mt-4 pt-3 border-t ${theme.borderLight} flex justify-center`}>
