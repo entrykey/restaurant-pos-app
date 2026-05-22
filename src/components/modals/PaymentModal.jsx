@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Tag, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2, ChevronLeft, Plus, Trash2, Printer } from "lucide-react";
+import { X, Tag, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2, ChevronLeft, Plus, Trash2, Printer, Loader2 } from "lucide-react";
 import ThemeLoader from "../ui/ThemeLoader";
 import { formatCurrency } from "../../utils/format";
 import { useOrder } from "../../context/OrderContext";
@@ -59,6 +59,7 @@ const PaymentModal = ({
 
     const [selectedPayments, setSelectedPayments] = useState([]); // Array of { method: {id, label, icon, color}, amount: number, ref: string }
     const [printFormat, setPrintFormat] = useState("thermal"); // thermal | a4
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
     // Local state for customer details to prevent parent AppContent re-renders on every keystroke
     const [localCustName, setLocalCustName] = useState(custName || "");
@@ -75,6 +76,7 @@ const PaymentModal = ({
             setNoCustomerFound(false);
             setPrintFormat("thermal");
             setSelectedPayments([]); // Reset on open
+            setIsProcessingPayment(false);
         }
     }, [isOpen, custName, custPhone]);
 
@@ -331,7 +333,7 @@ const PaymentModal = ({
                                     {/* Copy existing behavior but centered for narrow width within wide modal */}
                                     {selectedPayments.length > 0 && (
                                         <div className="space-y-6">
-                                            <div className="flex justify-between items-center">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between items-start gap-3 sm:gap-0">
                                                 <span className={`text-xs font-black ${theme.textMuted} uppercase tracking-[0.2em]`}>Active Payment Methods</span>
                                                 <div className={`px-4 py-1.5 rounded-full text-[10px] font-black ${remainingBalance > 0 ? "bg-amber-100 text-amber-600" : "bg-emerald-100 text-emerald-600 ring-4 ring-emerald-500/10"}`}>
                                                     {remainingBalance > 0 ? `Unpaid: ${formatCurrency(remainingBalance)}` : "All Clear to Proceed"}
@@ -340,18 +342,18 @@ const PaymentModal = ({
                                             
                                             <div className="space-y-4">
                                                 {selectedPayments.map((p, idx) => (
-                                                    <div key={idx} className={`p-6 rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg} shadow-sm relative group animate-in slide-in-from-bottom-2 duration-300`}>
+                                                    <div key={idx} className={`p-4 md:p-6 rounded-[24px] md:rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg} shadow-sm relative group animate-in slide-in-from-bottom-2 duration-300`}>
                                                         <button 
                                                             onClick={() => removePaymentMethod(idx)}
                                                             className="absolute -top-3 -right-3 p-2 bg-white text-red-500 rounded-full border border-red-100 shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
                                                         >
                                                             <Trash2 size={16} />
                                                         </button>
-                                                        <div className="flex items-center gap-6">
-                                                            <div className={`w-16 h-16 rounded-[24px] flex items-center justify-center ${p.method.color} shadow-inner`}>
-                                                                <p.method.icon size={28} />
+                                                        <div className="flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6">
+                                                            <div className={`w-14 h-14 md:w-16 md:h-16 rounded-[20px] md:rounded-[24px] flex shrink-0 items-center justify-center ${p.method.color} shadow-inner self-start sm:self-auto`}>
+                                                                <p.method.icon className="w-6 h-6 md:w-7 md:h-7" />
                                                             </div>
-                                                            <div className="flex-1 grid grid-cols-2 gap-6">
+                                                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 w-full">
                                                                 <div className="space-y-2">
                                                                     <label className={`text-[10px] font-black ${theme.textMuted} tracking-widest uppercase`}>{p.method.label} Amount</label>
                                                                     <div className="relative">
@@ -378,24 +380,25 @@ const PaymentModal = ({
                                                             </div>
                                                         </div>
                                                         {p.method.id === "upi" ? (
-                                                            <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-white/10 flex items-center justify-between">
-                                                                <div className="flex flex-col gap-1">
-                                                                    <span className={`text-xs font-bold ${theme.textPrimary}`}>Scan to Pay via Any UPI App</span>
-                                                                    <span className={`text-[10px] ${theme.textMuted}`}>Amount: {formatCurrency(p.amount)}</span>
+                                                            <div className={`mt-6 p-5 md:p-5 rounded-[24px] ${theme.mode === 'dark' ? 'bg-indigo-900/10 border-indigo-900/30' : 'bg-indigo-50/70 border-indigo-100'} border flex flex-col md:flex-row items-center justify-between gap-5 transition-all`}>
+                                                                <div className="flex flex-col gap-1 text-center md:text-left w-full md:w-auto">
+                                                                    <span className={`text-sm md:text-base font-black ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-700'} uppercase tracking-wider flex items-center justify-center md:justify-start gap-2`}><Smartphone size={18} /> Scan to Pay</span>
+                                                                    <span className={`text-[10px] md:text-xs font-bold ${theme.mode === 'dark' ? 'text-indigo-400/70' : 'text-indigo-900/60'} tracking-widest uppercase`}>Secure UPI Payment</span>
+                                                                    <span className={`text-xl md:text-2xl font-black ${theme.textPrimary} mt-1`}>{formatCurrency(p.amount)}</span>
                                                                     {!resolvedUpiId && (
-                                                                        <span className="text-[10px] text-red-500 font-bold uppercase py-1">Missing UPI ID in branch/shop settings</span>
+                                                                        <span className="text-[10px] text-red-500 font-black uppercase py-1.5 bg-red-50 dark:bg-red-900/20 px-3 rounded-xl mt-2 self-center md:self-start border border-red-100 dark:border-red-900/40">Missing UPI ID</span>
                                                                     )}
                                                                 </div>
                                                                 {resolvedUpiId && p.amount > 0 ? (
-                                                                    <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100">
+                                                                    <div className="bg-white p-3 md:p-2 rounded-[20px] md:rounded-2xl shadow-xl shadow-indigo-600/10 border border-white shrink-0 w-40 h-40 md:w-28 md:h-28 flex items-center justify-center mt-2 md:mt-0">
                                                                         <QRCodeSVG 
                                                                             value={`upi://pay?pa=${resolvedUpiId}&pn=${encodeURIComponent(activeBranch?.name || organization?.name || organization?.businessName || 'Shop')}&am=${p.amount}&cu=INR`} 
-                                                                            size={80} 
+                                                                            style={{ width: "100%", height: "100%" }}
                                                                         />
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-700">
-                                                                        <Smartphone size={24} className="text-gray-400" />
+                                                                    <div className="w-40 h-40 md:w-28 md:h-28 bg-white/50 dark:bg-white/5 rounded-[20px] md:rounded-2xl flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-700 shrink-0 mt-2 md:mt-0">
+                                                                        <Smartphone size={40} className="text-gray-400 dark:text-gray-600 opacity-50" />
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -502,7 +505,7 @@ const PaymentModal = ({
 
                                             <div className="pt-8">
                                                 <button
-                                                    onClick={() => {
+                                                    onClick={async () => {
                                                         // Validate Customer details on credit/partial payment
                                                         if (remainingBalance > 0) {
                                                             if (!localCustName.trim() || !localCustPhone.trim()) {
@@ -524,16 +527,23 @@ const PaymentModal = ({
                                                         setCustName(localCustName);
                                                         setCustPhone(localCustPhone);
 
-                                                        onFinalizePayment(
-                                                            selectedPayments[0].method.id, 
-                                                            billDetails, 
-                                                            totalPaidAmount, 
-                                                            localCustName, 
-                                                            localCustPhone,
-                                                            paymentsPayload
-                                                        );
+                                                        setIsProcessingPayment(true);
+                                                        try {
+                                                            await onFinalizePayment(
+                                                                selectedPayments[0].method.id, 
+                                                                billDetails, 
+                                                                totalPaidAmount, 
+                                                                localCustName, 
+                                                                localCustPhone,
+                                                                paymentsPayload
+                                                            );
+                                                        } catch (error) {
+                                                            console.error("Payment failed", error);
+                                                            setIsProcessingPayment(false);
+                                                        }
                                                     }}
                                                     disabled={
+                                                        isProcessingPayment ||
                                                         selectedPayments.length === 0 ||
                                                         (remainingBalance > 0 && (
                                                             !(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ||
@@ -541,10 +551,16 @@ const PaymentModal = ({
                                                             (!billDetails.customerId && !localCustPhone?.trim() && !existingCustomerId)
                                                         ))
                                                     }
-                                                    className={`w-full py-5 rounded-[32px] text-white font-black text-2xl transition-all shadow-2xl flex items-center justify-center gap-4 group active:scale-95 ${remainingBalance <= 0 ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20'}`}
+                                                    className={`w-full py-4 md:py-5 rounded-[24px] md:rounded-[32px] text-white font-black text-lg md:text-2xl transition-all shadow-2xl flex items-center justify-center gap-2 md:gap-4 group ${isProcessingPayment ? 'opacity-80 cursor-not-allowed' : 'active:scale-95'} ${remainingBalance <= 0 ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20'}`}
                                                 >
-                                                    <CheckCircle2 size={28} className="group-hover:scale-110 transition-transform" />
-                                                    {remainingBalance > 0 ? "Finalize Credit Purchase" : "Pay & Close Order"}
+                                                    {isProcessingPayment ? (
+                                                        <Loader2 className="w-6 h-6 md:w-7 md:h-7 animate-spin shrink-0" />
+                                                    ) : (
+                                                        <CheckCircle2 className="w-6 h-6 md:w-7 md:h-7 group-hover:scale-110 transition-transform shrink-0" />
+                                                    )}
+                                                    <span className="truncate">
+                                                        {isProcessingPayment ? "Processing..." : (remainingBalance > 0 ? "Finalize Credit Purchase" : "Pay & Close Order")}
+                                                    </span>
                                                 </button>
                                             </div>
                                         </div>

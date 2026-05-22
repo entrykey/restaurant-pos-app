@@ -219,7 +219,7 @@ const CommonSelect = ({
                     </div>
 
                     {extraAction && (
-                        <div className={`p-2 border-t mt-auto ${theme.borderLight} ${theme.sectionBg}`}>
+                        <div onClick={() => setIsOpen(false)} className={`p-2 border-t mt-auto ${theme.borderLight} ${theme.sectionBg}`}>
                             {extraAction}
                         </div>
                     )}

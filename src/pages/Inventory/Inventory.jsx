@@ -244,6 +244,10 @@ const Inventory = ({
     const canView = activeTab === "menu" ? canViewMenu : (activeTab === "raw" ? canViewItems : canViewTradeItems);
     const canManage = activeTab === "menu" ? canManageMenu : (activeTab === "raw" ? canManageItems : canManageTradeItems);
 
+    const menuHeading = t('INVENTORY', 'menu_heading', 'Manufactured Items');
+    const itemsHeading = t('INVENTORY', 'items_heading', 'Stock Items');
+    const tradeHeading = t('INVENTORY', 'trade_items_heading', 'Trade Items');
+
     if (!canView) {
         return (
             <div className={`h-full flex items-center justify-center ${theme.pageBg}`}>
@@ -694,21 +698,6 @@ const Inventory = ({
                                 <Edit3 size={18} />
                             )}
                         </button>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (activeTab === "menu") {
-                                    setMenu(menu.filter((m) => m.id !== item.id));
-                                } else if (activeTab === "raw") {
-                                    setInventoryItems(inventoryItems.filter((i) => i.id !== item.id));
-                                } else {
-                                    setInventoryItems(inventoryItems.filter((i) => i.id !== item.id));
-                                }
-                            }}
-                            className={`p-3 ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95`}
-                        >
-                            <Trash2 size={18} />
-                        </button>
                     </>
                 )}
             </div>
@@ -716,7 +705,7 @@ const Inventory = ({
     });
 
     return (
-        <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg}`}>
+        <div className={`flex flex-col h-full overflow-y-auto custom-scrollbar overflow-x-hidden ${theme.pageBg}`}>
             {/* Header section */}
             <div className="p-4 md:p-6 flex-shrink-0">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
@@ -727,11 +716,11 @@ const Inventory = ({
                                 {activeTab === "menu" ? <Package size={28} /> : <Boxes size={28} />}
                             </div>
                             <h2 className={`text-2xl md:text-4xl font-black tracking-tight ${theme.textHeading}`}>
-                                {activeTab === "menu" ? t('INVENTORY', 'menu_heading', 'Manufactured Items') : (activeTab === "raw" ? t('INVENTORY', 'items_heading', 'Stock Items') : t('INVENTORY', 'trade_items_heading', 'Trade Items'))}
+                                {activeTab === "menu" ? menuHeading : (activeTab === "raw" ? itemsHeading : tradeHeading)}
                             </h2>
                         </div>
                         <p className={`font-bold ml-1 ${theme.textMuted}`}>
-                            {activeTab === "menu" ? "Manage manufactured items & bill of materials" : (activeTab === "raw" ? "Manage stock items & levels" : "Manage trade items for buy & sell")}
+                            {activeTab === "menu" ? t('INVENTORY', 'menu_subtitle', `Manage ${menuHeading.toLowerCase()} & bill of materials`) : (activeTab === "raw" ? t('INVENTORY', 'items_subtitle', `Manage ${itemsHeading.toLowerCase()} & levels`) : t('INVENTORY', 'trade_items_subtitle', `Manage ${tradeHeading.toLowerCase()} for buy & sell`))}
                         </p>
                     </div>
 
@@ -747,10 +736,10 @@ const Inventory = ({
                         </div>
 
                         {canManage && (
-                            <div className="flex gap-3">
+                            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                                 <button
                                     onClick={() => setIsBulkModalOpen(true)}
-                                    className={`px-6 py-4 rounded-2xl font-black shadow-lg transition-all flex items-center justify-center gap-2
+                                    className={`w-full sm:w-auto px-4 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black shadow-md md:shadow-lg transition-all flex items-center justify-center gap-2
                                     ${theme.mode === 'dark' ? 'bg-slate-800 text-indigo-400 hover:bg-slate-700' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}
                                 `}
                                 >
@@ -758,12 +747,12 @@ const Inventory = ({
                                 </button>
                                 <button
                                     onClick={handleOpenAddModal}
-                                    className={`px-8 py-4 rounded-2xl font-black shadow-xl text-white transition-all flex items-center justify-center gap-2
+                                    className={`w-full sm:w-auto px-4 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-black shadow-lg md:shadow-xl text-white transition-all flex items-center justify-center gap-2
                                     ${activeTab === "menu" ? "bg-indigo-600 shadow-indigo-200 dark:shadow-indigo-900/20 hover:bg-indigo-700" : (activeTab === "raw" ? "bg-orange-500 shadow-orange-200 dark:shadow-orange-900/20 hover:bg-orange-600" : "bg-emerald-600 shadow-emerald-200 dark:shadow-emerald-900/20 hover:bg-emerald-700")}
                                 `}
                                 >
                                     <Plus size={20} /> 
-                                    {activeTab === "menu" ? "Add Manufactured Item" : (activeTab === "raw" ? "Add Stock Item" : "Add Trade Item")}
+                                    {activeTab === "menu" ? t('INVENTORY', 'add_menu_item', `Add ${menuHeading.replace(/s$/, '')}`) : (activeTab === "raw" ? t('INVENTORY', 'add_stock_item', `Add ${itemsHeading.replace(/s$/, '')}`) : t('INVENTORY', 'add_trade_item', `Add ${tradeHeading.replace(/s$/, '')}`))}
                                 </button>
                             </div>
                         )}
@@ -772,12 +761,12 @@ const Inventory = ({
             </div>
 
             {/* Tabs section */}
-            <div className="px-4 md:px-6 mb-6 flex-shrink-0 flex flex-col md:flex-row justify-between items-center gap-6">
-                <div className={`flex flex-wrap gap-4 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
+            <div className="px-4 md:px-6 mb-6 flex-shrink-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-6">
+                <div className={`flex flex-col sm:flex-row flex-wrap gap-2 md:gap-4 p-2 rounded-2xl shadow-sm w-full md:w-fit ${theme.surfaceBg}`}>
                     {canViewMenu && (
                         <button
                             onClick={() => setActiveTab("menu")}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "menu"
+                            className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${activeTab === "menu"
                                 ? `${theme.primaryIconBg} ${theme.primaryIconText}`
                                 : `${theme.textSecondary} hover:opacity-80`
                                 }`}
@@ -788,7 +777,7 @@ const Inventory = ({
                     {canViewItems && (
                         <button
                             onClick={() => setActiveTab("raw")}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "raw"
+                            className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${activeTab === "raw"
                                 ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
                                 : `${theme.textSecondary} hover:opacity-80`
                                 }`}
@@ -799,7 +788,7 @@ const Inventory = ({
                     {canViewTradeItems && (
                         <button
                             onClick={() => setActiveTab("trade")}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "trade"
+                            className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${activeTab === "trade"
                                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
                                 : `${theme.textSecondary} hover:opacity-80`
                                 }`}
@@ -824,7 +813,7 @@ const Inventory = ({
             </div>
 
             {/* Table section - FULL WIDTH with minimal padding */}
-            <div className="flex-1 overflow-hidden px-2 md:px-4 pb-4">
+            <div className="flex-1 px-2 md:px-4 pb-4 min-h-[500px] flex-shrink-0 md:flex-shrink">
                 <CommonTable
                     columns={currentColumns}
                     data={filteredData}

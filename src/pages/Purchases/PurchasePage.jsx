@@ -1431,7 +1431,7 @@ const PurchasePage = () => {
                 <form onSubmit={handleSubmit} className="space-y-8 pb-12">
                     {/* section: General Info */}
                     <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 md:p-12 border ${theme.borderLight}`}>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             <div className="space-y-3">
                                 <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
                                     <User size={12} /> Supplier *
@@ -2031,7 +2031,7 @@ const PurchasePage = () => {
                     </div>
 
                     {/* section: Footer Totals & Save */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         {/* Notes Area */}
                         <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 border ${theme.borderLight}`}>
                             <label className={`text-[10px] font-black uppercase tracking-widest px-1 block mb-3 ${theme.textMuted}`}>Optional Notes</label>
@@ -2108,12 +2108,12 @@ const PurchasePage = () => {
                                 <Calculator size={32} className="opacity-20" />
                             </div>
 
-                            <div className="flex gap-4">
+                            <div className="flex flex-col sm:flex-row gap-4">
                                 <button
                                     type="button"
                                     onClick={(e) => handleSubmit(e, true)}
                                     disabled={loading}
-                                    className={`flex-1 py-4 rounded-3xl font-black transition-all flex items-center justify-center gap-2 shadow-xl border-2 ${loading
+                                    className={`w-full sm:flex-1 py-4 rounded-3xl font-black transition-all flex items-center justify-center gap-2 shadow-xl border-2 ${loading
                                         ? "border-gray-200 text-gray-400 cursor-not-allowed"
                                         : theme.mode === 'dark' ? "border-indigo-500 text-indigo-400 hover:bg-indigo-500/10 active:scale-95" : "border-indigo-600 text-indigo-600 hover:bg-indigo-50 active:scale-95"
                                         }`}
@@ -2125,7 +2125,7 @@ const PurchasePage = () => {
                                     type="button"
                                     onClick={(e) => handleSubmit(e, false)}
                                     disabled={loading}
-                                    className={`flex-[2] py-4 rounded-3xl font-black transition-all flex items-center justify-center gap-2 shadow-xl ${loading
+                                    className={`w-full sm:flex-[2] py-4 rounded-3xl font-black transition-all flex items-center justify-center gap-2 shadow-xl ${loading
                                         ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                                         : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 active:scale-95"
                                         }`}

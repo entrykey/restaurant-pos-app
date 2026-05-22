@@ -89,35 +89,35 @@ const Reservations = ({
     return (
         <div className={`p-4 md:p-8 min-h-[calc(100vh-80px)] overflow-y-auto custom-scrollbar flex flex-col ${theme.pageBg || theme.sectionBg}`}>
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
-                <div>
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-10">
+                <div className="w-full lg:w-auto">
                     <div className="flex items-center gap-3 mb-2">
-                        <div className={`p-3 ${theme.buttonBg || 'bg-indigo-600'} text-white rounded-2xl shadow-lg`}>
+                        <div className={`p-3 ${theme.buttonBg || 'bg-indigo-600'} text-white rounded-2xl shadow-lg shrink-0`}>
                             <CalendarCheck size={28} />
                         </div>
-                        <h2 className={`text-2xl md:text-4xl font-black ${theme.textPrimary} tracking-tight`}>
+                        <h2 className={`text-2xl lg:text-4xl font-black ${theme.textPrimary} tracking-tight`}>
                             Reservations
                         </h2>
                     </div>
-                    <p className={`${theme.textMuted} font-bold flex items-center gap-2`}>
+                    <p className={`${theme.textMuted} font-bold flex items-center gap-2 flex-wrap`}>
                         Book your tables and manage guest check-ins
                     </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                    <div className={`${theme.cardBg} p-2 rounded-2xl shadow-md ${theme.sectionBorder} flex items-center gap-3`}>
-                        <Calendar size={18} className="text-indigo-400 ml-2" />
+                <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full lg:w-auto">
+                    <div className={`${theme.cardBg} p-2 rounded-2xl shadow-md ${theme.sectionBorder} flex items-center gap-3 flex-1 sm:flex-none`}>
+                        <Calendar size={18} className="text-indigo-400 ml-2 shrink-0" />
                         <DatePicker
                             value={filterDate}
                             onChange={val => setFilterDate(val)}
-                            className="w-40 border-none"
+                            className="w-full sm:w-40 border-none bg-transparent"
                         />
                     </div>
 
                     {canCreate && (
                         <button
                             onClick={() => navigate('/reservations/new')}
-                            className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                            className="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 flex-1 sm:flex-none shrink-0"
                         >
                             <Plus size={20} /> New Booking
                         </button>

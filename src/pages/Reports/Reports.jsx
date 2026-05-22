@@ -39,6 +39,22 @@ const toAbsoluteLogoUrl = (logoUrl) => {
     return `${base}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
 };
 
+const reportCategories = [
+    { id: "sales", label: "Sales Reports", icon: <TrendingUp size={16} />, permission: "SALES_REPORTS" },
+    { id: "items", label: "Item-wise Sales", icon: <Utensils size={16} />, permission: "ITEM_WISE_SALES" },
+    { id: "category", label: "Category-wise", icon: <Package size={16} />, permission: "CATEGORY_WISE" },
+    { id: "payments", label: "Payment Modes", icon: <CreditCard size={16} />, permission: "PAYMENT_MODES" },
+    { id: "tax", label: "Tax / GST", icon: <ReceiptText size={16} />, permission: "TAX_GST" },
+    { id: "staff_report", label: "Staff Performance", icon: <UserCheck size={16} />, permission: "STAFF_PERFORMANCE" },
+    { id: "table_report", label: "Table Revenue", icon: <LayoutDashboard size={16} />, permission: "TABLE_REVENUE" },
+    { id: "hourly", label: "Peak Hours", icon: <Clock size={16} />, permission: "PEAK_HOURS" },
+    { id: "online_report", label: "Online Orders", icon: <Globe size={16} />, permission: "ONLINE_ORDERS" },
+    { id: "expenses", label: "Expense Ledger", icon: <Coins size={16} />, permission: "EXPENSE_LEDGER" },
+    { id: "profit_loss", label: "Profit & Loss", icon: <Scale size={16} />, permission: "PROFIT_LOSS" },
+    { id: "balance_sheet", label: "Balance Sheet", icon: <Landmark size={16} />, permission: "BALANCE_SHEET" },
+    { id: "parties", label: "Parties Report", icon: <Users size={16} />, permission: "PARTIES_REPORT" },
+];
+
 const Reports = ({
     staffList = [],
     tables = [],
@@ -70,6 +86,16 @@ const Reports = ({
     const [expandedPlSections, setExpandedPlSections] = useState({});
     const [loading, setLoading] = useState(false);
     const resolvedShopId = shopId || currentShopId;
+    
+    const allowedCategories = React.useMemo(() => {
+        return reportCategories.filter(item => can("reports", item.permission));
+    }, [can]);
+
+    useEffect(() => {
+        if (allowedCategories.length > 0 && !allowedCategories.some(c => c.id === reportCategory)) {
+            setReportCategory(allowedCategories[0].id);
+        }
+    }, [allowedCategories, reportCategory]);
     
     const { user } = useAuth();
     const isGlobalUser = user?.allBranches || user?.isOwner || user?.isSuperAdmin || user?.roles?.some(r => r.name === 'shop_user' || r.name === 'owner');
@@ -461,26 +487,10 @@ const Reports = ({
         });
     };
 
-    const canView = can("reports", "VIEW.REPORTS");
+    const canView = allowedCategories.length > 0;
     if (!canView) {
         return <div className={`p-8 text-center ${theme.textMuted} font-bold`}>You don't have permission to view reports.</div>;
     }
-
-    const reportCategories = [
-        { id: "sales", label: "Sales Reports", icon: <TrendingUp size={16} /> },
-        { id: "items", label: "Item-wise Sales", icon: <Utensils size={16} /> },
-        { id: "category", label: "Category-wise", icon: <Package size={16} /> },
-        { id: "payments", label: "Payment Modes", icon: <CreditCard size={16} /> },
-        { id: "tax", label: "Tax / GST", icon: <ReceiptText size={16} /> },
-        { id: "staff_report", label: "Staff Performance", icon: <UserCheck size={16} /> },
-        { id: "table_report", label: "Table Revenue", icon: <LayoutDashboard size={16} /> },
-        { id: "hourly", label: "Peak Hours", icon: <Clock size={16} /> },
-        { id: "online_report", label: "Online Orders", icon: <Globe size={16} /> },
-        { id: "expenses", label: "Expense Ledger", icon: <Coins size={16} /> },
-        { id: "profit_loss", label: "Profit & Loss", icon: <Scale size={16} /> },
-        { id: "balance_sheet", label: "Balance Sheet", icon: <Landmark size={16} /> },
-        { id: "parties", label: "Parties Report", icon: <Users size={16} /> },
-    ];
 
     const renderBalanceSection = (title, section, accentClass) => (
         <div className="space-y-3">
@@ -504,28 +514,28 @@ const Reports = ({
 
     return (
         <div className={`p-4 md:p-8 h-full overflow-y-auto ${theme.pageBg}`}>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-8">
                 <h2 className={`text-2xl md:text-4xl font-black flex items-center ${theme.textHeading}`}>
-                    <FileText className="mr-3 text-indigo-600" /> Reports & Analytics
+                    <FileText className="mr-3 text-indigo-600 shrink-0" /> Reports & Analytics
                 </h2>
-                <div className="flex gap-3 items-center">
-                    <div className={`flex items-center gap-2 ${theme.surfaceBg} border-2 ${theme.borderLight} rounded-2xl px-3 py-2 shadow-sm`}>
+                <div className="flex flex-wrap gap-3 items-center w-full xl:w-auto">
+                    <div className={`flex flex-wrap sm:flex-nowrap items-center gap-2 ${theme.surfaceBg} border-2 ${theme.borderLight} rounded-2xl px-3 py-2 shadow-sm flex-1 sm:flex-none`}>
                         <DatePicker
                             value={filterStartDate}
                             onChange={val => setFilterStartDate(val || today)}
-                            className="w-40"
+                            className="w-full sm:w-40"
                             placeholder="From date"
                         />
-                        <span className={`text-xs font-bold ${theme.textMuted}`}>to</span>
+                        <span className={`text-xs font-bold ${theme.textMuted} hidden sm:inline`}>to</span>
                         <DatePicker
                             value={filterEndDate}
                             onChange={val => setFilterEndDate(val || today)}
-                            className="w-40"
+                            className="w-full sm:w-40"
                             placeholder="To date"
                         />
                     </div>
                     {availableBranches.length > 1 && (
-                        <div className="w-48 z-50">
+                        <div className="w-full sm:w-48 z-50 flex-1 sm:flex-none">
                             <CommonSelect
                                 options={[
                                     { label: "All Branches", value: "all" },
@@ -608,7 +618,7 @@ const Reports = ({
             <div className="flex flex-col lg:flex-row gap-6 h-full lg:h-[calc(100vh-200px)] overflow-hidden">
                 {/* Sidebar for Reports */}
                 <div className={`w-full lg:w-64 ${theme.surfaceBg} rounded-3xl shadow-lg border ${theme.borderLight} p-2 lg:p-4 flex flex-row lg:flex-col gap-2 shrink-0 overflow-x-auto lg:overflow-y-auto no-scrollbar`}>
-                    {reportCategories.map((item) => (
+                    {allowedCategories.map((item) => (
                         <button
                             key={item.id}
                             onClick={() => setReportCategory(item.id)}

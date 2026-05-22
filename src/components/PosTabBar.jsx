@@ -79,8 +79,8 @@ const PosTabBar = ({ view }) => {
     if (!showTabs) return null;
 
     return (
-        <div className="flex items-center justify-center w-full px-4 pt-2 md:pt-4 pointer-events-none">
-            <div className={`flex items-center gap-1.5 p-1 bg-slate-900/40 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl border border-white/10 dark:border-slate-700/50 shadow-2xl pointer-events-auto overflow-x-auto no-scrollbar max-w-full`}>
+        <div className="flex items-center justify-start md:justify-center w-full px-4 pt-2 md:pt-4 pb-2">
+            <div className={`flex items-center gap-1.5 p-1.5 bg-[#7a818e] rounded-full shadow-lg overflow-x-auto no-scrollbar max-w-full lg:pointer-events-auto`}>
                 {tabs.map((tab) => {
                     const isActive = tab.id === activeTabId;
                     const itemCount = (isActive ? takeawayOrder.items : tab.takeawayOrder.items)?.length || 0;
@@ -90,24 +90,24 @@ const PosTabBar = ({ view }) => {
                         <div
                             key={tab.id}
                             onClick={() => switchTab(tab.id)}
-                            className={`group relative shrink-0 min-w-[100px] md:min-w-[140px] max-w-[180px] h-9 md:h-10 px-3 md:px-4 flex items-center justify-between gap-2 cursor-pointer transition-all duration-300 transform rounded-xl
+                            className={`group relative shrink-0 min-w-[100px] md:min-w-[140px] max-w-[180px] h-9 md:h-11 px-3 md:px-5 flex items-center justify-between gap-3 cursor-pointer transition-all duration-300 transform rounded-full
                                 ${isActive 
-                                    ? `bg-indigo-600 text-white shadow-lg z-10 scale-105` 
-                                    : `text-slate-300 hover:bg-white/10`
+                                    ? `bg-[#5b52f6] text-white shadow-lg z-10` 
+                                    : `text-slate-200 hover:bg-white/10`
                                 }`}
                         >
-                            <div className="flex items-center gap-2 min-w-0">
+                            <div className="flex items-center gap-2.5 min-w-0">
                                 {itemCount > 0 ? (
-                                    <div className={`shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black 
-                                        ${isActive ? 'bg-white text-indigo-600' : 'bg-indigo-500 text-white'}`}>
+                                    <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black 
+                                        ${isActive ? 'bg-white text-[#5b52f6]' : 'bg-slate-400/50 text-white'}`}>
                                         {itemCount}
                                     </div>
                                 ) : (
-                                    <div className={`shrink-0 w-4 h-4 rounded-full flex items-center justify-center ${isActive ? 'bg-indigo-500' : 'bg-white/10'}`}>
-                                        <User size={10} className={isActive ? 'text-white' : 'text-slate-400'} />
+                                    <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${isActive ? 'bg-white/20' : 'bg-white/10'}`}>
+                                        <User size={12} className={isActive ? 'text-white' : 'text-slate-200'} />
                                     </div>
                                 )}
-                                <span className="text-[10px] md:text-[11px] font-black truncate tracking-tight uppercase">
+                                <span className="text-[11px] md:text-[13px] font-black truncate tracking-wide uppercase">
                                     {custName}
                                 </span>
                             </div>
@@ -116,32 +116,32 @@ const PosTabBar = ({ view }) => {
                                 onClick={(e) => closeTab(tab.id, e)}
                                 className={`p-0.5 rounded-full transition-all shrink-0
                                     ${isActive 
-                                        ? 'hover:bg-white/20 text-white/60 hover:text-white' 
-                                        : 'opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-500 hover:text-red-400'
+                                        ? 'hover:bg-white/20 text-white/70 hover:text-white' 
+                                        : 'opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-400 hover:text-red-400'
                                     }`}
                             >
-                                <X size={10} strokeWidth={3} />
+                                <X size={12} strokeWidth={3} />
                             </button>
                         </div>
                     );
                 })}
 
-                <div className="flex items-center gap-1.5 px-1.5 border-l border-white/10 ml-1">
+                <div className="flex items-center gap-1.5 px-2 border-l border-white/10 ml-1 shrink-0">
                     <button
                         onClick={addTab}
-                        className={`h-8 w-8 md:h-9 md:w-9 shrink-0 rounded-xl bg-white/10 text-white hover:bg-indigo-600 transition-all flex items-center justify-center border border-white/5`}
+                        className={`h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl bg-white/20 text-white hover:bg-white/30 transition-all flex items-center justify-center`}
                         title="New Sale Tab"
                     >
-                        <Plus size={16} strokeWidth={4} />
+                        <Plus size={18} strokeWidth={4} />
                     </button>
 
                     {tabs.length > 1 && (
                         <button
                             onClick={confirmClearAll}
-                            className={`h-8 w-8 md:h-9 md:w-9 shrink-0 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center border border-red-500/20`}
+                            className={`h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl bg-[#c17878]/30 text-[#e68c8c] hover:bg-red-500 hover:text-white transition-all flex items-center justify-center`}
                             title="Clear All Tabs"
                         >
-                            <Trash2 size={14} strokeWidth={3} />
+                            <Trash2 size={16} strokeWidth={2.5} />
                         </button>
                     )}
                 </div>

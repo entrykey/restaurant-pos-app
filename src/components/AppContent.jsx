@@ -1461,13 +1461,15 @@ const AppContent = () => {
             setTakeawayCustName("");
             setTakeawayCustPhone("");
             setOrderSearch("");
-            setView("tables");
-            toast.success("Order completed successfully!");
-
-            // Proactive table clean-up
+            
             if (!isTakeaway) {
+                setView("tables");
                 setActiveTableId(null);
+            } else {
+                setView("order");
             }
+            
+            toast.success("Order completed successfully!");
         } catch (err) {
             console.error("Failed to finalize order / payment:", err);
             setSalesHistory((prev) => [...prev, saleRecord]);
@@ -1626,6 +1628,7 @@ const AppContent = () => {
                         menu={menu}
                         setMenu={setMenu}
                         inventoryItems={inventoryItems}
+                        setInventoryItems={setInventoryItems}
                         salesHistory={salesHistory}
                         staffList={staffList}
                         authLogs={authLogs}

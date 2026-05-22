@@ -472,11 +472,11 @@ const TakeawayOrder = ({
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
                 {/* Menu Section */}
                 <div
-                    className={`flex-1 p-4 ${theme.pageBg} flex flex-col min-h-0 ${mobileOrderTab === "cart" ? "hidden lg:flex" : "flex"
+                    className={`flex-1 p-2 sm:p-4 ${theme.pageBg} flex flex-col min-h-0 ${mobileOrderTab === "cart" ? "hidden lg:flex" : "flex"
                         }`}
                 >
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className={`text-xl md:text-2xl font-black ${theme.textHeading}`}>
+                    <div className="flex justify-between items-center mb-2 sm:mb-6">
+                        <h2 className={`text-lg sm:text-xl md:text-2xl font-black ${theme.textHeading}`}>
                             {displayTitle}
                         </h2>
                             <button
@@ -491,7 +491,7 @@ const TakeawayOrder = ({
                     </div>
 
                     {isTakeaway && (
-                        <div className="grid grid-cols-2 gap-4 mb-6 relative">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-2 sm:mb-6 relative">
                             <div className="relative">
                                 {selectedCustomer && (
                                     <div className="absolute right-3 top-3.5 flex items-center gap-2 z-10">
@@ -521,7 +521,7 @@ const TakeawayOrder = ({
                                     }}
                                     onFocus={() => setShowCustomerDropdown("name")}
                                     placeholder="Customer Name"
-                                    className={`w-full p-3 border ${theme.borderLight} rounded-xl outline-none ${theme.inputBg} ${theme.textPrimary} ${selectedCustomer ? "pr-24" : ""}`}
+                                    className={`w-full p-2 sm:p-3 border ${theme.borderLight} rounded-xl outline-none text-sm sm:text-base ${theme.inputBg} ${theme.textPrimary} ${selectedCustomer ? "pr-24" : ""}`}
                                 />
                                 {showCustomerDropdown === "name" && customerSearchResults.length > 0 && (
                                     <div className={`absolute top-full left-0 right-0 mt-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl shadow-xl z-[60] max-h-60 overflow-y-auto`}>
@@ -547,7 +547,7 @@ const TakeawayOrder = ({
                                     }}
                                     onFocus={() => setShowCustomerDropdown("phone")}
                                     placeholder="Phone Number"
-                                    className={`w-full p-3 border ${theme.borderLight} rounded-xl outline-none ${theme.inputBg} ${theme.textPrimary}`}
+                                    className={`w-full p-2 sm:p-3 border ${theme.borderLight} rounded-xl outline-none text-sm sm:text-base ${theme.inputBg} ${theme.textPrimary}`}
                                 />
                                 {showCustomerDropdown === "phone" && customerSearchResults.length > 0 && (
                                     <div className={`absolute top-full left-0 right-0 mt-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl shadow-xl z-[60] max-h-60 overflow-y-auto`}>
@@ -568,14 +568,14 @@ const TakeawayOrder = ({
                     )}
 
                     {/* Search + view mode */}
-                    <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-4">
                         <div className="relative flex-1">
-                            <Search className={`absolute left-3 top-3.5 ${theme.textMuted}`} size={18} />
+                            <Search className={`absolute left-3 top-3 ${theme.textMuted}`} size={16} />
                             <input
                                 value={orderSearch}
                                 onChange={(e) => setOrderSearch(e.target.value)}
                                 placeholder={listening ? "Listening... say '2 Pepsi' or '3 Lays'..." : "Search menu with AI or click Mic to say '2 Lays'..."}
-                                className={`w-full pl-10 pr-9 p-3 border ${theme.borderLight} rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 ${theme.inputBg} ${theme.textPrimary}`}
+                                className={`w-full pl-9 pr-9 p-2 sm:p-3 border ${theme.borderLight} rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm sm:text-base ${theme.inputBg} ${theme.textPrimary}`}
                             />
                             {isSearchingRemote && (
                                 <Loader2 className="absolute right-3 top-3.5 h-4 w-4 text-indigo-500 animate-spin" />
@@ -597,7 +597,7 @@ const TakeawayOrder = ({
                                 type="button"
                                 onClick={listening ? stopListening : startListening}
                                 disabled={isProcessingVoice}
-                                className={`p-3 rounded-xl flex items-center justify-center transition-all shrink-0 ${
+                                className={`p-2 sm:p-3 rounded-xl flex items-center justify-center transition-all shrink-0 ${
                                     listening 
                                         ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse' 
                                         : isProcessingVoice 
@@ -636,12 +636,12 @@ const TakeawayOrder = ({
                         </div>
                     </div>
 
-                    <div className="flex gap-2 overflow-x-auto pb-3 shrink-0 no-scrollbar">
+                    <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-3 shrink-0 no-scrollbar">
                         {categories.map((cat) => (
                             <button
                                 key={cat}
                                 onClick={() => setActiveMenuCategory(cat)}
-                                className={`px-4 md:px-6 py-2 rounded-full font-bold whitespace-nowrap transition-all border-2 text-sm md:text-base ${activeMenuCategory === cat
+                                className={`px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 rounded-full font-bold whitespace-nowrap transition-all border-2 text-xs sm:text-sm md:text-base ${activeMenuCategory === cat
                                     ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
                                     : `${theme.surfaceBg} ${theme.borderLight} ${theme.textMuted}`
                                     }`}
@@ -872,11 +872,11 @@ const TakeawayOrder = ({
                         )}
                     </div>
 
-                    <div className={`p-4 md:p-6 ${theme.surfaceBg} border-t ${theme.borderLight} shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 space-y-3`}>
+                    <div className={`p-3 md:p-6 ${theme.surfaceBg} border-t ${theme.borderLight} shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 space-y-2 md:space-y-3`}>
                         {(() => {
                             return (
                                 <>
-                                    <div className={`flex justify-between items-center text-sm ${theme.textMuted}`}>
+                                    <div className={`flex justify-between items-center text-xs md:text-sm ${theme.textMuted}`}>
                                         <span>Subtotal</span>
                                         <span className={theme.textPrimary}>{formatCurrency(billDetails.subtotal)}</span>
                                     </div>
@@ -893,7 +893,7 @@ const TakeawayOrder = ({
                                         </div>
                                     )}
     
-                                    <div className={`flex justify-between items-center text-sm ${theme.textMuted}`}>
+                                    <div className={`flex justify-between items-center text-xs md:text-sm ${theme.textMuted}`}>
                                         <span>Tax</span>
                                         <span className={theme.textPrimary}>{formatCurrency(billDetails.taxAmount)}</span>
                                     </div>
@@ -915,19 +915,19 @@ const TakeawayOrder = ({
                                         </div>
                                     )}
     
-                                    <div className={`flex justify-between items-center text-2xl font-black ${theme.textHeading} pt-4 border-t-2 border-dashed ${theme.borderLight}`}>
+                                    <div className={`flex justify-between items-center text-xl md:text-2xl font-black ${theme.textHeading} pt-2 md:pt-4 border-t-2 border-dashed ${theme.borderLight}`}>
                                         <span>Total</span>
                                         <span>{formatCurrency(billDetails.finalTotal)}</span>
                                     </div>
                                 </>
                             );
                         })()}
-                        <div className="grid grid-cols-2 gap-3 pt-2">
+                        <div className="grid grid-cols-2 gap-2 md:gap-3 pt-1 md:pt-2">
                             {(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) && (
                                 <button
                                     onClick={handleSendToKOT}
                                     disabled={currentOrder.items.length === 0 || (!hasPendingKitchenItems)}
-                                    className="py-3 md:py-4 rounded-xl font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+                                    className="py-2.5 md:py-4 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-1 md:gap-2"
                                 >
                                     <Printer size={18} /> KOT
                                 </button>
@@ -942,7 +942,7 @@ const TakeawayOrder = ({
                                     !hasPermission("orders.ORDERS.PROCESSPAYMENT") &&
                                     !hasPermission("orders.processpayment")
                                 ) || currentOrder.items.length === 0}
-                                className={`py-3 md:py-4 rounded-xl font-bold bg-green-600 text-white shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-300 disabled:shadow-none ${(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) ? "" : "col-span-2"}`}
+                                className={`py-2.5 md:py-4 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-green-600 text-white shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-300 disabled:shadow-none ${(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) ? "" : "col-span-2"}`}
                             >
                                 {(
                                     hasPermissionFor("pos", "order", "process_payment") ||

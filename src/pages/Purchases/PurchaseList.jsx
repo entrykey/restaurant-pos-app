@@ -931,19 +931,19 @@ const PurchaseList = ({ hasPermissionFor }) => {
             <div className="max-w-[1600px] mx-auto space-y-8">
 
                 {/* ── Page Header ── */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                    <div>
+                <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
+                    <div className="w-full xl:w-auto">
                         <div className="flex items-center gap-3 mb-1">
                             <div className="p-3 bg-indigo-600 text-white rounded-2xl">
                                 <ShoppingCart size={26} />
                             </div>
                             <h1 className={`text-2xl md:text-3xl font-black uppercase tracking-tight ${theme.textHeading}`}>Purchases</h1>
                         </div>
-                        <p className={`font-bold ml-1 text-sm ${theme.textMuted}`}>Manage inventory procurement &amp; supplier invoices</p>
+                        <p className={`font-bold ml-1 text-sm ${theme.textMuted} whitespace-normal break-words`}>Manage inventory procurement &amp; supplier invoices</p>
                     </div>
 
-                    <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                        <div className="relative flex-1 md:w-80">
+                    <div className="flex flex-wrap sm:flex-nowrap gap-4 w-full xl:w-auto">
+                        <div className="relative flex-1 min-w-[200px]">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
                             <input
                                 value={searchTerm}
@@ -957,7 +957,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         {canManage && (
                             <button
                                 onClick={() => navigate("/purchases/new")}
-                                className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3 group whitespace-nowrap"
+                                className="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-black hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3 group whitespace-nowrap flex-1 sm:flex-none shrink-0"
                             >
                                 <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
                                 NEW PURCHASE
@@ -967,7 +967,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                 </div>
 
                 {/* ── Stats Row ── */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                     {[
                         { label: "Total Invoices", value: purchases.length, icon: ReceiptText, color: "indigo" },
                         { label: "Draft", value: purchases.filter(p => p.status === "DRAFT").length, icon: Clock, color: "amber" },

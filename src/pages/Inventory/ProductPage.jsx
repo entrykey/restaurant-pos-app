@@ -6,6 +6,7 @@ import { api, attributeService, unitService, shopService, categoryService, itemS
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useText } from '../../context/TextContext';
 import { SupplierService } from '../Suppliers/SupplierService';
 import { toast } from 'react-hot-toast';
 import DatePicker from '../../components/ui/DatePicker';
@@ -17,6 +18,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     const { user } = useAuth();
     const { activeBranchId, branches, organization, currentShopId, businessTypeData, formatCurrency, settings } = useApp();
     const { theme } = useTheme();
+    const { t } = useText();
     const navigate = useNavigate();
     const { id: paramId } = useParams();
     const location = useLocation();
@@ -945,9 +947,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         );
     }
 
+    const manufacturedText = t('INVENTORY', 'add_menu_btn', 'Manufactured Item');
     const title = isEditing
-        ? `Edit ${activeTab === 'menu' ? 'Manufactured Item' : (activeTab === 'raw' ? 'Stock Item' : 'Trade Item')}`
-        : `Add New ${activeTab === 'menu' ? 'Manufactured Item' : (activeTab === 'raw' ? 'Stock Item' : 'Trade Item')}`;
+        ? `Edit ${activeTab === 'menu' ? manufacturedText : (activeTab === 'raw' ? 'Stock Item' : 'Trade Item')}`
+        : `Add New ${activeTab === 'menu' ? manufacturedText : (activeTab === 'raw' ? 'Stock Item' : 'Trade Item')}`;
 
     const handleKeyDown = (e) => {
         // If the event was already handled (e.g. by a select toggle), don't move focus
@@ -1008,21 +1011,21 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     <div>
                         <h3 className={`text-2xl font-black ${theme.textHeading}`}>{title}</h3>
                         <p className={`text-xs mt-1 ${theme.textMuted}`}>
-                            Fill in the details below to {isEditing ? 'update' : 'create'} this {activeTab === 'menu' ? 'manufactured item' : (activeTab === 'raw' ? 'stock item' : 'trade item')}.
+                            Fill in the details below to {isEditing ? 'update' : 'create'} this {activeTab === 'menu' ? manufacturedText.toLowerCase() : (activeTab === 'raw' ? 'stock item' : 'trade item')}.
                         </p>
                     </div>
 
                     {/* ITEM TYPE SWITCHER */}
                     {!isEditing && (asDialog || sourcePage === 'purchase') && (
                         <div className={`flex p-1 rounded-2xl shadow-sm border ${theme.borderLight} ${theme.surfaceBg}`}>
-                            {businessTypeData?.features?.sellManufacturedItems !== false && (
+                            {businessTypeData?.features?.sellManufacturedItems !== false && sourcePage !== 'purchase' && (
                                 <button
                                     onClick={() => setCurrentTab('menu')}
                                     className={`px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'menu' 
                                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20' 
                                         : `${theme.textMuted} hover:opacity-70`}`}
                                 >
-                                    <Layers size={14} /> Manufactured
+                                    <Layers size={14} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured')}
                                 </button>
                             )}
                             <button
@@ -1447,98 +1450,6 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         );
                     })()}
 
-                    {/* NEW RECIPE SECTION */}
-                    {showRecipe && (
-                        <div>
-                            <div className="flex items-center gap-4 mb-2">
-                                <ClipboardList className="text-orange-500" size={24} />
-                                <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Bill of Materials</h4>
-                                <div className={`flex-1 h-px ${theme.borderLight}`}></div>
-                            </div>
-                            <p className={`text-sm ${theme.textMuted} mb-8`}>Define what stock items are used to create this manufactured product.</p>
-
-                            <div className="flex flex-col md:flex-row gap-4 mb-6 items-end">
-                                <div className="flex-1">
-                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Stock Item</label>
-                                    <CommonSelect
-                                        options={stockItems.map(item => ({ 
-                                            label: `${item.name} (${item.unitId?.name || "N/A"})`, 
-                                            value: item._id || item.id 
-                                        }))}
-                                        value={selectedRawItem}
-                                        onChange={(val) => {
-                                            setSelectedRawItem(val);
-                                            const item = stockItems.find(i => (i._id || i.id) === val);
-                                            if (item && item.unitId) {
-                                                setIngredientUnitId(item.unitId._id || item.unitId);
-                                            }
-                                        }}
-                                        placeholder="Select Stock Item..."
-                                        className="w-full"
-                                    />
-                                </div>
-                                <div className="w-full md:w-32">
-                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Qty</label>
-                                    <input
-                                        type="number"
-                                        value={ingredientQty}
-                                        onChange={(e) => setIngredientQty(e.target.value)}
-                                        placeholder="0"
-                                        className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400`}
-                                    />
-                                </div>
-                                <div className="w-full md:w-40">
-                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Unit</label>
-                                    <CommonSelect
-                                        options={units.map(u => ({ label: u.name, value: u._id }))}
-                                        value={ingredientUnitId}
-                                        onChange={(val) => setIngredientUnitId(val)}
-                                        placeholder="Unit..."
-                                        className="w-full"
-                                    />
-                                </div>
-                                <button
-                                    onClick={(e) => { e.preventDefault(); handleAddIngredient(); }}
-                                    className="p-3 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-200/20 hover:bg-orange-600 active:scale-95 transition-all"
-                                >
-                                    <Plus size={24} />
-                                </button>
-                            </div>
-
-                            {ingredients.length > 0 && (
-                                <div className={`${theme.surfaceBg} rounded-2xl border ${theme.tableBorder} overflow-hidden mt-4`}>
-                                    <table className="w-full text-left">
-                                        <thead className={`${theme.tableHeaderBg} text-[10px] uppercase ${theme.tableHeaderText}`}>
-                                            <tr>
-                                                <th className="p-3 font-black">Item</th>
-                                                <th className="p-3 font-black">Qty</th>
-                                                <th className="p-3 font-black">Unit</th>
-                                                <th className="p-3 font-black text-right">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className={`text-sm font-bold ${theme.textPrimary}`}>
-                                            {ingredients.map((ing, idx) => (
-                                                <tr key={idx} className={`border-t ${theme.tableBorder}`}>
-                                                    <td className="p-3">{ing.name}</td>
-                                                    <td className="p-3">{ing.quantity}</td>
-                                                    <td className={`p-3 ${theme.textMuted}`}>{ing.unitName}</td>
-                                                    <td className="p-3 text-right">
-                                                        <button
-                                                            onClick={() => handleRemoveIngredient(idx)}
-                                                            className="text-red-400 hover:text-red-600 p-1"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
                     {/* PORTION PRICING SECTION */}
                     <div>
                         <div className="flex items-center gap-4 mb-2">
@@ -1651,6 +1562,99 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                             </div>
                         )}
                     </div>
+
+                    {/* NEW RECIPE SECTION */}
+                    {showRecipe && (
+                        <div>
+                            <div className="flex items-center gap-4 mb-2">
+                                <ClipboardList className="text-orange-500" size={24} />
+                                <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Bill of Materials</h4>
+                                <div className={`flex-1 h-px ${theme.borderLight}`}></div>
+                            </div>
+                            <p className={`text-sm ${theme.textMuted} mb-8`}>Define what stock items are used to create this manufactured product.</p>
+
+                            <div className="flex flex-col md:flex-row gap-4 mb-6 items-end">
+                                <div className="flex-1">
+                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Stock Item</label>
+                                    <CommonSelect
+                                        options={stockItems.map(item => ({ 
+                                            label: `${item.name} (${item.unitId?.name || "N/A"})`, 
+                                            value: item._id || item.id 
+                                        }))}
+                                        value={selectedRawItem}
+                                        onChange={(val) => {
+                                            setSelectedRawItem(val);
+                                            const item = stockItems.find(i => (i._id || i.id) === val);
+                                            if (item && item.unitId) {
+                                                setIngredientUnitId(item.unitId._id || item.unitId);
+                                            }
+                                        }}
+                                        placeholder="Select Stock Item..."
+                                        className="w-full"
+                                    />
+                                </div>
+                                <div className="w-full md:w-32">
+                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Qty</label>
+                                    <input
+                                        type="number"
+                                        value={ingredientQty}
+                                        onChange={(e) => setIngredientQty(e.target.value)}
+                                        placeholder="0"
+                                        className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400`}
+                                    />
+                                </div>
+                                <div className="w-full md:w-40">
+                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Unit</label>
+                                    <CommonSelect
+                                        options={units.map(u => ({ label: u.name, value: u._id }))}
+                                        value={ingredientUnitId}
+                                        onChange={(val) => setIngredientUnitId(val)}
+                                        placeholder="Unit..."
+                                        className="w-full"
+                                    />
+                                </div>
+                                <button
+                                    onClick={(e) => { e.preventDefault(); handleAddIngredient(); }}
+                                    className="p-3 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-200/20 hover:bg-orange-600 active:scale-95 transition-all"
+                                >
+                                    <Plus size={24} />
+                                </button>
+                            </div>
+
+                            {ingredients.length > 0 && (
+                                <div className={`${theme.surfaceBg} rounded-2xl border ${theme.tableBorder} overflow-hidden mt-4`}>
+                                    <table className="w-full text-left">
+                                        <thead className={`${theme.tableHeaderBg} text-[10px] uppercase ${theme.tableHeaderText}`}>
+                                            <tr>
+                                                <th className="p-3 font-black">Item</th>
+                                                <th className="p-3 font-black">Qty</th>
+                                                <th className="p-3 font-black">Unit</th>
+                                                <th className="p-3 font-black text-right">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className={`text-sm font-bold ${theme.textPrimary}`}>
+                                            {ingredients.map((ing, idx) => (
+                                                <tr key={idx} className={`border-t ${theme.tableBorder}`}>
+                                                    <td className="p-3">{ing.name}</td>
+                                                    <td className="p-3">{ing.quantity}</td>
+                                                    <td className={`p-3 ${theme.textMuted}`}>{ing.unitName}</td>
+                                                    <td className="p-3 text-right">
+                                                        <button
+                                                            onClick={() => handleRemoveIngredient(idx)}
+                                                            className="text-red-400 hover:text-red-600 p-1"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                 </div>
             </div>
 

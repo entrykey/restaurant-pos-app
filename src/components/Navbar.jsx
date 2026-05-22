@@ -355,8 +355,17 @@ const Navbar = ({
                     </div>
                 </div>
 
-                <div className={`${theme.textHeading} font-black tracking-tighter text-lg md:text-xl`}>
-                    {shopName}
+                <div className={`${theme.textHeading} font-black tracking-tighter text-lg md:text-xl text-right`}>
+                    {typeof shopName === 'string' && shopName.includes('Modern POS') ? (
+                        <>
+                            <span>{shopName.replace('Modern POS', '').trim()}</span>
+                            {shopName.includes('Modern POS') && (
+                                <span className="hidden sm:inline"> Modern POS</span>
+                            )}
+                        </>
+                    ) : (
+                        shopName
+                    )}
                 </div>
             </div>
 

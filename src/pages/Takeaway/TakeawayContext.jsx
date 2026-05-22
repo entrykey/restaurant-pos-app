@@ -135,7 +135,10 @@ export const TakeawayProvider = ({ children }) => {
     };
 
     const resetTakeaway = () => {
-        setTakeawayOrder(INITIAL_TAB_DATA.takeawayOrder);
+        setTakeawayOrder(prev => ({
+            ...INITIAL_TAB_DATA.takeawayOrder,
+            orderType: prev?.orderType || 'TAKEAWAY'
+        }));
         setTakeawayCustName("");
         setTakeawayCustPhone("");
         setSelectedCustomer(null);

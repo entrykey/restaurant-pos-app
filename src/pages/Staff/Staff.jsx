@@ -480,7 +480,6 @@ const Staff = ({
 
     const handleCreateRole = async () => {
         if (!newRoleName.trim()) { alert("Please enter a role name"); return; }
-        if (!newRoleCode.trim()) { alert("Please enter a unique role code"); return; }
 
         // Filter selected permissions against available permissions
         const allowedModuleIds = new Set(availablePermissions.map(am => String(am.moduleId)));
@@ -497,9 +496,10 @@ const Staff = ({
             .filter(entry => entry.actions.length > 0);
 
         const targetShop = shopId;
+        const generatedCode = newRoleName.trim().toUpperCase().replace(/\s+/g, '_');
         const payload = {
             name: newRoleName,
-            code: newRoleCode.toUpperCase(),
+            code: generatedCode,
             shopId: targetShop,
             scope: newRoleScope,
             description: newRoleDescription,
@@ -566,7 +566,6 @@ const Staff = ({
     const handleUpdateRole = async () => {
         if (!editingRole) return;
         if (!editRoleName.trim()) { alert("Please enter a role name"); return; }
-        if (!editRoleCode.trim()) { alert("Please enter a role code"); return; }
 
         // Filter selected permissions against available permissions
         const allowedModuleIds = new Set(availablePermissions.map(am => String(am.moduleId)));
@@ -582,9 +581,10 @@ const Staff = ({
             })
             .filter(entry => entry.actions.length > 0);
 
+        const generatedCode = editRoleName.trim().toUpperCase().replace(/\s+/g, '_');
         const payload = {
             name: editRoleName,
-            code: editRoleCode.toUpperCase(),
+            code: generatedCode,
             shopId: editingRole.shopId?._id || editingRole.shopId,
             scope: editRoleScope,
             description: editRoleDescription,
@@ -838,11 +838,11 @@ const Staff = ({
                 <h2 className={`text-2xl md:text-4xl font-black flex items-center ${theme.textHeading}`}>
                     <ShieldCheck className={`mr-3 ${theme.primaryIconText}`} /> Staff & Roles
                 </h2>
-                <div className="flex gap-3">
+                <div className="flex gap-3 w-full md:w-auto">
                     {activeStaffTab === "staff" ? (
                         <button
                             onClick={() => checkSubscriptionAndOpen(() => { setIsCreateEmployeeOpen(true); })}
-                            className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
+                            className={`${theme.buttonBg} ${theme.buttonText} w-full md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
                         >
                             <Plus size={20} /> Add Employee
                         </button>
@@ -853,7 +853,7 @@ const Staff = ({
                                 setExpandedModules({});
                                 setIsCreateRoleOpen(true);
                             })}
-                            className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
+                            className={`${theme.buttonBg} ${theme.buttonText} w-full md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
                         >
                             <Plus size={20} /> Add Role
                         </button>
@@ -871,7 +871,7 @@ const Staff = ({
                                 }));
                                 setIsCreatePolicyOpen(true);
                             }}
-                            className={`${theme.buttonBg} ${theme.buttonText} px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
+                            className={`${theme.buttonBg} ${theme.buttonText} w-full md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
                         >
                             <Plus size={20} /> Add Policy
                         </button>
@@ -880,23 +880,23 @@ const Staff = ({
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-                <div className={`flex gap-4 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
+                <div className={`flex gap-2 sm:gap-4 p-2 rounded-2xl shadow-sm w-full max-w-full overflow-x-auto hide-scrollbar whitespace-nowrap ${theme.surfaceBg}`}>
                     <button
                         onClick={() => setActiveStaffTab("staff")}
-                        className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeStaffTab === "staff" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                        className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 flex-shrink-0 ${activeStaffTab === "staff" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                     >
                         <ShieldCheck size={18} /> Staff Members
                     </button>
                     <button
                         onClick={() => setActiveStaffTab("roles")}
-                        className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeStaffTab === "roles" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                        className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 flex-shrink-0 ${activeStaffTab === "roles" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                     >
                         <ShieldCheck size={18} /> Roles
                     </button>
                     {canViewPolicies && (
                         <button
                             onClick={() => setActiveStaffTab("attendance_policies")}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeStaffTab === "attendance_policies" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                            className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 flex-shrink-0 ${activeStaffTab === "attendance_policies" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                         >
                             <ShieldCheck size={18} /> Attendance Policies
                         </button>
@@ -904,7 +904,7 @@ const Staff = ({
                     {canViewLogs && (
                         <button
                             onClick={() => setActiveStaffTab("attendance_logs")}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative ${activeStaffTab === "attendance_logs" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                            className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative flex-shrink-0 ${activeStaffTab === "attendance_logs" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                         >
                             <ShieldCheck size={18} /> Attendance Logs
                             {pendingRequestsCount > 0 && (
@@ -917,7 +917,7 @@ const Staff = ({
                     {canManageLeaves && (
                         <button
                             onClick={() => setActiveStaffTab("employee_leaves")}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative ${activeStaffTab === "employee_leaves" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                            className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative flex-shrink-0 ${activeStaffTab === "employee_leaves" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                         >
                             <Calendar size={18} /> Employee Leaves
                             {pendingLeavesCount > 0 && (
@@ -930,7 +930,7 @@ const Staff = ({
                     {canManageSalary && (
                         <button
                             onClick={() => setActiveStaffTab("payroll")}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative ${activeStaffTab === "payroll" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                            className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative flex-shrink-0 ${activeStaffTab === "payroll" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                         >
                             <Wallet size={18} /> Payroll
                         </button>
@@ -945,7 +945,8 @@ const Staff = ({
                     {isEmployeesLoading ? (
                         <div className="p-8 flex justify-center"><ThemeLoader size="lg" /></div>
                     ) : (
-                        <CommonTable
+                        <div className="overflow-x-auto w-full rounded-2xl">
+                            <CommonTable
                             columns={[
                                 ...(hasViewAllStaff ? [{ header: "Shop", key: "shopId.name", className: `font-bold text-xs ${theme.textSecondary}`, render: (_, item) => item.shopId?.name || "N/A" }] : []),
                                 { header: "Emp Code", key: "employeeCode", className: `font-mono text-xs ${theme.textSecondary}` },
@@ -1020,6 +1021,7 @@ const Staff = ({
                             ]}
                             data={employees}
                         />
+                        </div>
                     )}
                 </>
             ) : activeStaffTab === "roles" ? (
@@ -1027,7 +1029,8 @@ const Staff = ({
                     {isRolesLoading ? (
                         <div className="p-8 flex justify-center"><ThemeLoader size="md" /></div>
                     ) : (
-                        <CommonTable
+                        <div className="overflow-x-auto w-full rounded-2xl">
+                            <CommonTable
                             columns={[
                                 ...(hasViewAllStaff ? [{ header: "Shop", key: "shopId.name", className: `font-bold text-xs ${theme.textSecondary}`, render: (_, item) => item.shopId?.name || "N/A" }] : []),
                                 {
@@ -1093,6 +1096,7 @@ const Staff = ({
                             ]}
                             data={roles}
                         />
+                        </div>
                     )}
                 </>
             ) : activeStaffTab === "attendance_policies" ? (
@@ -1766,16 +1770,7 @@ const Staff = ({
                                             placeholder="e.g. Senior Shift Manager"
                                         />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role Code (Unique)</label>
-                                            <input
-                                                value={editRoleCode}
-                                                onChange={(e) => setEditRoleCode(e.target.value.toUpperCase().replace(/\s/g, '_'))}
-                                                className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-mono`}
-                                                placeholder="e.g. MANAGER_ADMIN"
-                                            />
-                                        </div>
+                                    <div className="grid grid-cols-1 gap-4">
                                         <div>
                                             <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Scope</label>
                                             <CommonSelect
@@ -1875,7 +1870,7 @@ const Staff = ({
 
             {/* Create Role Modal */}
             {isCreateRoleOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
                     <div className={`${theme.surfaceBg} rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border ${theme.borderLight}`}>
                         <div className={`p-4 border-b ${theme.borderLight} flex justify-between items-center ${theme.inputBg}`}>
                             <h3 className={`text-xl font-bold ${theme.textHeading}`}>Create New Role</h3>
@@ -1903,16 +1898,7 @@ const Staff = ({
                                             placeholder="e.g. Senior Shift Manager"
                                         />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role Code (Unique)</label>
-                                            <input
-                                                value={newRoleCode}
-                                                onChange={(e) => setNewRoleCode(e.target.value.toUpperCase().replace(/\s/g, '_'))}
-                                                className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-mono`}
-                                                placeholder="e.g. MANAGER_ADMIN"
-                                            />
-                                        </div>
+                                    <div className="grid grid-cols-1 gap-4">
                                         <div>
                                             <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Scope</label>
                                             <CommonSelect
@@ -2053,9 +2039,15 @@ const Staff = ({
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role *</label>
                                     <CommonSelect
-                                        options={roles}
+                                        options={[...roles, { _id: "CREATE_NEW", name: "+ Create New Role" }]}
                                         value={newEmpData.roleId}
-                                        onChange={(val) => handleEmpDataChange("roleId", val)}
+                                        onChange={(val) => {
+                                            if (val === "CREATE_NEW") {
+                                                setIsCreateRoleOpen(true);
+                                            } else {
+                                                handleEmpDataChange("roleId", val);
+                                            }
+                                        }}
                                         placeholder="Select Role"
                                         labelKey="name"
                                         valueKey="_id"
@@ -2246,9 +2238,15 @@ const Staff = ({
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role *</label>
                                     <CommonSelect
-                                        options={roles}
+                                        options={[...roles, { _id: "CREATE_NEW", name: "+ Create New Role" }]}
                                         value={editEmpData.roleId}
-                                        onChange={(val) => handleEditEmpDataChange("roleId", val)}
+                                        onChange={(val) => {
+                                            if (val === "CREATE_NEW") {
+                                                setIsCreateRoleOpen(true);
+                                            } else {
+                                                handleEditEmpDataChange("roleId", val);
+                                            }
+                                        }}
                                         placeholder="Select Role"
                                         labelKey="name"
                                         valueKey="_id"

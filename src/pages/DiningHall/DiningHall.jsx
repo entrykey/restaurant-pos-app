@@ -158,23 +158,23 @@ const DiningHall = ({
 
   return (
     <div className={`p-4 md:p-8 h-full overflow-y-auto ${theme.pageBg}`}>
-      <div className="flex justify-between items-center mb-6 md:mb-10">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0 mb-6 md:mb-10">
         <h2 className={`text-2xl md:text-4xl font-black ${theme.textHeading} flex items-center`}>
           <Users className="mr-3 text-indigo-600" /> Dining Hall
         </h2>
 
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-3 w-full md:w-auto">
           {can(MODULES.POS, ACTIONS.POS_DINING_JOINTABLES) && (isJoinMode ? (
             <>
               <button
                 onClick={toggleJoinMode}
-                className={`${theme.surfaceBg} ${theme.textPrimary} border ${theme.borderLight} px-4 py-2 rounded-2xl font-bold transition-colors`}
+                className={`${theme.surfaceBg} ${theme.textPrimary} border ${theme.borderLight} px-4 py-2 rounded-2xl font-bold transition-colors flex-1 md:flex-none text-center`}
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmJoin}
-                className="bg-green-600 text-white px-4 py-2 rounded-2xl font-bold shadow-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                className="bg-green-600 text-white px-4 py-2 rounded-2xl font-bold shadow-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 flex-[2] md:flex-none"
               >
                 Confirm Join ({selectedTables.length})
               </button>
@@ -182,7 +182,7 @@ const DiningHall = ({
           ) : (
             <button
               onClick={toggleJoinMode}
-              className={`${theme.surfaceBg} border-2 ${theme.borderLight} ${theme.linkText} px-4 py-2 rounded-2xl font-bold ${theme.sidebarItemHoverBg} transition-colors`}
+              className={`${theme.surfaceBg} border-2 ${theme.borderLight} ${theme.linkText} px-4 py-2 rounded-2xl font-bold ${theme.sidebarItemHoverBg} transition-colors flex-1 md:flex-none text-center`}
             >
               Join Tables
             </button>
@@ -197,7 +197,7 @@ const DiningHall = ({
                 setOrderSearch("");
                 navigate("/takeaway");
               }}
-              className="bg-indigo-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg text-sm md:text-base"
+              className="bg-indigo-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg text-sm md:text-base flex-1 md:flex-none"
             >
               <ShoppingBag size={20} /> Takeaway
             </button>

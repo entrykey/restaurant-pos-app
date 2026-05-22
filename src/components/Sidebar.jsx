@@ -148,66 +148,18 @@ const Sidebar = ({
 
     // Modules to show: from business type intersected with user permissions; if no business list, use allowed-by-permission only
     const moduleList = useMemo(() => {
-        const allowedByPermission = ROUTE_KEYS_ORDER.filter((key) => canAccessRoute(can, canModule, key));
-        let base = [];
-        if (!businessType) {
-            base = Object.keys(enabledModules).filter((k) => enabledModules[k] === true);
-        } else {
-            base = getModuleList(businessType, businessSubtype);
-        }
-        // If business type gives no list (e.g. not loaded), or user is superadmin, show whatever user has permission for
-        let result = (user?.isSuperAdmin || base.length === 0) ? allowedByPermission : base.filter((moduleKey) => allowedByPermission.includes(moduleKey));
+        // 1. Determine baseline allowed modules
+        let result = ROUTE_KEYS_ORDER.filter((key) => canAccessRoute(can, canModule, key));
 
-        // Business-type templates can omit modules that still exist in the product (e.g. PURCHASES).
-        // If the user has JWT permission for such a route, show it in ROUTE_KEYS_ORDER relative to peers.
-        if (!user?.isSuperAdmin && base.length > 0) {
-            const extras = ROUTE_KEYS_ORDER.filter(
-                (k) => allowedByPermission.includes(k) && !base.includes(k)
-            );
-            for (const k of extras) {
-                if (result.includes(k)) continue;
-                const idxK = ROUTE_KEYS_ORDER.indexOf(k);
-                let insertAt = result.length;
-                for (let i = 0; i < result.length; i++) {
-                    const idxI = ROUTE_KEYS_ORDER.indexOf(result[i]);
-                    if (idxI > idxK) {
-                        insertAt = i;
-                        break;
-                    }
-                }
-                result.splice(insertAt, 0, k);
-            }
-        }
-
-        // Consolidate TAKEAWAY and DIRECT_SALE: if both allowed, only show TAKEAWAY
+        // 2. Consolidate TAKEAWAY and DIRECT_SALE: if both allowed, only show TAKEAWAY
         if (result.includes('TAKEAWAY') && result.includes('DIRECT_SALE')) {
             result = result.filter(k => k !== 'DIRECT_SALE');
         }
 
-        // Prefer Parties over Suppliers when user has PARTIES permission
-        if (result.includes('SUPPLIERS') && allowedByPermission.includes('PARTIES')) {
+        // 3. Prefer Parties over Suppliers when user has PARTIES permission
+        if (result.includes('SUPPLIERS') && result.includes('PARTIES')) {
             result = result.filter(k => k !== 'SUPPLIERS');
-            if (!result.includes('PARTIES')) result.push('PARTIES');
         }
-
-        // Always ensure employee modules (DASHBOARD, MYATTENDANCE, MYLEAVES, MYSALARY) are included if user has permission
-        ['DASHBOARD', 'MYATTENDANCE', 'MYLEAVES', 'MYSALARY'].forEach(mod => {
-            if (allowedByPermission.includes(mod) && !result.includes(mod)) {
-                // Keep Dashboard first, others follow
-                if (mod === 'DASHBOARD') {
-                    result = ['DASHBOARD', ...result];
-                } else {
-                    // Find correct insertion point: after Dashboard/existing employee modules
-                    result.splice(result.includes('DASHBOARD') ? 1 : 0, 0, mod);
-                }
-            }
-        });
-
-        // Ensure proper order for employee modules if they came in different order
-        const order = ['DASHBOARD', 'MYATTENDANCE', 'MYLEAVES', 'MYSALARY'];
-        const others = result.filter(m => !order.includes(m));
-        const foundOrder = order.filter(m => result.includes(m));
-        result = [...foundOrder, ...others];
 
         // --- NEW: Grouping Logic ---
         const selfServiceKeys = ['MYATTENDANCE', 'MYLEAVES', 'MYSALARY'];
@@ -254,152 +206,154 @@ const Sidebar = ({
         return result;
     }, [businessType, businessSubtype, enabledModules, can, canModule, user]);
 
+    const checkActive = (v, ...matches) => matches.some(m => String(v).toLowerCase() === String(m).toLowerCase());
+
     const MODULE_CONFIG = {
         DASHBOARD: {
             icon: LayoutDashboard, label: "Dashboard",
             onClick: () => { setView("dashboard"); goDashboard(); },
-            isActive: view === "dashboard" || view === "owner-dashboard"
+            isActive: checkActive(view, "dashboard", "owner-dashboard")
         },
         DINING: {
             icon: Utensils, label: "Dining Hall",
             onClick: () => { setView("tables"); setIsTakeaway(false); navigate("/dininghall"); closeMobile(); },
-            isActive: view === "DINING" || view === "tables" || (view === "order" && !isTakeaway)
+            isActive: checkActive(view, "DINING", "tables") || (checkActive(view, "order") && !isTakeaway)
         },
         TAKEAWAY: {
             icon: ShoppingBag, label: "Takeaway",
             onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'TAKEAWAY' }); setOrderSearch(""); navigate("/takeaway"); closeMobile(); },
-            isActive: (view === "TAKEAWAY" || view === "order") && isTakeaway && takeawayOrder?.orderType === 'TAKEAWAY'
+            isActive: checkActive(view, "TAKEAWAY", "order") && isTakeaway && takeawayOrder?.orderType === 'TAKEAWAY'
         },
         DIRECT_SALE: {
             icon: ShoppingCart, label: "Direct Sale",
             onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'DIRECT_SALE' }); setOrderSearch(""); navigate("/takeaway"); closeMobile(); },
-            isActive: (view === "DIRECT_SALE" || view === "TAKEAWAY" || view === "order") && isTakeaway && takeawayOrder?.orderType === 'DIRECT_SALE'
+            isActive: checkActive(view, "DIRECT_SALE", "TAKEAWAY", "order") && isTakeaway && takeawayOrder?.orderType === 'DIRECT_SALE'
         },
         WHOLESALE: {
             icon: Store, label: "Wholesale",
             onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'WHOLESALE' }); setOrderSearch(""); navigate("/wholesale"); closeMobile(); },
-            isActive: (view === "WHOLESALE" || view === "order") && isTakeaway && takeawayOrder?.orderType === 'WHOLESALE'
+            isActive: checkActive(view, "WHOLESALE", "order") && isTakeaway && takeawayOrder?.orderType === 'WHOLESALE'
         },
         ONLINE_ORDERS: {
             icon: Globe, label: "Online Orders",
             onClick: () => { setView("online-orders"); navigate("/online-orders"); closeMobile(); },
-            isActive: view === "online-orders",
+            isActive: checkActive(view, "online-orders", "ONLINE_ORDERS"),
             badge: pendingOnlineOrdersCount
         },
         KDS: {
             icon: MonitorPlay, label: "Kitchen Display (KDS)",
             onClick: () => { setView("kds"); navigate("/kds"); closeMobile(); },
-            isActive: view === "kds"
+            isActive: checkActive(view, "kds", "KDS")
         },
         RESERVATIONS: {
             icon: CalendarCheck, label: "Reservations",
             onClick: () => { setView("reservations"); navigate("/reservations"); closeMobile(); },
-            isActive: view === "reservations"
+            isActive: checkActive(view, "reservations", "RESERVATIONS")
         },
         INVENTORY: {
             icon: Boxes, label: "Stock Items",
             onClick: () => { setView("inventory"); navigate("/inventory"); closeMobile(); },
-            isActive: view === "inventory"
+            isActive: checkActive(view, "inventory", "INVENTORY")
         },
         SALE_MARKING: {
             icon: CalendarCheck, label: "Sale Marking",
             onClick: () => { setView("sale-marking"); navigate("/sale-marking"); closeMobile(); },
-            isActive: view === "sale-marking"
+            isActive: checkActive(view, "sale-marking", "SALE_MARKING")
         },
         SALES_HISTORY: {
             icon: ShoppingBag, label: "Sales History",
             onClick: () => { setView("sales-history"); navigate("/sales-history"); closeMobile(); },
-            isActive: view === "sales-history"
+            isActive: checkActive(view, "sales-history", "SALES_HISTORY")
         },
         REPORTS: {
             icon: TrendingUp, label: "Reports",
             onClick: () => { setView("reports"); navigate("/reports"); closeMobile(); },
-            isActive: view === "reports"
+            isActive: checkActive(view, "reports", "REPORTS")
         },
         OFFERS: {
             icon: Tag, label: "Offers",
             onClick: () => { setView("offers"); navigate("/offers"); closeMobile(); },
-            isActive: view === "offers"
+            isActive: checkActive(view, "offers", "OFFERS")
         },
         SETTINGS: {
             icon: Settings, label: "Settings",
             onClick: () => { setView("settings"); navigate("/settings"); closeMobile(); },
-            isActive: view === "settings"
+            isActive: checkActive(view, "settings", "SETTINGS")
         },
         STAFF: {
             icon: UserCog, label: "Staff",
             onClick: () => { setView("staff"); navigate("/staff"); closeMobile(); },
-            isActive: view === "staff"
+            isActive: checkActive(view, "staff", "STAFF")
         },
         MYATTENDANCE: {
             icon: CalendarCheck, label: "My Attendance",
             onClick: () => { setView("my-attendance"); navigate("/my-attendance"); closeMobile(); },
-            isActive: view === "my-attendance"
+            isActive: checkActive(view, "my-attendance", "MYATTENDANCE")
         },
         MYLEAVES: {
             icon: ClipboardList, label: "My Leaves",
             onClick: () => { setView("my-leaves"); navigate("/my-leaves"); closeMobile(); },
-            isActive: view === "my-leaves"
+            isActive: checkActive(view, "my-leaves", "MYLEAVES")
         },
         MYSALARY: {
             icon: Wallet, label: "My Salary",
             onClick: () => { setView("my-salary"); navigate("/my-salary"); closeMobile(); },
-            isActive: view === "my-salary"
+            isActive: checkActive(view, "my-salary", "MYSALARY")
         },
         ORGANIZATION: {
             icon: Building2, label: "Organization",
             onClick: () => { setView("organization"); navigate("/organization"); closeMobile(); },
-            isActive: view === "organization"
+            isActive: checkActive(view, "organization", "ORGANIZATION")
         },
         SUPPLIERS: {
             icon: Truck, label: "Suppliers",
             onClick: () => { setView("suppliers"); navigate("/suppliers"); closeMobile(); },
-            isActive: view === "suppliers"
+            isActive: checkActive(view, "suppliers", "SUPPLIERS")
         },
         PARTIES: {
             icon: Users, label: "Parties",
             onClick: () => { setView("parties"); navigate("/parties"); closeMobile(); },
-            isActive: view === "parties"
+            isActive: checkActive(view, "parties", "PARTIES")
         },
         SERVICE: {
             icon: Wrench, label: "Service & Repairs",
             onClick: () => { setView("service"); navigate("/service"); closeMobile(); },
-            isActive: view === "service"
+            isActive: checkActive(view, "service", "SERVICE")
         },
         PURCHASES: {
             icon: ShoppingCart, label: "Purchases",
             onClick: () => { setView("purchases"); navigate("/purchases"); closeMobile(); },
-            isActive: view === "purchases"
+            isActive: checkActive(view, "purchases", "PURCHASES")
         },
         BUSINESS_TYPES: {
             icon: Briefcase, label: "Business Types",
             onClick: () => { setView("business-types"); navigate("/business-types"); closeMobile(); },
-            isActive: view === "business-types"
+            isActive: checkActive(view, "business-types", "BUSINESS_TYPES")
         },
         SHOP_MANAGEMENT: {
             icon: Store, label: "Shop Management",
             onClick: () => { setView("shop-management"); navigate("/shop-management"); closeMobile(); },
-            isActive: view === "shop-management"
+            isActive: checkActive(view, "shop-management", "SHOP_MANAGEMENT")
         },
         PLAN_MANAGEMENT: {
             icon: Zap, label: "Plan Management",
             onClick: () => { setView("plan-management"); navigate("/plan-management"); closeMobile(); },
-            isActive: view === "plan-management"
+            isActive: checkActive(view, "plan-management", "PLAN_MANAGEMENT")
         },
         CLIENT_MANAGEMENT: {
             icon: UserPlus, label: "Client Management",
             onClick: () => { setView("client-management"); navigate("/client-management"); closeMobile(); },
-            isActive: view === "client-management"
+            isActive: checkActive(view, "client-management", "CLIENT_MANAGEMENT")
         },
         SUBSCRIPTION_MANAGEMENT: {
             icon: CreditCard, label: "Subscriptions",
             onClick: () => { setView("subscription-management"); navigate("/subscription-management"); closeMobile(); },
-            isActive: view === "subscription-management"
+            isActive: checkActive(view, "subscription-management", "SUBSCRIPTION_MANAGEMENT")
         },
         TABLE_MANAGEMENT: {
             icon: Grid3X3, label: "Table Management",
             onClick: () => { setView("table-management"); navigate("/table-management"); closeMobile(); },
-            isActive: view === "table-management"
+            isActive: checkActive(view, "table-management", "TABLE_MANAGEMENT")
         },
         SELF_SERVICE: {
             icon: Briefcase, label: "Self Service",
@@ -573,89 +527,90 @@ const Sidebar = ({
                     </span>
                 </div>
 
-                {/* Sidebar Buttons container */}
-                <div className="flex-1 w-full overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col items-center">
-                    {moduleList.map(moduleKey => renderNavButton(MODULE_CONFIG[moduleKey], moduleKey))}
-                </div>
-
-                {/* Subscription Status Block */}
-                {!user?.isSuperAdmin && (user?.shopId || user?.shop_id) && (
-                    <div className={`mt-4 w-full px-4 mb-4 transition-all duration-300 ${isExpanded ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden'}`}>
-
-                        <div className={`p-4 rounded-3xl border ${
-                            paymentPending
-                                ? 'border-amber-500/30 bg-amber-500/5'
-                                : hasActiveSubscription
-                                    ? 'border-emerald-500/30 bg-emerald-500/5'
-                                    : 'border-red-500/30 bg-red-500/5'
-                        }`}>
-                            <div className="flex items-center gap-2 mb-2">
-                                <CreditCard size={14} className={
-                                    paymentPending
-                                        ? 'text-amber-500'
-                                        : hasActiveSubscription
-                                            ? 'text-emerald-500'
-                                            : 'text-red-500'
-                                } />
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${
-                                    paymentPending
-                                        ? 'text-amber-600'
-                                        : hasActiveSubscription
-                                            ? 'text-emerald-600'
-                                            : 'text-red-600'
-                                }`}>
-                                    {paymentPending
-                                        ? 'PAYMENT PENDING'
-                                        : hasActiveSubscription
-                                            ? `${planBadgeLabel} PLAN`
-                                            : 'NO ACTIVE PLAN'}
-                                </span>
-                            </div>
-
-                            {/* Subscription Actions */}
-                            {!hasActiveSubscription && !paymentPending ? (
-                                user?.isOwner ? (
-                                    <button
-                                        onClick={() => navigate('/organization')}
-                                        className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-[10px] font-black transition-all shadow-lg shadow-red-500/20"
-                                    >
-                                        SUBSCRIBE NOW
-                                    </button>
-                                ) : (
-                                    <div className="text-[9px] font-bold text-red-500/70 leading-tight">
-                                        Please contact owner to renew the plan.
-                                    </div>
-                                )
-                            ) : paymentPending ? (
-                                <div className="text-[9px] font-bold text-amber-600/80 leading-tight">
-                                    Waiting for super admin to confirm payment.
-                                </div>
-                            ) : (
-                                <div className="text-[9px] font-bold text-emerald-600/70">
-                                    Ends: {subscriptionEndRaw ? new Date(subscriptionEndRaw).toLocaleDateString() : '—'}
-                                </div>
-                            )}
-                        </div>
+                {/* Scrollable Container for Buttons, Subscription, and Logout */}
+                <div className="flex-1 w-full overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col items-center pb-4">
+                    <div className="w-full flex flex-col items-center flex-1">
+                        {moduleList.map(moduleKey => renderNavButton(MODULE_CONFIG[moduleKey], moduleKey))}
                     </div>
-                )}
 
+                    {/* Subscription Status Block */}
+                    {!user?.isSuperAdmin && (user?.shopId || user?.shop_id) && (
+                        <div className={`mt-4 w-full px-4 mb-4 transition-all duration-300 ${isExpanded ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden'}`}>
 
-                {/* Footer (Logout) */}
-                <div className={`mt-auto w-full flex flex-col pt-4 ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:items-center'}`}>
-                    <button
-                        onClick={() => {
-                            handleLogout();
-                            closeMobile();
-                        }}
-                        className={`w-full p-3 md:p-4 rounded-xl md:rounded-2xl transition-all flex items-center ${isExpanded ? 'gap-4 justify-start' : 'justify-start md:justify-center gap-4 md:gap-0'
-                            } ${theme.sidebarLogoutText} ${theme.sidebarLogoutHoverBg} hover:scale-105 md:hover:scale-110`}
-                        title={!isExpanded ? "Logout" : undefined}
-                    >
-                        <LogOut className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
-                        <span className={`font-bold text-sm whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-0 md:opacity-0'}`}>
-                            Logout
-                        </span>
-                    </button>
+                            <div className={`p-4 rounded-3xl border ${
+                                paymentPending
+                                    ? 'border-amber-500/30 bg-amber-500/5'
+                                    : hasActiveSubscription
+                                        ? 'border-emerald-500/30 bg-emerald-500/5'
+                                        : 'border-red-500/30 bg-red-500/5'
+                            }`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <CreditCard size={14} className={
+                                        paymentPending
+                                            ? 'text-amber-500'
+                                            : hasActiveSubscription
+                                                ? 'text-emerald-500'
+                                                : 'text-red-500'
+                                    } />
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${
+                                        paymentPending
+                                            ? 'text-amber-600'
+                                            : hasActiveSubscription
+                                                ? 'text-emerald-600'
+                                                : 'text-red-600'
+                                    }`}>
+                                        {paymentPending
+                                            ? 'PAYMENT PENDING'
+                                            : hasActiveSubscription
+                                                ? `${planBadgeLabel} PLAN`
+                                                : 'NO ACTIVE PLAN'}
+                                    </span>
+                                </div>
+
+                                {/* Subscription Actions */}
+                                {!hasActiveSubscription && !paymentPending ? (
+                                    user?.isOwner ? (
+                                        <button
+                                            onClick={() => navigate('/organization')}
+                                            className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-[10px] font-black transition-all shadow-lg shadow-red-500/20"
+                                        >
+                                            SUBSCRIBE NOW
+                                        </button>
+                                    ) : (
+                                        <div className="text-[9px] font-bold text-red-500/70 leading-tight">
+                                            Please contact owner to renew the plan.
+                                        </div>
+                                    )
+                                ) : paymentPending ? (
+                                    <div className="text-[9px] font-bold text-amber-600/80 leading-tight">
+                                        Waiting for super admin to confirm payment.
+                                    </div>
+                                ) : (
+                                    <div className="text-[9px] font-bold text-emerald-600/70">
+                                        Ends: {subscriptionEndRaw ? new Date(subscriptionEndRaw).toLocaleDateString() : '—'}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Footer (Logout) */}
+                    <div className={`mt-auto w-full flex flex-col pt-4 shrink-0 ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:items-center'}`}>
+                        <button
+                            onClick={() => {
+                                handleLogout();
+                                closeMobile();
+                            }}
+                            className={`w-full p-3 md:p-4 rounded-xl md:rounded-2xl transition-all flex items-center ${isExpanded ? 'gap-4 justify-start' : 'justify-start md:justify-center gap-4 md:gap-0'
+                                } ${theme.sidebarLogoutText} ${theme.sidebarLogoutHoverBg} hover:scale-105 md:hover:scale-110`}
+                            title={!isExpanded ? "Logout" : undefined}
+                        >
+                            <LogOut className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
+                            <span className={`font-bold text-sm whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-0 md:opacity-0'}`}>
+                                Logout
+                            </span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </>

@@ -89,10 +89,10 @@ const Layout = ({
                         onBusinessTypeChange={onBusinessTypeChange}
                         onSwitchShop={onSwitchShop}
                     />
-                    <div className="absolute top-16 left-0 right-0 z-30 pointer-events-none">
+                    <div className="z-30 shrink-0 lg:absolute lg:top-16 lg:left-0 lg:right-0 lg:pointer-events-none">
                         <PosTabBar view={view} />
                     </div>
-                    <div className="flex-1 overflow-auto custom-scrollbar">
+                    <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
                         {children}
                     </div>
                 </div>
