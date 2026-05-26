@@ -108,18 +108,18 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
     return (
         <div className="space-y-6 animate-fadeIn">
             {/* Header / Controls */}
-            <div className={`p-4 rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-4 ${theme.surfaceBg}`}>
-                <div className="flex items-center gap-4">
+            <div className={`p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${theme.surfaceBg}`}>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <input 
                         type="month" 
                         value={selectedMonth} 
                         onChange={(e) => setSelectedMonth(e.target.value)}
-                        className={`p-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none`}
+                        className={`w-full sm:w-auto p-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none`}
                     />
                     <button 
                         onClick={handleGenerate}
                         disabled={isLoading}
-                        className={`px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold flex items-center gap-2 hover:bg-indigo-700 disabled:opacity-50`}
+                        className={`w-full sm:w-auto px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 disabled:opacity-50`}
                     >
                         <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
                         Generate Payroll
@@ -130,7 +130,7 @@ const PayrollManagement = ({ theme, shopId, canManageSalary }) => {
                     {selectedIds.length > 0 && (
                         <button 
                             onClick={() => setIsPayModalOpen(true)}
-                            className={`px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold flex items-center gap-2 hover:bg-emerald-700 animate-in zoom-in-50 duration-200`}
+                            className={`flex-1 sm:flex-none px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 animate-in zoom-in-50 duration-200`}
                         >
                             <Coins size={18} />
                             Pay Selected ({selectedIds.length})

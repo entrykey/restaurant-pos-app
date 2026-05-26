@@ -217,7 +217,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const content = (
         <>
             {/* Header */}
-            <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-6 ${isEmbedded ? 'mb-6' : 'mb-10'}`}>
+            <div className={`${isEmbedded ? 'mb-4' : 'mb-6'}`}>
                 {!isEmbedded && (
                     <div>
                         <div className="flex items-center gap-3 mb-2">
@@ -232,22 +232,23 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                     </div>
                 )}
 
-                <div className={`flex flex-col md:flex-row gap-4 w-full ${!isEmbedded ? 'md:w-auto' : ''}`}>
-                    <div className="relative flex-1 md:w-72">
-                        <Search className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
+                <div className={`flex flex-row gap-3 w-full ${!isEmbedded ? 'mt-4' : ''}`}>
+                    <div className="relative flex-1">
+                        <Search className={`absolute left-3 top-3.5 ${theme.textSecondary}`} size={18} />
                         <input
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             placeholder="Search suppliers..."
-                            className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 transition-all font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
+                            className={`w-full pl-10 pr-4 py-3 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 transition-all font-medium text-sm ${theme.surfaceBg} ${theme.textPrimary}`}
                         />
                     </div>
                     {canCreate && (
                         <button
                             onClick={() => handleOpenModal()}
-                            className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                            className="flex-shrink-0 bg-indigo-600 text-white px-4 md:px-6 py-3 rounded-2xl font-black shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
                         >
-                            <Plus size={20} /> Add Supplier
+                            <Plus size={18} />
+                            <span className="hidden sm:inline">Add Supplier</span>
                         </button>
                     )}
                 </div>

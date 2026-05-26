@@ -201,42 +201,37 @@ const Parties = ({ hasPermissionFor }) => {
 
     return (
         <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-2">
+                <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 dark:shadow-indigo-900/20">
+                    <Users size={22} />
+                </div>
                 <div>
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 dark:shadow-indigo-900/20">
-                            <Users size={28} />
-                        </div>
-                        <h2 className={`text-2xl md:text-4xl font-black tracking-tight ${theme.textHeading}`}>
-                            Parties
-                        </h2>
-                    </div>
-                    <p className={`font-bold ml-1 ${theme.textMuted}`}>Manage suppliers and customers</p>
+                    <h2 className={`text-xl md:text-3xl font-black tracking-tight ${theme.textHeading}`}>Parties</h2>
+                    <p className={`font-bold text-sm ${theme.textMuted}`}>Manage suppliers and customers</p>
                 </div>
             </div>
 
-            {/* Tabs */}
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-                <div className={`flex gap-4 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
-                    {canSupplierView && (
-                        <button
-                            type="button"
-                            onClick={() => setTab('suppliers')}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${tab === 'suppliers' ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
-                        >
-                            <Truck size={18} /> Suppliers
-                        </button>
-                    )}
-                    {canCustomerView && (
-                        <button
-                            type="button"
-                            onClick={() => setTab('customers')}
-                            className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${tab === 'customers' ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
-                        >
-                            <Users size={18} /> Customers
-                        </button>
-                    )}
-                </div>
+            {/* Tabs — full width on mobile/tablet, fit-content on desktop */}
+            <div className={`flex flex-row flex-wrap gap-1 p-1.5 rounded-2xl shadow-sm w-full lg:w-fit mt-6 mb-4 ${theme.surfaceBg}`}>
+                {canSupplierView && (
+                    <button
+                        type="button"
+                        onClick={() => setTab('suppliers')}
+                        className={`flex-1 lg:flex-none px-3 md:px-6 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-2 ${tab === 'suppliers' ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                    >
+                        <Truck size={16} /> Suppliers
+                    </button>
+                )}
+                {canCustomerView && (
+                    <button
+                        type="button"
+                        onClick={() => setTab('customers')}
+                        className={`flex-1 lg:flex-none px-3 md:px-6 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-2 ${tab === 'customers' ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
+                    >
+                        <Users size={16} /> Customers
+                    </button>
+                )}
             </div>
 
             {tab === 'suppliers' && canSupplierView && (
@@ -252,23 +247,24 @@ const Parties = ({ hasPermissionFor }) => {
 
             {tab === 'customers' && canCustomerView && (
                 <>
-                    <div className="flex flex-col md:flex-row gap-4 mb-6">
-                        <div className="relative flex-1 md:w-72">
-                            <Search className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
+                    <div className="flex flex-row gap-3 mb-6">
+                        <div className="relative flex-1">
+                            <Search className={`absolute left-3 top-3.5 ${theme.textSecondary}`} size={18} />
                             <input
                                 value={customerSearch}
                                 onChange={(e) => setCustomerSearch(e.target.value)}
                                 placeholder="Search customers..."
-                                className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
+                                className={`w-full pl-10 pr-4 py-3 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 font-medium text-sm ${theme.surfaceBg} ${theme.textPrimary}`}
                             />
                         </div>
                         {canCustomerCreate && (
                             <button
                                 type="button"
                                 onClick={() => openCustomerModal()}
-                                className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                className="flex-shrink-0 bg-indigo-600 text-white px-4 md:px-6 py-3 rounded-2xl font-black shadow-xl hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
                             >
-                                <Plus size={20} /> Add Customer
+                                <Plus size={18} />
+                                <span className="hidden sm:inline">Add Customer</span>
                             </button>
                         )}
                     </div>

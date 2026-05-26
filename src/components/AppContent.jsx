@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
 import { ROUTE_KEY_TO_PATH, ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
 import { usePermission } from "../auth/usePermission";
@@ -294,65 +294,106 @@ const AppContent = () => {
     // Local UI State
     const [view, setView] = useState("dashboard");
     
-    // Draggable Logic for Profile Completion Dialog
+    // Draggable Logic for Profile Completion Dialog (supports mouse & touch)
     const [profileOffset, setProfileOffset] = useState({ x: 0, y: 0 });
     const [isDraggingProfile, setIsDraggingProfile] = useState(false);
-    const [dragStartProfile, setDragStartProfile] = useState({ x: 0, y: 0 });
+    const dragStartProfile = useRef({ x: 0, y: 0 });
+    const initialProfileOffset = useRef({ x: 0, y: 0 });
+    const hasDraggedProfile = useRef(false);
 
-    const handleMouseDownProfile = (e) => {
-        if (e.target.closest('button')) return;
+    const startDragProfile = (clientX, clientY) => {
         setIsDraggingProfile(true);
-        setDragStartProfile({
-            x: e.clientX - profileOffset.x,
-            y: e.clientY - profileOffset.y
-        });
+        dragStartProfile.current = { x: clientX, y: clientY };
+        initialProfileOffset.current = { ...profileOffset };
+        hasDraggedProfile.current = false;
     };
 
-    // Draggable Logic for Subscription Dialog
-    const [subOffset, setSubOffset] = useState({ x: 0, y: 0 });
-    const [isDraggingSub, setIsDraggingSub] = useState(false);
-    const [dragStartSub, setDragStartSub] = useState({ x: 0, y: 0 });
+    const handleMouseDownProfile = (e) => {
+        // Only drag with left mouse button
+        if (e.button !== 0) return;
+        // Don't start dragging if interacting with the popover content (e.g., buttons, inputs, links)
+        if (e.target.closest('.popover-content')) return;
 
-    const handleMouseDownSub = (e) => {
-        if (e.target.closest('button')) return;
-        setIsDraggingSub(true);
-        setDragStartSub({
-            x: e.clientX - subOffset.x,
-            y: e.clientY - subOffset.y
-        });
+        startDragProfile(e.clientX, e.clientY);
+    };
+
+    const handleTouchStartProfile = (e) => {
+        // Don't start dragging if interacting with the popover content
+        if (e.target.closest('.popover-content')) return;
+
+        const touch = e.touches[0];
+        startDragProfile(touch.clientX, touch.clientY);
+    };
+
+    const handleProfileCircleClick = (e) => {
+        if (hasDraggedProfile.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        setIsProfileHintExpanded((prev) => !prev);
     };
 
     useEffect(() => {
-        const handleMouseMove = (e) => {
+        const handleMove = (clientX, clientY) => {
             if (isDraggingProfile) {
-                setProfileOffset({
-                    x: e.clientX - dragStartProfile.x,
-                    y: e.clientY - dragStartProfile.y
-                });
-            }
-            if (isDraggingSub) {
-                setSubOffset({
-                    x: e.clientX - dragStartSub.x,
-                    y: e.clientY - dragStartSub.y
-                });
+                const dx = clientX - dragStartProfile.current.x;
+                const dy = clientY - dragStartProfile.current.y;
+                
+                if (Math.sqrt(dx * dx + dy * dy) > 5) {
+                    hasDraggedProfile.current = true;
+                }
+
+                let nextX = initialProfileOffset.current.x + dx;
+                let nextY = initialProfileOffset.current.y + dy;
+
+                // Screen boundary constraints (keeps button within viewport)
+                const elementSize = 56;
+                const padding = 16;
+                const minX = -(window.innerWidth - padding - elementSize);
+                const maxX = padding;
+                const minY = -(window.innerHeight - padding - elementSize);
+                const maxY = padding;
+
+                nextX = Math.max(minX, Math.min(maxX, nextX));
+                nextY = Math.max(minY, Math.min(maxY, nextY));
+
+                setProfileOffset({ x: nextX, y: nextY });
             }
         };
 
-        const handleMouseUp = () => {
+        const handleMouseMove = (e) => {
+            handleMove(e.clientX, e.clientY);
+        };
+
+        const handleTouchMove = (e) => {
+            if (e.touches && e.touches.length > 0) {
+                // Prevent background scrolling when dragging the button on mobile
+                if (e.cancelable) e.preventDefault();
+                handleMove(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        };
+
+        const handleDragEnd = () => {
             setIsDraggingProfile(false);
-            setIsDraggingSub(false);
         };
 
-        if (isDraggingProfile || isDraggingSub) {
+        if (isDraggingProfile) {
             window.addEventListener('mousemove', handleMouseMove);
-            window.addEventListener('mouseup', handleMouseUp);
+            window.addEventListener('mouseup', handleDragEnd);
+            window.addEventListener('touchmove', handleTouchMove, { passive: false });
+            window.addEventListener('touchend', handleDragEnd);
+            window.addEventListener('touchcancel', handleDragEnd);
         }
 
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('mouseup', handleDragEnd);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleDragEnd);
+            window.removeEventListener('touchcancel', handleDragEnd);
         };
-    }, [isDraggingProfile, isDraggingSub, dragStartProfile, dragStartSub]);
+    }, [isDraggingProfile]);
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -1772,10 +1813,11 @@ const AppContent = () => {
                         transition: isDraggingProfile ? 'none' : 'transform 0.1s ease-out'
                     }}
                     onMouseDown={handleMouseDownProfile}
+                    onTouchStart={handleTouchStartProfile}
                 >
                     <button
                         type="button"
-                        onClick={() => setIsProfileHintExpanded((prev) => !prev)}
+                        onClick={handleProfileCircleClick}
                         className={`w-14 h-14 rounded-full shadow-2xl border flex items-center justify-center transition-all hover:scale-105 ${theme.cardBg} ${theme.inputBorder}`}
                         title="Profile/Subscription Alert"
                     >
@@ -1787,7 +1829,7 @@ const AppContent = () => {
 
                     {isProfileHintExpanded && (
                         <div
-                            className="absolute right-0 bottom-16 w-[320px] sm:w-[360px]"
+                            className="popover-content absolute right-0 bottom-16 w-[320px] sm:w-[360px]"
                         >
                             <div className={`relative rounded-2xl shadow-2xl border p-4 ${theme.cardBg} ${theme.inputBorder}`}>
                                 <div className="flex items-start gap-3">

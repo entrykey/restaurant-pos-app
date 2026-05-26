@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen, ShoppingBag } from 'lucide-react';
 import ThemeLoader from '../../components/ui/ThemeLoader';
 import { BUSINESS_FEATURES } from '../../config/businessTypes';
@@ -74,6 +74,24 @@ const Inventory = ({
     const [selectedCategory, setSelectedCategory] = useState("ALL");
     const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
 
+    const branchId = activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null);
+
+    const normalizeCategoryValue = (val) => {
+        if (val == null || val === "" || val === "ALL") return "ALL";
+        return String(val);
+    };
+
+    const categoryOptions = useMemo(
+        () => [
+            { _id: "ALL", name: "All Categories" },
+            ...usedCategories.map((c) => ({
+                ...c,
+                _id: normalizeCategoryValue(c._id ?? c.id),
+            })),
+        ],
+        [usedCategories]
+    );
+
     // Stock Adjustment State
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
     const [selectedAdjustmentItem, setSelectedAdjustmentItem] = useState(null);
@@ -88,10 +106,15 @@ const Inventory = ({
     const [historyData, setHistoryData] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
-    // Reset page to 1 on tab, search or category change
+    // Reset page to 1 on tab or search change
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeTab, inventorySearch, selectedCategory]);
+    }, [activeTab, inventorySearch]);
+
+    // Reset category filter only when switching tabs
+    useEffect(() => {
+        setSelectedCategory("ALL");
+    }, [activeTab]);
 
     // Ensure activeTab is valid if features change
     useEffect(() => {
@@ -114,58 +137,68 @@ const Inventory = ({
             try {
                 const params = {
                     shopId: currentShopId,
-                    branchId: activeBranchId || (user.branchIds?.length ? user.branchIds[0] : null),
+                    branchId,
                     itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
                 };
                 const categories = await itemService.getUsedCategories(params);
                 setUsedCategories(categories || []);
-                setSelectedCategory("ALL"); // Reset filter when tab changes
             } catch (err) {
                 console.error("Failed to fetch used categories:", err);
             }
         };
         fetchCategories();
-    }, [activeTab, activeBranchId, currentShopId, user?.branchIds]);
+    }, [activeTab, branchId, currentShopId]);
 
-    // Fetch Items when Dependencies Change
-    useEffect(() => {
-        const fetchPaginatedItems = async () => {
-            if (!currentShopId) return;
-            setLoadingItems(true);
-            try {
-                const isMenu = activeTab === "menu";
-                const payload = {
-                    page: currentPage,
-                    limit: 5, // Items per page (as requested)
-                    search: inventorySearch,
-                    filters: {
-                        shopId: currentShopId,
-                        branchId: activeBranchId || (user.branchIds?.length ? user.branchIds[0] : null),
-                        itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
-                        categoryId: selectedCategory === "ALL" ? undefined : selectedCategory
-                    }
-                };
+    const fetchPaginatedItems = useCallback(async () => {
+        if (!currentShopId) return;
+        setLoadingItems(true);
+        try {
+            const payload = {
+                page: currentPage,
+                limit: 5,
+                search: inventorySearch,
+                filters: {
+                    shopId: currentShopId,
+                    branchId,
+                    itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
+                    categoryId: selectedCategory === "ALL" ? undefined : selectedCategory,
+                },
+            };
 
-                const response = await itemService.getItems(payload);
-                if (response && response.data) {
-                    setLocalItems(response.data.map(item => ({ ...item, id: item._id })));
-                    if (response.pagination) {
-                        setTotalPages(response.pagination.totalPages || 1);
-                    }
+            const response = await itemService.getItems(payload);
+            if (response && response.data) {
+                setLocalItems(response.data.map((item) => ({ ...item, id: item._id })));
+                if (response.pagination) {
+                    setTotalPages(response.pagination.totalPages || 1);
                 }
-            } catch (error) {
-                console.error("Failed to fetch paginated items:", error);
-            } finally {
-                setLoadingItems(false);
             }
-        };
+        } catch (error) {
+            console.error("Failed to fetch paginated items:", error);
+        } finally {
+            setLoadingItems(false);
+        }
+    }, [
+        activeTab,
+        branchId,
+        currentPage,
+        currentShopId,
+        inventorySearch,
+        selectedCategory,
+    ]);
 
+    // Fetch items when filters, page, or refresh change
+    useEffect(() => {
         fetchPaginatedItems();
-    }, [activeTab, inventorySearch, currentPage, activeBranchId, currentShopId, user?.branchIds, refreshTrigger]);
+    }, [fetchPaginatedItems, refreshTrigger]);
+
+    const handleCategoryChange = (val) => {
+        const category = normalizeCategoryValue(val);
+        setSelectedCategory(category);
+        setCurrentPage(1);
+    };
 
     // Fetch stock levels whenever branchId or items change
     useEffect(() => {
-        const branchId = activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null);
         if (!branchId) return;
         inventoryService.getInventory({ branchId })
             .then(data => {
@@ -183,7 +216,7 @@ const Inventory = ({
                 setStockMap(map);
             })
             .catch(() => { });
-    }, [activeBranchId, user?.branchIds, refreshTrigger]);
+    }, [branchId, refreshTrigger]);
 
     // Define field sets for each mode
     const MENU_FIELD_KEYS = [
@@ -704,55 +737,252 @@ const Inventory = ({
         )
     });
 
+    // ── Mobile card renderer ──────────────────────────────────────────────────
+    // Truncates name to 7 chars + "…", stacks: name/code → category → stock/price → actions
+    const mobileCardRender = (item) => {
+        const id = item._id || item.id;
+        const rawName = item.name || "";
+        const shortName = rawName.length > 7 ? rawName.slice(0, 7) + "…" : rawName;
+        const code = item.itemCode || id;
+        const categoryName = item.categoryId?.name || "Other";
+
+        const stock = stockMap[id] ?? null;
+        const qty = stock && typeof stock === 'object' ? stock.qty : (stock ?? item.quantityOnHand ?? null);
+        const damaged = stock && typeof stock === 'object' ? stock.damaged : 0;
+        const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
+        const low = qty !== null && qty <= min && min > 0;
+
+        const isSellable = item.isSellable !== false;
+        const isActive = item.status === "ACTIVE";
+        const isToggling = loadingItemId === id;
+
+        const accentColor = activeTab === "menu" ? "indigo" : (activeTab === "raw" ? "orange" : "emerald");
+        const categoryBg = activeTab === "menu"
+            ? "bg-indigo-50 text-indigo-700"
+            : (activeTab === "raw" ? "bg-orange-50 text-orange-700" : "bg-emerald-50 text-emerald-700");
+
+        return (
+            <div className={`p-3 ${theme.surfaceBg}`}>
+                {/* Row 1: Name/Code/Category (left) + Stock & Price (right) */}
+                <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                        <div className={`font-black text-base leading-tight ${theme.textHeading}`} title={rawName}>
+                            {shortName}
+                        </div>
+                        <div className={`text-[10px] font-bold mt-0.5 ${theme.textSecondary}`}>{code}</div>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wide ${categoryBg}`}>
+                            {categoryName}
+                        </span>
+                    </div>
+
+                    {/* Right column: Stock badge + Price */}
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        {/* Stock row */}
+                        {qty !== null ? (
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!canManage) return;
+                                        setSelectedAdjustmentItem(item);
+                                        setIsAdjustmentModalOpen(true);
+                                    }}
+                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-black border ${low
+                                        ? "bg-red-50 text-red-600 border-red-200"
+                                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    }`}
+                                >
+                                    {low && <span>⚠️</span>}
+                                    {qty}
+                                    <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
+                                </button>
+                                {canManage && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedAdjustmentItem(item);
+                                            setIsAdjustmentModalOpen(true);
+                                        }}
+                                        className="w-6 h-6 rounded-full flex items-center justify-center bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all active:scale-90 shadow-sm"
+                                        title="Adjust Stock"
+                                    >
+                                        <Plus size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        ) : canManage ? (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedAdjustmentItem(item);
+                                    setIsAdjustmentModalOpen(true);
+                                }}
+                                className="w-6 h-6 rounded-full flex items-center justify-center bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all active:scale-90 shadow-sm"
+                                title="Adjust Stock"
+                            >
+                                <Plus size={12} />
+                            </button>
+                        ) : null}
+
+                        {damaged > 0 && (
+                            <span className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
+                                {damaged} Dmg
+                            </span>
+                        )}
+
+                        {/* Price — right-aligned below stock */}
+                        <div className={`text-sm font-black text-right ${theme.textHeading}`}>
+                            {activeTab === "raw"
+                                ? formatCurrency(item.pricing?.purchasePrice || item.costPerUnit || 0)
+                                : formatCurrency(item.sellingPrice || item.pricing?.sellingPrice || 0)
+                            }
+                            <div className="text-[10px] opacity-40 font-bold">
+                                {activeTab === "raw" ? "/ unit" : "sale price"}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Row 2: Actions — icon + label so no tooltip needed on mobile */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Show on Sale toggle */}
+                    <button
+                        onClick={(e) => { e.stopPropagation(); toggleSellableStatus(item); }}
+                        disabled={isToggling}
+                        className={`relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all ${isSellable
+                            ? `bg-${accentColor}-100 text-${accentColor}-600`
+                            : "bg-gray-100 text-gray-400"
+                        } ${isToggling ? "opacity-50 cursor-wait" : ""}`}
+                    >
+                        {isToggling
+                            ? <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            : <ShoppingBag size={15} />
+                        }
+                        <span className="text-[9px] font-black leading-none">
+                            {isSellable ? "On Sale" : "Off Sale"}
+                        </span>
+                        {isSellable && !isToggling && (
+                            <div className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-${accentColor}-500 border-2 border-white rounded-full`} />
+                        )}
+                    </button>
+
+                    {/* Status toggle */}
+                    <button
+                        onClick={(e) => { e.stopPropagation(); toggleItemStatus(item); }}
+                        disabled={isToggling}
+                        className={`relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all ${isActive
+                            ? "bg-green-100 text-green-600"
+                            : "bg-gray-100 text-gray-400"
+                        } ${isToggling ? "opacity-50 cursor-wait" : ""}`}
+                    >
+                        {isToggling
+                            ? <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            : <Globe size={15} />
+                        }
+                        <span className="text-[9px] font-black leading-none">
+                            {isActive ? "Active" : "Inactive"}
+                        </span>
+                        {isActive && !isToggling && (
+                            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full" />
+                        )}
+                    </button>
+
+                    {/* History */}
+                    <button
+                        onClick={(e) => { e.stopPropagation(); handleViewHistory(item); }}
+                        className={`flex flex-col items-center gap-0.5 px-2 py-1.5 ${theme.inputBg} text-amber-500 rounded-xl transition-all shadow-sm active:scale-95`}
+                    >
+                        <History size={15} />
+                        <span className="text-[9px] font-black leading-none">History</span>
+                    </button>
+
+                    {/* Repack (raw only) */}
+                    {canManage && activeTab === "raw" && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedRepackItem(item);
+                                setIsRepackModalOpen(true);
+                            }}
+                            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 ${theme.inputBg} text-blue-500 rounded-xl transition-all shadow-sm active:scale-95`}
+                        >
+                            <PackageOpen size={15} />
+                            <span className="text-[9px] font-black leading-none">Repack</span>
+                        </button>
+                    )}
+
+                    {/* Edit */}
+                    {canManage && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleEditItem(item); }}
+                            disabled={loadingItemId === id}
+                            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 ${theme.inputBg} ${theme.primaryIconText} rounded-xl transition-all shadow-sm active:scale-95 disabled:opacity-60 disabled:cursor-wait`}
+                        >
+                            {loadingItemId === id
+                                ? <span className="inline-block w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                                : <Edit3 size={15} />
+                            }
+                            <span className="text-[9px] font-black leading-none">Edit</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className={`flex flex-col h-full overflow-y-auto custom-scrollbar overflow-x-hidden ${theme.pageBg}`}>
             {/* Header section */}
             <div className="p-4 md:p-6 flex-shrink-0">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
-                    <div>
-                        {/* Header with Icon */}
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className={`p-3 text-white rounded-2xl ${activeTab === "menu" ? "bg-indigo-600" : "bg-orange-500"}`}>
-                                {activeTab === "menu" ? <Package size={28} /> : <Boxes size={28} />}
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+                    {/* Title block */}
+                    <div className="flex-shrink-0">
+                        <div className="flex items-center gap-3 mb-1">
+                            <div className={`p-2.5 text-white rounded-2xl ${activeTab === "menu" ? "bg-indigo-600" : "bg-orange-500"}`}>
+                                {activeTab === "menu" ? <Package size={22} /> : <Boxes size={22} />}
                             </div>
-                            <h2 className={`text-2xl md:text-4xl font-black tracking-tight ${theme.textHeading}`}>
+                            <h2 className={`text-xl md:text-2xl lg:text-3xl font-black tracking-tight ${theme.textHeading}`}>
                                 {activeTab === "menu" ? menuHeading : (activeTab === "raw" ? itemsHeading : tradeHeading)}
                             </h2>
                         </div>
-                        <p className={`font-bold ml-1 ${theme.textMuted}`}>
+                        <p className={`font-bold ml-1 text-sm ${theme.textMuted}`}>
                             {activeTab === "menu" ? t('INVENTORY', 'menu_subtitle', `Manage ${menuHeading.toLowerCase()} & bill of materials`) : (activeTab === "raw" ? t('INVENTORY', 'items_subtitle', `Manage ${itemsHeading.toLowerCase()} & levels`) : t('INVENTORY', 'trade_items_subtitle', `Manage ${tradeHeading.toLowerCase()} for buy & sell`))}
                         </p>
                     </div>
 
-                    <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                        <div className="relative flex-1 md:w-72">
-                            <Search className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
+                    {/* Search + Buttons row */}
+                    <div className="flex flex-row flex-wrap gap-3 w-full lg:w-auto items-center">
+                        <div className="relative flex-1 min-w-[140px]">
+                            <Search className={`absolute left-3 top-3.5 ${theme.textSecondary}`} size={18} />
                             <input
                                 value={inventorySearch}
                                 onChange={(e) => setInventorySearch(e.target.value)}
                                 placeholder={activeTab === "menu" ? "Search menu..." : "Search items..."}
-                                className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
+                                className={`w-full pl-10 pr-4 py-3 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium text-sm ${theme.surfaceBg} ${theme.textPrimary}`}
                             />
                         </div>
 
                         {canManage && (
-                            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                            <div className="flex flex-row gap-2 flex-shrink-0">
                                 <button
                                     onClick={() => setIsBulkModalOpen(true)}
-                                    className={`w-full sm:w-auto px-4 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl font-black shadow-md md:shadow-lg transition-all flex items-center justify-center gap-2
+                                    className={`px-3 md:px-4 py-3 rounded-xl font-black text-sm shadow-md transition-all flex items-center justify-center gap-2
                                     ${theme.mode === 'dark' ? 'bg-slate-800 text-indigo-400 hover:bg-slate-700' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}
                                 `}
                                 >
-                                    <Upload size={20} /> Bulk Import
+                                    <Upload size={18} />
+                                    <span className="hidden sm:inline">Bulk Import</span>
                                 </button>
                                 <button
                                     onClick={handleOpenAddModal}
-                                    className={`w-full sm:w-auto px-4 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl font-black shadow-lg md:shadow-xl text-white transition-all flex items-center justify-center gap-2
-                                    ${activeTab === "menu" ? "bg-indigo-600 shadow-indigo-200 dark:shadow-indigo-900/20 hover:bg-indigo-700" : (activeTab === "raw" ? "bg-orange-500 shadow-orange-200 dark:shadow-orange-900/20 hover:bg-orange-600" : "bg-emerald-600 shadow-emerald-200 dark:shadow-emerald-900/20 hover:bg-emerald-700")}
+                                    className={`px-3 md:px-5 py-3 rounded-xl font-black text-sm shadow-lg text-white transition-all flex items-center justify-center gap-2
+                                    ${activeTab === "menu" ? "bg-indigo-600 hover:bg-indigo-700" : (activeTab === "raw" ? "bg-orange-500 hover:bg-orange-600" : "bg-emerald-600 hover:bg-emerald-700")}
                                 `}
                                 >
-                                    <Plus size={20} /> 
-                                    {activeTab === "menu" ? t('INVENTORY', 'add_menu_item', `Add ${menuHeading.replace(/s$/, '')}`) : (activeTab === "raw" ? t('INVENTORY', 'add_stock_item', `Add ${itemsHeading.replace(/s$/, '')}`) : t('INVENTORY', 'add_trade_item', `Add ${tradeHeading.replace(/s$/, '')}`))}
+                                    <Plus size={18} />
+                                    <span className="hidden xs:inline sm:inline">
+                                        {activeTab === "menu" ? t('INVENTORY', 'add_menu_item', `Add ${menuHeading.replace(/s$/, '')}`) : (activeTab === "raw" ? t('INVENTORY', 'add_stock_item', `Add ${itemsHeading.replace(/s$/, '')}`) : t('INVENTORY', 'add_trade_item', `Add ${tradeHeading.replace(/s$/, '')}`))}
+                                    </span>
                                 </button>
                             </div>
                         )}
@@ -760,50 +990,50 @@ const Inventory = ({
                 </div>
             </div>
 
-            {/* Tabs section */}
-            <div className="px-4 md:px-6 mb-6 flex-shrink-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-6">
-                <div className={`flex flex-col sm:flex-row flex-wrap gap-2 md:gap-4 p-2 rounded-2xl shadow-sm w-full md:w-fit ${theme.surfaceBg}`}>
+            {/* Tabs + Category Filter */}
+            <div className="px-4 md:px-6 mb-6 flex-shrink-0 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                <div className={`flex flex-row flex-wrap gap-1 p-1.5 rounded-2xl shadow-sm w-full lg:w-fit ${theme.surfaceBg}`}>
                     {canViewMenu && (
                         <button
                             onClick={() => setActiveTab("menu")}
-                            className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${activeTab === "menu"
+                            className={`flex-1 lg:flex-none px-3 md:px-5 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${activeTab === "menu"
                                 ? `${theme.primaryIconBg} ${theme.primaryIconText}`
                                 : `${theme.textSecondary} hover:opacity-80`
                                 }`}
                         >
-                            <Layers size={18} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured Items')}
+                            <Layers size={16} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured Items')}
                         </button>
                     )}
                     {canViewItems && (
                         <button
                             onClick={() => setActiveTab("raw")}
-                            className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${activeTab === "raw"
+                            className={`flex-1 lg:flex-none px-3 md:px-5 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${activeTab === "raw"
                                 ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
                                 : `${theme.textSecondary} hover:opacity-80`
                                 }`}
                         >
-                            <Boxes size={18} /> {t('INVENTORY', 'items_tab', 'Stock Items')}
+                            <Boxes size={16} /> {t('INVENTORY', 'items_tab', 'Stock Items')}
                         </button>
                     )}
                     {canViewTradeItems && (
                         <button
                             onClick={() => setActiveTab("trade")}
-                            className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${activeTab === "trade"
+                            className={`flex-1 lg:flex-none px-3 md:px-5 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${activeTab === "trade"
                                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
                                 : `${theme.textSecondary} hover:opacity-80`
                                 }`}
                         >
-                            <Package size={18} /> {t('INVENTORY', 'trade_items_tab', 'Trade Items')}
+                            <Package size={16} /> {t('INVENTORY', 'trade_items_tab', 'Trade Items')}
                         </button>
                     )}
                 </div>
 
-                {/* Category Filter Dropdown */}
-                <div className="w-full md:w-64">
+                {/* Category Filter — same line as tabs on desktop, below on mobile/tablet */}
+                <div className="w-full lg:w-56">
                     <CommonSelect
-                        options={[{ _id: "ALL", name: "All Categories" }, ...usedCategories]}
+                        options={categoryOptions}
                         value={selectedCategory}
-                        onChange={(val) => setSelectedCategory(val)}
+                        onChange={handleCategoryChange}
                         labelKey="name"
                         valueKey="_id"
                         placeholder="Filter by Category"
@@ -822,6 +1052,7 @@ const Inventory = ({
                     totalPages={totalPages}
                     onPageChange={setCurrentPage}
                     className="max-h-full flex flex-col"
+                    mobileCardRender={mobileCardRender}
                 />
             </div>
 
@@ -846,6 +1077,9 @@ const Inventory = ({
                                 setMenu={setMenu}
                                 inventoryItems={inventoryItems}
                                 setInventoryItems={setInventoryItems}
+                                canViewMenu={canViewMenu}
+                                canViewItems={canViewItems}
+                                canViewTradeItems={canViewTradeItems}
                             />
                         </div>
                     </div>
@@ -868,7 +1102,7 @@ const Inventory = ({
                     setSelectedAdjustmentItem(null);
                 }}
                 item={selectedAdjustmentItem}
-                branchId={activeBranchId || (user.branchIds?.length ? user.branchIds[0] : null)}
+                branchId={branchId}
                 onAdjustmentSuccess={() => setRefreshTrigger(prev => prev + 1)}
                 formatCurrency={formatCurrency}
             />

@@ -518,24 +518,24 @@ const Reports = ({
                 <h2 className={`text-2xl md:text-4xl font-black flex items-center ${theme.textHeading}`}>
                     <FileText className="mr-3 text-indigo-600 shrink-0" /> Reports & Analytics
                 </h2>
-                <div className="flex flex-wrap gap-3 items-center w-full xl:w-auto">
-                    <div className={`flex flex-wrap sm:flex-nowrap items-center gap-2 ${theme.surfaceBg} border-2 ${theme.borderLight} rounded-2xl px-3 py-2 shadow-sm flex-1 sm:flex-none`}>
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full xl:w-auto">
+                    <div className={`flex flex-col sm:flex-row sm:items-center gap-2 ${theme.surfaceBg} border-2 ${theme.borderLight} rounded-2xl px-3 py-2 shadow-sm`}>
                         <DatePicker
                             value={filterStartDate}
                             onChange={val => setFilterStartDate(val || today)}
-                            className="w-full sm:w-40"
+                            className="w-full sm:w-36 md:w-40"
                             placeholder="From date"
                         />
                         <span className={`text-xs font-bold ${theme.textMuted} hidden sm:inline`}>to</span>
                         <DatePicker
                             value={filterEndDate}
                             onChange={val => setFilterEndDate(val || today)}
-                            className="w-full sm:w-40"
+                            className="w-full sm:w-36 md:w-40"
                             placeholder="To date"
                         />
                     </div>
                     {availableBranches.length > 1 && (
-                        <div className="w-full sm:w-48 z-50 flex-1 sm:flex-none">
+                        <div className="w-full sm:w-44 md:w-48 z-50 flex-shrink-0">
                             <CommonSelect
                                 options={[
                                     { label: "All Branches", value: "all" },
@@ -549,7 +549,7 @@ const Reports = ({
                     )}
                     <button
                         onClick={handleExport}
-                        className={`inline-flex items-center gap-2 px-4 py-3 ${theme.buttonBg} ${theme.buttonText} rounded-2xl shadow-sm text-sm font-bold ${theme.buttonHoverBg}`}
+                        className={`w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 ${theme.buttonBg} ${theme.buttonText} rounded-2xl shadow-sm text-sm font-bold ${theme.buttonHoverBg}`}
                     >
                         <Download size={18} />
                         <span>Export</span>

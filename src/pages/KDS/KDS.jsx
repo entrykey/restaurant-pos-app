@@ -112,7 +112,7 @@ const KDS = ({
                     </div>
                     <button
                         onClick={() => fetchKOTs(true)}
-                        className={`${theme.surfaceBg} p-4 rounded-2xl border ${theme.borderLight} ${theme.textSecondary} hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-95`}
+                        className={`${theme.surfaceBg} py-4 px-6 rounded-2xl border ${theme.borderLight} ${theme.textSecondary} hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-95`}
                     >
                         <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
                     </button>

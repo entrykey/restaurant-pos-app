@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight } from "lucide-react";
+import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight, X } from "lucide-react";
 import BusinessTypeModal from "./BusinessTypeModal";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
@@ -33,6 +33,7 @@ const Navbar = ({
     const [isBusinessTypeModalOpen, setIsBusinessTypeModalOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+    const [isTrialPopoverOpen, setIsTrialPopoverOpen] = useState(false);
     const navigate = useNavigate();
 
     // Initial fetch of notifications
@@ -193,34 +194,95 @@ const Navbar = ({
 
             {/* Middle Section: Trial Countdown */}
             {!currentUser?.isSuperAdmin && organization?.subscriptionStatus === 'trial' && (
-                <div 
-                    onClick={() => {
-                        if (can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW)) {
-                            navigate('/organization');
-                        }
-                    }}
-                    className={`flex items-center gap-3 px-5 py-2 rounded-2xl border-2 border-dashed shadow-sm transition-all
-                        ${can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW) ? 'cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default'}
-                        ${theme.mode === 'light' 
-                            ? 'bg-amber-50 border-amber-200 text-amber-700 shadow-amber-100/50' 
-                            : 'bg-amber-900/10 border-amber-800/50 text-amber-400'}
-                    `}
-                >
-                    <div className={`p-1.5 rounded-lg ${theme.mode === 'light' ? 'bg-amber-100' : 'bg-amber-900/30'}`}>
-                        <Clock size={16} className="animate-pulse" />
-                    </div>
-                    <div>
-                        <div className="text-[10px] font-black uppercase tracking-widest opacity-70">Free Trial</div>
-                        <div className="text-xs font-black tracking-tight">
-                            Ends in {Math.max(0, Math.ceil((new Date(organization.subscriptionEndDate) - new Date()) / (1000 * 60 * 60 * 24)))} days
+                <>
+                    {/* Desktop View: Full Card */}
+                    <div 
+                        onClick={() => {
+                            if (can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW)) {
+                                navigate('/organization');
+                            }
+                        }}
+                        className={`hidden md:flex items-center gap-3 px-5 py-2 rounded-2xl border-2 border-dashed shadow-sm transition-all
+                            ${can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW) ? 'cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default'}
+                            ${theme.mode === 'light' 
+                                ? 'bg-amber-50 border-amber-200 text-amber-700 shadow-amber-100/50' 
+                                : 'bg-amber-900/10 border-amber-800/50 text-amber-400'}
+                        `}
+                    >
+                        <div className={`p-1.5 rounded-lg ${theme.mode === 'light' ? 'bg-amber-100' : 'bg-amber-900/30'}`}>
+                            <Clock size={16} className="animate-pulse" />
                         </div>
-                    </div>
-                    {can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW) && (
-                        <div className={`ml-2 p-1 rounded-full ${theme.mode === 'light' ? 'bg-amber-200/50' : 'bg-amber-800/30'}`}>
-                            <ChevronRight size={12} />
+                        <div>
+                            <div className="text-[10px] font-black uppercase tracking-widest opacity-70">Free Trial</div>
+                            <div className="text-xs font-black tracking-tight">
+                                Ends in {Math.max(0, Math.ceil((new Date(organization.subscriptionEndDate) - new Date()) / (1000 * 60 * 60 * 24)))} days
+                            </div>
                         </div>
-                    )}
-                </div>
+                        {can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW) && (
+                            <div className={`ml-2 p-1 rounded-full ${theme.mode === 'light' ? 'bg-amber-200/50' : 'bg-amber-800/30'}`}>
+                                <ChevronRight size={12} />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Mobile/Tablet View: Warning Circle showing Popover on Click */}
+                    <div className="md:hidden relative">
+                        <button 
+                            type="button"
+                            onClick={() => setIsTrialPopoverOpen(!isTrialPopoverOpen)}
+                            className={`w-10 h-10 rounded-full border-2 border-dashed flex items-center justify-center transition-all relative
+                                ${theme.mode === 'light' 
+                                    ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-sm' 
+                                    : 'bg-amber-900/20 border-amber-800 text-amber-400'}
+                            `}
+                        >
+                            <Clock size={18} className="animate-pulse" />
+                            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center animate-bounce">
+                                !
+                            </span>
+                        </button>
+
+                        {isTrialPopoverOpen && (
+                            <div 
+                                className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 p-4 rounded-2xl border shadow-2xl z-[120]
+                                    ${theme.cardBg} ${theme.borderLight}
+                                `}
+                            >
+                                <div className="flex items-start gap-3">
+                                    <div className={`p-2 rounded-xl ${theme.mode === 'light' ? 'bg-amber-100 text-amber-700' : 'bg-amber-900/30 text-amber-400'}`}>
+                                        <Clock size={16} className="animate-pulse" />
+                                    </div>
+                                    <div className="flex-1 text-left">
+                                        <p className={`text-xs font-black uppercase tracking-widest ${theme.textMuted}`}>Free Trial</p>
+                                        <p className={`text-sm font-black tracking-tight mt-0.5 ${theme.textPrimary}`}>
+                                            Ends in {Math.max(0, Math.ceil((new Date(organization.subscriptionEndDate) - new Date()) / (1000 * 60 * 60 * 24)))} days
+                                        </p>
+                                        {can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW) && (
+                                            <button
+                                                onClick={() => {
+                                                    setIsTrialPopoverOpen(false);
+                                                    navigate('/organization');
+                                                }}
+                                                className={`mt-3 w-full px-3 py-1.5 rounded-lg text-xs font-bold text-center flex items-center justify-center gap-1
+                                                    ${theme.buttonBg} ${theme.buttonText}`}
+                                            >
+                                                Manage Subscription
+                                                <ChevronRight size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsTrialPopoverOpen(false)}
+                                    className={`absolute top-3 right-3 p-1 rounded-lg ${theme.textMuted} hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                >
+                                    <X size={14} className="text-gray-400" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </>
             )}
 
             <div className="flex items-center gap-4">

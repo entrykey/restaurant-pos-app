@@ -14,7 +14,7 @@ import CommonSelect from '../../components/ui/CommonSelect';
 import Modal from '../../components/ui/Modal';
 import BarcodePrintDialog from '../../components/modals/BarcodePrintDialog';
 
-const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialog, onClose, fixedBranchId, prefillData, activeTabOverride, id: propId, sourcePage: propSourcePage, returnState: propReturnState, returnUrl: propReturnUrl }) => {
+const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialog, onClose, fixedBranchId, prefillData, activeTabOverride, id: propId, sourcePage: propSourcePage, returnState: propReturnState, returnUrl: propReturnUrl, canViewMenu, canViewItems, canViewTradeItems }) => {
     const { user } = useAuth();
     const { activeBranchId, branches, organization, currentShopId, businessTypeData, formatCurrency, settings } = useApp();
     const { theme } = useTheme();
@@ -1007,9 +1007,9 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     </div>
                 )}
 
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-gray-100 dark:border-gray-800 gap-6">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-gray-100 dark:border-gray-800 gap-3">
                     <div>
-                        <h3 className={`text-2xl font-black ${theme.textHeading}`}>{title}</h3>
+                        <h3 className={`text-lg sm:text-2xl font-black ${theme.textHeading}`}>{title}</h3>
                         <p className={`text-xs mt-1 ${theme.textMuted}`}>
                             Fill in the details below to {isEditing ? 'update' : 'create'} this {activeTab === 'menu' ? manufacturedText.toLowerCase() : (activeTab === 'raw' ? 'stock item' : 'trade item')}.
                         </p>
@@ -1017,33 +1017,35 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
                     {/* ITEM TYPE SWITCHER */}
                     {!isEditing && (asDialog || sourcePage === 'purchase') && (
-                        <div className={`flex p-1 rounded-2xl shadow-sm border ${theme.borderLight} ${theme.surfaceBg}`}>
-                            {businessTypeData?.features?.sellManufacturedItems !== false && sourcePage !== 'purchase' && (
+                        <div className={`flex flex-wrap gap-1 p-1 rounded-2xl shadow-sm border ${theme.borderLight} ${theme.surfaceBg} w-full sm:w-auto`}>
+                            {businessTypeData?.features?.sellManufacturedItems !== false && sourcePage !== 'purchase' && canViewMenu !== false && (
                                 <button
                                     onClick={() => setCurrentTab('menu')}
-                                    className={`px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'menu' 
+                                    className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'menu' 
                                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20' 
                                         : `${theme.textMuted} hover:opacity-70`}`}
                                 >
-                                    <Layers size={14} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured')}
+                                    <Layers size={13} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured')}
                                 </button>
                             )}
-                            <button
-                                onClick={() => setCurrentTab('raw')}
-                                className={`px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'raw' 
-                                    ? 'bg-orange-500 text-white shadow-lg shadow-orange-200 dark:shadow-orange-900/20' 
-                                    : `${theme.textMuted} hover:opacity-70`}`}
-                            >
-                                <Plus size={14} /> Stock
-                            </button>
-                            {businessTypeData?.features?.sellTradeItems !== false && (
+                            {canViewItems !== false && (
+                                <button
+                                    onClick={() => setCurrentTab('raw')}
+                                    className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'raw' 
+                                        ? 'bg-orange-500 text-white shadow-lg shadow-orange-200 dark:shadow-orange-900/20' 
+                                        : `${theme.textMuted} hover:opacity-70`}`}
+                                >
+                                    <Plus size={13} /> Stock
+                                </button>
+                            )}
+                            {businessTypeData?.features?.sellTradeItems !== false && canViewTradeItems !== false && (
                                 <button
                                     onClick={() => setCurrentTab('trade')}
-                                    className={`px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${currentTab === 'trade' 
+                                    className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'trade' 
                                         ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20' 
                                         : `${theme.textMuted} hover:opacity-70`}`}
                                 >
-                                    <Package size={14} /> Trade
+                                    <Package size={13} /> Trade
                                 </button>
                             )}
                         </div>
@@ -1659,18 +1661,18 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             </div>
 
             {/* Sticky Footer */}
-            <div className={`flex gap-4 p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 shrink-0`}>
+            <div className={`flex flex-col-reverse sm:flex-row gap-3 p-4 sm:p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 shrink-0`}>
                 <button
                     onClick={() => asDialog && onClose ? onClose() : navigate('/inventory')}
-                    className={`flex-1 py-4 font-black ${theme.textSecondary} hover:${theme.textPrimary} transition-colors border-2 ${theme.borderLight} rounded-[24px]`}
+                    className={`w-full sm:flex-1 py-3.5 sm:py-4 font-black text-sm sm:text-base ${theme.textSecondary} hover:${theme.textPrimary} transition-colors border-2 ${theme.borderLight} rounded-[24px]`}
                 >
                     {asDialog ? "Cancel" : "Discard"}
                 </button>
                 <button
                     onClick={handleSubmit}
-                    className={`flex-2 w-2/3 py-4 ${theme.buttonBg} ${theme.buttonText} rounded-[24px] font-black shadow-xl shadow-indigo-100/10 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-2 text-lg`}
+                    className={`w-full sm:w-2/3 py-3.5 sm:py-4 ${theme.buttonBg} ${theme.buttonText} rounded-[24px] font-black shadow-xl shadow-indigo-100/10 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-2 text-base sm:text-lg`}
                 >
-                    <Save size={24} />
+                    <Save size={20} />
                     {isEditing ? "Update Product" : "Save Product"}
                 </button>
             </div>

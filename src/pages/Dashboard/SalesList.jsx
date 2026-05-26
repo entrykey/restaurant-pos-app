@@ -250,11 +250,11 @@ const SalesList = () => {
     };
 
     return (
-        <div className="p-8 space-y-8 h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
+        <div className="p-4 md:p-8 space-y-6 md:space-y-8 h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
-                    <h1 className={`text-4xl font-black ${theme.textHeading} tracking-tight`}>Sales History</h1>
+                    <h1 className={`text-2xl md:text-4xl font-black ${theme.textHeading} tracking-tight`}>Sales History</h1>
                     <p className={`${theme.textMuted} mt-1 font-medium`}>Manage your shop's sales records and processed returns</p>
                 </div>
 
@@ -287,13 +287,13 @@ const SalesList = () => {
             </div>
 
             {/* Tabs */}
-            <div className={`flex flex-wrap gap-4 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
+            <div className={`flex flex-col sm:flex-row flex-wrap gap-2 md:gap-4 p-2 rounded-2xl shadow-sm w-full md:w-fit ${theme.surfaceBg}`}>
                 <button
                     type="button"
                     role="tab"
                     aria-selected={activeTab === 'history'}
                     onClick={() => setActiveTab('history')}
-                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${
+                    className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${
                         activeTab === 'history'
                             ? `${theme.primaryIconBg} ${theme.primaryIconText}`
                             : `${theme.textSecondary} hover:opacity-80`
@@ -307,7 +307,7 @@ const SalesList = () => {
                     role="tab"
                     aria-selected={activeTab === 'returns'}
                     onClick={() => setActiveTab('returns')}
-                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${
+                    className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${
                         activeTab === 'returns'
                             ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
                             : `${theme.textSecondary} hover:opacity-80`
@@ -319,7 +319,7 @@ const SalesList = () => {
             </div>
 
             {/* Content Table */}
-            <div className={`flex-1 overflow-hidden flex flex-col rounded-[40px] border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
+            <div className={`flex-1 overflow-hidden flex flex-col rounded-[32px] md:rounded-[40px] border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
                 <div className="overflow-x-auto h-full custom-scrollbar">
                     {loading ? (
                         <div className="h-full flex flex-col items-center justify-center p-20 space-y-4">
@@ -330,12 +330,12 @@ const SalesList = () => {
                         <table className="w-full text-left border-collapse">
                             <thead className="sticky top-0 z-10">
                                 <tr className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-[0.2em] ${theme.surfaceBg} border-b ${theme.borderLight}`}>
-                                    <th className="px-8 py-6">Order Info</th>
-                                    <th className="px-8 py-6">Customer</th>
-                                    <th className="px-8 py-6">Items</th>
-                                    <th className="px-8 py-6">Amount</th>
-                                    <th className="px-8 py-6">Status</th>
-                                    <th className="px-8 py-6 text-right">Actions</th>
+                                    <th className="px-4 md:px-8 py-4 md:py-6">Order Info</th>
+                                    <th className="px-4 md:px-8 py-4 md:py-6">Customer</th>
+                                    <th className="px-4 md:px-8 py-4 md:py-6">Items</th>
+                                    <th className="px-4 md:px-8 py-4 md:py-6">Amount</th>
+                                    <th className="px-4 md:px-8 py-4 md:py-6">Status</th>
+                                    <th className="px-4 md:px-8 py-4 md:py-6 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className={`divide-y ${theme.borderLight}`}>
@@ -343,7 +343,7 @@ const SalesList = () => {
                                     sales.length > 0 ? sales.map((order) => (
                                         <React.Fragment key={order._id}>
                                         <tr className={`group hover:${theme.mode === 'dark' ? 'bg-white/5' : 'bg-gray-50/50'} transition-all`}>
-                                            <td className="px-8 py-6">
+                                            <td className="px-4 md:px-8 py-4 md:py-6">
                                                 <div className="space-y-1">
                                                     <div className="flex items-center gap-2">
                                                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400`}>#{order.orderNumber}</span>
@@ -352,7 +352,7 @@ const SalesList = () => {
                                                     <p className={`font-black ${theme.textHeading}`}>{order.invoiceNumber || 'No Invoice'}</p>
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-6">
+                                            <td className="px-4 md:px-8 py-4 md:py-6">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-500">
                                                         <User size={18} />
@@ -363,12 +363,12 @@ const SalesList = () => {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-6">
+                                            <td className="px-4 md:px-8 py-4 md:py-6">
                                                 <span className={`px-3 py-1.5 rounded-xl text-xs font-black ${theme.mode === 'dark' ? 'bg-white/5 text-slate-300' : 'bg-gray-100 text-gray-600'}`}>
                                                     {order.items?.length || 0} Items
                                                 </span>
                                             </td>
-                                            <td className="px-8 py-6">
+                                            <td className="px-4 md:px-8 py-4 md:py-6">
                                                 <div className="space-y-0.5">
                                                     <p className={`font-black text-lg text-indigo-600`}>
                                                         {formatCurrency(order.grandTotal)}
@@ -380,7 +380,7 @@ const SalesList = () => {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-6">
+                                            <td className="px-4 md:px-8 py-4 md:py-6">
                                                 <div className="flex items-center gap-2 text-emerald-500">
                                                     <CheckCircle2 size={16} />
                                                     <span className="text-xs font-black uppercase tracking-widest">
@@ -388,7 +388,7 @@ const SalesList = () => {
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-6 text-right">
+                                            <td className="px-4 md:px-8 py-4 md:py-6 text-right">
                                                 <div className="flex items-center justify-end gap-2">
                                                     {order.editHistory && order.editHistory.length > 0 && (
                                                         <button 
@@ -420,7 +420,7 @@ const SalesList = () => {
                                         {expandedOrders[order._id] && order.editHistory && order.editHistory.length > 0 && (
                                             <tr>
                                                 <td colSpan="6" className="p-0 border-none bg-transparent">
-                                                    <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-indigo-50/30'} border-t ${theme.borderLight} p-8 animate-in slide-in-from-top-2 duration-300 overflow-hidden`}>
+                                                    <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-indigo-50/30'} border-t ${theme.borderLight} p-4 md:p-8 animate-in slide-in-from-top-2 duration-300 overflow-hidden`}>
                                                         <h4 className={`text-sm font-black uppercase tracking-widest ${theme.textHeading} mb-6 flex items-center gap-2`}>
                                                             <History size={18} className="text-indigo-500" /> Edit History
                                                         </h4>
@@ -450,7 +450,7 @@ const SalesList = () => {
                                         </React.Fragment>
                                     )) : (
                                         <tr>
-                                            <td colSpan="6" className="px-8 py-20 text-center">
+                                            <td colSpan="6" className="px-4 md:px-8 py-12 md:py-20 text-center">
                                                 <ShoppingBag size={48} className="mx-auto mb-4 text-gray-300" />
                                                 <p className={`font-bold ${theme.textMuted}`}>No sales found</p>
                                             </td>
@@ -459,7 +459,7 @@ const SalesList = () => {
                                 ) : (
                                     returns.length > 0 ? returns.map((ret) => (
                                         <tr key={ret._id} className={`group hover:${theme.mode === 'dark' ? 'bg-white/5' : 'bg-gray-50/50'} transition-all`}>
-                                            <td className="px-8 py-6">
+                                            <td className="px-4 md:px-8 py-4 md:py-6">
                                                 <div className="space-y-1">
                                                     <div className="flex items-center gap-2">
                                                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-md bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400`}>#{ret.returnNumber}</span>
@@ -468,7 +468,7 @@ const SalesList = () => {
                                                     <p className={`font-black ${theme.textHeading}`}>For Order #{ret.orderId?.orderNumber}</p>
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-6">
+                                            <td className="px-4 md:px-8 py-4 md:py-6">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-500">
                                                         <User size={18} />
@@ -479,22 +479,22 @@ const SalesList = () => {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-6">
+                                            <td className="px-4 md:px-8 py-4 md:py-6">
                                                 <div className="flex flex-col gap-1">
                                                     <span className="text-[10px] font-black uppercase text-orange-500">Returned: {ret.items?.length || 0}</span>
                                                     {(ret.exchangeOrderId || ret.exchangeItems?.length > 0) && <span className="text-[10px] font-black uppercase text-indigo-500">Exchanged</span>}
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-6">
+                                            <td className="px-4 md:px-8 py-4 md:py-6">
                                                 <div className="space-y-0.5">
                                                     <p className="text-sm font-black text-orange-600">-{formatCurrency(ret.totalReturnAmount)}</p>
                                                     {ret.exchangeOrderId && <p className="text-[10px] font-bold text-indigo-600">Linked to Order Exchange</p>}
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-6 font-black text-lg text-gray-800 dark:text-gray-100">
+                                            <td className="px-4 md:px-8 py-4 md:py-6 font-black text-lg text-gray-800 dark:text-gray-100">
                                                 {formatCurrency(ret.netAmount)}
                                             </td>
-                                            <td className="px-8 py-6 text-right">
+                                            <td className="px-4 md:px-8 py-4 md:py-6 text-right">
                                                 <div className="flex items-center justify-end gap-2">
                                                     <button 
                                                         onClick={() => handleViewReturnDetail(ret)}
@@ -511,7 +511,7 @@ const SalesList = () => {
                                         </tr>
                                     )) : (
                                         <tr>
-                                            <td colSpan="6" className="px-8 py-20 text-center">
+                                            <td colSpan="6" className="px-4 md:px-8 py-12 md:py-20 text-center">
                                                 <RotateCcw size={48} className="mx-auto mb-4 text-gray-300" />
                                                 <p className={`font-bold ${theme.textMuted}`}>No returns found</p>
                                             </td>
