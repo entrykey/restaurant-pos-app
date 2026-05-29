@@ -45,6 +45,7 @@ import {
     getSubscriptionPlanLabel,
     isSubscriptionPaymentPending,
 } from "../utils/subscriptionStatus";
+import { useTakeaway } from "../pages/Takeaway/TakeawayContext";
 
 const canAccessRoute = (can, canModule, routeKey) => {
     const r = ROUTE_ACCESS[routeKey];
@@ -77,6 +78,7 @@ const Sidebar = ({
     const { theme } = useTheme();
     const { user } = useAuth();
     const { organization } = useApp();
+    const { setTableId, activateSaleTab } = useTakeaway();
     const [isSelfServiceExpanded, setIsSelfServiceExpanded] = useState(true);
     const [isSalesExpanded, setIsSalesExpanded] = useState(true);
     const closeMobile = () => onMobileClose?.();
@@ -221,17 +223,39 @@ const Sidebar = ({
         },
         TAKEAWAY: {
             icon: ShoppingBag, label: "Takeaway",
-            onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'TAKEAWAY' }); setOrderSearch(""); navigate("/takeaway"); closeMobile(); },
+            onClick: () => {
+                setTableId(null);
+                activateSaleTab("TAKEAWAY");
+                setView("order");
+                setOrderSearch("");
+                navigate("/takeaway");
+                closeMobile();
+            },
             isActive: checkActive(view, "TAKEAWAY", "order") && isTakeaway && takeawayOrder?.orderType === 'TAKEAWAY'
         },
         DIRECT_SALE: {
             icon: ShoppingCart, label: "Direct Sale",
-            onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'DIRECT_SALE' }); setOrderSearch(""); navigate("/takeaway"); closeMobile(); },
+            onClick: () => {
+                setTableId(null);
+                activateSaleTab("DIRECT_SALE");
+                setView("order");
+                setOrderSearch("");
+                navigate("/takeaway");
+                closeMobile();
+            },
             isActive: checkActive(view, "DIRECT_SALE", "TAKEAWAY", "order") && isTakeaway && takeawayOrder?.orderType === 'DIRECT_SALE'
         },
         WHOLESALE: {
             icon: Store, label: "Wholesale",
-            onClick: () => { setView("order"); setIsTakeaway(true); setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'WHOLESALE' }); setOrderSearch(""); navigate("/wholesale"); closeMobile(); },
+            onClick: () => {
+                setTableId(null);
+                setView("order");
+                setIsTakeaway(true);
+                setTakeawayOrder((prev) => ({ ...prev, orderType: "WHOLESALE", items: prev?.items || [] }));
+                setOrderSearch("");
+                navigate("/wholesale");
+                closeMobile();
+            },
             isActive: checkActive(view, "WHOLESALE", "order") && isTakeaway && takeawayOrder?.orderType === 'WHOLESALE'
         },
         ONLINE_ORDERS: {

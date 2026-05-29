@@ -132,8 +132,8 @@ const SaleMarking = () => {
     ];
 
     return (
-        <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg}`}>
-            <div className="p-6 flex-shrink-0">
+        <div className={`overflow-y-auto h-full ${theme.pageBg}`}>
+            <div className="p-4 md:p-6">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
                     <div>
                         <div className="flex items-center gap-3 mb-2">
@@ -221,16 +221,16 @@ const SaleMarking = () => {
                         className={`w-full pl-12 pr-4 py-4 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-medium ${theme.surfaceBg} ${theme.textPrimary}`}
                     />
                 </div>
-            </div>
-
-            <div className="flex-1 overflow-hidden px-6 pb-6">
+            <div className="px-0 pb-6">
                 <CommonTable
                     columns={columns}
                     data={filteredItems}
                     isLoading={isLoading}
-                    className="max-h-full flex flex-col pt-0"
+                    className="pt-0"
                 />
             </div>
+
+            </div>{/* end scroll wrapper */}
 
             <CommonDialog
                 isOpen={isConfirmOpen}

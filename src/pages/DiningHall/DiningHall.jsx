@@ -31,7 +31,7 @@ const DiningHall = ({
   const { theme, themeName } = useTheme();
   const navigate = useNavigate();
   const { can } = usePermission();
-  const { addTableTab } = useTakeaway();
+  const { addTableTab, setTableId, activateSaleTab } = useTakeaway();
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
 
   // Modal State
@@ -191,8 +191,9 @@ const DiningHall = ({
           {can(MODULES.POS, ACTIONS.POS_DINING_TAKEAWAY) && (
             <button
               onClick={() => {
+                setTableId(null);
+                activateSaleTab("TAKEAWAY");
                 setIsTakeaway(true);
-                setTakeawayOrder({ items: [], isSentToKOT: false });
                 setView("order");
                 setOrderSearch("");
                 navigate("/takeaway");

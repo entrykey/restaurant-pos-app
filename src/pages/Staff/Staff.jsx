@@ -847,16 +847,37 @@ const Staff = ({
                             <Plus size={20} /> Add Employee
                         </button>
                     ) : activeStaffTab === "roles" ? (
-                        <button
-                            onClick={() => checkSubscriptionAndOpen(() => {
-                                setSelectedPermissions({});
-                                setExpandedModules({});
-                                setIsCreateRoleOpen(true);
-                            })}
-                            className={`${theme.buttonBg} ${theme.buttonText} w-full md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
-                        >
-                            <Plus size={20} /> Add Role
-                        </button>
+                        <div className="flex gap-2 w-full md:w-auto">
+                            <button
+                                onClick={async () => {
+                                    if (!shopId) return;
+                                    try {
+                                        const result = await roleService.syncManagerRole(shopId);
+                                        toast.success(`Shop Manager role ${result.action} (${result.permissionSource})`);
+                                        const userId = user?.id || user?._id;
+                                        const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
+                                        setRoles(fetchedRoles);
+                                        if (setRolesList) setRolesList(fetchedRoles);
+                                    } catch (err) {
+                                        toast.error(err?.message || 'Failed to sync manager role');
+                                    }
+                                }}
+                                className={`${theme.sectionBg} border ${theme.borderLight} ${theme.textSecondary} w-full md:w-auto justify-center px-4 py-3 rounded-2xl font-bold flex items-center gap-2 hover:border-indigo-400 hover:text-indigo-500 transition-all text-sm`}
+                                title="Sync the auto Shop Manager role with current plan permissions"
+                            >
+                                <RefreshCw size={16} /> Sync Manager Role
+                            </button>
+                            <button
+                                onClick={() => checkSubscriptionAndOpen(() => {
+                                    setSelectedPermissions({});
+                                    setExpandedModules({});
+                                    setIsCreateRoleOpen(true);
+                                })}
+                                className={`${theme.buttonBg} ${theme.buttonText} w-full md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
+                            >
+                                <Plus size={20} /> Add Role
+                            </button>
+                        </div>
                     ) : activeStaffTab === "attendance_policies" ? (
                         <button
                             onClick={() => {
@@ -1038,9 +1059,24 @@ const Staff = ({
                                     key: "name",
                                     className: `font-bold ${theme.textPrimary}`,
                                     render: (val, item) => (
-                                        <div className="flex flex-col">
-                                            <span>{val}</span>
+                                        <div className="flex flex-col gap-0.5">
+                                            <div className="flex items-center gap-2">
+                                                <span>{val}</span>
+                                                {item.code === 'SHOP_MANAGER_AUTO' && !item.isCustomized && (
+                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                                                        AUTO
+                                                    </span>
+                                                )}
+                                                {item.code === 'SHOP_MANAGER_AUTO' && item.isCustomized && (
+                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                                        CUSTOMIZED
+                                                    </span>
+                                                )}
+                                            </div>
                                             <span className="text-[10px] font-mono opacity-50">{item.code}</span>
+                                            {item.code === 'SHOP_MANAGER_AUTO' && item.description && (
+                                                <span className="text-[10px] opacity-60 italic">{item.description}</span>
+                                            )}
                                         </div>
                                     )
                                 },
@@ -1059,10 +1095,14 @@ const Staff = ({
                                 {
                                     header: "Type",
                                     key: "isSystemRole",
-                                    render: (isSystem) => (
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${isSystem ? "bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400" : "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400"}`}>
-                                            {isSystem ? "SYSTEM" : "CUSTOM"}
-                                        </span>
+                                    render: (isSystem, item) => (
+                                        item.code === 'SHOP_MANAGER_AUTO'
+                                            ? item.isCustomized
+                                                ? <span className="px-2 py-1 rounded text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">CUSTOMIZED</span>
+                                                : <span className="px-2 py-1 rounded text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400">AUTO</span>
+                                            : <span className={`px-2 py-1 rounded text-xs font-bold ${isSystem ? "bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400" : "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400"}`}>
+                                                {isSystem ? "SYSTEM" : "CUSTOM"}
+                                            </span>
                                     )
                                 },
                                 {
@@ -1078,20 +1118,56 @@ const Staff = ({
                                     header: "Action",
                                     key: "id",
                                     className: "text-right",
-                                    render: (_, role) => (
-                                        <button
-                                            type="button"
-                                            className={`font-bold text-sm hover:underline ${role?.isSystemRole ? "text-gray-300 dark:text-gray-600 cursor-not-allowed" : theme.primaryIconText.replace('text-', 'text-')}`}
-                                            onClick={() => {
-                                                if (role?.isSystemRole) return;
-                                                openEditRole(role);
-                                            }}
-                                            disabled={role?.isSystemRole}
-                                            title={role?.isSystemRole ? "System roles cannot be edited" : "Edit role"}
-                                        >
-                                            Edit
-                                        </button>
-                                    )
+                                    render: (_, role) => {
+                                        const isAutoRole = role?.code === 'SHOP_MANAGER_AUTO';
+                                        const isLocked = role?.isSystemRole;
+                                        if (isAutoRole) {
+                                            return (
+                                                <div className="flex items-center justify-end gap-3">
+                                                    <button
+                                                        type="button"
+                                                        className={`font-bold text-sm hover:underline ${theme.primaryIconText}`}
+                                                        onClick={() => openEditRole(role)}
+                                                        title="Edit this auto-generated role"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    {role.isCustomized && (
+                                                        <button
+                                                            type="button"
+                                                            className="font-bold text-xs text-amber-600 hover:underline"
+                                                            title="Reset back to auto-managed permissions"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const result = await roleService.resetManagerRole(shopId);
+                                                                    toast.success(`Role reset to auto (${result.permissionSource})`);
+                                                                    const userId = user?.id || user?._id;
+                                                                    const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
+                                                                    setRoles(fetchedRoles);
+                                                                    if (setRolesList) setRolesList(fetchedRoles);
+                                                                } catch (err) {
+                                                                    toast.error(err?.message || 'Failed to reset role');
+                                                                }
+                                                            }}
+                                                        >
+                                                            Reset to Auto
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        }
+                                        return (
+                                            <button
+                                                type="button"
+                                                className={`font-bold text-sm hover:underline ${isLocked ? "text-gray-300 dark:text-gray-600 cursor-not-allowed" : theme.primaryIconText.replace('text-', 'text-')}`}
+                                                onClick={() => { if (!isLocked) openEditRole(role); }}
+                                                disabled={isLocked}
+                                                title={role?.isSystemRole ? "System roles cannot be edited" : "Edit role"}
+                                            >
+                                                Edit
+                                            </button>
+                                        );
+                                    }
                                 }
                             ]}
                             data={roles}
@@ -2074,7 +2150,7 @@ const Staff = ({
                                     />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Salary Info *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Salary Info</label>
                                     <div className="flex gap-2">
                                         <div className="flex-1 relative">
                                             <input
@@ -2288,7 +2364,7 @@ const Staff = ({
                                     />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Salary Info *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Salary Info</label>
                                     <div className="flex gap-2">
                                         <div className="flex-1 relative">
                                             <input

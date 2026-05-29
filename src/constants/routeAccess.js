@@ -41,9 +41,6 @@ export const ROUTE_ACCESS = Object.freeze({
 // Define order in sidebar
 export const ROUTE_KEYS_ORDER = [
   'DASHBOARD',
-  'MYATTENDANCE',
-  'MYLEAVES',
-  'MYSALARY',
   'DINING',
   'TAKEAWAY',
   'DIRECT_SALE',
@@ -68,6 +65,9 @@ export const ROUTE_KEYS_ORDER = [
   'SHOP_MANAGEMENT',
   'PLAN_MANAGEMENT',
   'SUBSCRIPTION_MANAGEMENT',
+  'MYATTENDANCE',
+  'MYLEAVES',
+  'MYSALARY',
   'SETTINGS'
 ];
 

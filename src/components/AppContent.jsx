@@ -114,7 +114,7 @@ const AppContent = () => {
     const {
         isTakeaway, setIsTakeaway, takeawayOrder, setTakeawayOrder,
         takeawayCustName, setTakeawayCustName, takeawayCustPhone, setTakeawayCustPhone,
-        resetTakeaway, tableId
+        resetTakeaway, tableId, activeTabId, selectedCustomer
     } = useTakeaway();
 
     const {
@@ -554,6 +554,9 @@ const AppContent = () => {
     const [subscriptionRequiredMessage, setSubscriptionRequiredMessage] = useState(null);
     const [isProfileHintExpanded, setIsProfileHintExpanded] = useState(false);
     const [previewOrder, setPreviewOrder] = useState(null); // For KDS/Online
+    const draftSyncTimeoutRef = useRef(null);
+    const draftSyncInFlightRef = useRef(false);
+    const lastDraftSignatureRef = useRef("");
 
     // Customization State
     const [customizingItem, setCustomizingItem] = useState(null);
@@ -938,6 +941,164 @@ const AppContent = () => {
 
     const activeTable = tables.find(t => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId));
     const activeOrderCustomerId = activeTable?.order?.customerId || null;
+
+    const buildOrderPayloadItems = (orderItems = []) => {
+        return orderItems.map((item) => {
+            const itemTaxPercent = (item.taxPercent !== undefined && item.taxPercent !== null)
+                ? Number(item.taxPercent)
+                : (settings?.defaultTaxPercent || 0);
+            return {
+                itemId: item.id || item._id,
+                itemName: item.name,
+                price: item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice),
+                quantity: item.quantity,
+                totalAmount: calculateItemTotal(item),
+                variantId: item.selectedVariant ? (item.selectedVariant._id || item.selectedVariant.id) : null,
+                portionName: item.selectedVariant ? item.selectedVariant.name : null,
+                quantityFactor: item.selectedVariant ? (item.selectedVariant.quantityFactor || 1) : 1,
+                notes: item.suggestion,
+                taxPercent: itemTaxPercent,
+                taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100),
+                selectedUnit: item.selectedUnit || "PRIMARY",
+                conversionFactor: item.conversionFactor || 1
+            };
+        });
+    };
+
+    useEffect(() => {
+        const shouldSyncTakeawayDraft = Boolean(
+            isTakeaway &&
+            !tableId &&
+            (activeOrderType === "TAKEAWAY" || activeOrderType === "DIRECT_SALE" || activeOrderType === "WHOLESALE") &&
+            currentShopId &&
+            getResolvedBranchId()
+        );
+
+        if (!shouldSyncTakeawayDraft) return;
+
+        const items = takeawayOrder?.items || [];
+        const signature = JSON.stringify({
+            activeTabId,
+            orderId: takeawayOrder?.orderId || null,
+            orderType: activeOrderType,
+            customerName: takeawayCustName || "",
+            customerPhone: takeawayCustPhone || "",
+            items: items.map((item) => ({
+                id: item.id || item._id,
+                quantity: item.quantity,
+                selectedUnit: item.selectedUnit || "PRIMARY",
+                conversionFactor: item.conversionFactor || 1,
+                variantId: item.selectedVariant?._id || item.selectedVariant?.id || null,
+                notes: item.suggestion || "",
+                price: item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice || 0),
+                taxPercent: item.taxPercent
+            }))
+        });
+
+        if (signature === lastDraftSignatureRef.current) return;
+
+        if (draftSyncTimeoutRef.current) {
+            clearTimeout(draftSyncTimeoutRef.current);
+        }
+
+        draftSyncTimeoutRef.current = setTimeout(async () => {
+            if (draftSyncInFlightRef.current) return;
+            draftSyncInFlightRef.current = true;
+            try {
+                const orderItems = takeawayOrder?.items || [];
+
+                if (orderItems.length === 0) {
+                    if (takeawayOrder?.orderId) {
+                        await orderService.updateStatus(takeawayOrder.orderId, { status: "CANCELLED" });
+                        setTakeawayOrder((prev) => {
+                            if (!prev?.orderId || (prev.items || []).length > 0) return prev;
+                            return { ...prev, orderId: null };
+                        });
+                    }
+                    lastDraftSignatureRef.current = signature;
+                    return;
+                }
+
+                const { subtotal, taxTotal, total, taxBreakdown } = calculateBillDetails(
+                    orderItems,
+                    takeawayOrder.discount || billDiscount || { type: "flat", value: 0 },
+                    settings?.defaultTaxPercent || 0,
+                    true,
+                    exchangeCredit,
+                    branchStateCode,
+                    null
+                );
+                const payloadItems = buildOrderPayloadItems(orderItems);
+                const payload = {
+                    shopId: currentShopId,
+                    branchId: getResolvedBranchId(),
+                    businessType: businessType || "RESTAURANT",
+                    orderType: activeOrderType,
+                    customerId: selectedCustomer?._id || null,
+                    customerName: takeawayCustName || "",
+                    customerPhone: takeawayCustPhone || "",
+                    tableId: null,
+                    items: payloadItems,
+                    subtotal,
+                    discountTotal: takeawayOrder.discountTotal || 0,
+                    taxTotal,
+                    grandTotal: total,
+                    taxBreakdown,
+                    orderStatus: "OPEN",
+                    createdBy: currentUser?._id,
+                    notes: `Live tab draft: Tab ${activeTabId || 1}`
+                };
+
+                let nextOrderId = takeawayOrder?.orderId;
+                if (nextOrderId) {
+                    await orderService.updateOrder(nextOrderId, payload);
+                } else {
+                    const created = await orderService.createOrder(payload);
+                    nextOrderId = created?._id || created?.id || null;
+                if (nextOrderId) {
+                    const createdOrderNumber = created?.orderNumber || created?.orderNo || null;
+                    setTakeawayOrder((prev) => {
+                        if (prev?.orderId || (prev.items || []).length === 0) return prev;
+                        return { 
+                            ...prev, 
+                            orderId: nextOrderId,
+                            orderNumber: prev.orderNumber || createdOrderNumber || prev.orderId || null
+                        };
+                    });
+                }
+                }
+
+                lastDraftSignatureRef.current = signature;
+            } catch (error) {
+                console.error("Live takeaway draft sync failed:", error);
+            } finally {
+                draftSyncInFlightRef.current = false;
+            }
+        }, 500);
+
+        return () => {
+            if (draftSyncTimeoutRef.current) {
+                clearTimeout(draftSyncTimeoutRef.current);
+            }
+        };
+    }, [
+        isTakeaway,
+        tableId,
+        takeawayOrder,
+        activeOrderType,
+        activeTabId,
+        takeawayCustName,
+        takeawayCustPhone,
+        selectedCustomer?._id,
+        currentShopId,
+        activeBranchId,
+        settings?.defaultTaxPercent,
+        billDiscount,
+        exchangeCredit,
+        branchStateCode,
+        businessType,
+        currentUser?._id
+    ]);
 
     const addToCart = (item, quantity, variant, extras, enteredUnit = null) => {
         let finalQuantity = parseFloat(quantity);

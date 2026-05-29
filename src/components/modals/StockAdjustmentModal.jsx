@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Minus, Calculator, FileText, Calendar, Coins } from 'lucide-react';
 import ThemeLoader from '../ui/ThemeLoader';
 import { useTheme } from '../../context/ThemeContext';
@@ -20,7 +20,48 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const { user } = useAuth();
+
+    // Derive the best available price from the item
+    const getAutoPrice = (item) => {
+        if (!item) return '';
+        const pp = item.pricing?.purchasePrice ?? item.purchasePrice;
+        const mrp = item.pricing?.mrp ?? item.mrp;
+        const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+        if (pp != null && pp !== 0) return String(pp);
+        if (mrp != null && mrp !== 0) return String(mrp);
+        if (sp != null && sp !== 0) return String(sp);
+        return '';
+    };
+
+    // Label showing which price was used for autofill
+    const getPriceSource = (item) => {
+        if (!item) return '';
+        const pp = item.pricing?.purchasePrice ?? item.purchasePrice;
+        const mrp = item.pricing?.mrp ?? item.mrp;
+        const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+        if (pp != null && pp !== 0) return 'Auto-filled from purchase price';
+        if (mrp != null && mrp !== 0) return 'Auto-filled from MRP';
+        if (sp != null && sp !== 0) return 'Auto-filled from sale price';
+        return '';
+    };
+
+    // Reset form whenever the modal opens with a new item
+    useEffect(() => {
+        if (isOpen && item) {
+            setAdjustmentType('ADD');
+            setQuantity('');
+            setPrice(getAutoPrice(item));
+            setDescription('');
+            setAdjustmentDate(new Date().toISOString().split('T')[0]);
+        }
+    }, [isOpen, item]);
+
     if (!isOpen || !item) return null;
+
+    const priceSource = getPriceSource(item);
+    const total = quantity && price && !isNaN(quantity) && !isNaN(price)
+        ? Number(quantity) * Number(price)
+        : null;
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -160,6 +201,21 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                                 className={`w-full pl-12 pr-4 py-4 rounded-2xl border-2 border-transparent outline-none focus:border-blue-500 transition-all font-bold text-lg ${theme.inputBg} ${theme.textPrimary}`}
                             />
                         </div>
+                        {priceSource && (
+                            <p className={`text-[11px] font-bold ${theme.textMuted} pl-1`}>
+                                ✦ {priceSource} — you can edit it
+                            </p>
+                        )}
+                        {total !== null && (
+                            <div className={`flex items-center justify-between px-4 py-2.5 rounded-xl ${theme.inputBg} border ${theme.borderLight}`}>
+                                <span className={`text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>
+                                    Total ({quantity} × {price})
+                                </span>
+                                <span className="text-base font-black text-blue-600">
+                                    {formatCurrency ? formatCurrency(total) : total.toFixed(2)}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Description Field */}

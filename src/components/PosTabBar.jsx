@@ -13,7 +13,8 @@ const PosTabBar = ({ view }) => {
         closeTab,
         clearAllTabs,
         takeawayOrder,
-        takeawayCustName
+        takeawayCustName,
+        tableId
     } = useTakeaway();
     const { theme } = useTheme();
 
@@ -56,7 +57,7 @@ const PosTabBar = ({ view }) => {
                 </div>
             </div>
         ), {
-            duration: 6000,
+            duration: 3000,
             position: 'top-center',
             style: {
                 background: '#0f172a',
@@ -69,7 +70,10 @@ const PosTabBar = ({ view }) => {
         });
     };
 
-    // Only show on relevant views
+    // Never show when a table order is active
+    if (tableId) return null;
+
+    // Only show on relevant views — table orders are never in the tabs array
     const normalizedView = String(view || "").toLowerCase();
     const showTabs = normalizedView === 'takeaway' || 
                      normalizedView === 'wholesale' || 
@@ -78,13 +82,20 @@ const PosTabBar = ({ view }) => {
 
     if (!showTabs) return null;
 
+    // Only render sale tabs (no tableId) — safety filter for any stale data
+    const saleTabs = tabs.filter(t => !t.tableId);
+
     return (
-        <div className="flex items-center justify-start md:justify-center w-full px-4 pt-2 md:pt-4 pb-2">
-            <div className={`flex items-center gap-1.5 p-1.5 bg-[#7a818e] rounded-full shadow-lg overflow-x-auto no-scrollbar max-w-full lg:pointer-events-auto`}>
-                {tabs.map((tab) => {
+        <div className="flex items-center justify-start md:justify-center xl:justify-center w-full px-4 pt-2 pb-2 xl:pt-0 xl:pb-0">
+            <div className={`flex items-center gap-1.5 p-1.5 bg-[#7a818e] rounded-full shadow-lg overflow-x-auto no-scrollbar max-w-full xl:pointer-events-auto`}>
+                {saleTabs.map((tab) => {
                     const isActive = tab.id === activeTabId;
-                    const itemCount = (isActive ? takeawayOrder.items : tab.takeawayOrder.items)?.length || 0;
-                    const custName = (isActive ? takeawayCustName : tab.takeawayCustName) || tab.name;
+                    const activeOrder = isActive ? takeawayOrder : (tab.takeawayOrder || {});
+                    const itemCount = (activeOrder.items || []).length || 0;
+                    const rawOrderLabel = activeOrder.orderNumber || activeOrder.orderId;
+                    const orderLabel = rawOrderLabel ? `#${String(rawOrderLabel).slice(-6)}` : null;
+                    const fallbackName = (isActive ? takeawayCustName : tab.takeawayCustName) || tab.name;
+                    const tabLabel = orderLabel || fallbackName;
 
                     return (
                         <div
@@ -108,7 +119,7 @@ const PosTabBar = ({ view }) => {
                                     </div>
                                 )}
                                 <span className="text-[11px] md:text-[13px] font-black truncate tracking-wide uppercase">
-                                    {custName}
+                                    {tabLabel}
                                 </span>
                             </div>
 
@@ -135,7 +146,7 @@ const PosTabBar = ({ view }) => {
                         <Plus size={18} strokeWidth={4} />
                     </button>
 
-                    {tabs.length > 1 && (
+                    {saleTabs.length > 1 && (
                         <button
                             onClick={confirmClearAll}
                             className={`h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl bg-[#c17878]/30 text-[#e68c8c] hover:bg-red-500 hover:text-white transition-all flex items-center justify-center`}

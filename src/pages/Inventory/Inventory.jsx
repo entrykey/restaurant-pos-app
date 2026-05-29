@@ -1111,9 +1111,9 @@ const Inventory = ({
             {isHistoryModalOpen && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className={`${theme.surfaceBg} w-full max-w-4xl max-h-[85vh] rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col border ${theme.borderLight} animate-in zoom-in-95 duration-200`}>
-                        <div className="p-8 border-b flex justify-between items-center">
+                        <div className={`p-4 sm:p-8 border-b ${theme.borderLight} flex justify-between items-center`}>
                             <div>
-                                <h3 className={`text-2xl font-black ${theme.textHeading}`}>Transaction History</h3>
+                                <h3 className={`text-lg sm:text-2xl font-black ${theme.textHeading}`}>Transaction History</h3>
                                 <p className={`text-sm font-bold ${theme.textSecondary}`}>
                                     {selectedHistoryItem?.name} ({selectedHistoryItem?.itemCode || selectedHistoryItem?.id})
                                 </p>
@@ -1124,7 +1124,7 @@ const Inventory = ({
                                     setSelectedHistoryItem(null);
                                     setHistoryData([]);
                                 }}
-                                className="p-3 hover:bg-red-50 hover:text-red-500 rounded-full transition-all"
+                                className={`p-3 hover:bg-red-500/10 hover:text-red-500 ${theme.textMuted} rounded-full transition-all`}
                             >
                                 <X size={24} />
                             </button>
@@ -1137,48 +1137,103 @@ const Inventory = ({
                                     <p className={`mt-4 font-bold ${theme.textMuted}`}>Fetching transaction history...</p>
                                 </div>
                             ) : historyData.length === 0 ? (
-                                <div className="text-center py-20 bg-gray-50/50 rounded-[30px] border-2 border-dashed border-gray-100">
-                                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
-                                        <History size={32} className="text-gray-300" />
+                                <div className={`text-center py-20 ${theme.sectionBg} rounded-[30px] border-2 border-dashed ${theme.borderLight}`}>
+                                    <div className={`w-16 h-16 ${theme.surfaceBg} rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm`}>
+                                        <History size={32} className={theme.textMuted} />
                                     </div>
                                     <p className={`font-black text-xl ${theme.textHeading}`}>No Transactions Found</p>
                                     <p className={`font-medium ${theme.textMuted}`}>This item has no recorded sales or purchases yet.</p>
                                 </div>
                             ) : (
-                                <div className="overflow-hidden rounded-2xl border border-gray-100">
-                                    <table className="w-full text-left">
+                                <div className={`overflow-hidden rounded-2xl border ${theme.tableBorder}`}>
+                                    {/* Mobile card layout */}
+                                    <div className="sm:hidden divide-y divide-inherit">
+                                        {historyData.map((movement, idx) => {
+                                            const isSale = movement.type === 'SALE';
+                                            const isPurchase = movement.type === 'PURCHASE';
+                                            const isReturn = movement.type === 'RETURN';
+
+                                            let badgeClass = `${theme.sectionBg} ${theme.textSecondary} ${theme.borderLight}`;
+                                            if (isSale) badgeClass = `${theme.infoBg} ${theme.infoText} ${theme.infoBorder}`;
+                                            if (isPurchase) badgeClass = `${theme.successBg} ${theme.successText} border-emerald-500/20`;
+                                            if (isReturn) badgeClass = `${theme.warningBg} ${theme.warningText} ${theme.warningBorder}`;
+
+                                            return (
+                                                <div key={idx} className={`p-4 ${theme.tableRowHover} transition-colors border-b ${theme.tableBorder} last:border-0`}>
+                                                    {/* Row 1: Date + Type badge */}
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <div>
+                                                            <div className={`text-sm font-bold ${theme.textSecondary}`}>
+                                                                {new Date(movement.createdAt).toLocaleDateString()}
+                                                            </div>
+                                                            <div className={`text-[11px] ${theme.textMuted}`}>
+                                                                {new Date(movement.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        </div>
+                                                        <span className={`px-3 py-1 rounded-lg text-[10px] font-black border tracking-wider ${badgeClass}`}>
+                                                            {movement.type}
+                                                        </span>
+                                                    </div>
+                                                    {/* Row 2: Qty In / Qty Out / Balance */}
+                                                    <div className={`grid grid-cols-3 gap-2 pt-3 border-t ${theme.tableBorder}`}>
+                                                        <div className="text-center">
+                                                            <div className={`text-[10px] font-black uppercase tracking-wider ${theme.tableHeaderText} mb-1`}>Qty In</div>
+                                                            <div className={`text-sm font-black ${theme.successText}`}>
+                                                                {movement.quantityIn > 0 ? `+${movement.quantityIn}` : "—"}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className={`text-[10px] font-black uppercase tracking-wider ${theme.tableHeaderText} mb-1`}>Qty Out</div>
+                                                            <div className="text-sm font-black text-red-500">
+                                                                {movement.quantityOut > 0 ? `-${movement.quantityOut}` : "—"}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className={`text-[10px] font-black uppercase tracking-wider ${theme.tableHeaderText} mb-1`}>Balance</div>
+                                                            <div className={`text-sm font-black ${theme.textHeading}`}>
+                                                                {movement.balanceAfter}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Desktop table layout */}
+                                    <table className="hidden sm:table w-full text-left">
                                         <thead>
-                                            <tr className="bg-gray-50/50">
-                                                <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-wider">Date</th>
-                                                <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-wider">Type</th>
-                                                <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-wider text-right">Qty In</th>
-                                                <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-wider text-right">Qty Out</th>
-                                                <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-wider text-right">Balance</th>
+                                            <tr className={theme.tableHeaderBg}>
+                                                <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider`}>Date</th>
+                                                <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider`}>Type</th>
+                                                <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider text-right`}>Qty In</th>
+                                                <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider text-right`}>Qty Out</th>
+                                                <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider text-right`}>Balance</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-gray-50">
+                                        <tbody className={`divide-y ${theme.tableBorder}`}>
                                             {historyData.map((movement, idx) => {
                                                 const isSale = movement.type === 'SALE';
                                                 const isPurchase = movement.type === 'PURCHASE';
                                                 const isReturn = movement.type === 'RETURN';
-                                                
-                                                let badgeClass = "bg-gray-100 text-gray-600";
-                                                if (isSale) badgeClass = "bg-blue-50 text-blue-600 border-blue-100";
-                                                if (isPurchase) badgeClass = "bg-emerald-50 text-emerald-600 border-emerald-100";
-                                                if (isReturn) badgeClass = "bg-orange-50 text-orange-600 border-orange-100";
+
+                                                let badgeClass = `${theme.sectionBg} ${theme.textSecondary} ${theme.borderLight}`;
+                                                if (isSale) badgeClass = `${theme.infoBg} ${theme.infoText} ${theme.infoBorder}`;
+                                                if (isPurchase) badgeClass = `${theme.successBg} ${theme.successText} border-emerald-500/20`;
+                                                if (isReturn) badgeClass = `${theme.warningBg} ${theme.warningText} ${theme.warningBorder}`;
 
                                                 return (
-                                                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                                                        <td className="px-6 py-4 text-sm font-medium text-gray-600">
+                                                    <tr key={idx} className={`${theme.tableRowHover} transition-colors`}>
+                                                        <td className={`px-6 py-4 text-sm font-medium ${theme.textSecondary}`}>
                                                             {new Date(movement.createdAt).toLocaleDateString()}
-                                                            <div className="text-[10px] opacity-60">{new Date(movement.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                                            <div className={`text-[10px] ${theme.textMuted}`}>{new Date(movement.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                                                         </td>
                                                         <td className="px-6 py-4">
                                                             <span className={`px-3 py-1 rounded-lg text-[10px] font-black border tracking-wider ${badgeClass}`}>
                                                                 {movement.type}
                                                             </span>
                                                         </td>
-                                                        <td className="px-6 py-4 text-sm font-black text-right text-emerald-600">
+                                                        <td className={`px-6 py-4 text-sm font-black text-right ${theme.successText}`}>
                                                             {movement.quantityIn > 0 ? `+${movement.quantityIn}` : "-"}
                                                         </td>
                                                         <td className="px-6 py-4 text-sm font-black text-right text-red-500">

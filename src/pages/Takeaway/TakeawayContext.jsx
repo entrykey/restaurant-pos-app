@@ -26,12 +26,15 @@ const createTab = (id, name, tableId = null) => ({
 });
 
 export const TakeawayProvider = ({ children }) => {
-    // Multi-tab state with persistence
+    // Multi-tab state with persistence — only stores sale tabs (no table orders)
     const [tabs, setTabs] = useState(() => {
         const saved = localStorage.getItem('pos_active_tabs');
         if (saved) {
             try {
-                return JSON.parse(saved);
+                const parsed = JSON.parse(saved);
+                // Filter out any stale table tabs that may have been saved previously
+                const saleTabs = parsed.filter(t => !t.tableId);
+                return saleTabs.length > 0 ? saleTabs : [createTab(1)];
             } catch (e) {
                 return [createTab(1)];
             }
@@ -65,8 +68,16 @@ export const TakeawayProvider = ({ children }) => {
         }
     }, [activeTabId]);
 
-    // Persistence: Sync active states to the tabs array and localStorage
+    // Persistence: Sync active takeaway tab state to the tabs array and localStorage
     useEffect(() => {
+        const shouldPersistTabs = isTakeaway && !tableId;
+
+        if (!shouldPersistTabs) {
+            // Still remember which tab is active, but don't overwrite sale tabs
+            localStorage.setItem('pos_active_tab_id', activeTabId.toString());
+            return;
+        }
+
         const updatedTabs = tabs.map(t => {
             if (t.id === activeTabId) {
                 return {
@@ -76,7 +87,7 @@ export const TakeawayProvider = ({ children }) => {
                     takeawayCustName,
                     takeawayCustPhone,
                     selectedCustomer,
-                    tableId
+                    tableId: null
                 };
             }
             return t;
@@ -89,7 +100,7 @@ export const TakeawayProvider = ({ children }) => {
             localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
         }
         localStorage.setItem('pos_active_tab_id', activeTabId.toString());
-    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, tableId, activeTabId]);
+    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, tableId, activeTabId, tabs]);
 
     const addTab = () => {
         const nextId = Math.max(...tabs.map(t => t.id), 0) + 1;
@@ -98,19 +109,15 @@ export const TakeawayProvider = ({ children }) => {
         setActiveTabId(nextId);
     };
 
+    // Table orders are NOT added to the tabs array — they are handled separately
+    // Just set the active table context state directly
     const addTableTab = (tId, tName) => {
-        // Check if tab for this table already exists
-        const existingTab = tabs.find(t => t.tableId === tId);
-        if (existingTab) {
-            setActiveTabId(existingTab.id);
-            return;
-        }
-
-        // Create new tab for the table
-        const nextId = Math.max(...tabs.map(t => t.id), 0) + 1;
-        const newTab = createTab(nextId, tName, tId);
-        setTabs(prev => [...prev, newTab]);
-        setActiveTabId(nextId);
+        setTableId(tId);
+        setIsTakeaway(false);
+        setTakeawayOrder({ items: [], isSentToKOT: false, orderType: 'DINE_IN' });
+        setTakeawayCustName(tName || "");
+        setTakeawayCustPhone("");
+        setSelectedCustomer(null);
     };
 
     const switchTab = (id) => {
@@ -153,6 +160,23 @@ export const TakeawayProvider = ({ children }) => {
         resetTakeaway();
     };
 
+    const activateSaleTab = (orderTypeOverride) => {
+        const currentTab = tabs.find(t => t.id === activeTabId) || createTab(1);
+
+        setIsTakeaway(true);
+        setTableId(null);
+
+        const baseOrder = currentTab.takeawayOrder || INITIAL_TAB_DATA.takeawayOrder;
+        setTakeawayOrder({
+            ...baseOrder,
+            orderType: orderTypeOverride || baseOrder.orderType || 'TAKEAWAY'
+        });
+
+        setTakeawayCustName(currentTab.takeawayCustName || "");
+        setTakeawayCustPhone(currentTab.takeawayCustPhone || "");
+        setSelectedCustomer(currentTab.selectedCustomer || null);
+    };
+
     return (
         <TakeawayContext.Provider
             value={{
@@ -176,7 +200,8 @@ export const TakeawayProvider = ({ children }) => {
                 addTableTab,
                 switchTab,
                 closeTab,
-                clearAllTabs
+                clearAllTabs,
+                activateSaleTab
             }}
         >
             {children}

@@ -446,18 +446,18 @@ const TakeawayOrder = ({
 
     return (
         <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg}`}>
-            {/* Mobile Tab Switcher */}
-            <div className={`lg:hidden flex p-2 ${theme.surfaceBg} border-b gap-2 shrink-0`}>
+            {/* Mobile/Tablet Tab Switcher — visible below xl */}
+            <div className={`xl:hidden flex p-2 ${theme.surfaceBg} border-b ${theme.borderLight} gap-2 shrink-0`}>
                 <button
                     onClick={() => setMobileOrderTab("menu")}
-                    className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${mobileOrderTab === "menu" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600"
+                    className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${mobileOrderTab === "menu" ? "bg-indigo-600 text-white" : `${theme.sectionBg} ${theme.textMuted}`
                         }`}
                 >
                     <MenuIcon size={16} /> Menu
                 </button>
                 <button
                     onClick={() => setMobileOrderTab("cart")}
-                    className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${mobileOrderTab === "cart" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600"
+                    className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${mobileOrderTab === "cart" ? "bg-indigo-600 text-white" : `${theme.sectionBg} ${theme.textMuted}`
                         }`}
                 >
                     <ShoppingCart size={16} /> Cart
@@ -469,12 +469,14 @@ const TakeawayOrder = ({
                 </button>
             </div>
 
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+            <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
                 {/* Menu Section */}
                 <div
-                    className={`flex-1 p-2 sm:p-4 ${theme.pageBg} flex flex-col min-h-0 ${mobileOrderTab === "cart" ? "hidden lg:flex" : "flex"
+                    className={`flex-1 ${theme.pageBg} flex flex-col min-h-0 ${mobileOrderTab === "cart" ? "hidden xl:flex" : "flex"
                         }`}
                 >
+                    {/* On small screens: entire section scrolls. On xl+: only grid scrolls */}
+                    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto xl:overflow-hidden custom-scrollbar p-2 sm:p-4">
                     <div className="flex justify-between items-center mb-2 sm:mb-6">
                         <h2 className={`text-lg sm:text-xl md:text-2xl font-black ${theme.textHeading}`}>
                             {displayTitle}
@@ -574,8 +576,8 @@ const TakeawayOrder = ({
                             <input
                                 value={orderSearch}
                                 onChange={(e) => setOrderSearch(e.target.value)}
-                                placeholder={listening ? "Listening... say '2 Pepsi' or '3 Lays'..." : "Search menu with AI or click Mic to say '2 Lays'..."}
-                                className={`w-full pl-9 pr-9 p-2 sm:p-3 border ${theme.borderLight} rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm sm:text-base ${theme.inputBg} ${theme.textPrimary}`}
+                                placeholder={listening ? "Listening..." : "Search menu..."}
+                                className={`w-full pl-9 pr-9 p-2 sm:p-3 border ${theme.borderLight} rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm ${theme.inputBg} ${theme.textPrimary}`}
                             />
                             {isSearchingRemote && (
                                 <Loader2 className="absolute right-3 top-3.5 h-4 w-4 text-indigo-500 animate-spin" />
@@ -614,34 +616,34 @@ const TakeawayOrder = ({
                             <button
                                 type="button"
                                 onClick={() => setViewMode("grid")}
-                                className={`px-3 py-2 text-xs md:text-sm font-semibold flex items-center gap-1 ${viewMode === "grid"
+                                className={`px-2 sm:px-3 py-2 text-xs font-semibold flex items-center gap-1 ${viewMode === "grid"
                                     ? "bg-indigo-600 text-white"
-                                    : "text-gray-500 hover:bg-gray-50"
+                                    : `${theme.textMuted} hover:${theme.sectionBg}`
                                     }`}
                             >
                                 <LayoutGrid size={14} />
-                                Grid
+                                <span className="hidden sm:inline">Grid</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setViewMode("list")}
-                                className={`px-3 py-2 text-xs md:text-sm font-semibold flex items-center gap-1 border-l ${viewMode === "list"
+                                className={`px-2 sm:px-3 py-2 text-xs font-semibold flex items-center gap-1 border-l ${theme.borderLight} ${viewMode === "list"
                                     ? "bg-indigo-600 text-white"
-                                    : "text-gray-500 hover:bg-gray-50"
+                                    : `${theme.textMuted} hover:${theme.sectionBg}`
                                     }`}
                             >
                                 <ListIcon size={14} />
-                                List
+                                <span className="hidden sm:inline">List</span>
                             </button>
                         </div>
                     </div>
 
-                    <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-3 shrink-0 no-scrollbar">
+                    <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:pb-3 shrink-0 no-scrollbar">
                         {categories.map((cat) => (
                             <button
                                 key={cat}
                                 onClick={() => setActiveMenuCategory(cat)}
-                                className={`px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 rounded-full font-bold whitespace-nowrap transition-all border-2 text-xs sm:text-sm md:text-base ${activeMenuCategory === cat
+                                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full font-bold whitespace-nowrap transition-all border-2 text-xs sm:text-sm ${activeMenuCategory === cat
                                     ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
                                     : `${theme.surfaceBg} ${theme.borderLight} ${theme.textMuted}`
                                     }`}
@@ -653,9 +655,9 @@ const TakeawayOrder = ({
 
                     <div
                         className={`${viewMode === "grid"
-                            ? "grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4"
-                            : "flex flex-col gap-3"
-                            } overflow-y-auto pr-2 flex-1 min-h-0 custom-scrollbar mt-2`}
+                            ? "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-2 md:gap-3"
+                            : "flex flex-col gap-2 md:gap-3"
+                            } pr-1 xl:overflow-y-auto xl:flex-1 xl:min-h-0 custom-scrollbar mt-2 min-h-[320px] xl:min-h-0`}
                     >
                         {isMenuLoading ? (
                             <div className="col-span-full py-20 flex flex-col items-center justify-center gap-4">
@@ -687,14 +689,15 @@ const TakeawayOrder = ({
                                 ))
                         )}
                     </div>
+                    </div>{/* end scroll wrapper */}
                 </div>
 
                 {/* Cart Section */}
                 <div
-                    className={`w-full lg:w-[450px] ${theme.surfaceBg} border-l ${theme.borderLight} flex flex-col shrink-0 h-full ${mobileOrderTab === "menu" ? "hidden lg:flex" : "flex"
+                    className={`w-full xl:w-[380px] 2xl:w-[440px] ${theme.surfaceBg} border-t xl:border-t-0 xl:border-l ${theme.borderLight} flex flex-col shrink-0 xl:h-full ${mobileOrderTab === "menu" ? "hidden xl:flex" : "flex h-full"
                         }`}
                 >
-                    <div className={`p-4 md:p-6 border-b ${theme.borderLight} ${theme.surfaceBg} z-10 flex justify-between items-center`}>
+                    <div className={`p-3 xl:p-6 border-b ${theme.borderLight} ${theme.surfaceBg} z-10 flex justify-between items-center`}>
                         <h3 className={`text-lg md:text-xl font-black ${theme.textPrimary}`}>Order Summary</h3>
                         <div className="flex items-center gap-2">
                             <button
@@ -725,23 +728,23 @@ const TakeawayOrder = ({
                                     <div key={item.id + idx} className={`p-3 hover:${themeName === 'dark' ? 'bg-gray-800' : 'bg-gray-50'} transition-colors ${theme.surfaceBg}`}>
                                         <div className="flex justify-between items-start gap-2">
                                             <div className="flex gap-3 flex-1 min-w-0">
-                                                <div className={`flex flex-col items-center ${theme.pageBg} rounded-lg p-1 h-fit shrink-0`}>
+                                                <div className={`flex flex-col items-center ${theme.pageBg} rounded-xl p-1.5 h-fit shrink-0`}>
                                                     <button
                                                         onClick={() => updateItemQuantity(idx, 1)}
-                                                        className={`p-1 text-indigo-600 hover:${theme.surfaceBg} rounded`}
+                                                        className={`p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors`}
                                                     >
-                                                        <Plus size={12} />
+                                                        <Plus size={18} />
                                                     </button>
-                                                    <span className={`font-bold text-sm py-0.5 w-6 text-center ${theme.textPrimary}`}>
+                                                    <span className={`font-black text-base py-1 w-8 text-center ${theme.textPrimary}`}>
                                                         {item.sellingType === "Weight" && item.enteredUnit === "g"
                                                             ? `${parseFloat((item.quantity * 1000).toFixed(0))}`
                                                             : item.quantity}
                                                     </span>
                                                     <button
                                                         onClick={() => updateItemQuantity(idx, -1)}
-                                                        className={`p-1 text-red-500 hover:${theme.surfaceBg} rounded`}
+                                                        className={`p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors`}
                                                     >
-                                                        <Minus size={12} />
+                                                        <Minus size={18} />
                                                     </button>
                                                 </div>
                                                 <div className="flex-1 min-w-0">
@@ -872,7 +875,7 @@ const TakeawayOrder = ({
                         )}
                     </div>
 
-                    <div className={`p-3 md:p-6 ${theme.surfaceBg} border-t ${theme.borderLight} shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 space-y-2 md:space-y-3`}>
+                    <div className={`p-3 xl:p-6 ${theme.surfaceBg} border-t ${theme.borderLight} shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 space-y-2`}>
                         {(() => {
                             return (
                                 <>
@@ -915,21 +918,21 @@ const TakeawayOrder = ({
                                         </div>
                                     )}
     
-                                    <div className={`flex justify-between items-center text-xl md:text-2xl font-black ${theme.textHeading} pt-2 md:pt-4 border-t-2 border-dashed ${theme.borderLight}`}>
+                                    <div className={`flex justify-between items-center text-xl font-black ${theme.textHeading} pt-2 border-t-2 border-dashed ${theme.borderLight}`}>
                                         <span>Total</span>
                                         <span>{formatCurrency(billDetails.finalTotal)}</span>
                                     </div>
                                 </>
                             );
                         })()}
-                        <div className="grid grid-cols-2 gap-2 md:gap-3 pt-1 md:pt-2">
+                        <div className="grid grid-cols-2 gap-2 pt-1">
                             {(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) && (
                                 <button
                                     onClick={handleSendToKOT}
                                     disabled={currentOrder.items.length === 0 || (!hasPendingKitchenItems)}
-                                    className="py-2.5 md:py-4 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-1 md:gap-2"
+                                    className="py-2.5 xl:py-4 rounded-lg xl:rounded-xl text-sm font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-1 md:gap-2"
                                 >
-                                    <Printer size={18} /> KOT
+                                    <Printer size={16} /> KOT
                                 </button>
                             )}
                             <button
@@ -942,7 +945,7 @@ const TakeawayOrder = ({
                                     !hasPermission("orders.ORDERS.PROCESSPAYMENT") &&
                                     !hasPermission("orders.processpayment")
                                 ) || currentOrder.items.length === 0}
-                                className={`py-2.5 md:py-4 rounded-lg md:rounded-xl text-sm md:text-base font-bold bg-green-600 text-white shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-300 disabled:shadow-none ${(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) ? "" : "col-span-2"}`}
+                                className={`py-2.5 xl:py-4 rounded-lg xl:rounded-xl text-sm font-bold bg-green-600 text-white shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-300 disabled:shadow-none ${(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) ? "" : "col-span-2"}`}
                             >
                                 {(
                                     hasPermissionFor("pos", "order", "process_payment") ||

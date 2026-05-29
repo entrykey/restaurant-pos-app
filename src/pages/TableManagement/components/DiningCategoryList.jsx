@@ -176,7 +176,104 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     return (
         <div className="space-y-4">
             <div className={`overflow-hidden rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
-                <div className="overflow-x-auto">
+
+                {/* ── Mobile card layout (< sm) ── */}
+                <div className="sm:hidden divide-y divide-inherit">
+                    {categories.length > 0 ? categories.map((category) => {
+                        const isExpanded = expandedCategories[category._id];
+                        const categoryTables = groupedTables[category._id] || [];
+                        return (
+                            <React.Fragment key={category._id}>
+                                <div
+                                    onClick={() => toggleCategory(category._id)}
+                                    className={`p-4 cursor-pointer transition-all ${isExpanded ? theme.pageBg : ''} border-b ${theme.borderLight} last:border-0`}
+                                >
+                                    {/* Row 1: icon + name + chevron */}
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${isExpanded ? 'bg-indigo-600 text-white' : `${theme.pageBg} ${theme.textMuted}`}`}>
+                                            <LayoutDashboard size={22} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className={`text-base font-black tracking-tight ${theme.textHeading}`}>{category.name}</p>
+                                            <p className={`text-xs font-bold ${theme.textMuted}`}>{categoryTables.length} Tables Registered</p>
+                                        </div>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all ${isExpanded ? 'bg-indigo-600 text-white rotate-180' : `${theme.pageBg} ${theme.textMuted}`}`}>
+                                            <ChevronDown size={16} />
+                                        </div>
+                                    </div>
+                                    {/* Row 2: environment + toggle + edit */}
+                                    <div className={`flex items-center justify-between pt-3 border-t ${theme.borderLight}`}>
+                                        <span className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest border ${category.environment === 'AC' ? 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800' : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700'}`}>
+                                            {category.environment === 'AC' ? 'AC Room' : 'Non-AC Area'}
+                                        </span>
+                                        <div className="flex items-center gap-3">
+                                            <button onClick={(e) => handleToggleCategoryStatus(e, category)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${category.isActive ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${category.isActive ? 'translate-x-6' : 'translate-x-1'}`} />
+                                            </button>
+                                            {hasCategoryEdit && (
+                                                <button onClick={(e) => handleEditCategory(e, category)} className={`p-2 rounded-lg ${theme.sectionBg} ${theme.textSecondary} transition-colors`}>
+                                                    <Edit2 size={15} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Expanded tables on mobile */}
+                                {isExpanded && (
+                                    <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-gray-50/50'} border-b ${theme.borderLight} p-4 animate-in slide-in-from-top-2 duration-300`}>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h4 className={`text-xs font-black uppercase tracking-widest ${theme.textPrimary} flex items-center gap-2`}>
+                                                <Monitor size={14} className="text-indigo-500" /> Tables in {category.name}
+                                            </h4>
+                                            <button onClick={() => handleAddTable(category._id)} className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-all">
+                                                <Plus size={12} /> Add Table
+                                            </button>
+                                        </div>
+                                        {categoryTables.length > 0 ? (
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {categoryTables.map((table) => (
+                                                    <div key={table._id} className={`p-4 rounded-2xl border transition-all ${theme.surfaceBg} ${table.isActive ? `border-indigo-100 dark:border-indigo-900/40 shadow-sm` : 'border-dashed opacity-60 grayscale'}`}>
+                                                        <div className="flex justify-between items-start mb-3">
+                                                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${table.isActive ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30' : 'bg-gray-100 text-gray-400'}`}>
+                                                                <LayoutDashboard size={16} />
+                                                            </div>
+                                                            <button onClick={() => handleToggleTableStatus(table)} className={`p-1.5 rounded-lg transition-colors ${table.isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
+                                                                {table.isActive ? <Monitor size={14} /> : <MonitorOff size={14} />}
+                                                            </button>
+                                                        </div>
+                                                        <p className={`font-black text-sm ${theme.textPrimary}`}>{table.tableNumber}</p>
+                                                        <p className={`text-[10px] font-bold ${theme.textMuted} flex items-center gap-1 mt-0.5`}><Users size={9} /> {table.capacity} seats</p>
+                                                        <div className={`flex items-center justify-between mt-3 pt-2 border-t ${theme.borderLight}`}>
+                                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg ${table.status === 'AVAILABLE' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20' : table.status === 'OCCUPIED' ? 'bg-red-50 text-red-600 dark:bg-red-900/20' : 'bg-orange-50 text-orange-600 dark:bg-orange-900/20'}`}>
+                                                                {table.status || 'AVAILABLE'}
+                                                            </span>
+                                                            {hasTableEdit && (
+                                                                <button onClick={() => handleEditTable(table)} className={`p-1.5 rounded-lg ${theme.textMuted} hover:text-indigo-600 transition-colors`}>
+                                                                    <Edit2 size={12} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="p-8 text-center border-2 border-dashed border-gray-200 dark:border-white/5 rounded-2xl">
+                                                <p className={`text-xs font-bold italic ${theme.textMuted}`}>No tables yet.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </React.Fragment>
+                        );
+                    }) : (
+                        <div className="p-12 text-center">
+                            <p className={`text-xs font-bold uppercase tracking-widest ${theme.textMuted}`}>{!branchId ? "Select a branch to view categories." : "No categories found. Create one to begin."}</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* ── Desktop table layout (sm+) ── */}
+                <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className={`${theme.pageBg} ${theme.textMuted} text-[10px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
@@ -339,7 +436,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                             )}
                         </tbody>
                     </table>
-                </div>
+                </div>{/* end desktop table */}
             </div>
 
             <DiningCategoryDialog

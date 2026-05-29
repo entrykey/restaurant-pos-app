@@ -1,6 +1,7 @@
 import React, { useEffect, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import ProtectedRoute from "../components/ProtectedRoute";
+import { useTakeaway } from "../pages/Takeaway/TakeawayContext";
 import {
   ORGANIZATION_PERMISSION_KEYS,
   MODULES,
@@ -65,20 +66,24 @@ const TableOrderWrapper = ({ setActiveTableId, setView, setIsTakeaway, children 
 };
 
 const TakeawayOrderWrapper = ({ setView, setIsTakeaway, children }) => {
+  const { setTableId } = useTakeaway();
   useEffect(() => {
     setView("order");
     setIsTakeaway(true);
-  }, [setView, setIsTakeaway]);
+    setTableId(null);
+  }, [setView, setIsTakeaway, setTableId]);
 
   return <div className="h-full">{children}</div>;
 };
 
 const WholesaleOrderWrapper = ({ setView, setIsTakeaway, setTakeawayOrder, children }) => {
+  const { setTableId } = useTakeaway();
   useEffect(() => {
     setView("order");
     setIsTakeaway(true);
+    setTableId(null);
     setTakeawayOrder((prev) => ({ ...prev, orderType: "WHOLESALE", items: prev?.items || [] }));
-  }, [setView, setIsTakeaway, setTakeawayOrder]);
+  }, [setView, setIsTakeaway, setTakeawayOrder, setTableId]);
 
   return <div className="h-full">{children}</div>;
 };

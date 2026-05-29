@@ -454,6 +454,34 @@ export const roleService = {
             throw error.response ? error.response.data : error;
         }
     },
+    syncManagerRole: async (shopId) => {
+        try {
+            const response = await api.post(`/roles/sync-manager/${shopId}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error syncing manager role:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    resetManagerRole: async (shopId) => {
+        try {
+            const response = await api.post(`/roles/reset-manager/${shopId}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error resetting manager role:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getManagerRole: async (shopId) => {
+        try {
+            const response = await api.get(`/roles/auto/${shopId}`);
+            return response.data;
+        } catch (error) {
+            if (error.response?.status === 404) return null;
+            console.error("Error fetching manager role:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
 };
 
 export const customerService = {

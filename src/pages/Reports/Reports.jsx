@@ -85,6 +85,7 @@ const Reports = ({
     const [balanceSheetReport, setBalanceSheetReport] = useState(null);
     const [expandedPlSections, setExpandedPlSections] = useState({});
     const [loading, setLoading] = useState(false);
+    const [showExportPicker, setShowExportPicker] = useState(false);
     const resolvedShopId = shopId || currentShopId;
     
     const allowedCategories = React.useMemo(() => {
@@ -233,7 +234,7 @@ const Reports = ({
     ].filter(Boolean);
     const headerContact = organization?.ownerContact || settings?.shopPhone || "";
 
-    const handleExport = () => {
+    const buildReportData = () => {
         let columns = [];
         let rows = [];
 
@@ -439,6 +440,11 @@ const Reports = ({
             ];
         }
 
+        return { columns, rows };
+    };
+
+    const handleExportPDF = () => {
+        const { columns, rows } = buildReportData();
         if (!columns.length) return;
 
         const headerLines = [
@@ -487,6 +493,52 @@ const Reports = ({
         });
     };
 
+    const handleExportXLSX = () => {
+        const { columns, rows } = buildReportData();
+        if (!columns.length) return;
+
+        const reportLabel = reportCategories.find(r => r.id === reportCategory)?.label || "Report";
+
+        // Build CSV content (Excel opens .csv natively)
+        const escape = (val) => {
+            const s = String(val ?? "");
+            return s.includes(",") || s.includes('"') || s.includes("\n")
+                ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+
+        const metaRows = [
+            [headerShopName],
+            [headerBranchName],
+            [rangeLabel],
+            [reportLabel],
+            [`Generated: ${new Date().toLocaleString()}`],
+            [],
+        ];
+
+        const csvLines = [
+            ...metaRows.map(r => r.map(escape).join(",")),
+            columns.map(escape).join(","),
+            ...rows.map(row => row.map(escape).join(",")),
+        ];
+
+        const csvContent = "\uFEFF" + csvLines.join("\r\n"); // BOM for Excel UTF-8
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${headerShopName}_${reportLabel}_${filterStartDate}_${filterEndDate}.xlsx`.replace(/\s+/g, "_");
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleExport = (format) => {
+        setShowExportPicker(false);
+        if (format === "pdf") handleExportPDF();
+        else handleExportXLSX();
+    };
+
     const canView = allowedCategories.length > 0;
     if (!canView) {
         return <div className={`p-8 text-center ${theme.textMuted} font-bold`}>You don't have permission to view reports.</div>;
@@ -513,6 +565,7 @@ const Reports = ({
     );
 
     return (
+        <>
         <div className={`p-4 md:p-8 h-full overflow-y-auto ${theme.pageBg}`}>
             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-8">
                 <h2 className={`text-2xl md:text-4xl font-black flex items-center ${theme.textHeading}`}>
@@ -548,7 +601,7 @@ const Reports = ({
                         </div>
                     )}
                     <button
-                        onClick={handleExport}
+                        onClick={() => setShowExportPicker(true)}
                         className={`w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 ${theme.buttonBg} ${theme.buttonText} rounded-2xl shadow-sm text-sm font-bold ${theme.buttonHoverBg}`}
                     >
                         <Download size={18} />
@@ -1428,6 +1481,54 @@ const Reports = ({
                 </div>
             </div>
         </div>
+
+        {/* Export Format Picker Modal */}
+        {showExportPicker && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+                <div className={`${theme.surfaceBg} border ${theme.borderLight} rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-150`}>
+                    <h3 className={`text-lg font-black ${theme.textHeading} mb-1`}>Export Report</h3>
+                    <p className={`text-sm ${theme.textMuted} mb-6`}>Choose a format to download the current report.</p>
+
+                    <div className="grid grid-cols-2 gap-3 mb-5">
+                        {/* PDF */}
+                        <button
+                            onClick={() => handleExport("pdf")}
+                            className={`flex flex-col items-center gap-3 p-5 rounded-2xl border-2 transition-all hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 ${theme.borderLight} ${theme.sectionBg} group`}
+                        >
+                            <div className="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <FileText size={24} className="text-red-600 dark:text-red-400" />
+                            </div>
+                            <div className="text-center">
+                                <p className={`font-black text-sm ${theme.textHeading}`}>PDF</p>
+                                <p className={`text-[10px] font-bold ${theme.textMuted}`}>Print / Save as PDF</p>
+                            </div>
+                        </button>
+
+                        {/* XLSX */}
+                        <button
+                            onClick={() => handleExport("xlsx")}
+                            className={`flex flex-col items-center gap-3 p-5 rounded-2xl border-2 transition-all hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 ${theme.borderLight} ${theme.sectionBg} group`}
+                        >
+                            <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <Download size={24} className="text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                            <div className="text-center">
+                                <p className={`font-black text-sm ${theme.textHeading}`}>Excel</p>
+                                <p className={`text-[10px] font-bold ${theme.textMuted}`}>Download .xlsx file</p>
+                            </div>
+                        </button>
+                    </div>
+
+                    <button
+                        onClick={() => setShowExportPicker(false)}
+                        className={`w-full py-3 rounded-2xl font-bold text-sm ${theme.sectionBg} ${theme.textMuted} hover:${theme.textPrimary} transition-colors border ${theme.borderLight}`}
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        )}
+        </>
     );
 };
 
