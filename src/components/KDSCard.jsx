@@ -1,14 +1,17 @@
-import { Clock, Check, Play, AlertCircle } from 'lucide-react';
+import { Clock, Check, Play, AlertCircle, ShoppingBag, User } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
-const KDSCard = ({ order, type = 'table', isAdditional = false, onUpdateStatus, onStartPrep, currentTime, canManage, canServe }) => {
+const KDSCard = ({ order, type = 'table', typeLabel, isAdditional = false, onUpdateStatus, onStartPrep, currentTime, canManage, canServe }) => {
     const { theme, themeName } = useTheme();
     const status = order.status || 'PENDING';
+    const isDirectServed = status === 'COMPLETED';
     const referenceTime = status === 'PREPARING' ? order.startedAt : order.createdAt;
-    const timeAgo = referenceTime ? Math.floor((currentTime - new Date(referenceTime).getTime()) / 60000) : 0;
+    const timeAgo = referenceTime ? Math.max(0, Math.floor((currentTime - new Date(referenceTime).getTime()) / 60000)) : 0;
 
     // Color based on status and waiting time
     const getStatusColor = () => {
+        if (isDirectServed) return 'border-emerald-500';
+        if (status === 'SERVED') return 'border-blue-400';
         if (status === 'READY') return 'border-green-400';
         if (status === 'PREPARING') return 'border-orange-400';
         return 'border-indigo-400';
@@ -31,24 +34,50 @@ const KDSCard = ({ order, type = 'table', isAdditional = false, onUpdateStatus, 
     const orderNumber = order.orderId?.orderNumber || "No Order #";
     const displayId = order.kotNumber || order._id;
 
+    // Staff names
+    const placedBy = order.orderId?.createdBy?.name || order.createdByName;
+    const servedBy = order.servedBy?.name || order.orderId?.servedBy?.name;
+    const preparedBy = order.preparedBy?.name;
+
     return (
         <div className={`${theme.surfaceBg} rounded-3xl shadow-xl overflow-hidden flex flex-col border-l-8 ${getStatusColor()} transition-all hover:shadow-2xl border-t border-r border-b ${theme.borderLight}`}>
             {/* Card Header */}
             <div className={`p-4 ${theme.pageBg} border-b ${theme.borderLight} flex justify-between items-center`}>
                 <div className="min-w-0 flex-1">
-                    <h3 className={`text-xl font-black ${theme.textHeading} truncate flex items-center`}>
-                        <span>{type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online'}</span>
+                    <h3 className={`text-xl font-black ${theme.textHeading} truncate flex items-center gap-2`}>
+                        <span>{typeLabel || (type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online')}</span>
                         {isAdditional && (
-                            <span className="ml-2 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full uppercase tracking-widest border border-red-200 shadow-sm align-middle">Add-on</span>
+                            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full uppercase tracking-widest border border-red-200 shadow-sm">Add-on</span>
+                        )}
+                        {isDirectServed && (
+                            <span className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full uppercase tracking-widest border border-emerald-200 dark:border-emerald-800 shadow-sm flex items-center gap-1">
+                                <ShoppingBag size={9} /> Direct Served
+                            </span>
                         )}
                     </h3>
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
                         <span className="text-xs font-black text-indigo-600 uppercase tracking-tighter">
                             Order: {orderNumber}
                         </span>
                         <span className={`text-[10px] font-bold ${theme.textMuted}`}>
                             KOT ID: {displayId}
                         </span>
+                        {/* Staff info */}
+                        {placedBy && (
+                            <span className={`text-[10px] font-bold ${theme.textMuted} flex items-center gap-1`}>
+                                <User size={9} /> Placed by: {placedBy}
+                            </span>
+                        )}
+                        {preparedBy && (
+                            <span className={`text-[10px] font-bold ${theme.textMuted}`}>
+                                Prep: {preparedBy}
+                            </span>
+                        )}
+                        {servedBy && (
+                            <span className={`text-[10px] font-bold ${theme.textMuted}`}>
+                                Served by: {servedBy}
+                            </span>
+                        )}
                     </div>
                 </div>
                 <div className={`px-3 py-2 rounded-2xl text-xs font-black flex flex-col items-center justify-center min-w-[70px] ${getTimeColor(timeAgo)}`}>
@@ -73,7 +102,7 @@ const KDSCard = ({ order, type = 'table', isAdditional = false, onUpdateStatus, 
                                 <span className={`w-7 h-7 ${theme.inputBg} rounded-lg flex items-center justify-center text-xs font-black ${theme.inputText}`}>
                                     {item.quantity}
                                 </span>
-                                <span className={`font-bold ${item.status === 'READY' ? 'text-green-600 line-through opacity-50' : theme.textPrimary}`}>
+                                <span className={`font-bold ${item.status === 'READY' || item.status === 'SERVED' ? 'text-green-600 line-through opacity-50' : theme.textPrimary}`}>
                                     {item.itemId?.name || item.itemName || "Item"}
                                 </span>
                             </div>
@@ -88,7 +117,7 @@ const KDSCard = ({ order, type = 'table', isAdditional = false, onUpdateStatus, 
             </div>
 
             {/* Actions */}
-            {status !== 'SERVED' && (
+            {!isDirectServed && status !== 'SERVED' && (
                 <div className={`p-4 ${theme.pageBg} border-t ${theme.borderLight} flex gap-2`}>
                     {status === 'PENDING' && canManage && (
                         <button
@@ -117,7 +146,6 @@ const KDSCard = ({ order, type = 'table', isAdditional = false, onUpdateStatus, 
                         </button>
                     )}
 
-                    {/* Visual Status Indicators for unauthorized users or transition states */}
                     {status === 'READY' && !canServe && (
                         <div className="flex-1 py-4 bg-green-50 text-green-700 font-black rounded-2xl flex items-center justify-center gap-2 border border-green-100">
                             <Check size={20} /> KOT Ready
@@ -126,10 +154,21 @@ const KDSCard = ({ order, type = 'table', isAdditional = false, onUpdateStatus, 
                 </div>
             )}
 
-            {status === 'SERVED' && (
+            {/* Served footer */}
+            {status === 'SERVED' && !isDirectServed && (
                 <div className={`p-4 ${themeName === 'dark' ? 'bg-blue-900/30' : 'bg-blue-50'} flex items-center justify-center gap-2`}>
                     <Check className="text-blue-500" size={16} />
                     <span className={`text-xs font-black ${themeName === 'dark' ? 'text-blue-400' : 'text-blue-700'} uppercase tracking-widest`}>Served</span>
+                </div>
+            )}
+
+            {/* Direct served footer */}
+            {isDirectServed && (
+                <div className={`p-4 ${themeName === 'dark' ? 'bg-emerald-900/30' : 'bg-emerald-50'} flex items-center justify-center gap-2`}>
+                    <ShoppingBag className="text-emerald-600" size={16} />
+                    <span className={`text-xs font-black ${themeName === 'dark' ? 'text-emerald-400' : 'text-emerald-700'} uppercase tracking-widest`}>
+                        Directly Served at Checkout
+                    </span>
                 </div>
             )}
         </div>

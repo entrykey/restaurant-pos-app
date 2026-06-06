@@ -2737,9 +2737,8 @@ const PurchasePage = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Contact Person *</label>
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Contact Person</label>
                                     <input
-                                        required
                                         className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={supplierFormData.contactPerson}
                                         onChange={e => setSupplierFormData({ ...supplierFormData, contactPerson: e.target.value })}

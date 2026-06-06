@@ -114,7 +114,7 @@ const CommonTable = ({
                                             >
                                                 {columns.map((col, colIndex) => (
                                                     <td key={colIndex} className={`px-4 py-2.5 ${col.className || ''}`}>
-                                                        {col.render ? col.render(row[col.key], row) : row[col.key]}
+                                                        {col.render ? col.render(row[col.key], row, rowIndex) : row[col.key]}
                                                     </td>
                                                 ))}
                                             </tr>
@@ -177,7 +177,7 @@ const CommonTable = ({
                                                 key={colIndex}
                                                 className={`px-4 py-2.5 ${col.className || ''}`}
                                             >
-                                                {col.render ? col.render(row[col.key], row) : row[col.key]}
+                                                {col.render ? col.render(row[col.key], row, rowIndex) : row[col.key]}
                                             </td>
                                         ))}
                                     </tr>

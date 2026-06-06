@@ -177,6 +177,34 @@ export const TakeawayProvider = ({ children }) => {
         setSelectedCustomer(currentTab.selectedCustomer || null);
     };
 
+    const loadHistorySale = (orderState, customerName, customerPhone, selectedCustomerData, historyEditBaseline) => {
+        const nextOrder = {
+            ...orderState,
+            historyEditBaseline,
+        };
+
+        setIsTakeaway(true);
+        setTableId(null);
+        setTakeawayOrder(nextOrder);
+        setTakeawayCustName(customerName || "");
+        setTakeawayCustPhone(customerPhone || "");
+        setSelectedCustomer(selectedCustomerData || null);
+
+        setTabs((prev) => prev.map((tab) => (
+            tab.id === activeTabId
+                ? {
+                    ...tab,
+                    isTakeaway: true,
+                    tableId: null,
+                    takeawayOrder: nextOrder,
+                    takeawayCustName: customerName || "",
+                    takeawayCustPhone: customerPhone || "",
+                    selectedCustomer: selectedCustomerData || null,
+                }
+                : tab
+        )));
+    };
+
     return (
         <TakeawayContext.Provider
             value={{
@@ -201,7 +229,8 @@ export const TakeawayProvider = ({ children }) => {
                 switchTab,
                 closeTab,
                 clearAllTabs,
-                activateSaleTab
+                activateSaleTab,
+                loadHistorySale
             }}
         >
             {children}

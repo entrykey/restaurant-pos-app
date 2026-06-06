@@ -30,7 +30,7 @@ const TableManagement = ({ hasPermissionFor }) => {
                         onClick={() => setTriggerCreateCategory(true)}
                         className={`w-full md:w-auto px-8 py-4 rounded-2xl font-black shadow-xl text-white transition-all flex items-center justify-center gap-2 bg-indigo-600 shadow-indigo-200 dark:shadow-indigo-900/20 hover:bg-indigo-700`}
                     >
-                        <Plus size={20} /> Create Category
+                        <Plus size={20} /> Create Table
                     </button>
                 </div>
             </div>

@@ -20,6 +20,10 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const [tables, setTables] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [expandedCategories, setExpandedCategories] = useState({});
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const PAGE_LIMIT = 10;
     
     const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState(null);
@@ -35,7 +39,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const branchId = activeBranchId || user?.branchId || user?.branch || (user?.branchIds?.length ? user.branchIds[0] : null);
     const shopId = user?.shop_id || user?.shopId || user?.shop;
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (page = 1) => {
         if (!branchId) {
             setCategories([]);
             setTables([]);
@@ -45,26 +49,32 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
 
         setIsLoading(true);
         try {
-            const params = { all: true };
-            if (branchId) params.branchId = branchId;
+            const params = { all: true, branchId, page, limit: PAGE_LIMIT };
 
             const [catRes, tableRes] = await Promise.all([
                 diningCategoryService.getCategories(params),
-                tableService.getTables(params)
+                tableService.getTables({ all: true, branchId })
             ]);
-            
-            setCategories(catRes || []);
+
+            setCategories(catRes.data || []);
+            setTotalPages(catRes.pagination?.totalPages || 1);
+            setTotalCount(catRes.pagination?.total || 0);
+            setCurrentPage(catRes.pagination?.page || page);
             setTables(tableRes || []);
         } catch (error) {
             console.error('Error fetching data:', error);
-            // Don't show toast if it's just a permission error from stale state
             if (!error.message?.includes("not enabled")) {
                 toast.error('Failed to load data');
             }
         } finally {
             setIsLoading(false);
         }
-    }, [branchId]);
+    }, [branchId, PAGE_LIMIT]);
+
+    const handlePageChange = (page) => {
+        setCurrentPage(page);
+        fetchData(page);
+    };
 
     useEffect(() => {
         fetchData();
@@ -277,6 +287,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className={`${theme.pageBg} ${theme.textMuted} text-[10px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
+                                <th className="p-6 w-12">#</th>
                                 <th className="p-6">Dining Category</th>
                                 <th className="p-6">Environment</th>
                                 <th className="p-6 text-center">Active</th>
@@ -285,7 +296,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                             </tr>
                         </thead>
                         <tbody className={`divide-y ${theme.borderLight}`}>
-                            {categories.length > 0 ? categories.map((category) => {
+                            {categories.length > 0 ? categories.map((category, catIdx) => {
                                 const isExpanded = expandedCategories[category._id];
                                 const categoryTables = groupedTables[category._id] || [];
                                 
@@ -295,6 +306,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                                             onClick={() => toggleCategory(category._id)}
                                             className={`group hover:${theme.pageBg} transition-all cursor-pointer ${isExpanded ? theme.pageBg : ''}`}
                                         >
+                                            <td className={`p-6 text-xs font-black ${theme.textMuted}`}>{(currentPage - 1) * PAGE_LIMIT + catIdx + 1}</td>
                                             <td className="p-6">
                                                 <div className="flex items-center gap-4">
                                                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${isExpanded ? 'bg-indigo-600 text-white' : `${theme.pageBg} ${theme.textMuted} group-hover:bg-indigo-600 group-hover:text-white`}`}>
@@ -349,7 +361,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                                         {/* Expandable Table Row */}
                                         {isExpanded && (
                                             <tr>
-                                                <td colSpan={5} className="p-0 border-none bg-transparent">
+                                                <td colSpan={6} className="p-0 border-none bg-transparent">
                                                     <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-gray-50/50'} border-t ${theme.borderLight} p-8 animate-in slide-in-from-top-2 duration-300 overflow-hidden`}>
                                                         <div className="flex justify-between items-center mb-6">
                                                             <h4 className={`text-sm font-black uppercase tracking-widest ${theme.textPrimary} flex items-center gap-2`}>
@@ -427,7 +439,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                                 );
                             }) : (
                                 <tr>
-                                    <td colSpan={5} className="p-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
+                                    <td colSpan={6} className="p-20 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
                                         {!branchId
                                             ? "Select a branch from the top bar to view dining categories."
                                             : "No categories found for this branch. Create one to begin."}
@@ -437,6 +449,33 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                         </tbody>
                     </table>
                 </div>{/* end desktop table */}
+
+                {/* Pagination + total count */}
+                {totalCount > 0 && (
+                    <div className={`flex items-center justify-between px-6 py-4 border-t ${theme.borderLight}`}>
+                        <span className={`text-xs font-bold ${theme.textMuted}`}>
+                            Showing {(currentPage - 1) * PAGE_LIMIT + 1}–{Math.min(currentPage * PAGE_LIMIT, totalCount)} of {totalCount} categor{totalCount !== 1 ? 'ies' : 'y'}
+                        </span>
+                        {totalPages > 1 && (
+                            <div className="flex gap-2">
+                                <button
+                                    disabled={currentPage === 1 || isLoading}
+                                    onClick={() => handlePageChange(currentPage - 1)}
+                                    className={`px-4 py-2 font-black text-[11px] uppercase tracking-widest rounded-xl disabled:opacity-30 transition-all ${theme.textPrimary} ${theme.pageBg} hover:opacity-80 active:scale-95 shadow-sm border ${theme.borderLight}`}
+                                >
+                                    Previous
+                                </button>
+                                <button
+                                    disabled={currentPage === totalPages || isLoading}
+                                    onClick={() => handlePageChange(currentPage + 1)}
+                                    className={`px-4 py-2 font-black text-[11px] uppercase tracking-widest rounded-xl disabled:opacity-30 transition-all ${theme.textPrimary} ${theme.pageBg} hover:opacity-80 active:scale-95 shadow-sm border ${theme.borderLight}`}
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             <DiningCategoryDialog

@@ -1,11 +1,17 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '../ui/Modal';
 import { useTheme } from '../../context/ThemeContext';
 import { useApp } from '../../context/AppContext';
-import { api } from '../../services/api';
-import { Printer } from 'lucide-react';
+import { api, settingService } from '../../services/api';
+import { Printer, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DatePicker from '../ui/DatePicker';
+import {
+    BARCODE_PRINT_SETTINGS_KEY,
+    areBarcodeSettingsEqual,
+    extractSavableBarcodeSettings,
+    mergeBarcodePrintSettings,
+} from '../../config/barcodePrintSettings';
 
 const BarcodePrintDialog = ({ 
     isOpen, 
@@ -15,7 +21,90 @@ const BarcodePrintDialog = ({
     onConfirmPrint 
 }) => {
     const { theme } = useTheme();
-    const { organization, formatCurrency } = useApp();
+    const { organization, formatCurrency, activeBranchId, currentShopId } = useApp();
+    const [savedBaseline, setSavedBaseline] = useState(null);
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+    const loadedForRef = useRef(null);
+
+    useEffect(() => {
+        if (!isOpen) {
+            loadedForRef.current = null;
+            return;
+        }
+
+        const loadKey = `${currentShopId || ''}:${activeBranchId || ''}`;
+        if (!currentShopId || !activeBranchId || loadedForRef.current === loadKey) return;
+
+        let cancelled = false;
+
+        const loadBranchSettings = async () => {
+            setIsLoadingSettings(true);
+            try {
+                let savedValue = null;
+                try {
+                    const response = await settingService.getSettingByKey(
+                        BARCODE_PRINT_SETTINGS_KEY,
+                        currentShopId,
+                        activeBranchId
+                    );
+                    savedValue = response?.value || null;
+                } catch (error) {
+                    const status = error?.response?.status || error?.status;
+                    if (status && status !== 404) {
+                        console.error('Failed to load barcode print settings:', error);
+                    }
+                }
+
+                if (cancelled) return;
+
+                let nextBaseline = null;
+                setDialogState((prev) => {
+                    const merged = mergeBarcodePrintSettings(prev, savedValue);
+                    nextBaseline = extractSavableBarcodeSettings(merged);
+                    return merged;
+                });
+                setSavedBaseline(nextBaseline);
+                loadedForRef.current = loadKey;
+            } finally {
+                if (!cancelled) setIsLoadingSettings(false);
+            }
+        };
+
+        loadBranchSettings();
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, currentShopId, activeBranchId, setDialogState]);
+
+    const isSettingsDirty = useMemo(() => {
+        if (!savedBaseline || isLoadingSettings) return false;
+        return !areBarcodeSettingsEqual(dialogState, savedBaseline);
+    }, [dialogState, savedBaseline, isLoadingSettings]);
+
+    const handleSaveSettings = async () => {
+        if (!currentShopId || !activeBranchId || !isSettingsDirty) return;
+
+        setIsSavingSettings(true);
+        try {
+            const value = extractSavableBarcodeSettings(dialogState);
+            await settingService.updateSetting(BARCODE_PRINT_SETTINGS_KEY, {
+                shopId: currentShopId,
+                branchId: activeBranchId,
+                value,
+                type: 'json',
+                displayString: 'Barcode Print Settings',
+                description: 'Branch-specific barcode label print preferences',
+            });
+            setSavedBaseline(value);
+            toast.success('Barcode print settings saved for this branch');
+        } catch (error) {
+            console.error('Failed to save barcode print settings:', error);
+            toast.error('Failed to save barcode print settings');
+        } finally {
+            setIsSavingSettings(false);
+        }
+    };
 
     if (!isOpen) return null;
 
@@ -605,20 +694,41 @@ const BarcodePrintDialog = ({
                 </div>
             </div>
 
-            <div className={`mt-10 py-4 border-t ${theme.borderLight} flex justify-end gap-3`}>
-                <button
-                    onClick={onClose}
-                    className={`px-8 py-3 rounded-xl font-bold ${theme.textSecondary} hover:${theme.inputBg.replace('bg-', '')} transition-colors`}
-                >
-                    Cancel
-                </button>
-                <button
-                    onClick={handleConfirmBarcodePrint}
-                    className={`${theme.buttonBg} ${theme.buttonText} px-10 py-3 rounded-xl font-black shadow-lg shadow-indigo-200 flex items-center gap-2 active:scale-95 transition-all`}
-                >
-                    <Printer size={20} />
-                    Print Labels
-                </button>
+            <div className={`mt-10 py-4 border-t ${theme.borderLight} flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3`}>
+                <p className={`text-[10px] font-bold uppercase tracking-wider ${isSettingsDirty ? 'text-amber-500' : theme.textMuted}`}>
+                    {isLoadingSettings
+                        ? 'Loading branch print settings...'
+                        : isSettingsDirty
+                            ? 'You have unsaved print setting changes for this branch'
+                            : 'Print settings are saved for this branch'}
+                </p>
+                <div className="flex justify-end gap-3">
+                    <button
+                        onClick={onClose}
+                        className={`px-8 py-3 rounded-xl font-bold ${theme.textSecondary} hover:${theme.inputBg.replace('bg-', '')} transition-colors`}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSaveSettings}
+                        disabled={!isSettingsDirty || isSavingSettings || isLoadingSettings}
+                        className={`px-8 py-3 rounded-xl font-black border flex items-center gap-2 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+                            isSettingsDirty
+                                ? 'border-amber-400 text-amber-600 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300'
+                                : `${theme.borderLight} ${theme.textMuted} ${theme.surfaceBg}`
+                        }`}
+                    >
+                        <Save size={18} />
+                        {isSavingSettings ? 'Saving...' : 'Save Settings'}
+                    </button>
+                    <button
+                        onClick={handleConfirmBarcodePrint}
+                        className={`${theme.buttonBg} ${theme.buttonText} px-10 py-3 rounded-xl font-black shadow-lg shadow-indigo-200 flex items-center gap-2 active:scale-95 transition-all`}
+                    >
+                        <Printer size={20} />
+                        Print Labels
+                    </button>
+                </div>
             </div>
         </Modal>
     );

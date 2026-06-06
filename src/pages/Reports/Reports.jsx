@@ -280,7 +280,7 @@ const Reports = ({
                 .forEach((sale) => {
                     if (sale.items) {
                         sale.items.forEach((item) => {
-                            const cat = item.category || "Uncategorized";
+                            const cat = item.category || "Others";
                             if (!catStats[cat]) catStats[cat] = 0;
                             catStats[cat] += item.price * item.quantity;
                         });
@@ -858,7 +858,7 @@ const Reports = ({
                                         .forEach((sale) => {
                                             if (sale.items) {
                                                 sale.items.forEach((item) => {
-                                                    const cat = item.category || "Uncategorized";
+                                                    const cat = item.category || "Others";
                                                     if (!catStats[cat]) catStats[cat] = 0;
                                                     catStats[cat] += item.price * item.quantity;
                                                 });

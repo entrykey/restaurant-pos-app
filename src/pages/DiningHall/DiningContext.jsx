@@ -63,10 +63,16 @@ export const DiningProvider = ({ children }) => {
 
             // Map backend _id to id for frontend consistency and merge active orders
             const mappedTables = ((tablesRes.data || tablesRes) || []).map(t => {
-                const tableId = t._id;
-                const activeOrderForTable = activeOrders.find(o =>
-                    o.tableId === tableId || (o.tableId && (o.tableId._id === tableId || o.tableId.id === tableId))
-                );
+                const tableId = String(t._id);
+                const activeOrderForTable = activeOrders.find(o => {
+                    const oTableId = o.tableId;
+                    if (!oTableId) return false;
+                    // tableId can be a string, ObjectId, or populated object
+                    const oTableIdStr = typeof oTableId === 'object'
+                        ? String(oTableId._id || oTableId.id || oTableId)
+                        : String(oTableId);
+                    return oTableIdStr === tableId;
+                });
 
                 let status = t.status || "available";
                 let order = null;
@@ -75,9 +81,10 @@ export const DiningProvider = ({ children }) => {
                     status = "OCCUPIED"; // Force status if active order exists
 
                     // Check if any KOT for this order is not served
-                    const tableKots = activeKots.filter(kot =>
-                        (kot.orderId?._id || kot.orderId) === activeOrderForTable._id
-                    );
+                    const tableKots = activeKots.filter(kot => {
+                        const kotOrderId = kot.orderId?._id || kot.orderId;
+                        return String(kotOrderId) === String(activeOrderForTable._id);
+                    });
 
                     // Determine overall preparation status for the UI
                     let kotStatus = "pending";
@@ -104,7 +111,16 @@ export const DiningProvider = ({ children }) => {
                         })),
                         isSentToKOT: tableKots.length > 0,
                         kotStatus: kotStatus,
-                        kotSentAt: tableKots.length > 0 ? tableKots[0].createdAt : null,
+                        // Use startedAt from a PREPARING/READY kot (when KDS worker started it),
+                        // fall back to the earliest KOT's createdAt
+                        kotSentAt: (() => {
+                            const preparingKot = tableKots.find(k => k.startedAt);
+                            return preparingKot ? preparingKot.startedAt : (tableKots.length > 0 ? tableKots[0].createdAt : null);
+                        })(),
+                        // Staff info
+                        createdBy: activeOrderForTable.createdBy,
+                        managedBy: activeOrderForTable.managedBy,
+                        servedBy: activeOrderForTable.servedBy,
                     };
                 }
 
@@ -179,7 +195,13 @@ export const DiningProvider = ({ children }) => {
                         ...nextTable,
                         status: prevTable.status ?? nextTable.status,
                         startTime: prevTable.startTime ?? nextTable.startTime ?? null,
-                        order: prevOrder,
+                        order: {
+                            ...prevOrder,
+                            // Always refresh staff info from the latest backend data
+                            createdBy: nextOrder?.createdBy ?? prevOrder.createdBy,
+                            managedBy: nextOrder?.managedBy ?? prevOrder.managedBy,
+                            servedBy: nextOrder?.servedBy ?? prevOrder.servedBy,
+                        },
                     };
                 });
             });
@@ -219,7 +241,7 @@ export const DiningProvider = ({ children }) => {
     const getTableDuration = (startTime) => {
         if (!startTime) return null;
         const diff = currentTime - (typeof startTime === 'string' ? new Date(startTime).getTime() : startTime);
-        const minutes = Math.floor(diff / 60000);
+        const minutes = Math.max(0, Math.floor(diff / 60000));
         const hours = Math.floor(minutes / 60);
         const mins = minutes % 60;
 

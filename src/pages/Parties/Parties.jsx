@@ -19,6 +19,10 @@ const Parties = ({ hasPermissionFor }) => {
     const [customers, setCustomers] = useState([]);
     const [customerLoading, setCustomerLoading] = useState(false);
     const [customerSearch, setCustomerSearch] = useState('');
+    const [customerPage, setCustomerPage] = useState(1);
+    const [customerTotalPages, setCustomerTotalPages] = useState(1);
+    const [customerTotalCount, setCustomerTotalCount] = useState(0);
+    const CUSTOMER_LIMIT = 10;
     const [customerModalOpen, setCustomerModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [customerForm, setCustomerForm] = useState({
@@ -41,24 +45,36 @@ const Parties = ({ hasPermissionFor }) => {
     const canCustomerEdit = hasPermissionFor?.(PARTIES_MODULE, 'customer', 'edit');
     const canCustomerDelete = hasPermissionFor?.(PARTIES_MODULE, 'customer', 'delete');
 
+    const loadCustomers = React.useCallback(async (search = '', page = 1) => {
+        if (!activeBranchId) return;
+        setCustomerLoading(true);
+        try {
+            const result = await customerService.getCustomers({ branchId: activeBranchId, search, page, limit: CUSTOMER_LIMIT });
+            setCustomers(Array.isArray(result.data) ? result.data : []);
+            setCustomerTotalPages(result.pagination?.totalPages || 1);
+            setCustomerTotalCount(result.pagination?.total || 0);
+            setCustomerPage(result.pagination?.page || 1);
+        } catch (e) {
+            console.error('Failed to load customers:', e);
+            setCustomers([]);
+        } finally {
+            setCustomerLoading(false);
+        }
+    }, [activeBranchId, CUSTOMER_LIMIT]);
+
     useEffect(() => {
         if (tab !== 'customers' || !activeBranchId) return;
-        const load = async () => {
-            setCustomerLoading(true);
-            try {
-                const data = await customerService.getCustomers({ branchId: activeBranchId, search: customerSearch });
-                setCustomers(Array.isArray(data) ? data : []);
-            } catch (e) {
-                console.error('Failed to load customers:', e);
-                setCustomers([]);
-            } finally {
-                setCustomerLoading(false);
-            }
-        };
+        const timer = setTimeout(() => {
+            setCustomerPage(1);
+            loadCustomers(customerSearch, 1);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [tab, activeBranchId, customerSearch]); // eslint-disable-line
 
-        const timeoutId = setTimeout(load, 500);
-        return () => clearTimeout(timeoutId);
-    }, [tab, activeBranchId, customerSearch]);
+    const handleCustomerPageChange = (page) => {
+        setCustomerPage(page);
+        loadCustomers(customerSearch, page);
+    };
 
     const openCustomerModal = (customer = null) => {
         if (customer) {
@@ -103,8 +119,7 @@ const Parties = ({ hasPermissionFor }) => {
                 await customerService.createCustomer(payload);
             }
             setCustomerModalOpen(false);
-            const data = await customerService.getCustomers({ branchId: activeBranchId, search: customerSearch });
-            setCustomers(Array.isArray(data) ? data : []);
+            await loadCustomers(customerSearch, customerPage);
         } catch (err) {
             alert('Failed to save customer: ' + (err?.message || 'Unknown error'));
         } finally {
@@ -118,8 +133,7 @@ const Parties = ({ hasPermissionFor }) => {
         try {
             const newStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
             await customerService.updateCustomer(item._id || item.id, { ...item, status: newStatus });
-            const data = await customerService.getCustomers({ branchId: activeBranchId, search: customerSearch });
-            setCustomers(Array.isArray(data) ? data : []);
+            await loadCustomers(customerSearch, customerPage);
         } catch (err) {
             alert('Failed to update status: ' + (err?.message || 'Unknown error'));
         } finally {
@@ -132,8 +146,8 @@ const Parties = ({ hasPermissionFor }) => {
         setCustomerLoading(true);
         try {
             await customerService.deleteCustomer(id);
-            const data = await customerService.getCustomers({ branchId: activeBranchId, search: customerSearch });
-            setCustomers(Array.isArray(data) ? data : []);
+            const newPage = customers.length === 1 && customerPage > 1 ? customerPage - 1 : customerPage;
+            await loadCustomers(customerSearch, newPage);
         } catch (err) {
             alert('Failed to delete customer: ' + (err?.message || 'Unknown error'));
         } finally {
@@ -142,6 +156,16 @@ const Parties = ({ hasPermissionFor }) => {
     };
 
     const customerColumns = [
+        {
+            header: '#',
+            key: '_serial',
+            className: `text-xs font-black ${theme.textMuted} w-10`,
+            render: (_, __, idx) => (
+                <span className={`text-xs font-black ${theme.textMuted}`}>
+                    {(customerPage - 1) * CUSTOMER_LIMIT + idx + 1}
+                </span>
+            )
+        },
         { header: 'Code', key: 'customerCode', className: `text-sm font-mono ${theme.textSecondary}` },
         { header: 'Name', key: 'name', render: (v, row) => <div className={`font-bold ${theme.textHeading}`}>{v}</div> },
         {
@@ -272,7 +296,25 @@ const Parties = ({ hasPermissionFor }) => {
                     {customerLoading ? (
                         <div className="flex justify-center h-64 items-center"><div className="animate-spin text-indigo-600"><Users size={32} /></div></div>
                     ) : (
-                        <CommonTable columns={customerColumns} data={customers} />
+                        <>
+                            <CommonTable
+                                columns={customerColumns}
+                                data={customers}
+                                currentPage={customerPage}
+                                totalPages={customerTotalPages}
+                                onPageChange={handleCustomerPageChange}
+                            />
+                            <div className={`flex items-center justify-between px-2 pt-3 pb-1`}>
+                                <span className={`text-xs font-bold ${theme.textMuted}`}>
+                                    Showing {customers.length > 0 ? (customerPage - 1) * CUSTOMER_LIMIT + 1 : 0}–{Math.min(customerPage * CUSTOMER_LIMIT, customerTotalCount)} of {customerTotalCount} customer{customerTotalCount !== 1 ? 's' : ''}
+                                </span>
+                                {customerTotalCount > CUSTOMER_LIMIT && (
+                                    <span className={`text-xs font-bold ${theme.textMuted}`}>
+                                        Page {customerPage} of {customerTotalPages}
+                                    </span>
+                                )}
+                            </div>
+                        </>
                     )}
                 </>
             )}

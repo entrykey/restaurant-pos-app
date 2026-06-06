@@ -190,7 +190,7 @@ const TakeawayOrder = ({
                 price: item.pricing?.sellingPrice ?? item.price ?? 0,
                 pricePerUnit: item.pricing?.sellingPrice ?? item.price ?? 0,
                 sellingPrice: item.pricing?.sellingPrice ?? item.price ?? 0,
-                category: item.categoryId?.name || item.category || "Uncategorized",
+                category: item.categoryId?.name || item.category || "Others",
                 unitName: item.unitId?.name || item.unitName || "Unit",
                 sellingType: item.weightBased
                     ? "Weight"
@@ -290,7 +290,7 @@ const TakeawayOrder = ({
                     price: item.pricing?.sellingPrice ?? item.price ?? 0,
                     pricePerUnit: item.pricing?.sellingPrice ?? item.price ?? 0,
                     sellingPrice: item.pricing?.sellingPrice ?? item.price ?? 0,
-                    category: item.categoryId?.name || item.category || "Uncategorized",
+                    category: item.categoryId?.name || item.category || "Others",
                     unitName: item.unitId?.name || item.unitName || "Unit",
                     sellingType: item.weightBased
                         ? "Weight"
@@ -372,7 +372,7 @@ const TakeawayOrder = ({
                     ...foundRemote,
                     id: foundRemote._id || foundRemote.id,
                     price: foundRemote.pricing?.sellingPrice ?? foundRemote.price ?? 0,
-                    category: foundRemote.categoryId?.name || foundRemote.category || "Uncategorized",
+                    category: foundRemote.categoryId?.name || foundRemote.category || "Others",
                     unitName: foundRemote.unitId?.name || foundRemote.unitName || "Unit",
                 };
                 initiateAddItem(normalizedItem);
@@ -419,7 +419,7 @@ const TakeawayOrder = ({
     }, [handleBarcodeSearch]);
 
     // Derive categories dynamically from the menu prop (already normalized in AppContent)
-    const categories = ["All", ...new Set(activeMenu.map((item) => item.category || "Uncategorized"))];
+    const categories = ["All", ...new Set(activeMenu.map((item) => item.category || "Others"))];
 
     const currentOrder = isTakeaway
         ? takeawayOrder

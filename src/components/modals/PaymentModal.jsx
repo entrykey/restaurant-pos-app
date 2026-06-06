@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Tag, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2, ChevronLeft, Plus, Trash2, Printer, Loader2 } from "lucide-react";
+import { X, Tag, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2, ChevronLeft, Plus, Trash2, Printer, Loader2, Maximize2 } from "lucide-react";
 import ThemeLoader from "../ui/ThemeLoader";
 import { formatCurrency } from "../../utils/format";
 import { useOrder } from "../../context/OrderContext";
@@ -60,6 +60,7 @@ const PaymentModal = ({
     const [selectedPayments, setSelectedPayments] = useState([]); // Array of { method: {id, label, icon, color}, amount: number, ref: string }
     const [printFormat, setPrintFormat] = useState("thermal"); // thermal | a4
     const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+    const [expandedQR, setExpandedQR] = useState(null); // { upiString, amount } when expanded
 
     // Local state for customer details to prevent parent AppContent re-renders on every keystroke
     const [localCustName, setLocalCustName] = useState(custName || "");
@@ -140,6 +141,7 @@ const PaymentModal = ({
     };
 
     return (
+        <>
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
             <div className={`${theme.surfaceBg} w-full max-w-lg xl:max-w-5xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95 duration-300`}>
                 {/* Header */}
@@ -390,11 +392,24 @@ const PaymentModal = ({
                                                                     )}
                                                                 </div>
                                                                 {resolvedUpiId && p.amount > 0 ? (
-                                                                    <div className="bg-white p-3 md:p-2 rounded-[20px] md:rounded-2xl shadow-xl shadow-indigo-600/10 border border-white shrink-0 w-40 h-40 md:w-28 md:h-28 flex items-center justify-center mt-2 md:mt-0">
-                                                                        <QRCodeSVG 
-                                                                            value={`upi://pay?pa=${resolvedUpiId}&pn=${encodeURIComponent(activeBranch?.name || organization?.name || organization?.businessName || 'Shop')}&am=${p.amount}&cu=INR`} 
-                                                                            style={{ width: "100%", height: "100%" }}
-                                                                        />
+                                                                    <div className="relative shrink-0 mt-2 md:mt-0">
+                                                                        <div className="bg-white p-3 md:p-2 rounded-[20px] md:rounded-2xl shadow-xl shadow-indigo-600/10 border border-white w-40 h-40 md:w-28 md:h-28 flex items-center justify-center">
+                                                                            <QRCodeSVG 
+                                                                                value={`upi://pay?pa=${resolvedUpiId}&pn=${encodeURIComponent(activeBranch?.name || organization?.name || organization?.businessName || 'Shop')}&am=${p.amount}&cu=INR`} 
+                                                                                style={{ width: "100%", height: "100%" }}
+                                                                            />
+                                                                        </div>
+                                                                        {/* Expand button */}
+                                                                        <button
+                                                                            onClick={() => setExpandedQR({
+                                                                                upiString: `upi://pay?pa=${resolvedUpiId}&pn=${encodeURIComponent(activeBranch?.name || organization?.name || organization?.businessName || 'Shop')}&am=${p.amount}&cu=INR`,
+                                                                                amount: p.amount
+                                                                            })}
+                                                                            className="absolute -top-2 -right-2 w-7 h-7 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-lg transition-all active:scale-90"
+                                                                            title="Expand QR"
+                                                                        >
+                                                                            <Maximize2 size={12} />
+                                                                        </button>
                                                                     </div>
                                                                 ) : (
                                                                     <div className="w-40 h-40 md:w-28 md:h-28 bg-white/50 dark:bg-white/5 rounded-[20px] md:rounded-2xl flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-700 shrink-0 mt-2 md:mt-0">
@@ -630,6 +645,38 @@ const PaymentModal = ({
                 </div>
             </div>
         </div>
+
+        {/* Fullscreen QR Overlay */}
+        {expandedQR && (
+            <div
+                className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+                onClick={() => setExpandedQR(null)}
+            >
+                <div
+                    className="flex flex-col items-center gap-6 p-8 bg-white rounded-[40px] shadow-2xl max-w-xs w-full mx-4"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="text-center">
+                        <p className="text-xs font-black uppercase tracking-widest text-indigo-600 mb-1">Scan to Pay</p>
+                        <p className="text-3xl font-black text-gray-900">{formatCurrency(expandedQR.amount)}</p>
+                    </div>
+                    <div className="bg-white p-3 rounded-3xl shadow-inner border-4 border-indigo-50 w-64 h-64 flex items-center justify-center">
+                        <QRCodeSVG
+                            value={expandedQR.upiString}
+                            style={{ width: "100%", height: "100%" }}
+                        />
+                    </div>
+                    <p className="text-xs text-gray-400 font-bold text-center">Point your camera at the QR code to pay via UPI</p>
+                    <button
+                        onClick={() => setExpandedQR(null)}
+                        className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-black rounded-2xl transition-all text-sm uppercase tracking-widest"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        )}
+        </>
     );
 };
 

@@ -30,7 +30,7 @@ export const reportsService = {
         sales.filter((s) => s.date === date).forEach((sale) => {
             if (sale.items) {
                 sale.items.forEach((item) => {
-                    const cat = item.category || "Uncategorized";
+                    const cat = item.category || "Others";
                     if (!catStats[cat]) catStats[cat] = 0;
                     catStats[cat] += item.price * item.quantity;
                 });

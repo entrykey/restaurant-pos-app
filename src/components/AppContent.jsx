@@ -15,6 +15,7 @@ import { useOnlineOrders } from "../pages/OnlineOrders/OnlineOrderContext";
 import { useAuth } from "../context/AuthContext";
 import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from "../utils/permissions";
 import { formatCurrency } from "../utils/format";
+import { buildTakeawayDraftSignature } from "../utils/saleDraftSignature";
 import { printBill, printBillA4, printKot } from "../utils/print";
 import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService } from "../services/api";
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
@@ -78,6 +79,22 @@ const AppContent = () => {
     const auth = useAuth();
     const isAuthenticated = auth.isAuthenticated;
     const currentUser = auth.user;
+    const getStaffRef = () => {
+        if (!currentUser) return null;
+        return {
+            _id: currentUser._id || currentUser.id,
+            name: currentUser.name || currentUser.username || "Staff",
+        };
+    };
+    const withStaffTracking = (order) => {
+        const staff = getStaffRef();
+        if (!staff) return order;
+        return {
+            ...order,
+            createdBy: order?.createdBy || staff,
+            managedBy: staff,
+        };
+    };
     const sessionInfo = auth.sessionInfo;
     const authLogs = auth.authLogs;
 
@@ -183,7 +200,7 @@ const AppContent = () => {
                             price: item.pricing?.sellingPrice || 0,
                             pricePerUnit: item.pricing?.sellingPrice || 0,
                             sellingPrice: item.pricing?.sellingPrice || 0,
-                            category: item.categoryId?.name || "Uncategorized",
+                            category: item.categoryId?.name || "Others",
                             unitName: item.unitId?.name || "Unit",
                             sellingType: item.weightBased ? "Weight" : "Standard",
                             unitId: item.unitId, // Ensure this is preserved for React State
@@ -976,24 +993,17 @@ const AppContent = () => {
 
         if (!shouldSyncTakeawayDraft) return;
 
-        const items = takeawayOrder?.items || [];
-        const signature = JSON.stringify({
+        const signature = buildTakeawayDraftSignature({
             activeTabId,
-            orderId: takeawayOrder?.orderId || null,
-            orderType: activeOrderType,
-            customerName: takeawayCustName || "",
-            customerPhone: takeawayCustPhone || "",
-            items: items.map((item) => ({
-                id: item.id || item._id,
-                quantity: item.quantity,
-                selectedUnit: item.selectedUnit || "PRIMARY",
-                conversionFactor: item.conversionFactor || 1,
-                variantId: item.selectedVariant?._id || item.selectedVariant?.id || null,
-                notes: item.suggestion || "",
-                price: item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice || 0),
-                taxPercent: item.taxPercent
-            }))
+            takeawayOrder,
+            activeOrderType,
+            takeawayCustName,
+            takeawayCustPhone,
         });
+
+        if (takeawayOrder?.isHistoryEdit && takeawayOrder?.historyEditBaseline) {
+            if (signature === takeawayOrder.historyEditBaseline) return;
+        }
 
         if (signature === lastDraftSignatureRef.current) return;
 
@@ -1008,6 +1018,10 @@ const AppContent = () => {
                 const orderItems = takeawayOrder?.items || [];
 
                 if (orderItems.length === 0) {
+                    if (takeawayOrder?.isHistoryEdit) {
+                        lastDraftSignatureRef.current = signature;
+                        return;
+                    }
                     if (takeawayOrder?.orderId) {
                         await orderService.updateStatus(takeawayOrder.orderId, { status: "CANCELLED" });
                         setTakeawayOrder((prev) => {
@@ -1044,9 +1058,11 @@ const AppContent = () => {
                     taxTotal,
                     grandTotal: total,
                     taxBreakdown,
-                    orderStatus: "OPEN",
+                    orderStatus: takeawayOrder?.isHistoryEdit ? "COMPLETED" : "OPEN",
                     createdBy: currentUser?._id,
-                    notes: `Live tab draft: Tab ${activeTabId || 1}`
+                    notes: takeawayOrder?.isHistoryEdit
+                        ? `POS sale update: ${takeawayOrder.orderNumber || takeawayOrder.orderId || "history"}`
+                        : `Live tab draft: Tab ${activeTabId || 1}`
                 };
 
                 let nextOrderId = takeawayOrder?.orderId;
@@ -1099,6 +1115,16 @@ const AppContent = () => {
         businessType,
         currentUser?._id
     ]);
+
+    useEffect(() => {
+        if (takeawayOrder?.isHistoryEdit && takeawayOrder?.historyEditBaseline) {
+            lastDraftSignatureRef.current = takeawayOrder.historyEditBaseline;
+            return;
+        }
+        if (!takeawayOrder?.isHistoryEdit) {
+            lastDraftSignatureRef.current = "";
+        }
+    }, [activeTabId, takeawayOrder?.isHistoryEdit, takeawayOrder?.historyEditBaseline, takeawayOrder?.orderId]);
 
     const addToCart = (item, quantity, variant, extras, enteredUnit = null) => {
         let finalQuantity = parseFloat(quantity);
@@ -1214,11 +1240,11 @@ const AppContent = () => {
                         return {
                             ...t,
                             status: "occupied",
-                            order: {
+                            order: withStaffTracking({
                                 ...currentOrder,
                                 items: updateOrderItems(currentOrder.items),
                                 isSentToKOT: false,
-                            },
+                            }),
                         };
                     }
                     return t;
@@ -1307,7 +1333,9 @@ const AppContent = () => {
                         return {
                             ...t,
                             status: newItems.length > 0 ? "occupied" : "available",
-                            order: newItems.length > 0 ? { ...t.order, items: newItems, isSentToKOT: false } : null,
+                            order: newItems.length > 0
+                                ? withStaffTracking({ ...t.order, items: newItems, isSentToKOT: false })
+                                : null,
                         };
                     }
                     return t;
@@ -1341,7 +1369,7 @@ const AppContent = () => {
                         const newItems = updateList(t.order.items);
                         return {
                             ...t,
-                            order: { ...t.order, items: newItems, isSentToKOT: false },
+                            order: withStaffTracking({ ...t.order, items: newItems, isSentToKOT: false }),
                         };
                     }
                     return t;
@@ -1414,6 +1442,7 @@ const AppContent = () => {
                 isExchange: isExchange,
                 returnedItems: returnedItems,
                 createdBy: currentUser._id,
+                managedBy: currentUser._id || currentUser.id,
                 notes: "Additional items added via KOT"
             };
 
@@ -1474,14 +1503,14 @@ const AppContent = () => {
                             return {
                                 ...t,
                                 startTime: t.startTime ? t.startTime : nowTs,
-                                order: {
+                                order: withStaffTracking({
                                     ...(t.order || {}),
                                     orderId: existingOrderId,
                                     isSentToKOT: true,
                                     kotSentAt: nowTs,
                                     kotStatus: "preparing",
                                     items: updatedItems,
-                                },
+                                }),
                             };
                         }
                         return t;
@@ -1611,7 +1640,9 @@ const AppContent = () => {
                     totalPaid: finalPaidAmount,
                     paymentStatus: paymentStatus,
                     orderStatus: 'COMPLETED',
-                    createdBy: currentUser._id
+                    createdBy: currentUser._id,
+                    servedBy: currentUser._id,
+                    managedBy: currentUser._id
                 };
                 const createdOrder = await orderService.createOrder(orderPayload);
                 currentOrderId = createdOrder._id;
@@ -1629,6 +1660,17 @@ const AppContent = () => {
 
                 // createOrder already sets it to COMPLETED, but we update status just in case to ensure synchronization
                 await orderService.updateStatus(currentOrderId, { status: 'COMPLETED' });
+
+                // Mark all linked KOTs as COMPLETED (direct served — no KDS interaction needed)
+                try {
+                    await api.post('/kitchen/kots/complete-by-order', {
+                        orderId: currentOrderId,
+                        servedBy: currentUser._id
+                    });
+                } catch (kotErr) {
+                    // Non-fatal — KOTs will still be cleaned up by the KDS or next fetch
+                    console.warn('Failed to auto-complete KOTs on checkout:', kotErr.message);
+                }
             }
 
             try {

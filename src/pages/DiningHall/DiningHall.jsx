@@ -281,7 +281,7 @@ const DiningHall = ({
               renderedTableIds.add(t.id);
             }
 
-            const duration = getTableDuration(displayTable.startTime);
+            const duration = getTableDuration(displayTable.startTime ?? displayTable.order?.kotSentAt);
             const hasReservation = reservations.find(
               (r) =>
                 String(r.tableId) === String(displayTable.id) &&

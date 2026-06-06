@@ -127,6 +127,28 @@ const TableCard = ({
           )}
         </div>
 
+        {table.status === "occupied" && table.order && (() => {
+          const staffName = (() => {
+            const managed = table.order.managedBy;
+            const created = table.order.createdBy;
+            if (typeof managed === "object" && managed !== null) {
+              return managed.name || managed.username;
+            }
+            if (typeof created === "object" && created !== null) {
+              return created.name || created.username;
+            }
+            return null;
+          })();
+          if (!staffName) return null;
+          return (
+            <div className="flex items-center gap-1.5 text-[9px] font-bold text-white/75 truncate">
+              <UserCheck size={10} className="shrink-0 text-white/50" />
+              <span className="text-white/45 uppercase tracking-wider">Managed by</span>
+              <span className="text-white/90 truncate">{staffName}</span>
+            </div>
+          );
+        })()}
+
         {hasReservation && !table.isMaintenance && (
           <div className="flex flex-col gap-2 mt-1">
             <div className="bg-yellow-400 text-yellow-900 self-start px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm border border-yellow-500/20">
@@ -160,9 +182,9 @@ const TableCard = ({
       </div>
 
       {/* Footer: Total */}
-      <div className="flex justify-end items-end mt-2">
+      <div className="flex justify-end items-end mt-2 gap-2">
         {totalLabel && (
-          <div className="text-right flex flex-col items-end">
+          <div className="text-right flex flex-col items-end ml-auto">
             <span className="text-[10px] font-bold uppercase opacity-60 leading-none mb-1">Total Amount</span>
             <span className="text-xl md:text-3xl font-black tracking-tighter leading-none whitespace-nowrap">
               {totalLabel}

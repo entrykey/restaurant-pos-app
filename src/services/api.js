@@ -488,7 +488,9 @@ export const customerService = {
     getCustomers: async (params = {}) => {
         try {
             const response = await api.post('/customers/filter', params);
-            return response.data;
+            // Support both paginated { data, pagination } and legacy flat array
+            if (response.data && response.data.data) return response.data;
+            return { data: Array.isArray(response.data) ? response.data : [], pagination: { total: (response.data || []).length, page: 1, limit: 10, totalPages: 1 } };
         } catch (error) {
             console.error("Error fetching customers:", error);
             throw error.response ? error.response.data : error;
@@ -535,11 +537,11 @@ export const settingService = {
             throw error.response ? error.response.data : error;
         }
     },
-    getSettingByKey: async (key, shopId) => {
+    getSettingByKey: async (key, shopId, branchId = null) => {
         try {
-            const response = await api.get(`/settings/${key}`, {
-                params: { shopId }
-            });
+            const params = { shopId };
+            if (branchId) params.branchId = branchId;
+            const response = await api.get(`/settings/${key}`, { params });
             return response.data;
         } catch (error) {
             console.error("Error fetching setting by key:", error);
@@ -1027,7 +1029,12 @@ export const diningCategoryService = {
     getCategories: async (params = {}) => {
         try {
             const response = await api.get('/dining/categories', { params });
-            return response.data;
+            // Support both paginated { data, pagination } and legacy flat array
+            if (response.data && response.data.data && response.data.pagination) {
+                return response.data;
+            }
+            const arr = Array.isArray(response.data) ? response.data : [];
+            return { data: arr, pagination: { total: arr.length, page: 1, limit: arr.length || 10, totalPages: 1 } };
         } catch (error) {
             console.error("Error fetching dining categories:", error);
             throw error.response ? error.response.data : error;

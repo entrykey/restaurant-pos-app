@@ -85,7 +85,7 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
                 <div className={`flex-1 min-w-0 flex flex-col justify-between ${isGrid ? "p-3" : "h-full"}`}>
                     <div className="flex justify-between items-center">
                         <span className={`text-[8px] md:text-[10px] uppercase font-black ${theme.textMuted} tracking-widest`}>
-                            {item.category || "Uncategorized"}
+                            {item.category || "Others"}
                         </span>
                         {(['STOCK', 'TRADE', 'MANUFACTURED'].includes(item.itemType) || item.stockSettings?.stockApplicable === true) && (
                             <span className={`text-[9px] font-black px-2 py-0.5 rounded-lg border ${isOutOfStock ? 'bg-red-50 text-red-500 border-red-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>

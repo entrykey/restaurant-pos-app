@@ -7,10 +7,15 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useApp } from '../../context/AppContext';
 
+const PAGE_LIMIT = 10;
+
 const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEmbedded }) => {
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState(null);
     const { theme } = useTheme();
@@ -35,12 +40,15 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const canEdit = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "edit") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
     const canDelete = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "delete") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
 
-    const loadSuppliers = React.useCallback(async (search = "") => {
+    const loadSuppliers = React.useCallback(async (search = "", page = 1) => {
         if (!currentShopId) return;
         setLoading(true);
         try {
-            const data = await SupplierService.getSuppliers(currentShopId, search);
-            setSuppliers(data);
+            const result = await SupplierService.getSuppliers(currentShopId, search, page, PAGE_LIMIT);
+            setSuppliers(result.data || []);
+            setTotalPages(result.pagination?.totalPages || 1);
+            setTotalCount(result.pagination?.total || 0);
+            setCurrentPage(result.pagination?.page || 1);
         } catch (error) {
             console.error("Failed to load suppliers", error);
         } finally {
@@ -50,18 +58,25 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
 
     useEffect(() => {
         if (currentShopId) {
-            loadSuppliers();
+            loadSuppliers("", 1);
         }
     }, [currentShopId, loadSuppliers]);
 
+    // Debounced search — reset to page 1
     useEffect(() => {
-        if (currentShopId) {
-            const delayDebounceFn = setTimeout(() => {
-                loadSuppliers(searchTerm);
-            }, 500);
-            return () => clearTimeout(delayDebounceFn);
-        }
-    }, [currentShopId, searchTerm, loadSuppliers]);
+        if (!currentShopId) return;
+        const timer = setTimeout(() => {
+            setCurrentPage(1);
+            loadSuppliers(searchTerm, 1);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [searchTerm]); // eslint-disable-line
+
+    // Page change
+    const handlePageChange = (page) => {
+        setCurrentPage(page);
+        loadSuppliers(searchTerm, page);
+    };
 
     const handleOpenModal = (supplier = null) => {
         if (supplier) {
@@ -85,7 +100,6 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const handleSave = async (e) => {
         e.preventDefault();
         setLoading(true);
-
         try {
             if (editingSupplier) {
                 await SupplierService.updateSupplier(editingSupplier._id || editingSupplier.id, formData);
@@ -93,7 +107,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                 await SupplierService.addSupplier({ ...formData, shopId: currentShopId });
             }
             setIsModalOpen(false);
-            await loadSuppliers(searchTerm);
+            await loadSuppliers(searchTerm, currentPage);
         } catch (error) {
             alert("Failed to save supplier: " + (error.message || "Unknown error"));
         } finally {
@@ -106,7 +120,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         const newStatus = item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
         try {
             await SupplierService.updateSupplier(item._id || item.id, { ...item, status: newStatus });
-            await loadSuppliers(searchTerm);
+            await loadSuppliers(searchTerm, currentPage);
         } catch (error) {
             alert("Failed to update status: " + (error.message || "Unknown error"));
         }
@@ -116,12 +130,24 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         if (window.confirm("Are you sure you want to delete this supplier?")) {
             setLoading(true);
             await SupplierService.deleteSupplier(id);
-            await loadSuppliers(searchTerm);
+            // If last item on page, go back one page
+            const newPage = suppliers.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
+            await loadSuppliers(searchTerm, newPage);
             setLoading(false);
         }
     };
 
     const columns = [
+        {
+            header: "#",
+            key: "_serial",
+            className: `text-xs font-black ${theme.textMuted} w-10`,
+            render: (_, __, idx) => (
+                <span className={`text-xs font-black ${theme.textMuted}`}>
+                    {(currentPage - 1) * PAGE_LIMIT + idx + 1}
+                </span>
+            )
+        },
         {
             header: "Supplier Name",
             key: "name",
@@ -262,7 +288,26 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                     </div>
                 </div>
             ) : (
-                <CommonTable columns={columns} data={suppliers} />
+                <>
+                    <CommonTable
+                        columns={columns}
+                        data={suppliers}
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPageChange={handlePageChange}
+                    />
+                    {/* Total count below table */}
+                    <div className={`flex items-center justify-between px-2 pt-3 pb-1`}>
+                        <span className={`text-xs font-bold ${theme.textMuted}`}>
+                            Showing {suppliers.length > 0 ? (currentPage - 1) * PAGE_LIMIT + 1 : 0}–{Math.min(currentPage * PAGE_LIMIT, totalCount)} of {totalCount} supplier{totalCount !== 1 ? 's' : ''}
+                        </span>
+                        {totalCount > PAGE_LIMIT && (
+                            <span className={`text-xs font-bold ${theme.textMuted}`}>
+                                Page {currentPage} of {totalPages}
+                            </span>
+                        )}
+                    </div>
+                </>
             )}
 
             {/* Modal */}

@@ -1,10 +1,16 @@
 import api from '../../services/api';
 
+const DEFAULT_LIMIT = 10;
+
 export const SupplierService = {
-    getSuppliers: async (shopId, search = "") => {
+    getSuppliers: async (shopId, search = "", page = 1, limit = DEFAULT_LIMIT) => {
         try {
-            const response = await api.post('/suppliers/filter', { shopId, search });
-            return response.data;
+            const response = await api.post('/suppliers/filter', { shopId, search, page, limit });
+            // Support both paginated { data, pagination } and legacy flat array responses
+            if (response.data && response.data.data) {
+                return response.data; // { data: [], pagination: {} }
+            }
+            return { data: response.data, pagination: { total: response.data.length, page: 1, limit, totalPages: 1 } };
         } catch (error) {
             console.error("Error fetching suppliers:", error);
             throw error;
