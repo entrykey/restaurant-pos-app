@@ -347,8 +347,14 @@ const Settings = ({
                             <div className="grid grid-cols-1 gap-6">
                                 {backendSettings.filter(s => {
                                     if (isSuperAdmin) return s.isSystem;
-                                    // For shop owners, show them all settings EXCEPT superadmin-only or specific tab settings
-                                    if (['DEFAULT_SHOP_OWNER_ROLE', 'SUBSCRIPTION_METHOD', 'ALLOW_UNSAFE_REGISTRATION', 'SALE_MARKING_TYPE', 'SALE_MARKING_TIME'].includes(s.key)) return false;
+                                    // For shop owners, show them all settings EXCEPT superadmin-only or settings that belong to other tabs
+                                    const saleSettingsKeys = [
+                                        'SALE_MARKING_TYPE', 'SALE_MARKING_TIME',
+                                        'ENABLE_STOCK_ITEMS', 'ENABLE_MANUFACTURED_ITEMS', 'ENABLE_TRADE_ITEMS',
+                                        'ALLOW_CREDIT_PAYMENT', 'RESET_INVOICE_NUMBER_YEARLY'
+                                    ];
+                                    if (['DEFAULT_SHOP_OWNER_ROLE', 'SUBSCRIPTION_METHOD', 'ALLOW_UNSAFE_REGISTRATION'].includes(s.key)) return false;
+                                    if (saleSettingsKeys.includes(s.key)) return false;
                                     
                                     // Filter based on business type features
                                     if (s.key === 'ENABLE_STOCK_ITEMS' && businessTypeData?.features?.sellStockItems === false) return false;

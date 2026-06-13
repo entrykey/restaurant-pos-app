@@ -32,4 +32,6 @@ export const MODULES = Object.freeze({
   EMPLOYEESALARY: "EMPLOYEESALARY",
   SALE_MARKING: "SALE MARKING",
   SALES_HISTORY: "SALES HISTORY",
+  PAY_IN: "pay in",
+  PAY_OUT: "pay out",
 });

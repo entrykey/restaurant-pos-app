@@ -66,7 +66,7 @@ const TakeawayOrder = ({
     const {
         isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
         setOriginalOrderId, setReturnedItems,
-        resetExchange, billDiscount, setBillDiscount
+        resetExchange, billDiscount, setBillDiscount, dismissOffer
     } = useOrder();
     const {
         selectedCustomer, setSelectedCustomer,
@@ -216,7 +216,18 @@ const TakeawayOrder = ({
     }, [fetchMenu]);
 
     const [customerSearchResults, setCustomerSearchResults] = useState([]);
-    const [showCustomerDropdown, setShowCustomerDropdown] = useState(null); // 'name' | 'phone' | null
+    const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+    const [custSearchTerm, setCustSearchTerm] = useState("");
+    const custSearchRef = useRef(null);
+
+    // New customer dialog state
+    const [showNewCustDialog, setShowNewCustDialog] = useState(false);
+    const [newCustForm, setNewCustForm] = useState({ name: "", phone: "", email: "" });
+    const [savingNewCust, setSavingNewCust] = useState(false);
+
+    // Discount UI state
+    const [discountInputType, setDiscountInputType] = useState("flat"); // 'flat' | 'percent'
+    const [discountInputValue, setDiscountInputValue] = useState("");
 
     const handleCustomerSearch = async (term, type) => {
         if (!term || term.length < 2) {
@@ -230,8 +241,10 @@ const TakeawayOrder = ({
                 search: term
             };
             const response = await customerService.getCustomers(params);
-            setCustomerSearchResults(response || []);
-            setShowCustomerDropdown(type);
+            // getCustomers returns { data: [...], pagination: {...} }
+            const results = response?.data || (Array.isArray(response) ? response : []);
+            setCustomerSearchResults(results);
+            setShowCustomerDropdown(true);
         } catch (err) {
             console.error("Customer search failed:", err);
         }
@@ -240,16 +253,50 @@ const TakeawayOrder = ({
     const selectCustomer = (customer) => {
         setTakeawayCustName(customer?.name || "");
         setTakeawayCustPhone(customer.phone);
+        setCustSearchTerm(customer.name || customer.phone || "");
         setSelectedCustomer(customer);
-        setShowCustomerDropdown(null);
+        setShowCustomerDropdown(false);
         setCustomerSearchResults([]);
 
         // Auto-apply discount if it exists
         if (customer.discountPercentage > 0) {
             setBillDiscount({ type: 'percent', value: customer.discountPercentage });
+            setDiscountInputType('percent');
+            setDiscountInputValue(String(customer.discountPercentage));
         } else {
             setBillDiscount({ type: 'flat', value: 0 });
+            setDiscountInputValue("");
         }
+    };
+
+    const handleSaveNewCustomer = async (e) => {
+        e.preventDefault();
+        if (!newCustForm.name && !newCustForm.phone) return;
+        setSavingNewCust(true);
+        try {
+            const created = await customerService.createCustomer({
+                name: newCustForm.name,
+                phone: newCustForm.phone,
+                email: newCustForm.email || undefined,
+                branchId: activeBranchId,
+                status: 'ACTIVE'
+            });
+            selectCustomer(created);
+            setShowNewCustDialog(false);
+            setNewCustForm({ name: "", phone: "", email: "" });
+            toast.success("Customer added and selected");
+        } catch (err) {
+            toast.error(err?.message || "Failed to create customer");
+        } finally {
+            setSavingNewCust(false);
+        }
+    };
+
+    const applyDiscount = (type, raw) => {
+        const val = parseFloat(raw) || 0;
+        setDiscountInputType(type);
+        setDiscountInputValue(raw);
+        setBillDiscount({ type, value: val });
     };
 
     // Debounced AI/Backend search
@@ -493,79 +540,146 @@ const TakeawayOrder = ({
                     </div>
 
                     {isTakeaway && (
-                        <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-2 sm:mb-6 relative">
-                            <div className="relative">
-                                {selectedCustomer && (
-                                    <div className="absolute right-3 top-3.5 flex items-center gap-2 z-10">
-                                        <span className="flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
-                                            <Check size={10} strokeWidth={4} /> Selected
-                                        </span>
-                                        <button 
+                        <div className="mb-2 sm:mb-4 relative">
+                            {/* Single unified customer search */}
+                            <div className="relative" ref={custSearchRef}>
+                                {selectedCustomer ? (
+                                    <div className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg}`}>
+                                        <div className="min-w-0">
+                                            <span className={`font-black text-sm ${theme.textPrimary}`}>{selectedCustomer.name || selectedCustomer.phone}</span>
+                                            {selectedCustomer.phone && <span className={`text-xs ml-2 ${theme.textMuted}`}>{selectedCustomer.phone}</span>}
+                                        </div>
+                                        <button
                                             onClick={() => {
                                                 setSelectedCustomer(null);
+                                                setTakeawayCustName("");
+                                                setTakeawayCustPhone("");
+                                                setCustSearchTerm("");
                                                 setBillDiscount({ type: 'flat', value: 0 });
+                                                setDiscountInputValue("");
                                             }}
-                                            className="text-gray-400 hover:text-red-500"
+                                            className="text-gray-400 hover:text-red-500 flex-shrink-0"
                                         >
-                                            <X size={14} />
+                                            <X size={16} />
                                         </button>
                                     </div>
+                                ) : (
+                                    <div className="relative">
+                                        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={15} />
+                                        <input
+                                            value={custSearchTerm}
+                                            onChange={(e) => {
+                                                const v = e.target.value;
+                                                setCustSearchTerm(v);
+                                                setTakeawayCustName(v);
+                                                handleCustomerSearch(v, "name");
+                                            }}
+                                            onFocus={() => { if (custSearchTerm.length >= 2) setShowCustomerDropdown(true); }}
+                                            onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                                            placeholder="Search customer by name or phone…"
+                                            className={`w-full pl-9 pr-4 py-2.5 border ${theme.borderLight} rounded-xl outline-none text-sm ${theme.inputBg} ${theme.textPrimary}`}
+                                        />
+                                    </div>
                                 )}
-                                <input
-                                    value={takeawayCustName}
-                                    onChange={(e) => {
-                                        setTakeawayCustName(e.target.value);
-                                        handleCustomerSearch(e.target.value, "name");
-                                        if (selectedCustomer && e.target.value !== selectedCustomer.name) {
-                                            setSelectedCustomer(null);
-                                            setBillDiscount({ type: 'flat', value: 0 });
-                                        }
-                                    }}
-                                    onFocus={() => setShowCustomerDropdown("name")}
-                                    placeholder="Customer Name"
-                                    className={`w-full p-2 sm:p-3 border ${theme.borderLight} rounded-xl outline-none text-sm sm:text-base ${theme.inputBg} ${theme.textPrimary} ${selectedCustomer ? "pr-24" : ""}`}
-                                />
-                                {showCustomerDropdown === "name" && customerSearchResults.length > 0 && (
-                                    <div className={`absolute top-full left-0 right-0 mt-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl shadow-xl z-[60] max-h-60 overflow-y-auto`}>
-                                        {customerSearchResults.map(cust => (
-                                            <div 
-                                                key={cust._id}
-                                                onClick={() => selectCustomer(cust)}
-                                                className={`p-3 hover:bg-indigo-50 cursor-pointer border-b ${theme.borderLight} last:border-0`}
-                                            >
-                                                <div className={`font-bold ${theme.textPrimary}`}>{cust.name}</div>
-                                                <div className={`text-xs ${theme.textMuted}`}>{cust.phone} {cust.discountPercentage > 0 && <span className="text-emerald-600 ml-2">({cust.discountPercentage}% Disc)</span>}</div>
+
+                                {/* Dropdown results */}
+                                {showCustomerDropdown && !selectedCustomer && (
+                                    <div className={`absolute top-full left-0 right-0 mt-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl shadow-xl z-[60] overflow-hidden`}>
+                                        {customerSearchResults.length > 0 ? (
+                                            <div className="max-h-52 overflow-y-auto">
+                                                {customerSearchResults.map(cust => (
+                                                    <div
+                                                        key={cust._id}
+                                                        onMouseDown={() => selectCustomer(cust)}
+                                                        className={`p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer border-b ${theme.borderLight} last:border-0 flex items-center justify-between`}
+                                                    >
+                                                        <div>
+                                                            <div className={`font-bold text-sm ${theme.textPrimary}`}>{cust.name}</div>
+                                                            <div className={`text-xs ${theme.textMuted}`}>
+                                                                {cust.phone}
+                                                                {cust.discountPercentage > 0 && <span className="text-emerald-600 ml-2">· {cust.discountPercentage}% disc</span>}
+                                                            </div>
+                                                        </div>
+                                                        <Check size={14} className="text-indigo-500 opacity-0 group-hover:opacity-100" />
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))}
+                                        ) : custSearchTerm.length >= 2 ? (
+                                            <div className="p-3">
+                                                <p className={`text-xs font-bold ${theme.textMuted} mb-2`}>No customer found for "{custSearchTerm}"</p>
+                                                <button
+                                                    onMouseDown={() => {
+                                                        const isPhone = /^\d+$/.test(custSearchTerm.trim());
+                                                        setNewCustForm({
+                                                            name: isPhone ? "" : custSearchTerm,
+                                                            phone: isPhone ? custSearchTerm : "",
+                                                            email: ""
+                                                        });
+                                                        setShowCustomerDropdown(false);
+                                                        setShowNewCustDialog(true);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 text-xs font-black hover:bg-indigo-100 transition-colors"
+                                                >
+                                                    <Plus size={14} /> Add "{custSearchTerm}" as new customer
+                                                </button>
+                                            </div>
+                                        ) : null}
                                     </div>
                                 )}
                             </div>
-                            <div className="relative">
-                                <input
-                                    value={takeawayCustPhone}
-                                    onChange={(e) => {
-                                        setTakeawayCustPhone(e.target.value);
-                                        handleCustomerSearch(e.target.value, "phone");
-                                    }}
-                                    onFocus={() => setShowCustomerDropdown("phone")}
-                                    placeholder="Phone Number"
-                                    className={`w-full p-2 sm:p-3 border ${theme.borderLight} rounded-xl outline-none text-sm sm:text-base ${theme.inputBg} ${theme.textPrimary}`}
-                                />
-                                {showCustomerDropdown === "phone" && customerSearchResults.length > 0 && (
-                                    <div className={`absolute top-full left-0 right-0 mt-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl shadow-xl z-[60] max-h-60 overflow-y-auto`}>
-                                        {customerSearchResults.map(cust => (
-                                            <div 
-                                                key={cust._id}
-                                                onClick={() => selectCustomer(cust)}
-                                                className={`p-3 hover:bg-indigo-50 cursor-pointer border-b ${theme.borderLight} last:border-0`}
-                                            >
-                                                <div className={`font-bold ${theme.textPrimary}`}>{cust.phone}</div>
-                                                <div className={`text-xs ${theme.textMuted}`}>{cust.name} {cust.discountPercentage > 0 && <span className="text-emerald-600 ml-2">({cust.discountPercentage}% Disc)</span>}</div>
+
+                            {/* New Customer Dialog */}
+                            {showNewCustDialog && (
+                                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                                    <div className={`w-full max-w-md rounded-3xl shadow-2xl ${theme.surfaceBg} border ${theme.borderLight}`}>
+                                        <div className={`p-5 border-b ${theme.borderLight} flex items-center justify-between`}>
+                                            <h3 className={`text-lg font-black ${theme.textHeading} flex items-center gap-2`}>
+                                                <Plus size={18} className="text-indigo-600" /> Add New Customer
+                                            </h3>
+                                            <button onClick={() => setShowNewCustDialog(false)} className={`p-1.5 rounded-full ${theme.textMuted} hover:bg-gray-100 dark:hover:bg-gray-800`}><X size={18} /></button>
+                                        </div>
+                                        <form onSubmit={handleSaveNewCustomer} className="p-5 space-y-4">
+                                            <div>
+                                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1`}>Name *</label>
+                                                <input
+                                                    required
+                                                    value={newCustForm.name}
+                                                    onChange={e => setNewCustForm(f => ({ ...f, name: e.target.value }))}
+                                                    placeholder="Customer name"
+                                                    className={`w-full p-3 rounded-xl border outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                                />
                                             </div>
-                                        ))}
+                                            <div>
+                                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1`}>Phone *</label>
+                                                <input
+                                                    required
+                                                    value={newCustForm.phone}
+                                                    onChange={e => setNewCustForm(f => ({ ...f, phone: e.target.value }))}
+                                                    placeholder="Phone number"
+                                                    className={`w-full p-3 rounded-xl border outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1`}>Email</label>
+                                                <input
+                                                    type="email"
+                                                    value={newCustForm.email}
+                                                    onChange={e => setNewCustForm(f => ({ ...f, email: e.target.value }))}
+                                                    placeholder="Optional"
+                                                    className={`w-full p-3 rounded-xl border outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                                />
+                                            </div>
+                                            <div className="flex gap-3 pt-2">
+                                                <button type="button" onClick={() => setShowNewCustDialog(false)} className={`flex-1 py-2.5 rounded-xl font-bold text-sm ${theme.textSecondary} ${theme.inputBg}`}>Cancel</button>
+                                                <button type="submit" disabled={savingNewCust} className="flex-[2] py-2.5 rounded-xl font-black text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                                                    {savingNewCust && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                                                    Save & Select
+                                                </button>
+                                            </div>
+                                        </form>
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -860,7 +974,7 @@ const TakeawayOrder = ({
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="mt-2 flex justify-end">
+                                        <div className="mt-2 flex items-center justify-between gap-2">
                                             <button
                                                 onClick={() => openNoteModal(idx, item.suggestion)}
                                                 className={`flex items-center gap-1 ${theme.surfaceBg} px-2 py-1 rounded-lg border ${theme.borderLight} text-[10px] font-bold ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors`}
@@ -868,6 +982,22 @@ const TakeawayOrder = ({
                                                 <Edit3 size={10} />
                                                 {item.suggestion ? "Edit Note" : "Add Note"}
                                             </button>
+                                            {/* Per-item discount */}
+                                            <div className={`flex items-center gap-1 rounded-lg border ${theme.borderLight} ${theme.inputBg} overflow-hidden`}>
+                                                <span className={`pl-2 text-[9px] font-black uppercase ${theme.textMuted}`}>Disc</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={item.itemDiscount || ""}
+                                                    onChange={e => {
+                                                        const v = parseFloat(e.target.value) || 0;
+                                                        initiateAddItem({ ...item, itemDiscount: v }, 0);
+                                                    }}
+                                                    placeholder="0"
+                                                    className={`w-16 px-1.5 py-1 text-xs font-black outline-none bg-transparent ${theme.textPrimary}`}
+                                                />
+                                                <span className={`pr-2 text-[9px] font-black ${theme.textMuted}`}>₹</span>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -883,14 +1013,57 @@ const TakeawayOrder = ({
                                         <span>Subtotal</span>
                                         <span className={theme.textPrimary}>{formatCurrency(billDetails.subtotal)}</span>
                                     </div>
+
+                                    {/* Discount input */}
+                                    <div className={`rounded-xl border ${theme.borderLight} ${theme.inputBg} overflow-hidden`}>
+                                        <div className={`flex items-center border-b ${theme.borderLight}`}>
+                                            <span className={`px-3 text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Discount</span>
+                                            <div className="ml-auto flex">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applyDiscount('flat', discountInputValue)}
+                                                    className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountInputType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}
+                                                >
+                                                    ₹ Flat
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applyDiscount('percent', discountInputValue)}
+                                                    className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountInputType === 'percent' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}
+                                                >
+                                                    % Off
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={discountInputValue}
+                                            onChange={e => applyDiscount(discountInputType, e.target.value)}
+                                            placeholder={discountInputType === 'percent' ? "Enter %" : "Enter amount"}
+                                            className={`w-full px-3 py-2 text-sm font-black outline-none bg-transparent ${theme.textPrimary}`}
+                                        />
+                                    </div>
     
                                     {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
                                         <div className="space-y-1">
                                             <div className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Applied Offers</div>
                                             {billDetails.appliedOffers.map((offer, oIdx) => offer && (
-                                                <div key={oIdx} className="flex justify-between items-center text-sm text-green-600 font-medium bg-green-50 px-2 py-1 rounded-lg">
-                                                    <span>{offer.name}</span>
-                                                    <span>-{formatCurrency(offer.discount)}</span>
+                                                <div key={offer.offerId || oIdx} className="flex justify-between items-center text-sm text-green-600 font-medium bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-lg gap-2">
+                                                    <span className="truncate">{offer.name}</span>
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        <span>-{formatCurrency(offer.discount)}</span>
+                                                        {offer.offerId && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => dismissOffer(offer.offerId)}
+                                                                className="p-1 rounded-md hover:bg-green-100 dark:hover:bg-green-900/40 text-green-700"
+                                                                title="Remove offer"
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>

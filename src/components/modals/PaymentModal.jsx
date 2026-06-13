@@ -42,7 +42,8 @@ const PaymentModal = ({
         setCouponStatus,
         calculateItemTotal,
         calculateBillDetails,
-        applyCoupon
+        applyCoupon,
+        dismissOffer
     } = useOrder();
     const { activeBranchId, branches, organization } = useApp();
     const activeBranch = branches.find(b => b._id === activeBranchId);
@@ -268,9 +269,21 @@ const PaymentModal = ({
                                         {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
                                             <div className="space-y-1.5 md:space-y-2 py-0.5 md:py-1">
                                                 {billDetails.appliedOffers.map((offer, oIdx) => (
-                                                    <div key={oIdx} className="flex justify-between items-center text-[10px] md:text-xs text-emerald-600 font-black bg-emerald-50 dark:bg-emerald-900/20 px-2 md:px-3 py-1.5 md:py-2 rounded-lg md:rounded-xl border border-emerald-100 dark:border-emerald-900/40">
-                                                        <span className="uppercase tracking-tight">{offer.name}</span>
-                                                        <span>-{formatCurrency(offer.discount)}</span>
+                                                    <div key={offer.offerId || oIdx} className="flex justify-between items-center text-[10px] md:text-xs text-emerald-600 font-black bg-emerald-50 dark:bg-emerald-900/20 px-2 md:px-3 py-1.5 md:py-2 rounded-lg md:rounded-xl border border-emerald-100 dark:border-emerald-900/40 gap-2">
+                                                        <span className="uppercase tracking-tight truncate">{offer.name}</span>
+                                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                            <span>-{formatCurrency(offer.discount)}</span>
+                                                            {offer.offerId && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => dismissOffer(offer.offerId)}
+                                                                    className="p-1 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                                                                    title="Remove offer"
+                                                                >
+                                                                    <X size={12} />
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>

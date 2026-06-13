@@ -41,58 +41,6 @@ const PosTabBar = ({ view }) => {
     const historyButtonRef = useRef(null);
     const [dropdownStyle, setDropdownStyle] = useState(null);
 
-    const confirmClearAll = () => {
-        toast((t) => (
-            <div className="flex flex-col gap-3 min-w-[280px]">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-red-500/20 rounded-xl">
-                        <Trash2 size={20} className="text-red-500" />
-                    </div>
-                    <div>
-                        <p className="text-sm font-black text-slate-100 uppercase tracking-tight">Clear all tabs?</p>
-                        <p className="text-[10px] font-bold text-slate-400">This will reset all current orders.</p>
-                    </div>
-                </div>
-                <div className="flex gap-2 justify-end">
-                    <button
-                        onClick={() => toast.dismiss(t.id)}
-                        className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-100 transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={() => {
-                            clearAllTabs();
-                            toast.dismiss(t.id);
-                            toast.success('All tabs cleared', {
-                                icon: '🗑️',
-                                style: {
-                                    borderRadius: '12px',
-                                    background: '#1e293b',
-                                    color: '#fff',
-                                },
-                            });
-                        }}
-                        className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20 transition-all active:scale-95"
-                    >
-                        Confirm Clear
-                    </button>
-                </div>
-            </div>
-        ), {
-            duration: 3000,
-            position: 'top-center',
-            style: {
-                background: '#0f172a',
-                color: '#fff',
-                padding: '16px',
-                borderRadius: '24px',
-                border: '1px solid rgba(255,255,255,0.1)',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-            },
-        });
-    };
-
     const fetchRecentSales = useCallback(async () => {
         if (!currentShopId) return;
         setHistoryLoading(true);
@@ -199,6 +147,171 @@ const PosTabBar = ({ view }) => {
 
     const saleTabs = tabs.filter((t) => !t.tableId);
 
+    const getTabOrder = (tab) =>
+        tab.id === activeTabId ? takeawayOrder : (tab.takeawayOrder || {});
+
+    const formatTabOrderLabel = (tab, order) => {
+        if (order.orderNumber) return `#${order.orderNumber}`;
+        if (order.orderId) return `#${String(order.orderId).slice(-6)}`;
+        return tab.name || `Tab ${tab.id}`;
+    };
+
+    const getTabsWithCartItems = () =>
+        saleTabs
+            .map((tab) => {
+                const order = getTabOrder(tab);
+                const itemCount = (order.items || []).length;
+                if (itemCount === 0) return null;
+                return {
+                    tabId: tab.id,
+                    label: formatTabOrderLabel(tab, order),
+                    itemCount,
+                };
+            })
+            .filter(Boolean);
+
+    const confirmClearAll = () => {
+        const tabsWithItems = getTabsWithCartItems();
+
+        toast((t) => (
+            <div className="flex flex-col gap-3 min-w-[300px] max-w-[420px]">
+                <div className="flex items-start gap-3">
+                    <div className="p-2 bg-red-500/20 rounded-xl shrink-0">
+                        <Trash2 size={20} className="text-red-500" />
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-sm font-black text-slate-100 uppercase tracking-tight">Clear all tabs?</p>
+                        {tabsWithItems.length > 0 ? (
+                            <p className="text-[10px] font-bold text-slate-400 mt-1 leading-relaxed">
+                                If you clear tabs, these orders with items in cart will also be removed:
+                            </p>
+                        ) : (
+                            <p className="text-[10px] font-bold text-slate-400 mt-1">
+                                This will reset all current orders.
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                {tabsWithItems.length > 0 && (
+                    <ul className="rounded-xl border border-white/10 bg-white/5 divide-y divide-white/10 max-h-40 overflow-y-auto">
+                        {tabsWithItems.map((entry) => (
+                            <li
+                                key={entry.tabId}
+                                className="flex items-center justify-between gap-3 px-3 py-2.5 text-[11px] font-bold text-slate-200"
+                            >
+                                <span className="font-black text-slate-100 truncate">{entry.label}</span>
+                                <span className="shrink-0 text-slate-400">
+                                    {entry.itemCount} item{entry.itemCount !== 1 ? 's' : ''}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+
+                <div className="flex gap-2 justify-end">
+                    <button
+                        type="button"
+                        onClick={() => toast.dismiss(t.id)}
+                        className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-100 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            clearAllTabs();
+                            toast.dismiss(t.id);
+                            toast.success('All tabs cleared', {
+                                icon: '🗑️',
+                                style: {
+                                    borderRadius: '12px',
+                                    background: '#1e293b',
+                                    color: '#fff',
+                                },
+                            });
+                        }}
+                        className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20 transition-all active:scale-95"
+                    >
+                        Confirm Clear
+                    </button>
+                </div>
+            </div>
+        ), {
+            duration: Infinity,
+            position: 'top-center',
+            style: {
+                background: '#0f172a',
+                color: '#fff',
+                padding: '16px',
+                borderRadius: '24px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+            },
+        });
+    };
+
+    const confirmCloseTab = (tabId, e) => {
+        if (e) e.stopPropagation();
+        const tab = saleTabs.find((t) => t.id === tabId);
+        if (!tab) return;
+
+        const order = getTabOrder(tab);
+        const itemCount = (order.items || []).length;
+        if (itemCount === 0) {
+            closeTab(tabId, e);
+            return;
+        }
+
+        const label = formatTabOrderLabel(tab, order);
+
+        toast((t) => (
+            <div className="flex flex-col gap-3 min-w-[280px]">
+                <div className="flex items-start gap-3">
+                    <div className="p-2 bg-red-500/20 rounded-xl shrink-0">
+                        <Trash2 size={20} className="text-red-500" />
+                    </div>
+                    <div>
+                        <p className="text-sm font-black text-slate-100 uppercase tracking-tight">Close this tab?</p>
+                        <p className="text-[10px] font-bold text-slate-400 mt-1 leading-relaxed">
+                            <span className="text-slate-200 font-black">{label}</span> has {itemCount} item{itemCount !== 1 ? 's' : ''} in cart. Closing will remove this order.
+                        </p>
+                    </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                    <button
+                        type="button"
+                        onClick={() => toast.dismiss(t.id)}
+                        className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-100 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            closeTab(tabId, e);
+                            toast.dismiss(t.id);
+                        }}
+                        className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20 transition-all active:scale-95"
+                    >
+                        Close Tab
+                    </button>
+                </div>
+            </div>
+        ), {
+            duration: Infinity,
+            position: 'top-center',
+            style: {
+                background: '#0f172a',
+                color: '#fff',
+                padding: '16px',
+                borderRadius: '24px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+            },
+        });
+    };
+
     const historyDropdown = showHistory && dropdownStyle ? createPortal(
         <div
             ref={historyRef}
@@ -261,56 +374,60 @@ const PosTabBar = ({ view }) => {
 
     return (
         <div className="flex items-center justify-start md:justify-center xl:justify-center w-full px-4 pt-2 pb-2 xl:pt-0 xl:pb-0">
-            <div className="flex items-center gap-1.5 p-1.5 bg-[#7a818e] rounded-full shadow-lg overflow-x-auto no-scrollbar max-w-full xl:pointer-events-auto">
-                {saleTabs.map((tab) => {
-                    const isActive = tab.id === activeTabId;
-                    const activeOrder = isActive ? takeawayOrder : (tab.takeawayOrder || {});
-                    const itemCount = (activeOrder.items || []).length || 0;
-                    const rawOrderLabel = activeOrder.orderNumber || activeOrder.orderId;
-                    const orderLabel = rawOrderLabel ? `#${String(rawOrderLabel).slice(-6)}` : null;
-                    const fallbackName = (isActive ? takeawayCustName : tab.takeawayCustName) || tab.name;
-                    const tabLabel = orderLabel || fallbackName;
+            <div className="flex items-center gap-1.5 p-1.5 bg-[#7a818e] rounded-full shadow-lg max-w-full xl:pointer-events-auto overflow-hidden">
+                {/* Scrollable tabs area */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar min-w-0">
+                    {saleTabs.map((tab) => {
+                        const isActive = tab.id === activeTabId;
+                        const activeOrder = isActive ? takeawayOrder : (tab.takeawayOrder || {});
+                        const itemCount = (activeOrder.items || []).length || 0;
+                        const rawOrderLabel = activeOrder.orderNumber || activeOrder.orderId;
+                        const orderLabel = rawOrderLabel ? `#${String(rawOrderLabel).slice(-6)}` : null;
+                        const fallbackName = (isActive ? takeawayCustName : tab.takeawayCustName) || tab.name;
+                        const tabLabel = orderLabel || fallbackName;
 
-                    return (
-                        <div
-                            key={tab.id}
-                            onClick={() => switchTab(tab.id)}
-                            className={`group relative shrink-0 min-w-[100px] md:min-w-[140px] max-w-[180px] h-9 md:h-11 px-3 md:px-5 flex items-center justify-between gap-3 cursor-pointer transition-all duration-300 transform rounded-full
-                                ${isActive
-                                    ? 'bg-[#5b52f6] text-white shadow-lg z-10'
-                                    : 'text-slate-200 hover:bg-white/10'
-                                }`}
-                        >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                                {itemCount > 0 ? (
-                                    <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black
-                                        ${isActive ? 'bg-white text-[#5b52f6]' : 'bg-slate-400/50 text-white'}`}>
-                                        {itemCount}
-                                    </div>
-                                ) : (
-                                    <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${isActive ? 'bg-white/20' : 'bg-white/10'}`}>
-                                        <User size={12} className={isActive ? 'text-white' : 'text-slate-200'} />
-                                    </div>
-                                )}
-                                <span className="text-[11px] md:text-[13px] font-black truncate tracking-wide uppercase">
-                                    {tabLabel}
-                                </span>
-                            </div>
-
-                            <button
-                                onClick={(e) => closeTab(tab.id, e)}
-                                className={`p-0.5 rounded-full transition-all shrink-0
+                        return (
+                            <div
+                                key={tab.id}
+                                onClick={() => switchTab(tab.id)}
+                                className={`group relative shrink-0 min-w-[100px] md:min-w-[140px] max-w-[180px] h-9 md:h-11 px-3 md:px-5 flex items-center justify-between gap-3 cursor-pointer transition-all duration-300 transform rounded-full
                                     ${isActive
-                                        ? 'hover:bg-white/20 text-white/70 hover:text-white'
-                                        : 'opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-400 hover:text-red-400'
+                                        ? 'bg-[#5b52f6] text-white shadow-lg z-10'
+                                        : 'text-slate-200 hover:bg-white/10'
                                     }`}
                             >
-                                <X size={12} strokeWidth={3} />
-                            </button>
-                        </div>
-                    );
-                })}
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    {itemCount > 0 ? (
+                                        <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black
+                                            ${isActive ? 'bg-white text-[#5b52f6]' : 'bg-slate-400/50 text-white'}`}>
+                                            {itemCount}
+                                        </div>
+                                    ) : (
+                                        <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${isActive ? 'bg-white/20' : 'bg-white/10'}`}>
+                                            <User size={12} className={isActive ? 'text-white' : 'text-slate-200'} />
+                                        </div>
+                                    )}
+                                    <span className="text-[11px] md:text-[13px] font-black truncate tracking-wide uppercase">
+                                        {tabLabel}
+                                    </span>
+                                </div>
 
+                                <button
+                                    onClick={(e) => confirmCloseTab(tab.id, e)}
+                                    className={`p-0.5 rounded-full transition-all shrink-0
+                                        ${isActive
+                                            ? 'hover:bg-white/20 text-white/70 hover:text-white'
+                                            : 'opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-400 hover:text-red-400'
+                                        }`}
+                                >
+                                    <X size={12} strokeWidth={3} />
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Fixed action buttons — never scroll */}
                 <div className="flex items-center gap-1.5 px-2 border-l border-white/10 ml-1 shrink-0">
                     <button
                         ref={historyButtonRef}

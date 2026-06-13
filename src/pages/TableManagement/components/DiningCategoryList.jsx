@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTheme } from '../../../context/ThemeContext';
 import { diningCategoryService, tableService } from '../../../services/api';
 import DiningCategoryDialog from './DiningCategoryDialog';
@@ -7,7 +7,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
 import { usePermission } from '../../../auth/usePermission';
 import { MODULES } from '../../../constants/modules';
-import { Edit2, Trash2, ChevronDown, Plus, Users, LayoutDashboard, Monitor, MonitorOff } from 'lucide-react';
+import { Edit2, Trash2, ChevronDown, Plus, Users, LayoutDashboard, Monitor, MonitorOff, TableProperties, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
@@ -23,7 +23,20 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
-    const PAGE_LIMIT = 10;
+    const [pageSize, setPageSize] = useState(10);
+    const [pageSizeOpen, setPageSizeOpen] = useState(false);
+    const pageSizeRef = useRef(null);
+    const PAGE_SIZE_OPTIONS = [10, 25, 50, 75, 100];
+
+    // Close page size dropdown on outside click
+    useEffect(() => {
+        if (!pageSizeOpen) return;
+        const handler = (e) => {
+            if (pageSizeRef.current && !pageSizeRef.current.contains(e.target)) setPageSizeOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [pageSizeOpen]);
     
     const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState(null);
@@ -49,7 +62,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
 
         setIsLoading(true);
         try {
-            const params = { all: true, branchId, page, limit: PAGE_LIMIT };
+            const params = { all: true, branchId, page, limit: pageSize };
 
             const [catRes, tableRes] = await Promise.all([
                 diningCategoryService.getCategories(params),
@@ -69,12 +82,26 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
         } finally {
             setIsLoading(false);
         }
-    }, [branchId, PAGE_LIMIT]);
+    }, [branchId, pageSize]);
 
     const handlePageChange = (page) => {
         setCurrentPage(page);
         fetchData(page);
     };
+
+    const handlePageSizeChange = (size) => {
+        setPageSize(Number(size));
+        setCurrentPage(1);
+        setPageSizeOpen(false);
+    };
+
+    // Summary stats from loaded tables
+    const summary = useMemo(() => {
+        const totalTables = tables.length;
+        const activeTables = tables.filter(t => t.isActive !== false).length;
+        const totalCapacity = tables.reduce((sum, t) => sum + (t.capacity || 0), 0);
+        return { totalTables, activeTables, totalCapacity };
+    }, [tables]);
 
     useEffect(() => {
         fetchData();
@@ -185,9 +212,49 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
 
     return (
         <div className="space-y-4">
-            <div className={`overflow-hidden rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
+            {/* Summary Widgets */}
+            {!isLoading && tables.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                    {/* Total Tables */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
+                        <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                            <LayoutDashboard size={20} className="text-indigo-500" />
+                        </div>
+                        <div>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Total Tables</p>
+                            <p className={`text-xl font-black ${theme.textHeading}`}>{summary.totalTables}</p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>across {totalCount} area{totalCount !== 1 ? 's' : ''}</p>
+                        </div>
+                    </div>
+                    {/* Active Tables */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
+                        <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                            <CheckCircle2 size={20} className="text-emerald-500" />
+                        </div>
+                        <div>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Active Tables</p>
+                            <p className={`text-xl font-black text-emerald-500`}>{summary.activeTables}</p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>{summary.totalTables - summary.activeTables} inactive</p>
+                        </div>
+                    </div>
+                    {/* Total Capacity */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
+                        <div className="w-11 h-11 rounded-2xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                            <Users size={20} className="text-amber-500" />
+                        </div>
+                        <div>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Total Capacity</p>
+                            <p className={`text-xl font-black ${theme.textHeading}`}>{summary.totalCapacity}</p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>
+                                {summary.activeTables > 0 ? `${Math.round(summary.totalCapacity / summary.activeTables)} avg/table` : '—'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-                {/* ── Mobile card layout (< sm) ── */}
+            {/* Table card */}
+            <div className={`rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
                 <div className="sm:hidden divide-y divide-inherit">
                     {categories.length > 0 ? categories.map((category) => {
                         const isExpanded = expandedCategories[category._id];
@@ -306,7 +373,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                                             onClick={() => toggleCategory(category._id)}
                                             className={`group hover:${theme.pageBg} transition-all cursor-pointer ${isExpanded ? theme.pageBg : ''}`}
                                         >
-                                            <td className={`p-6 text-xs font-black ${theme.textMuted}`}>{(currentPage - 1) * PAGE_LIMIT + catIdx + 1}</td>
+                                            <td className={`p-6 text-xs font-black ${theme.textMuted}`}>{(currentPage - 1) * pageSize + catIdx + 1}</td>
                                             <td className="p-6">
                                                 <div className="flex items-center gap-4">
                                                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${isExpanded ? 'bg-indigo-600 text-white' : `${theme.pageBg} ${theme.textMuted} group-hover:bg-indigo-600 group-hover:text-white`}`}>
@@ -450,28 +517,49 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                     </table>
                 </div>{/* end desktop table */}
 
-                {/* Pagination + total count */}
+                {/* Pagination */}
                 {totalCount > 0 && (
-                    <div className={`flex items-center justify-between px-6 py-4 border-t ${theme.borderLight}`}>
-                        <span className={`text-xs font-bold ${theme.textMuted}`}>
-                            Showing {(currentPage - 1) * PAGE_LIMIT + 1}–{Math.min(currentPage * PAGE_LIMIT, totalCount)} of {totalCount} categor{totalCount !== 1 ? 'ies' : 'y'}
-                        </span>
+                    <div className={`flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border-t ${theme.borderLight}`}>
+                        <div className="flex items-center gap-3">
+                            <span className={`text-[11px] font-black uppercase tracking-widest ${theme.textSecondary}`}>Show</span>
+                            {/* Custom page size dropdown */}
+                            <div ref={pageSizeRef} className="relative">
+                                <button
+                                    onClick={() => setPageSizeOpen(o => !o)}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black border transition-all ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:opacity-80`}
+                                >
+                                    {pageSize}
+                                    <ChevronDown size={12} className={`transition-transform duration-200 ${pageSizeOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                                {pageSizeOpen && (
+                                    <div className={`absolute bottom-full mb-1 left-0 z-50 rounded-2xl shadow-xl border overflow-hidden min-w-[70px] ${theme.surfaceBg} ${theme.borderLight}`}>
+                                        {PAGE_SIZE_OPTIONS.map(size => (
+                                            <button
+                                                key={size}
+                                                onClick={() => handlePageSizeChange(size)}
+                                                className={`w-full px-4 py-2 text-[12px] font-black text-left transition-all ${size === pageSize ? 'bg-indigo-500 text-white' : `${theme.textPrimary} hover:bg-indigo-500/10`}`}
+                                            >
+                                                {size}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <span className={`text-[11px] font-black uppercase tracking-widest ${theme.textSecondary}`}>of {totalCount}</span>
+                            <span className={`text-[11px] font-black uppercase tracking-widest ${theme.textSecondary}`}>· Page {currentPage} of {totalPages}</span>
+                        </div>
                         {totalPages > 1 && (
                             <div className="flex gap-2">
                                 <button
                                     disabled={currentPage === 1 || isLoading}
                                     onClick={() => handlePageChange(currentPage - 1)}
                                     className={`px-4 py-2 font-black text-[11px] uppercase tracking-widest rounded-xl disabled:opacity-30 transition-all ${theme.textPrimary} ${theme.pageBg} hover:opacity-80 active:scale-95 shadow-sm border ${theme.borderLight}`}
-                                >
-                                    Previous
-                                </button>
+                                >Previous</button>
                                 <button
                                     disabled={currentPage === totalPages || isLoading}
                                     onClick={() => handlePageChange(currentPage + 1)}
                                     className={`px-4 py-2 font-black text-[11px] uppercase tracking-widest rounded-xl disabled:opacity-30 transition-all ${theme.textPrimary} ${theme.pageBg} hover:opacity-80 active:scale-95 shadow-sm border ${theme.borderLight}`}
-                                >
-                                    Next
-                                </button>
+                                >Next</button>
                             </div>
                         )}
                     </div>

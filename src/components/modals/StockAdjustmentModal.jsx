@@ -21,27 +21,19 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
 
     const { user } = useAuth();
 
-    // Derive the best available price from the item
+    // Derive the best available price from the item — only auto-fill if purchase price exists
     const getAutoPrice = (item) => {
         if (!item) return '';
         const pp = item.pricing?.purchasePrice ?? item.purchasePrice;
-        const mrp = item.pricing?.mrp ?? item.mrp;
-        const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
         if (pp != null && pp !== 0) return String(pp);
-        if (mrp != null && mrp !== 0) return String(mrp);
-        if (sp != null && sp !== 0) return String(sp);
         return '';
     };
 
-    // Label showing which price was used for autofill
+    // Label showing which price was used for autofill — only when purchase price is present
     const getPriceSource = (item) => {
         if (!item) return '';
         const pp = item.pricing?.purchasePrice ?? item.purchasePrice;
-        const mrp = item.pricing?.mrp ?? item.mrp;
-        const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
         if (pp != null && pp !== 0) return 'Auto-filled from purchase price';
-        if (mrp != null && mrp !== 0) return 'Auto-filled from MRP';
-        if (sp != null && sp !== 0) return 'Auto-filled from sale price';
         return '';
     };
 
@@ -186,7 +178,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                     {/* Price Field */}
                     <div className="space-y-3">
                         <label className={`block text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>
-                            <span className="text-red-500 mr-1">*</span> At Price
+                            At Price
                         </label>
                         <div className="relative group">
                             <span className={`absolute left-4 top-1/2 -translate-y-1/2 font-black group-focus-within:text-blue-500 transition-colors ${theme.textMuted} flex items-center`}>
@@ -194,7 +186,6 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                             </span>
                             <input
                                 type="number"
-                                required
                                 value={price}
                                 onChange={(e) => setPrice(e.target.value)}
                                 placeholder="At Price"

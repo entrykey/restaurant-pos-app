@@ -81,6 +81,7 @@ const Sidebar = ({
     const { setTableId, activateSaleTab } = useTakeaway();
     const [isSelfServiceExpanded, setIsSelfServiceExpanded] = useState(true);
     const [isSalesExpanded, setIsSalesExpanded] = useState(true);
+    const [isPurchasesExpanded, setIsPurchasesExpanded] = useState(true);
     const closeMobile = () => onMobileClose?.();
 
     const getLogoSrc = () => {
@@ -186,7 +187,7 @@ const Sidebar = ({
         }
 
         // --- NEW: Sales Grouping Logic ---
-        const salesKeys = ['SALE_MARKING', 'SALES_HISTORY'];
+        const salesKeys = ['SALE_MARKING', 'SALES_HISTORY', 'PAY_IN'];
         const activeSalesArr = result.filter(k => salesKeys.includes(k));
 
         if (result.length > 5 && activeSalesArr.length > 1) {
@@ -196,6 +197,26 @@ const Sidebar = ({
                 if (salesKeys.includes(key)) {
                     if (!grouped) {
                         newResult.push('SALES');
+                        grouped = true;
+                    }
+                } else {
+                    newResult.push(key);
+                }
+            }
+            result = newResult;
+        }
+
+        // --- NEW: Purchases Grouping Logic ---
+        const purchasesKeys = ['PURCHASES', 'PAY_OUT'];
+        const activePurchasesArr = result.filter(k => purchasesKeys.includes(k));
+
+        if (activePurchasesArr.length > 1) {
+            let grouped = false;
+            const newResult = [];
+            for (const key of result) {
+                if (purchasesKeys.includes(key)) {
+                    if (!grouped) {
+                        newResult.push('PURCHASES_GROUP');
                         grouped = true;
                     }
                 } else {
@@ -285,9 +306,19 @@ const Sidebar = ({
             isActive: checkActive(view, "sale-marking", "SALE_MARKING")
         },
         SALES_HISTORY: {
-            icon: ShoppingBag, label: "Sales History",
+            icon: ShoppingBag, label: "Sales Invoice",
             onClick: () => { setView("sales-history"); navigate("/sales-history"); closeMobile(); },
             isActive: checkActive(view, "sales-history", "SALES_HISTORY")
+        },
+        PAY_IN: {
+            icon: Wallet, label: "Pay In",
+            onClick: () => { setView("pay-in"); navigate("/dashboard/pay-in"); closeMobile(); },
+            isActive: checkActive(view, "pay-in", "PAY_IN") || location.pathname.includes("/dashboard/pay-in")
+        },
+        PAY_OUT: {
+            icon: Truck, label: "Pay Out",
+            onClick: () => { setView("pay-out"); navigate("/dashboard/pay-out"); closeMobile(); },
+            isActive: checkActive(view, "pay-out", "PAY_OUT") || location.pathname.includes("/dashboard/pay-out")
         },
         REPORTS: {
             icon: TrendingUp, label: "Reports",
@@ -345,7 +376,7 @@ const Sidebar = ({
             isActive: checkActive(view, "service", "SERVICE")
         },
         PURCHASES: {
-            icon: ShoppingCart, label: "Purchases",
+            icon: ShoppingCart, label: "All Purchases",
             onClick: () => { setView("purchases"); navigate("/purchases"); closeMobile(); },
             isActive: checkActive(view, "purchases", "PURCHASES")
         },
@@ -387,7 +418,12 @@ const Sidebar = ({
         SALES: {
             icon: ShoppingBag, label: "Sales",
             isGroup: true,
-            children: ['SALE_MARKING', 'SALES_HISTORY'].filter(k => canAccessRoute(can, canModule, k))
+            children: ['SALE_MARKING', 'SALES_HISTORY', 'PAY_IN'].filter(k => canAccessRoute(can, canModule, k))
+        },
+        PURCHASES_GROUP: {
+            icon: ShoppingCart, label: "Purchases",
+            isGroup: true,
+            children: ['PURCHASES', 'PAY_OUT'].filter(k => canAccessRoute(can, canModule, k))
         }
     };
 
@@ -397,8 +433,9 @@ const Sidebar = ({
             const isAnyChildActive = config.children.some(childKey => MODULE_CONFIG[childKey]?.isActive);
             const isSelfService = key === 'SELF_SERVICE';
             const isSales = key === 'SALES';
-            const isOpen = isSelfService ? isSelfServiceExpanded : (isSales ? isSalesExpanded : false);
-            const toggle = () => isSelfService ? setIsSelfServiceExpanded(!isSelfServiceExpanded) : (isSales ? setIsSalesExpanded(!isSalesExpanded) : null);
+            const isPurchases = key === 'PURCHASES_GROUP';
+            const isOpen = isSelfService ? isSelfServiceExpanded : (isSales ? isSalesExpanded : (isPurchases ? isPurchasesExpanded : false));
+            const toggle = () => isSelfService ? setIsSelfServiceExpanded(!isSelfServiceExpanded) : (isSales ? setIsSalesExpanded(!isSalesExpanded) : (isPurchases ? setIsPurchasesExpanded(!isPurchasesExpanded) : null));
 
             return (
                 <div key={key} className="w-full flex flex-col mb-2">

@@ -7,11 +7,13 @@ import { useNavigate, Link } from "react-router-dom";
 import { itemService, shopService, taxService, unitService, orderService, customerService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
+import { useOrder } from "../../context/OrderContext";
 import { useTheme } from "../../context/ThemeContext";
 import ProductPage from "../Inventory/ProductPage";
 import DatePicker from "../../components/ui/DatePicker";
 import CommonSelect from "../../components/ui/CommonSelect";
 import { toast } from "react-hot-toast";
+import { applyBogoQuantity, getCrossItemFreeAdds } from "../../utils/posOfferHelpers";
 
 const PAYMENT_METHODS = [
     { id: "CASH", label: "Cash", icon: Banknote },
@@ -31,6 +33,7 @@ const SalePage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { activeBranchId, formatCurrency, branches, currentShopId, businessType } = useApp();
+    const { calculateBillDetails, fetchActiveOffers, dismissOffer, offers } = useOrder();
     const { theme } = useTheme();
 
     const [loading, setLoading] = useState(false);
@@ -56,6 +59,7 @@ const SalePage = () => {
     const [showCustomerResults, setShowCustomerResults] = useState(false);
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [productPrefillData, setProductPrefillData] = useState(null);
+    const [discountType, setDiscountType] = useState('flat'); // 'flat' | 'percent'
 
     const fetchInitialData = useCallback(async (branchIdArg) => {
         const branchId = branchIdArg || formData.branchId || activeBranchId;
@@ -75,7 +79,16 @@ const SalePage = () => {
                 unitService.getUnits(),
             ]);
             setCustomers(Array.isArray(customersData) ? customersData : customersData?.data || []);
-            setStockItems(itemsRes.data || []);
+            const items = itemsRes.data || [];
+            setStockItems(items.map((item) => {
+                const taxPercent = Number(item.taxPercent || 0);
+                const taxObj = (taxesRes || []).find((t) => t.percentage === taxPercent);
+                return {
+                    ...item,
+                    taxPercent,
+                    isExclusiveTax: taxObj ? taxObj.taxType === "EXCLUSIVE" : false,
+                };
+            }));
             setShopTaxes((taxesRes || []).filter((t) => t.isActive !== false));
             setUnits(unitsRes || []);
         } catch (error) {
@@ -91,36 +104,89 @@ const SalePage = () => {
         }
     }, [currentShopId, activeBranchId, fetchInitialData]);
 
+    useEffect(() => {
+        if (currentShopId && activeBranchId) {
+            fetchActiveOffers(currentShopId, activeBranchId);
+        }
+    }, [currentShopId, activeBranchId, fetchActiveOffers]);
+
+    const buildLineItem = useCallback((item, quantity) => {
+        const sellingPrice = item.pricing?.sellingPrice ?? item.sellingPrice ?? 0;
+        const taxPercent = Number(item.taxPercent || 0);
+        const taxObj = item.taxId
+            ? shopTaxes.find((t) => t._id === (item.taxId?._id || item.taxId))
+            : shopTaxes.find((t) => t.percentage === taxPercent);
+        const isExclusiveTax = item.isExclusiveTax ?? (taxObj ? taxObj.taxType === "EXCLUSIVE" : false);
+        return {
+            itemId: item._id || item.itemId,
+            name: item.name,
+            itemCode: item.itemCode,
+            quantity,
+            sellingPrice,
+            discountAmount: 0,
+            categoryId: item.categoryId?._id || item.categoryId || null,
+            category_id: item.categoryId?._id || item.categoryId || null,
+            taxId: item.taxId?._id || item.taxId || null,
+            taxPercent,
+            taxAmount: calcLineTax(sellingPrice, quantity, taxPercent),
+            isExclusiveTax,
+            unitId: item.unitId?._id || item.unitId,
+            primaryUnitName: item.unitId?.name || "",
+            unitName: item.unitId?.name || "",
+            secondaryUnitId: item.secondaryUnitId?._id || item.secondaryUnitId,
+            secondaryUnitName: item.secondaryUnitId?.name || "",
+            conversionFactor: item.conversionFactor || 1,
+            selectedUnit: item.defaultSaleUnit || item.defaultPurchaseUnit || "PRIMARY",
+        };
+    }, [shopTaxes]);
+
+    const appendCrossItemFreeAdds = useCallback((items, sourceItemId, paidQty, catalog) => {
+        const crossAdds = getCrossItemFreeAdds(paidQty, sourceItemId, offers, catalog);
+        let next = [...items];
+        crossAdds.forEach(({ item, quantity, offerName }) => {
+            const existingIdx = next.findIndex((it) => it.itemId === item._id);
+            if (existingIdx >= 0) {
+                const row = next[existingIdx];
+                const newQty = row.quantity + quantity;
+                next[existingIdx] = {
+                    ...row,
+                    quantity: newQty,
+                    taxAmount: calcLineTax(row.sellingPrice, newQty, row.taxPercent),
+                };
+            } else {
+                next.push(buildLineItem(item, quantity));
+            }
+            toast.success(`${offerName}: added ${quantity} ${item.name}`, { icon: "🎁", duration: 3000 });
+        });
+        return next;
+    }, [offers, buildLineItem]);
+
     const handleAddItem = useCallback((item) => {
         if (!item?._id) return;
         setFormData((prev) => {
-            if (prev.items.some((it) => it.itemId === item._id)) {
-                toast.error("Item already added. Adjust quantity in the list.");
-                return prev;
+            const existingIdx = prev.items.findIndex((it) => it.itemId === item._id);
+            let items = [...prev.items];
+
+            if (existingIdx >= 0) {
+                const row = items[existingIdx];
+                const newQty = row.quantity + 1;
+                items[existingIdx] = {
+                    ...row,
+                    quantity: newQty,
+                    taxAmount: calcLineTax(row.sellingPrice, newQty, row.taxPercent),
+                };
+            } else {
+                const withBogo = applyBogoQuantity(1, item._id, offers);
+                if (withBogo > 1) {
+                    toast.success(`Offer applied: ${withBogo - 1} free ${item.name}`, { icon: "🎁", duration: 3000 });
+                }
+                items.push(buildLineItem(item, withBogo));
+                items = appendCrossItemFreeAdds(items, item._id, 1, stockItems);
             }
-            const sellingPrice = item.pricing?.sellingPrice ?? item.sellingPrice ?? 0;
-            const taxPercent = item.taxPercent || 0;
-            const newItem = {
-                itemId: item._id,
-                name: item.name,
-                itemCode: item.itemCode,
-                quantity: 1,
-                sellingPrice,
-                discountAmount: 0,
-                taxId: item.taxId || null,
-                taxPercent,
-                taxAmount: calcLineTax(sellingPrice, 1, taxPercent),
-                unitId: item.unitId?._id || item.unitId,
-                primaryUnitName: item.unitId?.name || "",
-                unitName: item.unitId?.name || "",
-                secondaryUnitId: item.secondaryUnitId?._id || item.secondaryUnitId,
-                secondaryUnitName: item.secondaryUnitId?.name || "",
-                conversionFactor: item.conversionFactor || 1,
-                selectedUnit: item.defaultSaleUnit || item.defaultPurchaseUnit || "PRIMARY",
-            };
-            return { ...prev, items: [...prev.items, newItem] };
+
+            return { ...prev, items };
         });
-    }, []);
+    }, [offers, stockItems, buildLineItem, appendCrossItemFreeAdds]);
 
     const handleItemChange = (index, field, value) => {
         const updatedItems = [...formData.items];
@@ -168,40 +234,28 @@ const SalePage = () => {
         }));
     };
 
-    const { subtotal, taxTotal } = useMemo(() => {
-        if (!formData.items?.length) return { subtotal: 0, taxTotal: 0 };
-        const totals = formData.items.reduce(
-            (acc, it) => {
-                const taxObj = it.taxId
-                    ? shopTaxes.find((t) => t._id === it.taxId)
-                    : shopTaxes.find((t) => t.percentage === Number(it.taxPercent || 0));
-                const isExclusive = taxObj ? taxObj.taxType === "EXCLUSIVE" : false;
-                if (isExclusive) {
-                    acc.subtotal += it.quantity * it.sellingPrice;
-                    acc.taxTotal += it.taxAmount || 0;
-                } else {
-                    acc.subtotal += it.quantity * it.sellingPrice - (it.taxAmount || 0);
-                    acc.taxTotal += it.taxAmount || 0;
-                }
-                return acc;
-            },
-            { subtotal: 0, taxTotal: 0 }
-        );
-        return {
-            subtotal: parseFloat(totals.subtotal.toFixed(4)),
-            taxTotal: parseFloat(totals.taxTotal.toFixed(4)),
-        };
-    }, [formData.items, shopTaxes]);
+    const orderItemsForBill = useMemo(() =>
+        (formData.items || []).map((it) => ({
+            ...it,
+            id: it.itemId,
+            _id: it.itemId,
+            price: it.sellingPrice,
+            sellingPrice: it.sellingPrice,
+            categoryId: it.categoryId,
+            category_id: it.category_id,
+            taxPercent: it.taxPercent || 0,
+            isExclusiveTax: it.isExclusiveTax,
+        })),
+    [formData.items]);
 
-    useEffect(() => {
-        const grand = subtotal + taxTotal - (Number(formData.discountTotal) || 0);
-        setFormData((prev) => ({
-            ...prev,
-            subtotal: parseFloat(subtotal.toFixed(4)),
-            taxTotal: parseFloat(taxTotal.toFixed(4)),
-            grandTotal: parseFloat(Math.max(0, grand).toFixed(4)),
-        }));
-    }, [subtotal, taxTotal, formData.discountTotal]);
+    const billDetails = useMemo(() =>
+        calculateBillDetails(
+            orderItemsForBill,
+            { type: "flat", value: Number(formData.discountTotal) || 0 },
+            0,
+            false
+        ),
+    [orderItemsForBill, formData.discountTotal, calculateBillDetails, offers]);
 
     const filteredCustomers = useMemo(() => {
         const q = customerSearch.trim().toLowerCase();
@@ -253,7 +307,7 @@ const SalePage = () => {
             toast.error("Add at least one product.");
             return;
         }
-        if (formData.grandTotal <= 0) {
+        if ((billDetails.finalTotal || 0) <= 0) {
             toast.error("Sale total must be greater than zero.");
             return;
         }
@@ -286,10 +340,16 @@ const SalePage = () => {
                 customerName: selectedCustomer?.name || "",
                 customerPhone: selectedCustomer?.phone || "",
                 items: payloadItems,
-                subtotal: formData.subtotal,
-                discountTotal: formData.discountTotal || 0,
-                taxTotal: formData.taxTotal,
-                grandTotal: formData.grandTotal,
+                subtotal: billDetails.subtotal,
+                discountTotal: billDetails.discountAmount || formData.discountTotal || 0,
+                offerDiscountTotal: billDetails.offerDiscountTotal || 0,
+                appliedOffers: (billDetails.appliedOffers || []).map((o) => ({
+                    offerId: o.offerId,
+                    offerName: o.name,
+                    discountAmount: o.discount || 0,
+                })),
+                taxTotal: billDetails.taxAmount,
+                grandTotal: billDetails.finalTotal,
                 notes: formData.notes || "Manual sale entry",
                 createdBy: user?._id || user?.id,
             };
@@ -299,7 +359,7 @@ const SalePage = () => {
 
             await orderService.addPayment(orderId, {
                 paymentMethod: paymentMethod.toUpperCase(),
-                amount: formData.grandTotal,
+                amount: billDetails.finalTotal,
                 customerName: selectedCustomer?.name,
                 customerPhone: selectedCustomer?.phone,
             });
@@ -316,35 +376,35 @@ const SalePage = () => {
     };
 
     return (
-        <div className={`min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg} p-4 md:p-8`}>
-            <div className="max-w-[1400px] mx-auto space-y-8 pb-16">
-                <div className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>
-                    <Link to="/sales-history" className="hover:text-indigo-600 transition-colors flex items-center gap-1">
-                        <ArrowLeft size={14} /> Sales History
+        <div className={`min-h-full ${theme.pageBg} p-3 md:p-8`}>
+            <div className="max-w-[1400px] mx-auto space-y-4 md:space-y-8 pb-10">
+                <div className="mb-2">
+                    <Link to="/sales-history" className={`inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest transition-colors hover:opacity-70 ${theme.textMuted}`}>
+                        <ArrowLeft size={14} /> Back to Purchases
                     </Link>
                 </div>
 
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 md:mb-8">
                     <div>
-                        <h1 className={`text-2xl md:text-3xl font-black uppercase ${theme.textHeading}`}>
+                        <h1 className={`text-xl md:text-3xl font-black uppercase ${theme.textHeading}`}>
                             New Manual Sale
                         </h1>
-                        <p className={`font-bold text-xs uppercase tracking-widest mt-1 ${theme.textMuted}`}>
+                        <p className={`font-bold text-[10px] uppercase tracking-widest mt-0.5 ${theme.textMuted}`}>
                             Product selection & optional customer
                         </p>
                     </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-8">
-                    <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 md:p-12 border ${theme.borderLight}`}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <form onSubmit={handleSubmit} className="space-y-4 md:space-y-8">
+                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-12 border ${theme.borderLight}`}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
                             <div className="space-y-3">
                                 <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
                                     <User size={12} /> Customer <span className="opacity-50">(optional)</span>
                                 </label>
                                 <div className="relative">
                                     {formData.customerId && selectedCustomer ? (
-                                        <div className={`p-6 rounded-3xl border-2 border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-900/10 relative group`}>
+                                        <div className={`p-3 md:p-6 rounded-2xl md:rounded-3xl border-2 border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-900/10 relative group`}>
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -465,8 +525,8 @@ const SalePage = () => {
                         </div>
                     </div>
 
-                    <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 md:p-12 border ${theme.borderLight} space-y-6`}>
-                        <h2 className={`text-xl font-black flex items-center gap-3 uppercase ${theme.textHeading}`}>
+                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-12 border ${theme.borderLight} space-y-4 md:space-y-6`}>
+                        <h2 className={`text-base md:text-xl font-black flex items-center gap-3 uppercase ${theme.textHeading}`}>
                             <Package className="text-indigo-600" /> Products
                         </h2>
 
@@ -495,102 +555,170 @@ const SalePage = () => {
                         />
 
                         {formData.items.length === 0 ? (
-                            <div className={`text-center py-16 rounded-3xl border-2 border-dashed ${theme.borderLight}`}>
-                                <ShoppingBag size={40} className="mx-auto mb-3 text-gray-300" />
+                            <div className={`text-center py-12 rounded-3xl border-2 border-dashed ${theme.borderLight}`}>
+                                <ShoppingBag size={36} className="mx-auto mb-3 text-gray-300" />
                                 <p className={`font-bold ${theme.textMuted}`}>No products added yet</p>
                             </div>
                         ) : (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left">
-                                    <thead>
-                                        <tr className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} border-b ${theme.borderLight}`}>
-                                            <th className="py-4 pr-4">Product</th>
-                                            <th className="py-4 px-2 w-24">Qty</th>
-                                            <th className="py-4 px-2 w-32">Price</th>
-                                            <th className="py-4 px-2 w-24">Tax %</th>
-                                            <th className="py-4 px-2 text-right">Line total</th>
-                                            <th className="py-4 w-12" />
-                                        </tr>
-                                    </thead>
-                                    <tbody className={`divide-y ${theme.borderLight}`}>
-                                        {formData.items.map((row, idx) => {
-                                            const lineTotal =
-                                                row.quantity * row.sellingPrice +
-                                                (row.taxAmount || 0) -
-                                                (row.discountAmount || 0);
-                                            return (
-                                                <tr key={row.itemId}>
-                                                    <td className="py-4 pr-4">
+                            <>
+                                {/* Desktop table lg+ */}
+                                <div className="hidden lg:block overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} border-b ${theme.borderLight}`}>
+                                                <th className="py-4 pr-4">Product</th>
+                                                <th className="py-4 px-2 w-24">Qty</th>
+                                                <th className="py-4 px-2 w-32">Price</th>
+                                                <th className="py-4 px-2 w-24">Tax %</th>
+                                                <th className="py-4 px-2 w-28">Disc ₹</th>
+                                                <th className="py-4 px-2 text-right">Line total</th>
+                                                <th className="py-4 w-12" />
+                                            </tr>
+                                        </thead>
+                                        <tbody className={`divide-y ${theme.borderLight}`}>
+                                            {formData.items.map((row, idx) => {
+                                                const lineTotal =
+                                                    row.quantity * row.sellingPrice +
+                                                    (row.taxAmount || 0) -
+                                                    (row.discountAmount || 0);
+                                                const freeItemInfo = billDetails.freeItems?.find(
+                                                    (fi) => String(fi.itemId) === String(row.itemId)
+                                                );
+                                                const isOfferApplied = billDetails.appliedOfferItemIds?.map(String).includes(String(row.itemId));
+                                                return (
+                                                    <tr key={row.itemId}>
+                                                        <td className="py-4 pr-4">
+                                                            <p className={`font-black ${theme.textPrimary}`}>
+                                                                {row.name}
+                                                                {row.taxPercent > 0 && (
+                                                                    <span className={`text-[10px] font-bold ${theme.textMuted} ml-1`}>({row.taxPercent}%)</span>
+                                                                )}
+                                                            </p>
+                                                            <p className={`text-[10px] font-bold ${theme.textMuted}`}>{row.itemCode}</p>
+                                                            {(freeItemInfo || isOfferApplied) && (
+                                                                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                                                    {freeItemInfo && (
+                                                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                                                                            + {freeItemInfo.quantity} FREE
+                                                                        </span>
+                                                                    )}
+                                                                    {billDetails.appliedOffers?.filter((o) =>
+                                                                        o.name?.toLowerCase().includes("buy") || freeItemInfo
+                                                                    ).map((o) => (
+                                                                        <span key={o.offerId || o.name} className="text-[10px] font-black uppercase text-emerald-600">
+                                                                            {o.name}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-4 px-2">
+                                                            <input type="number" min="0.01" step="any" value={row.quantity}
+                                                                onChange={(e) => handleItemChange(idx, "quantity", parseFloat(e.target.value) || 0)}
+                                                                className={`w-full p-2 rounded-xl font-black text-center ${theme.inputBg} border ${theme.borderLight}`} />
+                                                        </td>
+                                                        <td className="py-4 px-2">
+                                                            <input type="number" min="0" step="any" value={row.sellingPrice}
+                                                                onChange={(e) => handleItemChange(idx, "sellingPrice", parseFloat(e.target.value) || 0)}
+                                                                className={`w-full p-2 rounded-xl font-black text-right ${theme.inputBg} border ${theme.borderLight}`} />
+                                                        </td>
+                                                        <td className="py-4 px-2">
+                                                            <input type="number" min="0" value={row.taxPercent}
+                                                                onChange={(e) => handleItemChange(idx, "taxPercent", parseFloat(e.target.value) || 0)}
+                                                                className={`w-full p-2 rounded-xl font-black text-center ${theme.inputBg} border ${theme.borderLight}`} />
+                                                        </td>
+                                                        <td className="py-4 px-2">
+                                                            <input type="number" min="0" step="any" value={row.discountAmount || ""}
+                                                                onChange={(e) => handleItemChange(idx, "discountAmount", parseFloat(e.target.value) || 0)}
+                                                                placeholder="0"
+                                                                className={`w-full p-2 rounded-xl font-black text-center text-emerald-600 ${theme.inputBg} border ${theme.borderLight}`} />
+                                                        </td>
+                                                        <td className={`py-4 px-2 text-right font-black ${theme.textPrimary}`}>{formatCurrency(lineTotal)}</td>
+                                                        <td className="py-4">
+                                                            <button type="button" onClick={() => removeItem(idx)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl">
+                                                                <Trash2 size={18} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Mobile/Tablet cards below lg */}
+                                <div className={`lg:hidden divide-y ${theme.borderLight}`}>
+                                    {formData.items.map((row, idx) => {
+                                        const lineTotal = row.quantity * row.sellingPrice + (row.taxAmount || 0) - (row.discountAmount || 0);
+                                        const freeItemInfo = billDetails.freeItems?.find(
+                                            (fi) => String(fi.itemId) === String(row.itemId)
+                                        );
+                                        return (
+                                            <div key={row.itemId} className="py-3 space-y-3">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div>
                                                         <p className={`font-black ${theme.textPrimary}`}>{row.name}</p>
                                                         <p className={`text-[10px] font-bold ${theme.textMuted}`}>{row.itemCode}</p>
-                                                    </td>
-                                                    <td className="py-4 px-2">
-                                                        <input
-                                                            type="number"
-                                                            min="0.01"
-                                                            step="any"
-                                                            value={row.quantity}
-                                                            onChange={(e) =>
-                                                                handleItemChange(idx, "quantity", parseFloat(e.target.value) || 0)
-                                                            }
-                                                            className={`w-full p-2 rounded-xl font-black text-center ${theme.inputBg} border ${theme.borderLight}`}
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 px-2">
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            step="any"
-                                                            value={row.sellingPrice}
-                                                            onChange={(e) =>
-                                                                handleItemChange(idx, "sellingPrice", parseFloat(e.target.value) || 0)
-                                                            }
-                                                            className={`w-full p-2 rounded-xl font-black text-right ${theme.inputBg} border ${theme.borderLight}`}
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 px-2">
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            value={row.taxPercent}
-                                                            onChange={(e) =>
-                                                                handleItemChange(idx, "taxPercent", parseFloat(e.target.value) || 0)
-                                                            }
-                                                            className={`w-full p-2 rounded-xl font-black text-center ${theme.inputBg} border ${theme.borderLight}`}
-                                                        />
-                                                    </td>
-                                                    <td className={`py-4 px-2 text-right font-black ${theme.textPrimary}`}>
-                                                        {formatCurrency(lineTotal)}
-                                                    </td>
-                                                    <td className="py-4">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeItem(idx)}
-                                                            className="p-2 text-red-500 hover:bg-red-50 rounded-xl"
-                                                        >
-                                                            <Trash2 size={18} />
+                                                        {freeItemInfo && (
+                                                            <span className="inline-block mt-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">
+                                                                + {freeItemInfo.quantity} FREE
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        <span className={`font-black text-sm text-indigo-600`}>{formatCurrency(lineTotal)}</span>
+                                                        <button type="button" onClick={() => removeItem(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg">
+                                                            <Trash2 size={15} />
                                                         </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Qty</p>
+                                                        <input type="number" min="0.01" step="any" value={row.quantity}
+                                                            onChange={(e) => handleItemChange(idx, "quantity", parseFloat(e.target.value) || 0)}
+                                                            className={`w-full p-2 rounded-xl font-black text-center text-sm ${theme.inputBg} border ${theme.borderLight}`} />
+                                                    </div>
+                                                    <div>
+                                                        <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Price</p>
+                                                        <input type="number" min="0" step="any" value={row.sellingPrice}
+                                                            onChange={(e) => handleItemChange(idx, "sellingPrice", parseFloat(e.target.value) || 0)}
+                                                            className={`w-full p-2 rounded-xl font-black text-right text-sm ${theme.inputBg} border ${theme.borderLight}`} />
+                                                    </div>
+                                                    <div>
+                                                        <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Tax %</p>
+                                                        <input type="number" min="0" value={row.taxPercent}
+                                                            onChange={(e) => handleItemChange(idx, "taxPercent", parseFloat(e.target.value) || 0)}
+                                                            className={`w-full p-2 rounded-xl font-black text-center text-sm ${theme.inputBg} border ${theme.borderLight}`} />
+                                                    </div>
+                                                    <div>
+                                                        <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Disc ₹</p>
+                                                        <input type="number" min="0" step="any" value={row.discountAmount || ""}
+                                                            onChange={(e) => handleItemChange(idx, "discountAmount", parseFloat(e.target.value) || 0)}
+                                                            placeholder="0"
+                                                            className={`w-full p-2 rounded-xl font-black text-center text-sm text-emerald-600 ${theme.inputBg} border ${theme.borderLight}`} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
                         )}
                     </div>
 
-                    <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 md:p-12 border ${theme.borderLight}`}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-12 border ${theme.borderLight}`}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
                             <div className="space-y-4">
                                 <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Payment method</p>
-                                <div className="flex flex-wrap gap-2">
+                                {/* 2-column grid on mobile for payment buttons */}
+                                <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-2">
                                     {PAYMENT_METHODS.map(({ id, label, icon: Icon }) => (
                                         <button
                                             key={id}
                                             type="button"
                                             onClick={() => setPaymentMethod(id)}
-                                            className={`px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${
+                                            className={`w-full py-3 md:w-auto md:px-5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
                                                 paymentMethod === id
                                                     ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/25"
                                                     : `${theme.mode === "dark" ? "bg-white/5 text-gray-400 hover:bg-white/10" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`
@@ -603,61 +731,104 @@ const SalePage = () => {
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>
-                                        Bill discount
+                                        Bill Discount
                                     </label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={formData.discountTotal}
-                                        onChange={(e) =>
-                                            setFormData((prev) => ({
-                                                ...prev,
-                                                discountTotal: parseFloat(e.target.value) || 0,
-                                            }))
-                                        }
-                                        className={`w-full p-4 rounded-2xl font-black ${theme.inputBg} border ${theme.borderLight}`}
-                                    />
+                                    <div className={`rounded-2xl border ${theme.borderLight} ${theme.inputBg} overflow-hidden`}>
+                                        <div className={`flex items-center border-b ${theme.borderLight}`}>
+                                            <span className={`px-3 text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Discount</span>
+                                            <div className="ml-auto flex">
+                                                <button type="button"
+                                                    onClick={() => setDiscountType('flat')}
+                                                    className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}>
+                                                    ₹ Flat
+                                                </button>
+                                                <button type="button"
+                                                    onClick={() => setDiscountType('percent')}
+                                                    className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'percent' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}>
+                                                    % Off
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={formData.discountTotal}
+                                            onChange={(e) => {
+                                                const raw = parseFloat(e.target.value) || 0;
+                                                // If percent, compute actual discount amount from subtotal
+                                                const discAmt = discountType === 'percent'
+                                                    ? parseFloat(((billDetails.subtotal * raw) / 100).toFixed(4))
+                                                    : raw;
+                                                setFormData((prev) => ({ ...prev, discountTotal: discAmt }));
+                                            }}
+                                            placeholder={discountType === 'percent' ? "Enter %" : "Enter amount"}
+                                            className={`w-full px-4 py-3 font-black outline-none bg-transparent ${theme.textPrimary}`}
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                            <div className={`p-8 rounded-3xl ${theme.mode === "dark" ? "bg-indigo-950/40" : "bg-indigo-50"} space-y-3`}>
+                            <div className={`p-4 md:p-8 rounded-2xl md:rounded-3xl ${theme.mode === "dark" ? "bg-indigo-950/40" : "bg-indigo-50"} space-y-3`}>
                                 <div className="flex justify-between text-sm font-bold">
                                     <span className={theme.textMuted}>Subtotal</span>
-                                    <span>{formatCurrency(formData.subtotal)}</span>
+                                    <span>{formatCurrency(billDetails.subtotal)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm font-bold">
                                     <span className={theme.textMuted}>Tax</span>
-                                    <span>{formatCurrency(formData.taxTotal)}</span>
+                                    <span>{formatCurrency(billDetails.taxAmount)}</span>
                                 </div>
+                                {billDetails.appliedOffers?.length > 0 && (
+                                    <div className="space-y-1.5">
+                                        <p className={`text-[10px] font-black uppercase tracking-widest text-emerald-600`}>Applied Offers</p>
+                                        {billDetails.appliedOffers.map((offer, idx) => (
+                                            <div key={offer.offerId || idx} className="flex justify-between items-center text-sm font-bold text-emerald-600 gap-2">
+                                                <span className="truncate">{offer.name}</span>
+                                                <div className="flex items-center gap-2 flex-shrink-0">
+                                                    <span>-{formatCurrency(offer.discount)}</span>
+                                                    {offer.offerId && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => dismissOffer(offer.offerId)}
+                                                            className="p-1 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
+                                                            title="Remove offer"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                                 {formData.discountTotal > 0 && (
                                     <div className="flex justify-between text-sm font-bold text-orange-600">
                                         <span>Discount</span>
                                         <span>-{formatCurrency(formData.discountTotal)}</span>
                                     </div>
                                 )}
-                                <div className={`flex justify-between pt-4 border-t ${theme.borderLight}`}>
-                                    <span className={`text-lg font-black ${theme.textHeading}`}>Grand total</span>
-                                    <span className="text-3xl font-black text-indigo-600">
-                                        {formatCurrency(formData.grandTotal)}
+                                <div className={`flex justify-between items-center pt-4 border-t ${theme.borderLight}`}>
+                                    <span className={`text-base md:text-lg font-black ${theme.textHeading}`}>Grand total</span>
+                                    <span className="text-xl md:text-3xl font-black text-indigo-600">
+                                        {formatCurrency(billDetails.finalTotal)}
                                     </span>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex flex-col sm:flex-row gap-4 mt-10">
-                            <button
-                                type="button"
-                                onClick={() => navigate("/sales-history")}
-                                className={`flex-1 py-4 rounded-2xl font-black uppercase tracking-widest text-sm ${theme.mode === "dark" ? "bg-gray-800 text-gray-400" : "bg-gray-100 text-gray-500"}`}
-                            >
-                                Cancel
-                            </button>
+                        <div className="flex flex-col gap-2 mt-6 md:mt-10 md:flex-row">
                             <button
                                 type="submit"
                                 disabled={loading || formData.items.length === 0}
-                                className="flex-[2] py-4 rounded-2xl font-black uppercase tracking-widest text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+                                className="w-full md:flex-[2] py-3 md:py-4 rounded-2xl font-black uppercase tracking-widest text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
                             >
-                                {loading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                                {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                                 {loading ? "Saving..." : "Complete sale"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => navigate("/sales-history")}
+                                className={`w-full md:flex-1 py-2.5 md:py-4 rounded-2xl font-black uppercase tracking-widest text-sm ${theme.mode === "dark" ? "bg-gray-800 text-gray-400" : "bg-gray-100 text-gray-500"}`}
+                            >
+                                Cancel
                             </button>
                         </div>
                     </div>
@@ -665,8 +836,8 @@ const SalePage = () => {
             </div>
 
             {isProductModalOpen && (
-                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
-                    <div className={`w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-[40px] shadow-2xl relative flex flex-col ${theme.surfaceBg}`}>
+                <div className="fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm md:p-8">
+                    <div className={`w-full max-w-6xl h-full md:h-auto md:max-h-[90vh] overflow-hidden md:rounded-[40px] shadow-2xl relative flex flex-col ${theme.surfaceBg}`}>
                         <button
                             type="button"
                             onClick={() => setIsProductModalOpen(false)}

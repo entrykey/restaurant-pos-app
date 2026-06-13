@@ -131,7 +131,8 @@ const AppContent = () => {
     const {
         isTakeaway, setIsTakeaway, takeawayOrder, setTakeawayOrder,
         takeawayCustName, setTakeawayCustName, takeawayCustPhone, setTakeawayCustPhone,
-        resetTakeaway, tableId, activeTabId, selectedCustomer
+        resetTakeaway, tableId, activeTabId, selectedCustomer,
+        tabs, closeTab
     } = useTakeaway();
 
     const {
@@ -851,9 +852,9 @@ const AppContent = () => {
 
             let orderId = currentOrder.orderId;
             if (!orderId) {
-                const { subtotal, taxTotal, total, taxBreakdown } = calculateBillDetails(
+                const billDetails = calculateBillDetails(
                     orderItems,
-                    currentOrder.discount || billDiscount || { type: 'flat', value: 0 },
+                    billDiscount || { type: 'flat', value: 0 },
                     settings?.defaultTaxPercent || 0,
                     true, // autoRound
                     isTakeaway ? exchangeCredit : 0,
@@ -861,36 +862,15 @@ const AppContent = () => {
                     null // TODO: Get customer state code if possible
                 );
 
-                const payloadItems = orderItems.map(item => {
-                    const itemTaxPercent = (item.taxPercent !== undefined && item.taxPercent !== null) 
-                        ? Number(item.taxPercent) 
-                        : (settings?.defaultTaxPercent || 0);
-                    return {
-                        itemId: item.id || item._id,
-                        itemName: item.name,
-                        price: item.price,
-                        quantity: item.quantity,
-                        totalAmount: calculateItemTotal(item),
-                        variantId: item.selectedVariant ? item.selectedVariant._id : null,
-                        notes: item.suggestion,
-                        taxPercent: itemTaxPercent,
-                        taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100)
-                    };
-                });
-
                 const created = await orderService.createOrder({
                     shopId: currentShopId,
                     branchId: getResolvedBranchId(),
                     businessType: businessType || "RESTAURANT",
                     orderType: activeOrderType,
-                    customerId: null,
+                    customerId: selectedCustomer?._id || null,
                     tableId: !isTakeaway ? table?._id || table?.id : null,
-                    items: payloadItems,
-                    subtotal,
-                    discountTotal: currentOrder.discountTotal || 0,
-                    taxTotal,
-                    grandTotal: total,
-                    taxBreakdown,
+                    items: buildOrderPayloadItems(orderItems),
+                    ...buildOrderTotalsFromBill(billDetails),
                     createdBy: currentUser._id,
                     customerName: takeawayCustName || "",
                     customerPhone: takeawayCustPhone || ""
@@ -937,6 +917,11 @@ const AppContent = () => {
                 },
                 items: itemsForPrint,
                 totals,
+                offers: (orderFromBackend?.appliedOffers || []).map(o => ({
+                    name: o.offerName || o.name,
+                    discount: o.discountAmount || o.discount || 0,
+                })),
+                staffName: orderFromBackend?.createdBy?.name || currentUser?.name || "",
                 formatCurrency,
             });
         } catch (e) {
@@ -958,6 +943,23 @@ const AppContent = () => {
 
     const activeTable = tables.find(t => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId));
     const activeOrderCustomerId = activeTable?.order?.customerId || null;
+
+    const mapAppliedOffersForApi = (appliedOffers = []) =>
+        (appliedOffers || []).map((o) => ({
+            offerId: o.offerId || o._id || o.id,
+            offerName: o.name || o.offerName,
+            discountAmount: o.discount || o.discountAmount || 0,
+        }));
+
+    const buildOrderTotalsFromBill = (billDetails) => ({
+        subtotal: billDetails.subtotal,
+        discountTotal: billDetails.discountAmount || 0,
+        offerDiscountTotal: billDetails.offerDiscountTotal || 0,
+        appliedOffers: mapAppliedOffersForApi(billDetails.appliedOffers),
+        taxTotal: billDetails.taxAmount || 0,
+        grandTotal: billDetails.finalTotal ?? billDetails.total ?? 0,
+        taxBreakdown: billDetails.taxBreakdown,
+    });
 
     const buildOrderPayloadItems = (orderItems = []) => {
         return orderItems.map((item) => {
@@ -1033,9 +1035,9 @@ const AppContent = () => {
                     return;
                 }
 
-                const { subtotal, taxTotal, total, taxBreakdown } = calculateBillDetails(
+                const billDetails = calculateBillDetails(
                     orderItems,
-                    takeawayOrder.discount || billDiscount || { type: "flat", value: 0 },
+                    billDiscount || { type: "flat", value: 0 },
                     settings?.defaultTaxPercent || 0,
                     true,
                     exchangeCredit,
@@ -1053,11 +1055,7 @@ const AppContent = () => {
                     customerPhone: takeawayCustPhone || "",
                     tableId: null,
                     items: payloadItems,
-                    subtotal,
-                    discountTotal: takeawayOrder.discountTotal || 0,
-                    taxTotal,
-                    grandTotal: total,
-                    taxBreakdown,
+                    ...buildOrderTotalsFromBill(billDetails),
                     orderStatus: takeawayOrder?.isHistoryEdit ? "COMPLETED" : "OPEN",
                     createdBy: currentUser?._id,
                     notes: takeawayOrder?.isHistoryEdit
@@ -1134,7 +1132,7 @@ const AppContent = () => {
         const triggeredOffers = (offers || []).filter(o => 
             o.isActive && 
             o.condition?.applyOn === "ITEM" && 
-            (o.condition?.itemIds || []).includes(item.id || item._id) &&
+            (o.condition?.itemIds || []).map(String).includes(String(item.id || item._id)) &&
             o.reward?.rewardType === "FREE_ITEM"
         );
 
@@ -1144,7 +1142,7 @@ const AppContent = () => {
             
             // Check if it's the same item (BOGO style) or a different item (Cross-item)
             const rewardItemIds = offer.reward.itemIds || (offer.reward.specificItemId ? [offer.reward.specificItemId] : []);
-            const isSameItem = rewardItemIds.length === 0 || rewardItemIds.includes(item.id || item._id);
+            const isSameItem = rewardItemIds.length === 0 || rewardItemIds.map(String).includes(String(item.id || item._id));
             
             if (isSameItem) {
                 // For BOGO: If adding 'buyQty' multiples, we can automatically add the 'freeQty' multiples
@@ -1391,9 +1389,9 @@ const AppContent = () => {
         if (orderItems.length === 0) return;
 
         try {
-            const { subtotal, taxTotal, total, taxBreakdown } = calculateBillDetails(
+            const billDetails = calculateBillDetails(
                 orderItems,
-                currentOrder.discount || { type: 'flat', value: 0 },
+                billDiscount || { type: 'flat', value: 0 },
                 settings?.defaultTaxPercent || 0,
                 true, // autoRound
                 isTakeaway ? exchangeCredit : 0,
@@ -1432,11 +1430,7 @@ const AppContent = () => {
                 customerId: null,
                 tableId: !isTakeaway ? table?._id || table?.id : null,
                 items: payloadItems,
-                subtotal,
-                discountTotal: currentOrder.discountTotal || 0,
-                taxTotal,
-                grandTotal: total,
-                taxBreakdown,
+                ...buildOrderTotalsFromBill(billDetails),
                 exchangeCredit: exchangeCredit,
                 originalOrderId: originalOrderId,
                 isExchange: isExchange,
@@ -1536,6 +1530,7 @@ const AppContent = () => {
                         notes: k.notes,
                         variant: k.variant,
                     })),
+                    staffName: currentUser?.name || "",
                 });
             }
         } catch (error) {
@@ -1598,54 +1593,35 @@ const AppContent = () => {
 
             let currentOrderId = currentOrder.orderId;
 
+            const orderPayload = {
+                shopId: currentShopId,
+                branchId: getResolvedBranchId(),
+                businessType: businessType || "RESTAURANT",
+                orderType: activeOrderType,
+                customerId: billDetails.customerId || selectedCustomer?._id || activeOrderCustomerId || null,
+                customerName: finalCustName,
+                customerPhone: finalCustPhone,
+                tableId: !isTakeaway ? table?._id || table?.id : null,
+                items: buildOrderPayloadItems(orderItems),
+                ...buildOrderTotalsFromBill(billDetails),
+                exchangeCredit: exchangeCredit,
+                originalOrderId: originalOrderId,
+                isExchange: isExchange,
+                returnedItems: returnedItems,
+                totalPaid: finalPaidAmount,
+                paymentStatus: paymentStatus,
+                orderStatus: 'COMPLETED',
+                createdBy: currentUser._id,
+                servedBy: currentUser._id,
+                managedBy: currentUser._id,
+                notes: `Checkout completed via POS (${activeOrderType})`,
+            };
+
             if (!currentOrderId) {
-                const orderPayload = {
-                    shopId: currentShopId,
-                    branchId: getResolvedBranchId(),
-                    businessType: businessType || "RESTAURANT",
-                    orderType: activeOrderType,
-                    customerId: billDetails.customerId || null,
-                    customerName: finalCustName,
-                    customerPhone: finalCustPhone,
-                    tableId: !isTakeaway ? table?._id || table?.id : null,
-                    items: orderItems.map(item => {
-                        const itemTaxPercent = (item.taxPercent !== undefined && item.taxPercent !== null) 
-                            ? Number(item.taxPercent) 
-                            : (settings?.defaultTaxPercent || 0);
-                        return {
-                            itemId: item.id || item._id,
-                            itemName: item.name,
-                            price: item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice),
-                            quantity: item.quantity,
-                            totalAmount: calculateItemTotal(item),
-                            variantId: item.selectedVariant ? (item.selectedVariant._id || item.selectedVariant.id) : null,
-                            portionName: item.selectedVariant ? item.selectedVariant.name : null,
-                            quantityFactor: item.selectedVariant ? (item.selectedVariant.quantityFactor || 1) : 1,
-                            notes: item.suggestion,
-                            taxPercent: itemTaxPercent,
-                            taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100),
-                            selectedUnit: item.selectedUnit || "PRIMARY",
-                            conversionFactor: item.conversionFactor || 1
-                        };
-                    }),
-                    subtotal: billDetails.subtotal,
-                    discountTotal: billDetails.discountAmount,
-                    taxTotal: billDetails.taxAmount,
-                    grandTotal: billDetails.finalTotal,
-                    taxBreakdown: billDetails.taxBreakdown,
-                    exchangeCredit: exchangeCredit,
-                    originalOrderId: originalOrderId,
-                    isExchange: isExchange,
-                    returnedItems: returnedItems,
-                    totalPaid: finalPaidAmount,
-                    paymentStatus: paymentStatus,
-                    orderStatus: 'COMPLETED',
-                    createdBy: currentUser._id,
-                    servedBy: currentUser._id,
-                    managedBy: currentUser._id
-                };
                 const createdOrder = await orderService.createOrder(orderPayload);
                 currentOrderId = createdOrder._id;
+            } else {
+                await orderService.updateOrder(currentOrderId, orderPayload);
             }
 
             // Always register the payment if the paid amount is greater than 0
@@ -1683,7 +1659,12 @@ const AppContent = () => {
 
             setSalesHistory((prev) => [...prev, saleRecord]);
             if (isTakeaway) {
-                resetTakeaway();
+                // Close the completed tab if more than one exists, otherwise just reset it
+                if (tabs && tabs.filter(t => !t.tableId).length > 1) {
+                    closeTab(activeTabId);
+                } else {
+                    resetTakeaway();
+                }
             } else {
                 setTables((prev) =>
                     prev.map((t) => {

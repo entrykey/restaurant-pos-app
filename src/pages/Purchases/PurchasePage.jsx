@@ -184,8 +184,8 @@ const PurchasePage = () => {
                 unitService.getUnits()
             ]);
             console.log("PURCHASE_ENTRY_ITEMS_FETCHED:", itemsRes.data?.length || 0, itemsRes.data);
-            console.log("PURCHASE_ENTRY_SUPPLIERS_FETCHED:", suppliersData?.length || 0, suppliersData);
-            setSuppliers(suppliersData);
+            console.log("PURCHASE_ENTRY_SUPPLIERS_FETCHED:", suppliersData?.data?.length || 0, suppliersData);
+            setSuppliers(suppliersData?.data || []);
             setShopInfo(shopData);
             setStockItems(itemsRes.data || []);
             setShopTaxes(taxesRes.filter(t => t.isActive !== false));
@@ -1071,7 +1071,7 @@ const PurchasePage = () => {
 
             // Refresh supplier list
             const suppliersData = await SupplierService.getSuppliers(shopId);
-            setSuppliers(suppliersData);
+            setSuppliers(suppliersData?.data || []);
 
             // If API returns created supplier, preselect it
             if (created && (created._id || created.id)) {
@@ -1390,48 +1390,49 @@ const PurchasePage = () => {
     }
 
     return (
-        <div className={`p-4 md:p-8 min-h-screen overflow-y-auto custom-scrollbar ${theme.pageBg}`}>
+        <div className={`p-3 md:p-8 min-h-full ${theme.pageBg}`}>
             <div className="max-w-[1400px] mx-auto">
-                {/* Breadcrumb Navigation / Header */}
-                <div className={`flex items-center gap-2 mb-6 ${theme.textMuted} text-sm font-bold`}>
-                    <Link to="/purchases" className={`hover:${theme.textPrimary} flex items-center gap-1 transition-colors uppercase tracking-widest text-[10px]`}>
+                {/* Breadcrumb — compact back link only */}
+                <div className="mb-4 md:mb-6">
+                    <Link
+                        to="/purchases"
+                        className={`inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest transition-colors hover:opacity-70 ${theme.textMuted}`}
+                    >
                         <ArrowLeft size={14} />
-                        Back to Invoices
+                        Back to Purchases
                     </Link>
-                    <ChevronRight size={14} />
-                    <span className={`${theme.textPrimary} uppercase tracking-widest text-[10px]`}>{isEditing ? "Edit Purchase" : "New Purchase Entry"}</span>
                 </div>
 
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 md:mb-8">
                     <div>
-                        <h1 className={`text-2xl md:text-3xl font-black uppercase ${theme.textHeading}`}>
+                        <h1 className={`text-xl md:text-3xl font-black uppercase ${theme.textHeading}`}>
                             {isEditing ? "Edit Purchase" : "New Purchase Entry"}
                         </h1>
-                        <p className={`font-bold text-xs uppercase tracking-widest mt-1 ${theme.textMuted}`}>Invoice Details & Stock Update</p>
+                        <p className={`font-bold text-[10px] uppercase tracking-widest mt-0.5 ${theme.textMuted}`}>Invoice Details & Stock Update</p>
                     </div>
 
                     {!isEditing && (
                         <button
                             type="button"
                             onClick={() => setIsScannerOpen(true)}
-                            className={`flex items-center gap-2 px-6 py-4 rounded-[20px] font-black transition-all shadow-xl active:scale-95 group overflow-hidden relative ${theme.mode === 'dark'
+                            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 md:px-6 md:py-4 rounded-[20px] font-black transition-all shadow-xl active:scale-95 group overflow-hidden relative ${theme.mode === 'dark'
                                 ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-600/20'
                                 : 'bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100'}`}
                         >
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
-                            <Camera size={20} className="group-hover:rotate-12 transition-transform" />
+                            <Camera size={18} className="group-hover:rotate-12 transition-transform flex-shrink-0" />
                             <div className="flex flex-col items-start leading-none text-left">
-                                <span className="text-[11px] tracking-tight">UPLOAD & SCAN</span>
+                                <span className="text-[10px] tracking-tight">UPLOAD & SCAN</span>
                                 <span className="text-[8px] opacity-60 tracking-widest font-bold">POWERED BY FILEPE AI</span>
                             </div>
                         </button>
                     )}
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-8 pb-12">
+                <form onSubmit={handleSubmit} className="space-y-4 md:space-y-8 pb-8">
                     {/* section: General Info */}
-                    <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 md:p-12 border ${theme.borderLight}`}>
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-12 border ${theme.borderLight}`}>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
                             <div className="space-y-3">
                                 <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
                                     <User size={12} /> Supplier *
@@ -1441,7 +1442,7 @@ const PurchasePage = () => {
                                         (() => {
                                             const supplier = suppliers.find(s => s._id === formData.supplierId);
                                             return (
-                                                <div className={`p-6 rounded-3xl border-2 border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-900/10 relative group transition-all`}>
+                                                <div className={`p-3 md:p-6 rounded-2xl md:rounded-3xl border-2 border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-900/10 relative group transition-all`}>
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -1452,14 +1453,14 @@ const PurchasePage = () => {
                                                     >
                                                         <X size={14} /> Change
                                                     </button>
-                                                    <div className="space-y-4">
+                                                    <div className="space-y-3">
                                                         <div className="flex items-center gap-3">
-                                                            <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none">
-                                                                <User size={18} />
+                                                            <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none">
+                                                                <User size={16} />
                                                             </div>
                                                             <div>
-                                                                <h3 className={`text-lg font-black leading-none ${theme.textHeading}`}>{supplier?.name || "Unknown Supplier"}</h3>
-                                                                <p className={`text-[10px] font-black uppercase tracking-widest mt-1.5 ${theme.textSecondary}`}>Bill From</p>
+                                                                <h3 className={`text-base font-black leading-none ${theme.textHeading}`}>{supplier?.name || "Unknown Supplier"}</h3>
+                                                                <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${theme.textSecondary}`}>Bill From</p>
                                                             </div>
                                                         </div>
 
@@ -1567,7 +1568,7 @@ const PurchasePage = () => {
                                         (() => {
                                             const branch = branches.find(b => b._id === formData.branchId || b.id === formData.branchId);
                                             return (
-                                                <div className={`p-6 rounded-3xl border-2 border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-900/10 relative group transition-all`}>
+                                                <div className={`p-3 md:p-6 rounded-2xl md:rounded-3xl border-2 border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-900/10 relative group transition-all`}>
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -1705,10 +1706,10 @@ const PurchasePage = () => {
                     </div>
 
                     {/* section: Item Entry */}
-                    <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 md:p-12 border ${theme.borderLight} flex flex-col gap-8`}>
-                        <div className={`flex flex-col gap-6 border-b pb-8 ${theme.borderLight}`}>
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                                <h2 className={`text-xl font-black flex items-center gap-3 uppercase tracking-tight ${theme.textHeading}`}>
+                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-12 border ${theme.borderLight} flex flex-col gap-4 md:gap-8`}>
+                        <div className={`flex flex-col gap-4 md:gap-6 border-b pb-4 md:pb-8 ${theme.borderLight}`}>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2 md:mb-6">
+                                <h2 className={`text-base md:text-xl font-black flex items-center gap-3 uppercase tracking-tight ${theme.textHeading}`}>
                                     <Package className="text-indigo-600" /> Items List
                                 </h2>
                                 <div className="flex items-center gap-3">
@@ -1779,7 +1780,8 @@ const PurchasePage = () => {
                         </div>
 
                         {/* Items Table */}
-                        <div className="overflow-x-auto no-scrollbar max-h-[500px] overflow-y-auto relative pb-48">
+                        {/* ── Desktop table: lg and above only ── */}
+                        <div className="hidden lg:block overflow-x-auto relative pb-4">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className={`text-[10px] font-black uppercase tracking-widest border-b ${theme.textMuted} ${theme.borderLight}`}>
@@ -2020,7 +2022,7 @@ const PurchasePage = () => {
                                     ))}
                                     {formData.items.length === 0 && (
                                         <tr>
-                                            <td colSpan="11" className={`py-12 text-center font-bold uppercase tracking-widest text-xs italic ${theme.textMuted}`}>
+                                            <td colSpan="13" className={`py-12 text-center font-bold uppercase tracking-widest text-xs italic ${theme.textMuted}`}>
                                                 Your invoice is empty. Add items from the search above.
                                             </td>
                                         </tr>
@@ -2028,18 +2030,139 @@ const PurchasePage = () => {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* ── Mobile/Tablet cards: visible below lg ── */}
+                        <div className="block lg:hidden">
+                            {formData.items.length === 0 ? (
+                                <div className={`py-12 text-center font-bold uppercase tracking-widest text-xs italic ${theme.textMuted}`}>
+                                    Your invoice is empty. Add items from the search above.
+                                </div>
+                            ) : (
+                                <div className={`divide-y ${theme.borderLight.replace('border-', 'divide-')}`}>
+                                    {formData.items.map((it, idx) => (
+                                        <div key={it.itemId} className="py-4 space-y-4">
+                                            {/* Header: name + delete */}
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0 flex items-start gap-3">
+                                                    <span className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black ${theme.mode === 'dark' ? 'bg-indigo-900/60 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                                                        {idx + 1}
+                                                    </span>
+                                                    <div>
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className={`font-black text-base leading-tight ${theme.textHeading}`}>{it.name}</span>
+                                                            {it.isNew && <span className="text-[9px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-full animate-pulse">NEW</span>}
+                                                        </div>
+                                                        <div className={`text-[10px] font-bold mt-0.5 ${theme.textSecondary}`}>{it.itemCode}</div>
+                                                        {it.isNew && (
+                                                            <button type="button" onClick={() => {
+                                                                const se = it.scanExtracted || {};
+                                                                setProductPrefillData({ name: se.displayName || it.name, purchasePrice: se.purchasePrice ?? it.purchasePrice, mrp: se.mrp ?? it.mrp, hsnSacCode: se.hsnCode || "", itemType: se.suggestedItemType || "STOCK", taxPercent: it.taxPercent ?? 0 });
+                                                                setIsProductModalOpen(true);
+                                                            }} className="text-[9px] font-black text-indigo-600 mt-1 block">+ CREATE PRODUCT</button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <button type="button" onClick={() => handleRemoveItem(idx)} className="p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all shrink-0">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+
+                                            {/* Qty + Unit */}
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Qty</label>
+                                                    <input type="number" value={it.quantity} onChange={e => handleItemChange(idx, 'quantity', parseFloat(e.target.value || 0))} className={`w-full p-3 rounded-2xl font-black text-indigo-600 border-2 border-transparent focus:border-indigo-500 outline-none text-center ${theme.inputBg} text-sm`} />
+                                                </div>
+                                                <div>
+                                                    <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Unit</label>
+                                                    <div className={`flex rounded-2xl border-2 ${theme.borderLight} overflow-hidden font-black text-[10px] h-[46px]`}>
+                                                        <button type="button" onClick={() => handleItemChange(idx, 'selectedUnit', 'PRIMARY')} className={`flex-1 px-2 py-2 transition-all text-center ${it.selectedUnit !== 'SECONDARY' ? 'bg-indigo-600 text-white' : theme.textMuted}`}>{it.primaryUnitName || "Pri"}</button>
+                                                        {it.secondaryUnitId && <button type="button" onClick={() => handleItemChange(idx, 'selectedUnit', 'SECONDARY')} className={`flex-1 px-2 py-2 border-l-2 ${theme.borderLight} transition-all text-center ${it.selectedUnit === 'SECONDARY' ? 'bg-indigo-600 text-white' : theme.textMuted}`}>{it.secondaryUnitName || "Sec"}</button>}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Prices */}
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                    <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Buy Price</label>
+                                                    <input type="number" value={it.purchasePrice} onChange={e => handleItemChange(idx, 'purchasePrice', parseFloat(e.target.value || 0))} className={`w-full p-2.5 rounded-xl font-black border-2 border-transparent focus:border-indigo-500 outline-none text-center ${theme.inputBg} ${theme.textPrimary} text-sm`} />
+                                                </div>
+                                                <div>
+                                                    <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Sell Price</label>
+                                                    <input type="number" value={it.sellingPrice || ""} onChange={e => handleItemChange(idx, 'sellingPrice', parseFloat(e.target.value || 0))} className={`w-full p-2.5 rounded-xl font-black border-2 border-transparent focus:border-emerald-500 outline-none text-center ${theme.inputBg} ${theme.textPrimary} text-sm`} />
+                                                </div>
+                                                <div>
+                                                    <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>MRP</label>
+                                                    <input type="number" value={it.mrp || ""} onChange={e => handleItemChange(idx, 'mrp', parseFloat(e.target.value || 0))} className={`w-full p-2.5 rounded-xl font-black border-2 border-transparent focus:border-blue-500 outline-none text-center ${theme.inputBg} ${theme.textPrimary} text-sm`} />
+                                                </div>
+                                            </div>
+
+                                            {/* Tax + Total */}
+                                            <div className="grid grid-cols-2 gap-3 items-end">
+                                                <div>
+                                                    <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Tax</label>
+                                                    <CommonSelect
+                                                        options={[{ label: "0%", value: "0" }, ...shopTaxes.map(t => ({ label: `${t.name} (${t.percentage}%)`, value: String(t._id) }))]}
+                                                        value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
+                                                        onChange={(val) => {
+                                                            if (val === "0" || val === 0) { handleItemChange(idx, { taxId: null, taxPercent: 0 }); }
+                                                            else { const selectedTax = shopTaxes.find(t => t._id === val); if (selectedTax) handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage }); }
+                                                        }}
+                                                        className="w-full text-[11px] font-black"
+                                                    />
+                                                </div>
+                                                <div className={`p-3 rounded-2xl text-right ${theme.inputBg}`}>
+                                                    <div className={`text-[9px] font-black uppercase tracking-widest ${theme.textMuted}`}>Total</div>
+                                                    <div className={`font-black text-base ${theme.textHeading}`}>
+                                                        {(() => { const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0)); const isExc = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false; return formatCurrency(isExc ? (it.quantity * it.purchasePrice) + (it.taxAmount || 0) : (it.quantity * it.purchasePrice)); })()}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Batch / Expiry */}
+                                            {(it.batchTracking || it.expiryTracking) && (
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {it.batchTracking && (
+                                                        <div>
+                                                            <label className="text-[9px] font-black uppercase tracking-widest block mb-1 text-indigo-400">Batch No <span className="text-red-500">*</span></label>
+                                                            <input placeholder="BATCH-001" value={it.batchNo || ""} onChange={e => handleItemChange(idx, 'batchNo', e.target.value)} className={`w-full p-2.5 text-[11px] rounded-xl border-transparent focus:border-indigo-400 uppercase font-bold outline-none border ${theme.inputBg} ${theme.textPrimary}`} />
+                                                        </div>
+                                                    )}
+                                                    {it.expiryTracking && (
+                                                        <div>
+                                                            <label className="text-[9px] font-black uppercase tracking-widest block mb-1 text-pink-400">Expiry <span className="text-red-500">*</span></label>
+                                                            <DatePicker value={it.expiryDate} onChange={val => handleItemChange(idx, 'expiryDate', val)} className={`w-full py-2.5 text-[11px] rounded-xl border-transparent focus-within:border-indigo-400 uppercase font-bold outline-none border ${theme.inputBg} ${theme.textPrimary}`} placeholder="DD/MM/YYYY" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Barcode */}
+                                            <div>
+                                                <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Barcode</label>
+                                                <div className="flex gap-2">
+                                                    <input placeholder="Scan / enter barcode" value={it.existingBarcode || ""} onChange={e => handleItemChange(idx, 'existingBarcode', e.target.value)} className={`flex-1 p-2.5 text-[11px] rounded-xl border-transparent focus:border-indigo-200 outline-none border ${theme.inputBg} ${theme.textPrimary}`} />
+                                                    <button type="button" onClick={() => handlePrintBarcode(it)} className="px-3 py-2 text-[10px] font-black rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors shrink-0">Print</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* section: Footer Totals & Save */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8">
                         {/* Notes Area */}
-                        <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 border ${theme.borderLight}`}>
+                        <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-8 border ${theme.borderLight}`}>
                             <label className={`text-[10px] font-black uppercase tracking-widest px-1 block mb-3 ${theme.textMuted}`}>Optional Notes</label>
                             <textarea
                                 value={formData.notes}
                                 onChange={e => setFormData({ ...formData, notes: e.target.value })}
                                 placeholder="Any additional information about this purchase..."
-                                className={`w-full min-h-[140px] p-6 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none transition-all font-bold resize-none ${theme.inputBg} ${theme.textPrimary}`}
+                                className={`w-full min-h-[140px] p-4 md:p-6 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none transition-all font-bold resize-none ${theme.inputBg} ${theme.textPrimary}`}
                             />
 
                             {/* --- Audit Note for Edits --- */}
@@ -2066,72 +2189,72 @@ const PurchasePage = () => {
                         </div>
 
                         {/* Summary Column */}
-                        <div className={`${theme.surfaceBg} rounded-[40px] shadow-2xl p-8 border ${theme.borderLight} space-y-4`}>
-                            <div className="flex justify-between items-center px-2">
-                                <span className={`font-bold uppercase text-[10px] tracking-widest ${theme.textMuted}`}>Subtotal</span>
+                        <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-8 border ${theme.borderLight} space-y-4`}>
+                            <div className="flex justify-between items-center gap-4 px-2">
+                                <span className={`font-bold uppercase text-[10px] tracking-widest shrink-0 ${theme.textMuted}`}>Subtotal</span>
                                 <span className={`font-black ${theme.textHeading}`}>{formatCurrency ? formatCurrency(formData.subtotal) : formData.subtotal.toFixed(2)}</span>
                             </div>
-                            <div className="flex justify-between items-center px-2">
-                                <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest font-black">Tax Total (+)</span>
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1.5 sm:gap-4 px-2">
+                                <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Tax Total (+)</span>
                                 <input
                                     type="number"
                                     step="0.0001"
                                     value={formData.taxTotal}
                                     onChange={e => setFormData({ ...formData, taxTotal: parseFloat(parseFloat(e.target.value || 0).toFixed(4)) })}
-                                    className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} min-w-[80px] p-2 rounded-lg outline-none border ${theme.borderLight}`}
+                                    className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} w-full sm:w-28 p-2.5 rounded-xl outline-none border ${theme.borderLight}`}
                                 />
                             </div>
-                            <div className="flex justify-between items-center px-2">
-                                <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest font-black">Additional Charges (+)</span>
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1.5 sm:gap-4 px-2">
+                                <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Additional Charges (+)</span>
                                 <input
                                     type="number"
                                     value={formData.otherCharges}
                                     onChange={e => setFormData({ ...formData, otherCharges: parseFloat(e.target.value || 0) })}
-                                    className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} min-w-[80px] p-2 rounded-lg outline-none border ${theme.borderLight}`}
+                                    className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} w-full sm:w-28 p-2.5 rounded-xl outline-none border ${theme.borderLight}`}
                                 />
                             </div>
-                            <div className="flex justify-between items-center px-2 border-b border-gray-100 pb-4">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1.5 sm:gap-4 px-2 border-b border-gray-100 dark:border-gray-700 pb-4">
                                 <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Discount (-)</span>
                                 <input
                                     type="number"
                                     value={formData.discountTotal}
                                     onChange={e => setFormData({ ...formData, discountTotal: parseFloat(e.target.value || 0) })}
-                                    className={`text-right font-black ${theme.mode === 'dark' ? 'text-indigo-400 bg-indigo-900/40' : 'text-indigo-600 bg-indigo-50'} min-w-[80px] p-2 rounded-lg outline-none border ${theme.mode === 'dark' ? 'border-indigo-800' : 'border-indigo-100'}`}
+                                    className={`text-right font-black ${theme.mode === 'dark' ? 'text-indigo-400 bg-indigo-900/40' : 'text-indigo-600 bg-indigo-50'} w-full sm:w-28 p-2.5 rounded-xl outline-none border ${theme.mode === 'dark' ? 'border-indigo-800' : 'border-indigo-100'}`}
                                 />
                             </div>
 
-                            <div className="flex justify-between items-center bg-gray-900 rounded-3xl p-6 text-white shadow-2xl">
-                                <div className="space-y-1">
+                            <div className="flex justify-between items-center bg-gray-900 rounded-3xl p-5 md:p-6 text-white shadow-2xl">
+                                <div className="space-y-1 min-w-0">
                                     <div className="text-[10px] font-black uppercase tracking-widest opacity-50">Grand Total</div>
-                                    <div className="text-3xl font-black">{formatCurrency ? formatCurrency(formData.grandTotal) : formData.grandTotal.toFixed(2)}</div>
+                                    <div className="text-2xl md:text-3xl font-black truncate">{formatCurrency ? formatCurrency(formData.grandTotal) : formData.grandTotal.toFixed(2)}</div>
                                 </div>
-                                <Calculator size={32} className="opacity-20" />
+                                <Calculator size={28} className="opacity-20 shrink-0 ml-2" />
                             </div>
 
-                            <div className="flex flex-col sm:flex-row gap-4">
+                            <div className="flex flex-col sm:flex-row gap-3 pt-1">
                                 <button
                                     type="button"
                                     onClick={(e) => handleSubmit(e, true)}
                                     disabled={loading}
-                                    className={`w-full sm:flex-1 py-4 rounded-3xl font-black transition-all flex items-center justify-center gap-2 shadow-xl border-2 ${loading
+                                    className={`w-full sm:flex-1 py-4 rounded-3xl font-black transition-all flex items-center justify-center gap-2 shadow-xl border-2 text-sm ${loading
                                         ? "border-gray-200 text-gray-400 cursor-not-allowed"
                                         : theme.mode === 'dark' ? "border-indigo-500 text-indigo-400 hover:bg-indigo-500/10 active:scale-95" : "border-indigo-600 text-indigo-600 hover:bg-indigo-50 active:scale-95"
                                         }`}
                                 >
-                                    <Printer size={20} />
+                                    <Printer size={18} />
                                     SAVE & PRINT
                                 </button>
                                 <button
                                     type="button"
                                     onClick={(e) => handleSubmit(e, false)}
                                     disabled={loading}
-                                    className={`w-full sm:flex-[2] py-4 rounded-3xl font-black transition-all flex items-center justify-center gap-2 shadow-xl ${loading
+                                    className={`w-full sm:flex-[2] py-4 rounded-3xl font-black transition-all flex items-center justify-center gap-2 shadow-xl text-sm ${loading
                                         ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                                         : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 active:scale-95"
                                         }`}
                                 >
-                                    {loading && <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                                    <Save size={24} />
+                                    {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                                    <Save size={20} />
                                     {isEditing ? "UPDATE INVOICE" : "SAVE PURCHASE"}
                                 </button>
                             </div>
@@ -2489,8 +2612,8 @@ const PurchasePage = () => {
 
             {/* Product Modal */}
             {isProductModalOpen && (
-                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
-                    <div className={`w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-[40px] shadow-2xl relative flex flex-col ${theme.surfaceBg}`}>
+                <div className="fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm md:p-8">
+                    <div className={`w-full max-w-6xl h-full md:h-auto md:max-h-[90vh] overflow-hidden md:rounded-[40px] shadow-2xl relative flex flex-col ${theme.surfaceBg}`}>
                         <button
                             onClick={() => setIsProductModalOpen(false)}
                             className={`absolute top-6 right-6 z-10 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors ${theme.textMuted}`}
@@ -2701,10 +2824,10 @@ const PurchasePage = () => {
             </Modal>
             {/* Supplier Modal */}
             {isSupplierModalOpen && (
-                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-8">
-                    <div className={`w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-[32px] shadow-2xl relative flex flex-col ${theme.surfaceBg}`}>
+                <div className="fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm md:p-8">
+                    <div className={`w-full max-w-2xl h-full md:h-auto md:max-h-[90vh] overflow-hidden md:rounded-[32px] shadow-2xl relative flex flex-col ${theme.surfaceBg}`}>
                         <div className={`p-6 md:p-8 border-b sticky top-0 z-10 flex justify-between items-center ${theme.surfaceBg} ${theme.borderLight}`}>
-                            <h3 className={`text-2xl font-black flex items-center gap-3 ${theme.textHeading}`}>
+                            <h3 className={`text-lg md:text-2xl font-black flex items-center gap-3 ${theme.textHeading}`}>
                                 <Plus className="text-indigo-600" />
                                 Add New Supplier
                             </h3>
@@ -2744,17 +2867,6 @@ const PurchasePage = () => {
                                         onChange={e => setSupplierFormData({ ...supplierFormData, contactPerson: e.target.value })}
                                         placeholder="Full Name"
                                     />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Status</label>
-                                    <select
-                                        className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
-                                        value={supplierFormData.status}
-                                        onChange={e => setSupplierFormData({ ...supplierFormData, status: e.target.value })}
-                                    >
-                                        <option value="ACTIVE">Active</option>
-                                        <option value="INACTIVE">Inactive</option>
-                                    </select>
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Phone Number *</label>
@@ -2797,23 +2909,23 @@ const PurchasePage = () => {
                                 </div>
                             </div>
 
-                            <div className="flex gap-4 pt-4">
+                            <div className="flex flex-row gap-3 pt-4">
                                 <button
                                     type="button"
                                     onClick={() => setIsSupplierModalOpen(false)}
-                                    className={`flex-1 py-4 rounded-2xl font-bold transition-all ${theme.textSecondary} ${theme.inputBg} hover:opacity-80`}
+                                    className={`flex-1 py-2.5 md:py-4 text-sm md:text-base rounded-2xl font-bold transition-all ${theme.textSecondary} ${theme.inputBg} hover:opacity-80`}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={savingSupplier}
-                                    className={`flex-1 py-4 rounded-2xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all flex items-center justify-center gap-2 ${savingSupplier ? "opacity-70 cursor-not-allowed" : ""}`}
+                                    className={`flex-[2] py-2.5 md:py-4 text-sm md:text-base rounded-2xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all flex items-center justify-center gap-2 ${savingSupplier ? "opacity-70 cursor-not-allowed" : ""}`}
                                 >
                                     {savingSupplier && (
                                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                     )}
-                                    <Save size={20} />
+                                    <Save size={16} className="md:w-5 md:h-5" />
                                     Save Supplier
                                 </button>
                             </div>
@@ -2826,3 +2938,4 @@ const PurchasePage = () => {
 };
 
 export default PurchasePage;
+

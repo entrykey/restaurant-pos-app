@@ -960,6 +960,7 @@ export const orderService = {
     getOrders: async (params = {}) => {
         try {
             const response = await api.get('/orders', { params });
+            // Support both paginated { data, pagination } and legacy array response
             return response.data;
         } catch (error) {
             console.error("Error fetching orders:", error);

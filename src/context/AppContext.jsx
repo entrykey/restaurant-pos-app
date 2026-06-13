@@ -99,23 +99,28 @@ export const AppProvider = ({ children }) => {
         const fetchTypeDetails = async () => {
             // Guard: only fetch if authenticated and we have a potential ID
             if (!isAuthenticated) return;
-            
+
+            const fallback = {
+                features: {
+                    sellStockItems: true,
+                    sellManufacturedItems: true,
+                    sellTradeItems: true
+                }
+            };
+
             if (businessType && businessType.length > 0) {
                 try {
                     const res = await businessTypesService.getBusinessTypeById(businessType);
-                    setBusinessTypeData(res.data);
+                    setBusinessTypeData(res.data || fallback);
                 } catch (error) {
                     console.error("Failed to fetch business type details:", error);
+                    // API failed (e.g. businessType is a string key, not a valid ObjectId)
+                    // fall back so SaleSettings doesn't get stuck on "Loading..."
+                    setBusinessTypeData(fallback);
                 }
             } else {
                 // Fallback for default state
-                setBusinessTypeData({
-                    features: {
-                        sellStockItems: true,
-                        sellManufacturedItems: true,
-                        sellTradeItems: true
-                    }
-                });
+                setBusinessTypeData(fallback);
             }
         };
         fetchTypeDetails();
@@ -136,13 +141,14 @@ export const AppProvider = ({ children }) => {
     const isMongoObjectId = (value) =>
         typeof value === "string" && /^[a-f0-9]{24}$/i.test(value);
 
-    // Sync business type from organization data when it loads (string keys only — not MongoDB ids)
+    // Sync business type from organization data when it loads.
+    // organization.businessType is already the ObjectId (extracted in OrganizationService).
     useEffect(() => {
         const orgType = organization?.businessType;
-        if (orgType && !isMongoObjectId(orgType) && orgType !== businessType) {
+        if (orgType && orgType !== businessType) {
             setBusinessType(orgType);
         }
-    }, [organization?.businessType, businessType]);
+    }, [organization?.businessType]);
 
     // Update enabled modules when business type or subtype changes
     useEffect(() => {

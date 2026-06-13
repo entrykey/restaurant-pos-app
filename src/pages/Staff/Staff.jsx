@@ -282,6 +282,17 @@ const Staff = ({
                 try {
                     const data = await employeeService.getPotentialManagers(targetShop);
                     setPotentialManagers(data);
+
+                    // Auto-select the owner as default "Reporting To" when creating a new employee
+                    if (isCreateEmployeeOpen) {
+                        const owner = data.find(m => m.isOwner === true);
+                        if (owner) {
+                            setNewEmpData(prev => ({
+                                ...prev,
+                                reportingTo: owner._id || owner.id || ""
+                            }));
+                        }
+                    }
                 } catch (error) {
                     console.error("Error fetching potential managers:", error);
                 } finally {
@@ -841,7 +852,11 @@ const Staff = ({
                 <div className="flex gap-3 w-full md:w-auto">
                     {activeStaffTab === "staff" ? (
                         <button
-                            onClick={() => checkSubscriptionAndOpen(() => { setIsCreateEmployeeOpen(true); })}
+                            onClick={() => checkSubscriptionAndOpen(() => {
+                                // Reset reportingTo so owner auto-select always fires fresh
+                                setNewEmpData(prev => ({ ...prev, reportingTo: "" }));
+                                setIsCreateEmployeeOpen(true);
+                            })}
                             className={`${theme.buttonBg} ${theme.buttonText} w-full md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
                         >
                             <Plus size={20} /> Add Employee
@@ -862,10 +877,10 @@ const Staff = ({
                                         toast.error(err?.message || 'Failed to sync manager role');
                                     }
                                 }}
-                                className={`${theme.sectionBg} border ${theme.borderLight} ${theme.textSecondary} w-full md:w-auto justify-center px-4 py-3 rounded-2xl font-bold flex items-center gap-2 hover:border-indigo-400 hover:text-indigo-500 transition-all text-sm`}
+                                className={`${theme.sectionBg} border ${theme.borderLight} ${theme.textSecondary} flex-1 md:flex-none md:w-auto justify-center px-4 py-3 rounded-2xl font-bold flex items-center gap-2 hover:border-indigo-400 hover:text-indigo-500 transition-all text-sm whitespace-nowrap`}
                                 title="Sync the auto Shop Manager role with current plan permissions"
                             >
-                                <RefreshCw size={16} /> Sync Manager Role
+                                <RefreshCw size={16} className="shrink-0" /> Sync Manager Role
                             </button>
                             <button
                                 onClick={() => checkSubscriptionAndOpen(() => {
@@ -873,9 +888,9 @@ const Staff = ({
                                     setExpandedModules({});
                                     setIsCreateRoleOpen(true);
                                 })}
-                                className={`${theme.buttonBg} ${theme.buttonText} w-full md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
+                                className={`${theme.buttonBg} ${theme.buttonText} flex-1 md:flex-none md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all whitespace-nowrap`}
                             >
-                                <Plus size={20} /> Add Role
+                                <Plus size={20} className="shrink-0" /> Add Role
                             </button>
                         </div>
                     ) : activeStaffTab === "attendance_policies" ? (
@@ -966,7 +981,7 @@ const Staff = ({
                     {isEmployeesLoading ? (
                         <div className="p-8 flex justify-center"><ThemeLoader size="lg" /></div>
                     ) : (
-                        <div className="overflow-x-auto w-full rounded-2xl">
+                        <div className="w-full rounded-2xl">
                             <CommonTable
                             columns={[
                                 ...(hasViewAllStaff ? [{ header: "Shop", key: "shopId.name", className: `font-bold text-xs ${theme.textSecondary}`, render: (_, item) => item.shopId?.name || "N/A" }] : []),
@@ -1041,6 +1056,51 @@ const Staff = ({
                                 }
                             ]}
                             data={employees}
+                            mobileCardRender={(employee) => (
+                                <div className="p-4 space-y-3">
+                                    {/* Header: name + status */}
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <div className={`font-black text-base ${theme.textHeading} truncate`}>{employee.userId?.name || "N/A"}</div>
+                                            <div className={`text-[10px] font-mono font-bold mt-0.5 ${theme.textSecondary}`}>{employee.employeeCode}</div>
+                                            {hasViewAllStaff && employee.shopId?.name && (
+                                                <div className={`text-[10px] font-bold mt-0.5 ${theme.textMuted}`}>{employee.shopId.name}</div>
+                                            )}
+                                        </div>
+                                        <span className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-black ${employee.status === 'ACTIVE' ? "text-green-600 bg-green-100 dark:bg-green-900/40" : "text-red-600 bg-red-100 dark:bg-red-900/40"}`}>
+                                            {employee.status}
+                                        </span>
+                                    </div>
+
+                                    {/* Role + branch */}
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className={`${theme.buttonBg} ${theme.buttonText} px-3 py-1 rounded-full text-[10px] font-black uppercase`}>
+                                            {employee.mapping?.roleId?.name || employee.roleId?.name || "N/A"}
+                                        </span>
+                                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg ${theme.inputBg} ${theme.textSecondary}`}>
+                                            {employee.mapping?.allBranches ? "Full Shop" : `${employee.mapping?.branchIds?.length || 0} Branches`}
+                                        </span>
+                                    </div>
+
+                                    {/* Contact */}
+                                    <div className={`text-xs font-bold ${theme.textSecondary} space-y-0.5`}>
+                                        {employee.userId?.phone && <div>📞 {employee.userId.phone}</div>}
+                                        {employee.userId?.email && <div className="truncate">✉ {employee.userId.email}</div>}
+                                        {employee.reportingTo?.name && <div>↑ Reports to: {employee.reportingTo.name}</div>}
+                                    </div>
+
+                                    {/* Action */}
+                                    <div className="pt-1 border-t border-dashed border-white/10">
+                                        <button
+                                            type="button"
+                                            onClick={() => openEditEmployee(employee)}
+                                            className={`w-full py-2.5 text-[11px] font-black uppercase tracking-widest rounded-xl ${theme.buttonBg} ${theme.buttonText} transition-all active:scale-95`}
+                                        >
+                                            Edit Employee
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         />
                         </div>
                     )}
@@ -1050,7 +1110,7 @@ const Staff = ({
                     {isRolesLoading ? (
                         <div className="p-8 flex justify-center"><ThemeLoader size="md" /></div>
                     ) : (
-                        <div className="overflow-x-auto w-full rounded-2xl">
+                        <div className="w-full rounded-2xl">
                             <CommonTable
                             columns={[
                                 ...(hasViewAllStaff ? [{ header: "Shop", key: "shopId.name", className: `font-bold text-xs ${theme.textSecondary}`, render: (_, item) => item.shopId?.name || "N/A" }] : []),
@@ -1171,6 +1231,71 @@ const Staff = ({
                                 }
                             ]}
                             data={roles}
+                            mobileCardRender={(role) => {
+                                const isAutoRole = role?.code === 'SHOP_MANAGER_AUTO';
+                                const isLocked = role?.isSystemRole;
+                                const scopeColors = {
+                                    GLOBAL: 'bg-amber-100 text-amber-700',
+                                    SHOP: 'bg-emerald-100 text-emerald-700',
+                                };
+                                return (
+                                    <div className="p-4 space-y-3">
+                                        {/* Name + type badges */}
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className={`font-black text-base ${theme.textHeading} truncate`}>{role.name}</div>
+                                                <div className="text-[10px] font-mono opacity-50 mt-0.5">{role.code}</div>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1 shrink-0">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-black ${scopeColors[role.scope] || 'bg-sky-100 text-sky-700'}`}>
+                                                    {role.scope || 'SHOP'}
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-black ${role.isSystemRole ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"}`}>
+                                                    {isAutoRole ? (role.isCustomized ? 'CUSTOMIZED' : 'AUTO') : (role.isSystemRole ? 'SYSTEM' : 'CUSTOM')}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Permissions count */}
+                                        <div className={`text-xs font-bold ${theme.textSecondary}`}>
+                                            {role.permissions?.length || 0} Access Points
+                                        </div>
+
+                                        {/* Action */}
+                                        {!isLocked && (
+                                            <div className="pt-1 border-t border-dashed border-white/10 flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openEditRole(role)}
+                                                    className={`flex-1 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-xl ${theme.buttonBg} ${theme.buttonText} transition-all active:scale-95`}
+                                                >
+                                                    Edit Role
+                                                </button>
+                                                {isAutoRole && role.isCustomized && (
+                                                    <button
+                                                        type="button"
+                                                        className="flex-1 py-2.5 text-[11px] font-black uppercase tracking-widest rounded-xl bg-amber-50 text-amber-600 transition-all active:scale-95"
+                                                        onClick={async () => {
+                                                            try {
+                                                                const result = await roleService.resetManagerRole(shopId);
+                                                                toast.success(`Role reset to auto (${result.permissionSource})`);
+                                                                const userId = user?.id || user?._id;
+                                                                const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
+                                                                setRoles(fetchedRoles);
+                                                                if (setRolesList) setRolesList(fetchedRoles);
+                                                            } catch (err) {
+                                                                toast.error(err?.message || 'Failed to reset role');
+                                                            }
+                                                        }}
+                                                    >
+                                                        Reset
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            }}
                         />
                         </div>
                     )}

@@ -312,10 +312,10 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
 
             {/* Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className={`${theme.surfaceBg} rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto`}>
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end md:items-center justify-center md:p-4 animate-in fade-in duration-200">
+                    <div className={`${theme.surfaceBg} md:rounded-[32px] shadow-2xl w-full max-w-2xl h-full md:h-auto md:max-h-[90vh] overflow-y-auto`}>
                         <div className={`p-6 md:p-8 border-b sticky top-0 z-10 flex justify-between items-center ${theme.surfaceBg} ${theme.borderLight}`}>
-                            <h3 className={`text-2xl font-black flex items-center gap-3 ${theme.textHeading}`}>
+                            <h3 className={`text-lg md:text-2xl font-black flex items-center gap-3 ${theme.textHeading}`}>
                                 {editingSupplier ? <Edit3 className="text-indigo-600" /> : <Plus className="text-indigo-600" />}
                                 {editingSupplier ? "Edit Supplier" : "Add New Supplier"}
                             </h3>
@@ -399,19 +399,19 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                                 </div>
                             </div>
 
-                            <div className="flex gap-4 pt-4">
+                            <div className="flex flex-row gap-3 pt-4">
                                 <button
                                     type="button"
                                     onClick={() => setIsModalOpen(false)}
-                                    className={`flex-1 py-4 rounded-2xl font-bold transition-all ${theme.textSecondary} ${theme.inputBg} hover:opacity-80`}
+                                    className={`flex-1 py-2.5 md:py-4 text-sm md:text-base rounded-2xl font-bold transition-all ${theme.textSecondary} ${theme.inputBg} hover:opacity-80`}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 py-4 rounded-2xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                                    className="flex-[2] py-2.5 md:py-4 text-sm md:text-base rounded-2xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all flex items-center justify-center gap-2"
                                 >
-                                    <Save size={20} />
+                                    <Save size={16} className="md:w-5 md:h-5" />
                                     {editingSupplier ? "Save Changes" : "Create Supplier"}
                                 </button>
                             </div>

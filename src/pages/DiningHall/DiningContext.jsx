@@ -18,12 +18,14 @@ export const DiningProvider = ({ children }) => {
     const [reservations, setReservations] = useState([]);
 
     const fetchDiningData = useCallback(async (isPolling = false) => {
-        const branchId = activeBranchId;
-        
-        // Only return early if enabledModules is null/undefined. 
-        // If it's an empty object, we proceed so the module checks below can handle it.
-        if (!enabledModules) {
-            if (!isPolling) setLoading(false);
+        const branchId = activeBranchId || user?.branchId || user?.branch || (user?.branchIds?.length ? user.branchIds[0] : null);
+
+        if (!branchId) {
+            if (!isPolling) {
+                setTables([]);
+                setCategories([]);
+                setLoading(false);
+            }
             return;
         }
 
@@ -31,38 +33,57 @@ export const DiningProvider = ({ children }) => {
         const isReservationsEnabled = enabledModules?.RESERVATIONS;
         const isKdsEnabled = enabledModules?.KDS;
 
-        if (!isDiningEnabled && !isReservationsEnabled) {
-            if (!isPolling) setLoading(false);
-            return;
-        }
-
         if (!isPolling) setLoading(true);
         try {
-            const promises = [
-                isDiningEnabled ? tableService.getTables({ branchId: branchId || null }) : Promise.resolve({ data: [] }),
-                isDiningEnabled ? diningCategoryService.getCategories({ branchId: branchId || null }) : Promise.resolve({ data: [] }),
+            const results = await Promise.allSettled([
+                tableService.getTables({ all: true, branchId }),
+                diningCategoryService.getCategories({ all: true, branchId }),
                 isReservationsEnabled ? reservationsService.getReservations({
-                    branchId: branchId || null,
+                    branchId,
                     date: new Date().toISOString().split("T")[0],
                     status: 'CONFIRMED'
                 }) : Promise.resolve({ data: [] }),
-                // Fetch active orders (OPEN or IN_PROGRESS) - only if dining enabled or takeaway enabled
-                (isDiningEnabled || enabledModules?.TAKEAWAY) 
-                    ? api.get('/orders', { params: { branchId: branchId || null, orderStatus: ['OPEN', 'IN_PROGRESS', 'READY', 'SERVED'] } })
+                (isDiningEnabled || enabledModules?.TAKEAWAY)
+                    ? api.get('/orders', { params: { branchId, orderStatus: ['OPEN', 'IN_PROGRESS', 'READY', 'SERVED'] } })
                     : Promise.resolve({ data: [] }),
-                // Fetch active KOTs (not COMPLETED) - only if KDS or DINING enabled
                 (isKdsEnabled || isDiningEnabled)
-                    ? api.get('/kitchen/kots', { params: { branchId: branchId || null, status: { $ne: 'COMPLETED' } } })
+                    ? api.get('/kitchen/kots', { params: { branchId } })
                     : Promise.resolve({ data: [] })
-            ];
+            ]);
 
-            const [tablesRes, categoriesRes, reservationsRes, ordersRes, kotsRes] = await Promise.all(promises);
+            const unwrap = (result, fallback = null) => (
+                result.status === 'fulfilled' ? result.value : fallback
+            );
 
-            const activeOrders = ordersRes.data || [];
-            const activeKots = kotsRes.data || [];
+            const tablesRes = unwrap(results[0], []);
+            const categoriesRes = unwrap(results[1], { data: [] });
+            const reservationsRes = unwrap(results[2], { data: [] });
+            const ordersRes = unwrap(results[3], { data: [] });
+            const kotsRes = unwrap(results[4], { data: [] });
+
+            if (results.some((r) => r.status === 'rejected')) {
+                console.warn('Some dining hall data failed to load:', results.filter((r) => r.status === 'rejected'));
+            }
+
+            const activeOrders = ordersRes?.data || ordersRes || [];
+            const activeKots = kotsRes?.data || kotsRes || [];
+
+            const rawCategories = categoriesRes?.data || categoriesRes || [];
+            const activeCategories = (Array.isArray(rawCategories) ? rawCategories : [])
+                .filter((cat) => cat.isActive !== false);
+            const activeCategoryIds = new Set(
+                activeCategories.map((cat) => String(cat._id || cat.id))
+            );
+
+            const rawTables = Array.isArray(tablesRes) ? tablesRes : (tablesRes?.data || []);
+            const displayTables = rawTables.filter((table) => {
+                if (table.isActive === false) return false;
+                const categoryId = String(table.diningCategoryId?._id || table.diningCategoryId || '');
+                return !categoryId || activeCategoryIds.has(categoryId);
+            });
 
             // Map backend _id to id for frontend consistency and merge active orders
-            const mappedTables = ((tablesRes.data || tablesRes) || []).map(t => {
+            const mappedTables = displayTables.map(t => {
                 const tableId = String(t._id);
                 const activeOrderForTable = activeOrders.find(o => {
                     const oTableId = o.tableId;
@@ -205,7 +226,7 @@ export const DiningProvider = ({ children }) => {
                     };
                 });
             });
-            setCategories(categoriesRes.data || categoriesRes || []);
+            setCategories(activeCategories);
             setReservations(mappedReservations);
         } catch (error) {
             console.error("Failed to fetch dining data:", error);
@@ -216,14 +237,6 @@ export const DiningProvider = ({ children }) => {
 
     useEffect(() => {
         if (!user) {
-            setLoading(false);
-            return;
-        }
-
-        const isDiningEnabled = enabledModules?.DINING;
-        const isReservationsEnabled = enabledModules?.RESERVATIONS;
-
-        if (!isDiningEnabled && !isReservationsEnabled) {
             setLoading(false);
             return;
         }

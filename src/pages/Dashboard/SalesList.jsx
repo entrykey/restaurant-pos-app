@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useApp } from '../../context/AppContext';
 import { orderService, dashboardService } from '../../services/api';
 import { 
     ShoppingBag, 
@@ -22,11 +23,18 @@ import {
     X,
     ChevronDown,
     ChevronUp,
-    History
+    History,
+    TrendingUp,
+    TrendingDown,
+    Receipt,
+    SlidersHorizontal,
+    ArrowUpDown,
+    CalendarRange
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/format';
 import OrderReturnSheet from '../../components/modals/OrderReturnSheet';
 import OrderEditSheet from '../../components/modals/OrderEditSheet';
+import CommonTable from '../../components/CommonTable';
 
 const ReturnDetailModal = ({ isOpen, onClose, returnData, theme, formatCurrency, formatDate }) => {
     if (!isOpen || !returnData) return null;
@@ -178,13 +186,40 @@ const ReturnDetailModal = ({ isOpen, onClose, returnData, theme, formatCurrency,
 
 const SalesList = () => {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { user } = useAuth();
     const { theme } = useTheme();
-    const [activeTab, setActiveTab] = useState('history'); // 'history' | 'returns'
+    const { formatCurrency: appFormatCurrency } = useApp();
+    const fmt = appFormatCurrency || formatCurrency;
+
+    const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') === 'returns' ? 'returns' : 'history');
+
+    const handleTabChange = (tab) => {
+        setActiveTab(tab);
+        if (tab === 'returns') {
+            setSearchParams({ tab: 'returns' });
+        } else {
+            setSearchParams({});
+        }
+    };
     const [loading, setLoading] = useState(true);
     const [sales, setSales] = useState([]);
     const [returns, setReturns] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
+    const [pageSize, setPageSize] = useState(10);
+
+    // Filters
+    const [showFilter, setShowFilter] = useState(false);
+    const [sortBy, setSortBy] = useState('createdAt');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [isReturnSheetOpen, setIsReturnSheetOpen] = useState(false);
     const [selectedReturn, setSelectedReturn] = useState(null);
@@ -193,46 +228,91 @@ const SalesList = () => {
     const [selectedOrderForEdit, setSelectedOrderForEdit] = useState(null);
     const [expandedOrders, setExpandedOrders] = useState({});
 
+    const filterRef = useRef(null);
+
+    // Close filter panel on outside click
+    useEffect(() => {
+        if (!showFilter) return;
+        const handler = (e) => {
+            if (filterRef.current && !filterRef.current.contains(e.target)) {
+                setShowFilter(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showFilter]);
+
     const toggleOrderArea = (orderId) => {
-        setExpandedOrders(prev => ({
-            ...prev,
-            [orderId]: !prev[orderId]
-        }));
+        setExpandedOrders(prev => ({ ...prev, [orderId]: !prev[orderId] }));
     };
 
     const fetchSales = useCallback(async () => {
         const resolvedShopId = user?.shopId || user?.shop_id;
         if (!resolvedShopId) return;
-
         setLoading(true);
         try {
             if (activeTab === 'history') {
-                const data = await orderService.getOrders({ 
-                    shopId: resolvedShopId, 
-                    search: searchQuery,
-                    orderStatus: 'COMPLETED' // showing only completed sales by default
-                });
-                setSales(data);
-            } else {
-                const data = await orderService.getOrderReturns({ 
+                const response = await orderService.getOrders({
                     shopId: resolvedShopId,
-                    search: searchQuery 
+                    search: searchQuery || undefined,
+                    orderStatus: 'COMPLETED',
+                    page: currentPage,
+                    limit: pageSize,
+                    sortBy,
+                    sortOrder,
+                    startDate: startDate || undefined,
+                    endDate: endDate || undefined,
                 });
-                setReturns(data);
+                if (response && response.data) {
+                    setSales(response.data);
+                    setTotalPages(response.pagination?.totalPages || 1);
+                    setTotalItems(response.pagination?.total || 0);
+                } else {
+                    // legacy fallback if server not yet updated
+                    setSales(Array.isArray(response) ? response : []);
+                }
+            } else {
+                const data = await orderService.getOrderReturns({
+                    shopId: resolvedShopId,
+                    search: searchQuery || undefined,
+                });
+                setReturns(Array.isArray(data) ? data : (data?.data || []));
             }
         } catch (error) {
             console.error("Failed to fetch sales data:", error);
         } finally {
             setLoading(false);
         }
-    }, [user?.shopId, user?.shop_id, activeTab, searchQuery]);
+    }, [user?.shopId, user?.shop_id, activeTab, searchQuery, currentPage, pageSize, sortBy, sortOrder, startDate, endDate]);
+
+    // Debounce search; reset page on search/filter change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, sortBy, sortOrder, startDate, endDate, activeTab, pageSize]);
 
     useEffect(() => {
-        const delaySearch = setTimeout(() => {
-            fetchSales();
-        }, 500);
-        return () => clearTimeout(delaySearch);
+        const delay = setTimeout(() => { fetchSales(); }, searchQuery ? 400 : 0);
+        return () => clearTimeout(delay);
     }, [fetchSales]);
+
+    const handlePageSizeChange = (size) => {
+        setPageSize(Number(size));
+        setCurrentPage(1);
+    };
+
+    const handleClearFilters = () => {
+        setSortBy('createdAt');
+        setSortOrder('desc');
+        setStartDate('');
+        setEndDate('');
+        setCurrentPage(1);
+    };
+
+    const activeFilterCount = [
+        sortBy !== 'createdAt' || sortOrder !== 'desc',
+        !!startDate,
+        !!endDate,
+    ].filter(Boolean).length;
 
     const handleProcessReturn = (order) => {
         setSelectedOrder(order);
@@ -249,13 +329,32 @@ const SalesList = () => {
         setIsEditSheetOpen(true);
     };
 
+    // Compute summary totals from loaded sales (current page)
+    const summary = useMemo(() => {
+        if (!sales.length) return { totalSale: 0, totalProfit: 0, count: totalItems };
+        let totalSale = 0;
+        let totalCost = 0;
+        sales.forEach(order => {
+            totalSale += order.grandTotal || 0;
+            if (order.items?.length) {
+                order.items.forEach(item => {
+                    const pp = item.itemId?.pricing?.purchasePrice || 0;
+                    totalCost += pp * (item.quantity || 1);
+                });
+            } else {
+                totalCost += (order.subtotal || 0) - (order.discountTotal || 0);
+            }
+        });
+        return { totalSale, totalProfit: totalSale - totalCost, count: totalItems };
+    }, [sales, totalItems]);
+
     return (
-        <div className="p-4 md:p-8 space-y-6 md:space-y-8 h-full flex flex-col overflow-hidden animate-in fade-in duration-500">
+        <div className="p-4 md:p-8 space-y-6 md:space-y-8 min-h-full animate-in fade-in duration-500">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
-                    <h1 className={`text-2xl md:text-4xl font-black ${theme.textHeading} tracking-tight`}>Sales History</h1>
-                    <p className={`${theme.textMuted} mt-1 font-medium`}>Manage your shop's sales records and processed returns</p>
+                    <h1 className={`text-2xl md:text-4xl font-black ${theme.textHeading} tracking-tight`}>Sales Invoice</h1>
+                    <p className={`${theme.textMuted} mt-1 font-medium`}>Manage your shop's sales invoices and processed returns</p>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
@@ -269,260 +368,508 @@ const SalesList = () => {
                             className={`w-full pl-12 pr-4 py-3.5 rounded-2xl border outline-none transition-all font-bold ${theme.surfaceBg} ${theme.borderLight} focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10`}
                         />
                     </div>
+                    {/* Filter button with panel */}
+                    <div ref={filterRef} className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setShowFilter(f => !f)}
+                            className={`relative p-3.5 rounded-2xl border transition-colors ${showFilter || activeFilterCount > 0 ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' : `${theme.borderLight} ${theme.textPrimary} hover:bg-gray-50 dark:hover:bg-white/5`}`}
+                        >
+                            <SlidersHorizontal size={22} />
+                            {activeFilterCount > 0 && (
+                                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-600 text-white text-[9px] font-black flex items-center justify-center">
+                                    {activeFilterCount}
+                                </span>
+                            )}
+                        </button>
+
+                        {showFilter && (
+                            <div className={`absolute right-0 top-full mt-2 z-50 w-72 rounded-3xl shadow-2xl border p-4 space-y-4 ${theme.surfaceBg} ${theme.borderLight}`}>
+                                <div className="flex items-center justify-between">
+                                    <span className={`text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Filters & Sort</span>
+                                    {activeFilterCount > 0 && (
+                                        <button onClick={handleClearFilters} className="text-[10px] font-black text-indigo-500 hover:text-indigo-700">Clear all</button>
+                                    )}
+                                </div>
+
+                                {/* Sort by */}
+                                <div>
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Sort by</label>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        {[
+                                            { value: 'createdAt', label: 'Date' },
+                                            { value: 'invoiceNumber', label: 'Invoice' },
+                                            { value: 'grandTotal', label: 'Amount' },
+                                        ].map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                onClick={() => setSortBy(opt.value)}
+                                                className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${sortBy === opt.value ? 'bg-indigo-600 text-white' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Sort order */}
+                                <div>
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Order</label>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {[
+                                            { value: 'desc', label: '↓ Newest first' },
+                                            { value: 'asc', label: '↑ Oldest first' },
+                                        ].map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                onClick={() => setSortOrder(opt.value)}
+                                                className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${sortOrder === opt.value ? 'bg-indigo-600 text-white' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Date range */}
+                                <div>
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Date range</label>
+                                    <div className="space-y-2">
+                                        <div>
+                                            <span className={`text-[9px] font-bold uppercase ${theme.textMuted} mb-0.5 block`}>From</span>
+                                            <input
+                                                type="date"
+                                                value={startDate}
+                                                onChange={e => setStartDate(e.target.value)}
+                                                className={`w-full px-3 py-2 rounded-xl text-sm font-bold border outline-none ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500`}
+                                            />
+                                        </div>
+                                        <div>
+                                            <span className={`text-[9px] font-bold uppercase ${theme.textMuted} mb-0.5 block`}>To</span>
+                                            <input
+                                                type="date"
+                                                value={endDate}
+                                                onChange={e => setEndDate(e.target.value)}
+                                                className={`w-full px-3 py-2 rounded-xl text-sm font-bold border outline-none ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500`}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={() => setShowFilter(false)}
+                                    className="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all"
+                                >
+                                    Apply
+                                </button>
+                            </div>
+                        )}
+                    </div>
                     <button
                         type="button"
-                        className={`p-3.5 rounded-2xl border ${theme.borderLight} ${theme.textPrimary} hover:bg-gray-50 dark:hover:bg-white/5 transition-colors`}
+                        onClick={() => navigate(activeTab === 'returns' ? '/sales/return' : '/sales/new')}
+                        className={`px-6 py-3.5 rounded-2xl font-black text-sm uppercase tracking-widest text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${
+                            activeTab === 'returns'
+                                ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-600/20'
+                                : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'
+                        }`}
                     >
-                        <Filter size={22} />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => navigate('/sales/new')}
-                        className="px-6 py-3.5 rounded-2xl font-black text-sm uppercase tracking-widest bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 whitespace-nowrap"
-                    >
-                        <Plus size={18} />
-                        Add Sale
+                        {activeTab === 'returns' ? <RotateCcw size={18} /> : <Plus size={18} />}
+                        {activeTab === 'returns' ? 'Make Return' : 'Add Sale'}
                     </button>
                 </div>
             </div>
 
+            {/* Summary Widgets — only shown for sales tab */}
+            {activeTab === 'history' && !loading && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                    {/* Total Sale */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
+                        <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                            <Receipt size={20} className="text-indigo-500" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Total Sales</p>
+                            <p className={`text-xl font-black ${theme.textHeading}`}>{fmt(summary.totalSale)}</p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>{summary.count} invoice{summary.count !== 1 ? 's' : ''}</p>
+                        </div>
+                    </div>
+
+                    {/* Total Profit */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
+                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${summary.totalProfit >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+                            {summary.totalProfit >= 0
+                                ? <TrendingUp size={20} className="text-emerald-500" />
+                                : <TrendingDown size={20} className="text-red-500" />
+                            }
+                        </div>
+                        <div className="min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Total Profit</p>
+                            <p className={`text-xl font-black ${summary.totalProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                {fmt(Math.abs(summary.totalProfit))}
+                            </p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>
+                                {summary.totalSale > 0 ? `${((summary.totalProfit / summary.totalSale) * 100).toFixed(1)}% margin` : '—'}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Avg Order Value */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
+                        <div className="w-11 h-11 rounded-2xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                            <ShoppingBag size={20} className="text-amber-500" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Avg Order</p>
+                            <p className={`text-xl font-black ${theme.textHeading}`}>
+                                {fmt(summary.count > 0 ? summary.totalSale / summary.count : 0)}
+                            </p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>per invoice</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Tabs */}
-            <div className={`flex flex-col sm:flex-row flex-wrap gap-2 md:gap-4 p-2 rounded-2xl shadow-sm w-full md:w-fit ${theme.surfaceBg}`}>
+            <div className={`flex flex-row gap-1 p-1.5 rounded-2xl shadow-sm w-full md:w-fit ${theme.surfaceBg}`}>
                 <button
                     type="button"
                     role="tab"
                     aria-selected={activeTab === 'history'}
-                    onClick={() => setActiveTab('history')}
-                    className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${
+                    onClick={() => handleTabChange('history')}
+                    className={`flex-1 md:flex-none px-4 md:px-6 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${
                         activeTab === 'history'
                             ? `${theme.primaryIconBg} ${theme.primaryIconText}`
                             : `${theme.textSecondary} hover:opacity-80`
                     }`}
                 >
-                    <ShoppingBag size={18} />
+                    <ShoppingBag size={16} />
                     All Sales
                 </button>
                 <button
                     type="button"
                     role="tab"
                     aria-selected={activeTab === 'returns'}
-                    onClick={() => setActiveTab('returns')}
-                    className={`w-full sm:w-auto px-4 md:px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center sm:justify-start gap-2 ${
+                    onClick={() => handleTabChange('returns')}
+                    className={`flex-1 md:flex-none px-4 md:px-6 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${
                         activeTab === 'returns'
                             ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
                             : `${theme.textSecondary} hover:opacity-80`
                     }`}
                 >
-                    <RotateCcw size={18} />
+                    <RotateCcw size={16} />
                     Sales Returns
                 </button>
             </div>
 
-            {/* Content Table */}
-            <div className={`flex-1 overflow-hidden flex flex-col rounded-[32px] md:rounded-[40px] border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
-                <div className="overflow-x-auto h-full custom-scrollbar">
-                    {loading ? (
-                        <div className="h-full flex flex-col items-center justify-center p-20 space-y-4">
-                            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                            <p className={`font-black uppercase tracking-widest text-xs ${theme.textMuted}`}>Loading records...</p>
-                        </div>
-                    ) : (
-                        <table className="w-full text-left border-collapse">
-                            <thead className="sticky top-0 z-10">
-                                <tr className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-[0.2em] ${theme.surfaceBg} border-b ${theme.borderLight}`}>
-                                    <th className="px-4 md:px-8 py-4 md:py-6">Order Info</th>
-                                    <th className="px-4 md:px-8 py-4 md:py-6">Customer</th>
-                                    <th className="px-4 md:px-8 py-4 md:py-6">Items</th>
-                                    <th className="px-4 md:px-8 py-4 md:py-6">Amount</th>
-                                    <th className="px-4 md:px-8 py-4 md:py-6">Status</th>
-                                    <th className="px-4 md:px-8 py-4 md:py-6 text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className={`divide-y ${theme.borderLight}`}>
-                                {activeTab === 'history' ? (
-                                    sales.length > 0 ? sales.map((order) => (
-                                        <React.Fragment key={order._id}>
-                                        <tr className={`group hover:${theme.mode === 'dark' ? 'bg-white/5' : 'bg-gray-50/50'} transition-all`}>
-                                            <td className="px-4 md:px-8 py-4 md:py-6">
-                                                <div className="space-y-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400`}>#{order.orderNumber}</span>
-                                                        <span className={`text-[10px] font-black text-gray-400`}>{formatDate(order.createdAt)}</span>
-                                                    </div>
-                                                    <p className={`font-black ${theme.textHeading}`}>{order.invoiceNumber || 'No Invoice'}</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-500">
-                                                        <User size={18} />
-                                                    </div>
-                                                    <div>
-                                                        <p className={`font-black ${theme.textPrimary}`}>{order.customerId?.name || 'Walk-in Customer'}</p>
-                                                        <p className={`text-xs font-bold ${theme.textMuted}`}>{order.customerId?.phone || 'No Phone'}</p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6">
-                                                <span className={`px-3 py-1.5 rounded-xl text-xs font-black ${theme.mode === 'dark' ? 'bg-white/5 text-slate-300' : 'bg-gray-100 text-gray-600'}`}>
-                                                    {order.items?.length || 0} Items
-                                                </span>
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6">
-                                                <div className="space-y-0.5">
-                                                    <p className={`font-black text-lg text-indigo-600`}>
-                                                        {formatCurrency(order.grandTotal)}
-                                                    </p>
-                                                    {order.exchangeCredit > 0 && (
-                                                        <p className="text-[10px] font-black text-orange-600 uppercase tracking-wider">
-                                                            Exchange Credit: -{formatCurrency(order.exchangeCredit)}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6">
-                                                <div className="flex items-center gap-2 text-emerald-500">
-                                                    <CheckCircle2 size={16} />
-                                                    <span className="text-xs font-black uppercase tracking-widest">
-                                                        {order.isExchange ? 'EXCHANGE' : order.orderStatus}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6 text-right">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    {order.editHistory && order.editHistory.length > 0 && (
-                                                        <button 
-                                                            onClick={() => toggleOrderArea(order._id)}
-                                                            className={`p-2.5 rounded-xl border ${theme.borderLight} ${expandedOrders[order._id] ? 'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-900/30' : theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors bg-white dark:bg-slate-800 shadow-sm`}
-                                                            title="View Edit History"
-                                                        >
-                                                            {expandedOrders[order._id] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                                                        </button>
-                                                    )}
-                                                    <button 
-                                                        onClick={() => handleEditSale(order)}
-                                                        className={`p-2.5 rounded-xl border ${theme.borderLight} ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors bg-white dark:bg-slate-800 shadow-sm`}
-                                                        title="Edit Items/Quantity"
-                                                    >
-                                                        <Edit3 size={18} />
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleProcessReturn(order)}
-                                                        className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all bg-orange-600 text-white hover:bg-orange-700 shadow-lg shadow-orange-600/20 flex items-center gap-2`}
-                                                    >
-                                                        <RotateCcw size={14} />
-                                                        Process Return
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        {/* Expandable Edit History Row */}
-                                        {expandedOrders[order._id] && order.editHistory && order.editHistory.length > 0 && (
-                                            <tr>
-                                                <td colSpan="6" className="p-0 border-none bg-transparent">
-                                                    <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-indigo-50/30'} border-t ${theme.borderLight} p-4 md:p-8 animate-in slide-in-from-top-2 duration-300 overflow-hidden`}>
-                                                        <h4 className={`text-sm font-black uppercase tracking-widest ${theme.textHeading} mb-6 flex items-center gap-2`}>
-                                                            <History size={18} className="text-indigo-500" /> Edit History
-                                                        </h4>
-                                                        <div className="space-y-4">
-                                                            {order.editHistory.sort((a,b) => new Date(b.editedAt) - new Date(a.editedAt)).map((edit, idx) => (
-                                                                <div key={idx} className={`p-4 rounded-2xl bg-white dark:bg-slate-800 border ${theme.borderLight} flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm`}>
-                                                                    <div className="flex items-start gap-3">
-                                                                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
-                                                                            <User size={14} />
-                                                                        </div>
-                                                                        <div>
-                                                                            <p className={`text-sm font-bold ${theme.textPrimary}`}>Edited by <span className="font-black text-indigo-600">{edit.editedByName || 'Unknown User'}</span></p>
-                                                                            <p className={`text-xs ${theme.textMuted} mt-0.5 whitespace-pre-wrap italic`}>Reason: "{edit.reason}"</p>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2 text-xs font-bold text-gray-400 whitespace-nowrap bg-gray-50 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-white/5">
-                                                                        <Clock size={12} />
-                                                                        {formatDate(edit.editedAt)}
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )}
-                                        </React.Fragment>
-                                    )) : (
-                                        <tr>
-                                            <td colSpan="6" className="px-4 md:px-8 py-12 md:py-20 text-center">
-                                                <ShoppingBag size={48} className="mx-auto mb-4 text-gray-300" />
-                                                <p className={`font-bold ${theme.textMuted}`}>No sales found</p>
-                                            </td>
-                                        </tr>
-                                    )
-                                ) : (
-                                    returns.length > 0 ? returns.map((ret) => (
-                                        <tr key={ret._id} className={`group hover:${theme.mode === 'dark' ? 'bg-white/5' : 'bg-gray-50/50'} transition-all`}>
-                                            <td className="px-4 md:px-8 py-4 md:py-6">
-                                                <div className="space-y-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400`}>#{ret.returnNumber}</span>
-                                                        <span className={`text-[10px] font-black text-gray-400`}>{formatDate(ret.returnDate)}</span>
-                                                    </div>
-                                                    <p className={`font-black ${theme.textHeading}`}>For Order #{ret.orderId?.orderNumber}</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-500">
-                                                        <User size={18} />
-                                                    </div>
-                                                    <div>
-                                                        <p className={`font-black ${theme.textPrimary}`}>{ret.orderId?.customerId?.name || 'Walk-in'}</p>
-                                                        <p className={`text-xs font-bold ${theme.textMuted}`}>By {ret.createdBy?.username}</p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="text-[10px] font-black uppercase text-orange-500">Returned: {ret.items?.length || 0}</span>
-                                                    {(ret.exchangeOrderId || ret.exchangeItems?.length > 0) && <span className="text-[10px] font-black uppercase text-indigo-500">Exchanged</span>}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6">
-                                                <div className="space-y-0.5">
-                                                    <p className="text-sm font-black text-orange-600">-{formatCurrency(ret.totalReturnAmount)}</p>
-                                                    {ret.exchangeOrderId && <p className="text-[10px] font-bold text-indigo-600">Linked to Order Exchange</p>}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6 font-black text-lg text-gray-800 dark:text-gray-100">
-                                                {formatCurrency(ret.netAmount)}
-                                            </td>
-                                            <td className="px-4 md:px-8 py-4 md:py-6 text-right">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    <button 
-                                                        onClick={() => handleViewReturnDetail(ret)}
-                                                        className={`p-2.5 rounded-xl border ${theme.borderLight} ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors bg-white dark:bg-slate-800 shadow-sm`}
-                                                        title="View Mapping Details"
-                                                    >
-                                                        <Eye size={20} />
-                                                    </button>
-                                                    <button className={`p-2.5 rounded-xl border ${theme.borderLight} ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors bg-white dark:bg-slate-800 shadow-sm`}>
-                                                        <ArrowUpRight size={20} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )) : (
-                                        <tr>
-                                            <td colSpan="6" className="px-4 md:px-8 py-12 md:py-20 text-center">
-                                                <RotateCcw size={48} className="mx-auto mb-4 text-gray-300" />
-                                                <p className={`font-bold ${theme.textMuted}`}>No returns found</p>
-                                            </td>
-                                        </tr>
-                                    )
+            {/* Table */}
+            <CommonTable
+                columns={activeTab === 'history' ? [
+                    {
+                        header: 'Order Info',
+                        key: 'orderNumber',
+                        render: (_, order) => (
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400">#{order.orderNumber}</span>
+                                    <span className="text-[10px] font-black text-gray-400">{formatDate(order.createdAt)}</span>
+                                </div>
+                                <p className={`font-black ${theme.textHeading}`}>{order.invoiceNumber || 'No Invoice'}</p>
+                            </div>
+                        )
+                    },
+                    {
+                        header: 'Customer',
+                        key: 'customerId',
+                        render: (_, order) => (
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-500 flex-shrink-0">
+                                    <User size={15} />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className={`font-black text-sm truncate ${theme.textPrimary}`}>{order.customerId?.name || 'Walk-in'}</p>
+                                    <p className={`text-[10px] font-bold ${theme.textMuted}`}>{order.customerId?.phone || 'No Phone'}</p>
+                                </div>
+                            </div>
+                        )
+                    },
+                    {
+                        header: 'Items',
+                        key: 'items',
+                        headerClassName: 'text-center',
+                        className: 'text-center',
+                        render: (_, order) => (
+                            <span className={`px-3 py-1.5 rounded-xl text-xs font-black ${theme.mode === 'dark' ? 'bg-white/5 text-slate-300' : 'bg-gray-100 text-gray-600'}`}>
+                                {order.items?.length || 0} Items
+                            </span>
+                        )
+                    },
+                    {
+                        header: 'Subtotal',
+                        key: 'subtotal',
+                        render: (_, order) => (
+                            <p className={`font-bold text-sm ${theme.textPrimary}`}>{fmt(order.subtotal || 0)}</p>
+                        )
+                    },
+                    {
+                        header: 'Offers',
+                        key: 'offerDiscountTotal',
+                        render: (_, order) => (
+                            <p className={`font-bold text-sm ${(order.offerDiscountTotal || 0) > 0 ? 'text-emerald-600' : theme.textMuted}`}>
+                                {(order.offerDiscountTotal || 0) > 0 ? `-${fmt(order.offerDiscountTotal)}` : '—'}
+                            </p>
+                        )
+                    },
+                    {
+                        header: 'Discount',
+                        key: 'discountTotal',
+                        render: (_, order) => (
+                            <p className={`font-bold text-sm ${(order.discountTotal || 0) > 0 ? 'text-orange-600' : theme.textMuted}`}>
+                                {(order.discountTotal || 0) > 0 ? `-${fmt(order.discountTotal)}` : '—'}
+                            </p>
+                        )
+                    },
+                    {
+                        header: 'Total',
+                        key: 'grandTotal',
+                        render: (_, order) => (
+                            <div>
+                                <p className="font-black text-base text-indigo-600">{fmt(order.grandTotal)}</p>
+                                {order.exchangeCredit > 0 && (
+                                    <p className="text-[10px] font-black text-orange-600 uppercase">Exch: -{fmt(order.exchangeCredit)}</p>
                                 )}
-                            </tbody>
-                        </table>
-                    )}
-                </div>
-            </div>
+                            </div>
+                        )
+                    },
+                    {
+                        header: 'Status',
+                        key: 'orderStatus',
+                        render: (_, order) => (
+                            <div className="flex items-center gap-1.5 text-emerald-500">
+                                <CheckCircle2 size={14} />
+                                <span className="text-[10px] font-black uppercase tracking-widest">
+                                    {order.isExchange ? 'EXCHANGE' : order.orderStatus}
+                                </span>
+                            </div>
+                        )
+                    },
+                    {
+                        header: 'Actions',
+                        key: '_id',
+                        headerClassName: 'text-right',
+                        className: 'text-right',
+                        render: (_, order) => (
+                            <div className="flex items-center justify-end gap-1.5">
+                                {order.editHistory?.length > 0 && (
+                                    <button
+                                        onClick={e => { e.stopPropagation(); toggleOrderArea(order._id); }}
+                                        className={`p-2 rounded-xl border ${theme.borderLight} ${expandedOrders[order._id] ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30' : theme.textMuted} hover:text-indigo-600 transition-colors bg-white dark:bg-slate-800 shadow-sm`}
+                                    >
+                                        {expandedOrders[order._id] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                    </button>
+                                )}
+                                <button
+                                    onClick={e => { e.stopPropagation(); handleEditSale(order); }}
+                                    className={`p-2 rounded-xl border ${theme.borderLight} ${theme.textMuted} hover:text-indigo-600 transition-colors bg-white dark:bg-slate-800 shadow-sm`}
+                                >
+                                    <Edit3 size={16} />
+                                </button>
+                                <button
+                                    onClick={e => { e.stopPropagation(); handleProcessReturn(order); }}
+                                    className="px-3 py-2 rounded-xl text-xs font-black bg-orange-600 text-white hover:bg-orange-700 flex items-center gap-1.5 shadow-md"
+                                >
+                                    <RotateCcw size={13} />
+                                    Return
+                                </button>
+                            </div>
+                        )
+                    }
+                ] : [
+                    {
+                        header: 'Return Info',
+                        key: 'returnNumber',
+                        render: (_, ret) => (
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">#{ret.returnNumber}</span>
+                                    <span className="text-[10px] font-black text-gray-400">{formatDate(ret.returnDate)}</span>
+                                </div>
+                                <p className={`font-black ${theme.textHeading}`}>Order #{ret.orderId?.orderNumber}</p>
+                            </div>
+                        )
+                    },
+                    {
+                        header: 'Customer',
+                        key: 'orderId',
+                        render: (_, ret) => (
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-500 flex-shrink-0">
+                                    <User size={15} />
+                                </div>
+                                <div>
+                                    <p className={`font-black text-sm ${theme.textPrimary}`}>{ret.orderId?.customerId?.name || 'Walk-in'}</p>
+                                    <p className={`text-[10px] font-bold ${theme.textMuted}`}>By {ret.createdBy?.username}</p>
+                                </div>
+                            </div>
+                        )
+                    },
+                    {
+                        header: 'Items',
+                        key: 'items',
+                        render: (_, ret) => (
+                            <div className="flex flex-col gap-1">
+                                <span className="text-[10px] font-black uppercase text-orange-500">Returned: {ret.items?.length || 0}</span>
+                                {(ret.exchangeOrderId || ret.exchangeItems?.length > 0) && <span className="text-[10px] font-black uppercase text-indigo-500">Exchanged</span>}
+                            </div>
+                        )
+                    },
+                    {
+                        header: 'Amount',
+                        key: 'totalReturnAmount',
+                        render: (_, ret) => (
+                            <div>
+                                <p className="text-sm font-black text-orange-600">-{fmt(ret.totalReturnAmount)}</p>
+                                {ret.exchangeOrderId && <p className="text-[10px] font-bold text-indigo-600">Exchange linked</p>}
+                            </div>
+                        )
+                    },
+                    {
+                        header: 'Net',
+                        key: 'netAmount',
+                        render: (_, ret) => <p className={`font-black ${theme.textHeading}`}>{fmt(ret.netAmount)}</p>
+                    },
+                    {
+                        header: 'Actions',
+                        key: '_id',
+                        headerClassName: 'text-right',
+                        className: 'text-right',
+                        render: (_, ret) => (
+                            <div className="flex items-center justify-end gap-1.5">
+                                <button onClick={e => { e.stopPropagation(); handleViewReturnDetail(ret); }} className={`p-2 rounded-xl border ${theme.borderLight} ${theme.textMuted} hover:text-indigo-600 transition-colors bg-white dark:bg-slate-800 shadow-sm`}><Eye size={16} /></button>
+                                <button className={`p-2 rounded-xl border ${theme.borderLight} ${theme.textMuted} hover:text-indigo-600 transition-colors bg-white dark:bg-slate-800 shadow-sm`}><ArrowUpRight size={16} /></button>
+                            </div>
+                        )
+                    }
+                ]}
+                data={activeTab === 'history' ? sales : returns}
+                rowKey="_id"
+                isLoading={loading}
+                emptyMessage={activeTab === 'history' ? 'No sales found' : 'No returns found'}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                pageSize={pageSize}
+                onPageSizeChange={handlePageSizeChange}
+                onPageChange={setCurrentPage}
+                renderAdditionalRow={activeTab === 'history' ? (order) => (
+                    expandedOrders[order._id] && order.editHistory?.length > 0 ? (
+                        <tr key={`history-${order._id}`}>
+                            <td colSpan="9" className="p-0">
+                                <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-indigo-50/30'} border-t ${theme.borderLight} p-4 md:p-6`}>
+                                    <h4 className={`text-xs font-black uppercase tracking-widest ${theme.textHeading} mb-4 flex items-center gap-2`}>
+                                        <History size={14} className="text-indigo-500" /> Edit History
+                                    </h4>
+                                    <div className="space-y-3">
+                                        {order.editHistory.sort((a,b) => new Date(b.editedAt) - new Date(a.editedAt)).map((edit, idx) => (
+                                            <div key={idx} className={`p-3 rounded-2xl bg-white dark:bg-slate-800 border ${theme.borderLight} flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm`}>
+                                                <div className="flex items-start gap-2">
+                                                    <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 flex items-center justify-center flex-shrink-0"><User size={12} /></div>
+                                                    <div>
+                                                        <p className={`text-sm font-bold ${theme.textPrimary}`}>By <span className="font-black text-indigo-600">{edit.editedByName || 'Unknown'}</span></p>
+                                                        <p className={`text-xs ${theme.textMuted} italic`}>"{edit.reason}"</p>
+                                                    </div>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 text-xs font-bold text-gray-400 px-2.5 py-1 rounded-lg border ${theme.borderLight} bg-gray-50 dark:bg-white/5 whitespace-nowrap`}>
+                                                    <Clock size={11} />{formatDate(edit.editedAt)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    ) : null
+                ) : undefined}
+                mobileCardRender={activeTab === 'history' ? (order) => (
+                    <div className={`p-3 ${theme.surfaceBg}`}>
+                        {/* Row 1: order info + amount */}
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                            <div>
+                                <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400">#{order.orderNumber}</span>
+                                    <span className="text-[10px] text-gray-400">{formatDate(order.createdAt)}</span>
+                                </div>
+                                <p className={`font-black text-sm ${theme.textHeading}`}>{order.invoiceNumber || 'No Invoice'}</p>
+                                <p className={`text-xs font-bold ${theme.textMuted}`}>{order.customerId?.name || 'Walk-in Customer'}</p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                                <p className={`text-[10px] font-bold ${theme.textMuted}`}>Sub: {fmt(order.subtotal || 0)}</p>
+                                {((order.offerDiscountTotal || 0) > 0 || (order.discountTotal || 0) > 0) && (
+                                    <p className="text-[10px] font-bold text-emerald-600">
+                                        {(order.offerDiscountTotal || 0) > 0 && `Offer -${fmt(order.offerDiscountTotal)}`}
+                                        {(order.offerDiscountTotal || 0) > 0 && (order.discountTotal || 0) > 0 && ' · '}
+                                        {(order.discountTotal || 0) > 0 && `Disc -${fmt(order.discountTotal)}`}
+                                    </p>
+                                )}
+                                <p className="font-black text-base text-indigo-600">{fmt(order.grandTotal)}</p>
+                                <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase text-emerald-500`}>
+                                    <CheckCircle2 size={10} />{order.isExchange ? 'EXCHANGE' : order.orderStatus}
+                                </span>
+                            </div>
+                        </div>
+                        {/* Row 2: items badge + actions */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${theme.mode === 'dark' ? 'bg-white/5 text-slate-300' : 'bg-gray-100 text-gray-600'}`}>
+                                {order.items?.length || 0} Items
+                            </span>
+                            {order.editHistory?.length > 0 && (
+                                <button onClick={e => { e.stopPropagation(); toggleOrderArea(order._id); }} className={`p-1.5 rounded-lg border ${theme.borderLight} ${theme.textMuted}`}>
+                                    {expandedOrders[order._id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                </button>
+                            )}
+                            <button onClick={e => { e.stopPropagation(); handleEditSale(order); }} className={`p-1.5 rounded-lg border ${theme.borderLight} ${theme.textMuted}`}>
+                                <Edit3 size={14} />
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); handleProcessReturn(order); }} className="px-3 py-1.5 rounded-lg text-[10px] font-black bg-orange-600 text-white flex items-center gap-1">
+                                <RotateCcw size={11} /> Return
+                            </button>
+                        </div>
+                        {/* Expanded edit history */}
+                        {expandedOrders[order._id] && order.editHistory?.length > 0 && (
+                            <div className={`mt-3 p-3 rounded-xl ${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-indigo-50/30'} border ${theme.borderLight}`}>
+                                <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Edit History</p>
+                                {order.editHistory.sort((a,b) => new Date(b.editedAt) - new Date(a.editedAt)).map((edit, idx) => (
+                                    <div key={idx} className={`mb-2 p-2 rounded-xl bg-white dark:bg-slate-800 border ${theme.borderLight}`}>
+                                        <p className={`text-xs font-bold ${theme.textPrimary}`}><span className="text-indigo-600">{edit.editedByName}</span> · {formatDate(edit.editedAt)}</p>
+                                        <p className={`text-[10px] ${theme.textMuted} italic`}>"{edit.reason}"</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ) : (ret) => (
+                    <div className={`p-3 ${theme.surfaceBg}`}>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                            <div>
+                                <div className="flex items-center gap-1.5 mb-1">
+                                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-orange-100 text-orange-700">#{ret.returnNumber}</span>
+                                    <span className="text-[10px] text-gray-400">{formatDate(ret.returnDate)}</span>
+                                </div>
+                                <p className={`font-black text-sm ${theme.textHeading}`}>Order #{ret.orderId?.orderNumber}</p>
+                                <p className={`text-xs ${theme.textMuted}`}>{ret.orderId?.customerId?.name || 'Walk-in'}</p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                                <p className="font-black text-sm text-orange-600">-{fmt(ret.totalReturnAmount)}</p>
+                                <p className={`text-xs font-bold ${theme.textMuted}`}>Net: {fmt(ret.netAmount)}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={e => { e.stopPropagation(); handleViewReturnDetail(ret); }} className={`p-1.5 rounded-lg border ${theme.borderLight} ${theme.textMuted}`}><Eye size={14} /></button>
+                            <button className={`p-1.5 rounded-lg border ${theme.borderLight} ${theme.textMuted}`}><ArrowUpRight size={14} /></button>
+                        </div>
+                    </div>
+                )}
+            />
 
             {/* Modals */}
             {selectedOrder && (

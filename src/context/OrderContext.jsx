@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { formatCurrency } from "../utils/format";
 import { offerService } from "../services/api";
 
@@ -36,9 +36,10 @@ export const OrderProvider = ({ children }) => {
     // Offers State
     const [offers, setOffers] = useState([]);
     const [appliedOffers, setAppliedOffers] = useState([]);
+    const [dismissedOfferIds, setDismissedOfferIds] = useState([]);
 
     // Helpers
-    const calculateItemTotal = (item) => {
+    const calculateItemTotal = useCallback((item) => {
         let basePrice = item.sellingPrice || item.price || 0;
         if (item.selectedVariant) {
             basePrice = item.selectedVariant.price;
@@ -57,18 +58,18 @@ export const OrderProvider = ({ children }) => {
             0
         );
         return parseFloat((itemBaseCost + extrasCost).toFixed(4));
-    };
+    }, []);
 
-    const fetchActiveOffers = async (shopId, branchId) => {
+    const fetchActiveOffers = useCallback(async (shopId, branchId) => {
         try {
             const data = await offerService.getOffers({ shopId, branchId, isActive: true });
             setOffers(data || []);
         } catch (error) {
             console.error("Failed to fetch offers:", error);
         }
-    };
+    }, []);
 
-    const calculateBillDetails = (
+    const calculateBillDetails = useCallback((
         orderItems,
         discount = { type: "flat", value: 0 },
         taxPercent = 5,
@@ -115,6 +116,9 @@ export const OrderProvider = ({ children }) => {
             const sortedOffers = [...offers].sort((a, b) => (a.priority || 1) - (b.priority || 1));
             
             sortedOffers.forEach(offer => {
+                const offerId = offer._id || offer.id;
+                if (offerId && dismissedOfferIds.includes(String(offerId))) return;
+
                 const condition = offer.condition;
                 const reward = offer.reward;
                 if (!condition || !reward) return;
@@ -123,7 +127,8 @@ export const OrderProvider = ({ children }) => {
                 let potentialDiscount = 0;
 
                 if (condition.applyOn === "ITEM") {
-                    const matchingItems = orderItems.filter(i => condition.itemIds.includes(i.id || i._id));
+                    const conditionItemIds = (condition.itemIds || []).map(String);
+                    const matchingItems = orderItems.filter(i => conditionItemIds.includes(String(i.id || i._id)));
                     const totalQty = matchingItems.reduce((acc, i) => acc + i.quantity, 0);
 
                     if (totalQty >= (condition.minQuantity || 1)) {
@@ -138,8 +143,8 @@ export const OrderProvider = ({ children }) => {
                         } else if (reward.rewardType === "FREE_ITEM") {
                             const buyQty = condition.minQuantity || 1;
                             const freeQty = reward.rewardQuantity || 1;
-                            const rewardItemIds = reward.itemIds || (reward.specificItemId ? [reward.specificItemId] : []);
-                            const isBogo = rewardItemIds.length === 0 || rewardItemIds.includes(condition.itemIds[0]);
+                            const rewardItemIds = (reward.itemIds || (reward.specificItemId ? [reward.specificItemId] : [])).map(String);
+                            const isBogo = rewardItemIds.length === 0 || rewardItemIds.includes(String(condition.itemIds[0]));
 
                             if (isBogo) {
                                 // BOGO Style: Buy 1 Get 1 (needs 2 in cart for 1 free) or Buy 2 Get 1 (needs 3 in cart for 1 free)
@@ -165,7 +170,7 @@ export const OrderProvider = ({ children }) => {
                                     matchingItems.forEach(i => appliedOfferItemIds.add(i.id || i._id));
                                     
                                     // Find and discount the free items in the cart
-                                    const freeItemsInCart = orderItems.filter(i => rewardItemIds.includes(i.id || i._id));
+                                    const freeItemsInCart = orderItems.filter(i => rewardItemIds.includes(String(i.id || i._id)));
                                     let remainingToDiscount = totalFreeAllowed;
                                     
                                     freeItemsInCart.forEach(i => {
@@ -186,7 +191,8 @@ export const OrderProvider = ({ children }) => {
                         }
                     }
                 } else if (condition.applyOn === "CATEGORY") {
-                    const matchingItems = orderItems.filter(i => condition.categoryIds.includes(i.categoryId || i.category_id));
+                    const conditionCategoryIds = (condition.categoryIds || []).map(String);
+                    const matchingItems = orderItems.filter(i => conditionCategoryIds.includes(String(i.categoryId || i.category_id)));
                     const totalQty = matchingItems.reduce((acc, i) => acc + i.quantity, 0);
 
                     if (totalQty >= (condition.minQuantity || 1)) {
@@ -236,6 +242,7 @@ export const OrderProvider = ({ children }) => {
                     // For now, we allow stacking but prioritize by evaluating in priority order
                     offerDiscountTotal += potentialDiscount;
                     currentAppliedOffers.push({
+                        offerId,
                         name: offer.name,
                         discount: potentialDiscount,
                         priority: offer.priority
@@ -336,7 +343,7 @@ export const OrderProvider = ({ children }) => {
             appliedOfferItemIds: Array.from(appliedOfferItemIds),
             freeItems // Added this
         };
-    };
+    }, [offers, dismissedOfferIds, calculateItemTotal]);
 
     const calculateTotal = (order, defaultTax = 0) => {
         if (!order || !order.items) return 0;
@@ -374,12 +381,18 @@ export const OrderProvider = ({ children }) => {
         setReturnedItems([]);
     };
 
+    const dismissOffer = (offerId) => {
+        if (!offerId) return;
+        setDismissedOfferIds((prev) => [...prev, String(offerId)]);
+    };
+
     const resetBillingState = () => {
         setBillingStage("review");
         setBillDiscount({ type: "flat", value: 0 });
         setCouponCode("");
         setCouponStatus(null);
         setAppliedOffers([]);
+        setDismissedOfferIds([]);
     };
 
     return (
@@ -401,6 +414,8 @@ export const OrderProvider = ({ children }) => {
                 applyCoupon,
                 fetchActiveOffers,
                 offers,
+                dismissedOfferIds,
+                dismissOffer,
                 COUPONS,
                 resetBillingState,
                 // Exchange states

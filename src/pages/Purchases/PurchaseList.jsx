@@ -967,21 +967,21 @@ const PurchaseList = ({ hasPermissionFor }) => {
                 </div>
 
                 {/* ── Stats Row ── */}
-                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
                     {[
                         { label: "Total Invoices", value: purchases.length, icon: ReceiptText, color: "indigo" },
                         { label: "Draft", value: purchases.filter(p => p.status === "DRAFT").length, icon: Clock, color: "amber" },
                         { label: "Confirmed", value: purchases.filter(p => p.status === "CONFIRMED").length, icon: CheckCircle, color: "emerald" },
                         { label: "Total Value", value: fmt(purchases.reduce((a, p) => a + (p.grandTotal || 0), 0), currency), icon: Coins, color: "indigo" },
                         { label: "Total Due", value: fmt(purchases.reduce((a, p) => a + (p.balanceAmount || 0), 0), currency), icon: Coins, color: "red" },
-                    ].map(({ label, value, icon: Icon, color, wide }) => (
-                        <div key={label} className={`${theme.surfaceBg} rounded-3xl shadow-sm border ${theme.borderLight} p-6 flex items-center gap-5 ${wide ? "col-span-2 md:col-span-1" : ""}`}>
-                            <div className={`p-3 rounded-2xl bg-${color}-50 text-${color}-600`}>
-                                <Icon size={20} />
+                    ].map(({ label, value, icon: Icon, color }) => (
+                        <div key={label} className={`${theme.surfaceBg} rounded-3xl shadow-sm border ${theme.borderLight} p-4 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-5`}>
+                            <div className={`p-2.5 md:p-3 rounded-2xl bg-${color}-50 text-${color}-600 shrink-0`}>
+                                <Icon size={18} />
                             </div>
-                            <div>
-                                <div className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>{label}</div>
-                                <div className={`text-xl font-black mt-0.5 ${theme.textHeading}`}>{value}</div>
+                            <div className="min-w-0">
+                                <div className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest leading-tight ${theme.textMuted}`}>{label}</div>
+                                <div className={`text-lg md:text-xl font-black mt-0.5 truncate ${theme.textHeading}`}>{value}</div>
                             </div>
                         </div>
                     ))}
@@ -994,7 +994,69 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         <p className={`font-black uppercase tracking-widest text-[10px] ${theme.textMuted}`}>Loading Invoices…</p>
                     </div>
                 ) : (
-                    <CommonTable columns={columns} data={filtered} />
+                    <CommonTable
+                        columns={columns}
+                        data={filtered}
+                        mobileCardRender={(row) => (
+                            <div className="p-4 space-y-3">
+                                {/* Top: invoice + status */}
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className={`font-black text-base ${theme.textHeading} truncate`}>{row.purchaseNumber}</div>
+                                        {row.supplierInvoiceNumber && (
+                                            <div className="text-[10px] font-black text-indigo-500">#{row.supplierInvoiceNumber}</div>
+                                        )}
+                                        <div className={`text-[10px] font-bold ${theme.textMuted} flex items-center gap-1 mt-0.5`}>
+                                            <Calendar size={9} />
+                                            {row.invoiceDate ? new Date(row.invoiceDate).toLocaleDateString() : "—"}
+                                        </div>
+                                    </div>
+                                    <span className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border ${STATUS_PILL[row.status] || STATUS_PILL.DRAFT}`}>
+                                        {row.status === "CONFIRMED" ? <CheckCircle size={9} /> : row.status === "CANCELLED" ? <AlertCircle size={9} /> : <Clock size={9} />}
+                                        {row.status || "DRAFT"}
+                                    </span>
+                                </div>
+
+                                {/* Supplier + totals */}
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className={`font-bold text-sm truncate ${theme.textPrimary}`}>{row.supplierId?.name || "—"}</span>
+                                    <span className="font-black text-indigo-600 shrink-0">{fmt(row.grandTotal, currency)}</span>
+                                </div>
+
+                                {/* Payment status + balance */}
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black border ${PAY_PILL[row.paymentStatus] || PAY_PILL.UNPAID}`}>
+                                        {row.paymentStatus || "UNPAID"}
+                                    </span>
+                                    {row.paymentStatus !== "PAID" && row.balanceAmount > 0 && (
+                                        <span className="text-[10px] font-bold text-red-500">Due: {fmt(row.balanceAmount, currency)}</span>
+                                    )}
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-2 pt-1 border-t border-dashed border-white/10">
+                                    <button onClick={(e) => { e.stopPropagation(); setViewTarget(row._id); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center gap-1.5">
+                                        <Eye size={13} /> View
+                                    </button>
+                                    {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && (
+                                        <button onClick={(e) => { e.stopPropagation(); navigate(`/purchases/edit/${row._id}`); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center gap-1.5">
+                                            <Edit3 size={13} /> Edit
+                                        </button>
+                                    )}
+                                    {canManage && row.status === "CONFIRMED" && row.balanceAmount > 0 && (
+                                        <button onClick={(e) => { e.stopPropagation(); setPayTarget(row); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center gap-1.5">
+                                            <CreditCard size={13} /> Pay
+                                        </button>
+                                    )}
+                                    {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && row.paidAmount === 0 && (
+                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(row._id); }} className="p-2 text-[10px] font-black rounded-xl bg-red-50 text-red-400">
+                                            <Trash2 size={13} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    />
                 )}
             </div>
 

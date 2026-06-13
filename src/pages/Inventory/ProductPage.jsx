@@ -1575,8 +1575,9 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                             </div>
                             <p className={`text-sm ${theme.textMuted} mb-8`}>Define what stock items are used to create this manufactured product.</p>
 
-                            <div className="flex flex-col md:flex-row gap-4 mb-6 items-end">
-                                <div className="flex-1">
+                            <div className="flex flex-col gap-3 mb-6">
+                                {/* Stock Item — full width on all screens */}
+                                <div>
                                     <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Stock Item</label>
                                     <CommonSelect
                                         options={stockItems.map(item => ({ 
@@ -1595,32 +1596,35 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                         className="w-full"
                                     />
                                 </div>
-                                <div className="w-full md:w-32">
-                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Qty</label>
-                                    <input
-                                        type="number"
-                                        value={ingredientQty}
-                                        onChange={(e) => setIngredientQty(e.target.value)}
-                                        placeholder="0"
-                                        className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400`}
-                                    />
+                                {/* QTY + UNIT + Add button — single row on mobile */}
+                                <div className="flex items-end gap-2">
+                                    <div className="w-24 sm:w-32 flex-shrink-0">
+                                        <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Qty</label>
+                                        <input
+                                            type="number"
+                                            value={ingredientQty}
+                                            onChange={(e) => setIngredientQty(e.target.value)}
+                                            placeholder="0"
+                                            className={`w-full p-3 sm:p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400 text-sm`}
+                                        />
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Unit</label>
+                                        <CommonSelect
+                                            options={units.map(u => ({ label: u.name, value: u._id }))}
+                                            value={ingredientUnitId}
+                                            onChange={(val) => setIngredientUnitId(val)}
+                                            placeholder="Unit..."
+                                            className="w-full"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={(e) => { e.preventDefault(); handleAddIngredient(); }}
+                                        className="flex-shrink-0 p-3 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-200/20 hover:bg-orange-600 active:scale-95 transition-all"
+                                    >
+                                        <Plus size={20} />
+                                    </button>
                                 </div>
-                                <div className="w-full md:w-40">
-                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Unit</label>
-                                    <CommonSelect
-                                        options={units.map(u => ({ label: u.name, value: u._id }))}
-                                        value={ingredientUnitId}
-                                        onChange={(val) => setIngredientUnitId(val)}
-                                        placeholder="Unit..."
-                                        className="w-full"
-                                    />
-                                </div>
-                                <button
-                                    onClick={(e) => { e.preventDefault(); handleAddIngredient(); }}
-                                    className="p-3 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-200/20 hover:bg-orange-600 active:scale-95 transition-all"
-                                >
-                                    <Plus size={24} />
-                                </button>
                             </div>
 
                             {ingredients.length > 0 && (
@@ -1661,18 +1665,18 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             </div>
 
             {/* Sticky Footer */}
-            <div className={`flex flex-col-reverse sm:flex-row gap-3 p-4 sm:p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 shrink-0`}>
+            <div className={`flex flex-row gap-2 p-3 sm:p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 shrink-0`}>
                 <button
                     onClick={() => asDialog && onClose ? onClose() : navigate('/inventory')}
-                    className={`w-full sm:flex-1 py-3.5 sm:py-4 font-black text-sm sm:text-base ${theme.textSecondary} hover:${theme.textPrimary} transition-colors border-2 ${theme.borderLight} rounded-[24px]`}
+                    className={`flex-1 py-2.5 sm:py-4 font-black text-xs sm:text-base ${theme.textSecondary} hover:${theme.textPrimary} transition-colors border-2 ${theme.borderLight} rounded-[20px]`}
                 >
                     {asDialog ? "Cancel" : "Discard"}
                 </button>
                 <button
                     onClick={handleSubmit}
-                    className={`w-full sm:w-2/3 py-3.5 sm:py-4 ${theme.buttonBg} ${theme.buttonText} rounded-[24px] font-black shadow-xl shadow-indigo-100/10 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-2 text-base sm:text-lg`}
+                    className={`flex-[2] py-2.5 sm:py-4 ${theme.buttonBg} ${theme.buttonText} rounded-[20px] font-black shadow-xl shadow-indigo-100/10 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-1.5 text-sm sm:text-lg`}
                 >
-                    <Save size={20} />
+                    <Save size={16} className="sm:w-5 sm:h-5" />
                     {isEditing ? "Update Product" : "Save Product"}
                 </button>
             </div>

@@ -110,38 +110,39 @@ const PayInList = () => {
             </div>
 
             {/* Tabs section */}
-            <div className={`flex flex-wrap gap-4 p-2 rounded-2xl shadow-sm w-fit ${theme.surfaceBg}`}>
+            <div className={`flex gap-2 p-1.5 rounded-2xl shadow-sm w-full sm:w-fit overflow-x-auto no-scrollbar ${theme.surfaceBg}`}>
                 <button
                     onClick={() => setActiveTab("pending")}
-                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "pending"
+                    className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-black transition-all flex items-center justify-center gap-2 text-sm whitespace-nowrap ${activeTab === "pending"
                         ? `${theme.primaryIconBg} ${theme.primaryIconText}`
                         : `${theme.textSecondary} hover:opacity-80`
                         }`}
                 >
-                    <Wallet size={18} /> Pending Payments
+                    <Wallet size={16} /> Pending Payments
                 </button>
                 <button
                     onClick={() => setActiveTab("history")}
-                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "history"
+                    className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-black transition-all flex items-center justify-center gap-2 text-sm whitespace-nowrap ${activeTab === "history"
                         ? `bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300`
                         : `${theme.textSecondary} hover:opacity-80`
                         }`}
                 >
-                    <Calendar size={18} /> Payment History
+                    <Calendar size={16} /> Payment History
                 </button>
                 <button
                     onClick={() => setActiveTab("returns")}
-                    className={`px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 ${activeTab === "returns"
+                    className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-black transition-all flex items-center justify-center gap-2 text-sm whitespace-nowrap ${activeTab === "returns"
                         ? `bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300`
                         : `${theme.textSecondary} hover:opacity-80`
                         }`}
                 >
-                    <RotateCcw size={18} /> Return History
+                    <RotateCcw size={16} /> Return History
                 </button>
             </div>
 
             <div className={`overflow-hidden rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg}`}>
-                <div className="overflow-x-auto">
+                {/* ── Desktop table ── */}
+                <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className={`${theme.pageBg} ${theme.textMuted} text-[10px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
@@ -252,45 +253,19 @@ const PayInList = () => {
                                                     </div>
                                                 </td>
                                             </tr>
-
-                                            {/* Expandable Accordion Row */}
                                             {isExpanded && (
                                                 <tr>
                                                     <td colSpan={5} className="p-0 border-none bg-transparent">
                                                         <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-gray-50/50'} border-t ${theme.borderLight} p-8 animate-in slide-in-from-top-2 duration-300 overflow-hidden`}>
                                                             <HistoryTimeline
-                                                                onAction={(order) => {
-                                                                    setSelectedOrder(order);
-                                                                    setIsSheetOpen(true);
-                                                                }}
-                                                                onReturn={(order) => {
-                                                                    setSelectedOrder(order);
-                                                                    setIsReturnSheetOpen(true);
-                                                                }}
+                                                                onAction={(order) => { setSelectedOrder(order); setIsSheetOpen(true); }}
+                                                                onReturn={(order) => { setSelectedOrder(order); setIsReturnSheetOpen(true); }}
                                                                 events={(() => {
                                                                     const events = [];
                                                                     const ordersToProcess = activeTab === 'pending' ? group.orders : [group];
                                                                     ordersToProcess.forEach(order => {
-                                                                        events.push({
-                                                                            id: `purchase-${order.id}`,
-                                                                            type: 'PURCHASE',
-                                                                            date: order.date,
-                                                                            orderNumber: order.orderNumber,
-                                                                            amount: order.grandTotal,
-                                                                            balance: order.balanceAmount || 0,
-                                                                            order: order
-                                                                        });
-
-                                                                        (order.payments || []).forEach(p => {
-                                                                            events.push({
-                                                                                id: `payment-${p.id}`,
-                                                                                type: 'PAYMENT',
-                                                                                date: p.date,
-                                                                                orderNumber: order.orderNumber,
-                                                                                amount: p.amount,
-                                                                                method: p.method
-                                                                            });
-                                                                        });
+                                                                        events.push({ id: `purchase-${order.id}`, type: 'PURCHASE', date: order.date, orderNumber: order.orderNumber, amount: order.grandTotal, balance: order.balanceAmount || 0, order: order });
+                                                                        (order.payments || []).forEach(p => { events.push({ id: `payment-${p.id}`, type: 'PAYMENT', date: p.date, orderNumber: order.orderNumber, amount: p.amount, method: p.method }); });
                                                                     });
                                                                     return events.sort((a, b) => new Date(b.date) - new Date(a.date));
                                                                 })()}
@@ -309,13 +284,9 @@ const PayInList = () => {
                                             <div className={`w-20 h-20 ${theme.pageBg} rounded-full flex items-center justify-center mx-auto ${theme.textMuted}`}>
                                                 {activeTab === 'pending' ? <User size={40} /> : <ReceiptText size={40} />}
                                             </div>
-                                            <h3 className={`text-xl font-black ${theme.textHeading}`}>
-                                                {activeTab === 'pending' ? 'All Clear' : 'No History Found'}
-                                            </h3>
+                                            <h3 className={`text-xl font-black ${theme.textHeading}`}>{activeTab === 'pending' ? 'All Clear' : 'No History Found'}</h3>
                                             <p className={`${theme.textMuted} font-medium`}>
-                                                {activeTab === 'pending' 
-                                                    ? 'There are no outstanding balances currently marked as unpaid or partial.' 
-                                                    : 'No historical payment records were found for your search criteria.'}
+                                                {activeTab === 'pending' ? 'There are no outstanding balances currently marked as unpaid or partial.' : 'No historical payment records were found for your search criteria.'}
                                             </p>
                                         </div>
                                     </td>
@@ -323,6 +294,132 @@ const PayInList = () => {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* ── Mobile cards ── */}
+                <div className="block sm:hidden">
+                    {loading ? (
+                        <div className="p-12 flex flex-col items-center gap-4">
+                            <div className={`w-10 h-10 border-4 rounded-full animate-spin ${theme.mode === 'dark' ? 'border-indigo-500/20 border-t-indigo-500' : 'border-indigo-100 border-t-indigo-600'}`} />
+                            <p className={`font-black uppercase tracking-widest text-[11px] ${theme.textMuted}`}>Loading...</p>
+                        </div>
+                    ) : (activeTab === 'pending' ? customerList : activeTab === 'history' ? historyData : returnsData).length === 0 ? (
+                        <div className="p-12 text-center space-y-3">
+                            <div className={`w-16 h-16 ${theme.pageBg} rounded-full flex items-center justify-center mx-auto ${theme.textMuted}`}>
+                                {activeTab === 'pending' ? <User size={32} /> : <ReceiptText size={32} />}
+                            </div>
+                            <p className={`font-black ${theme.textHeading}`}>{activeTab === 'pending' ? 'All Clear' : 'No History'}</p>
+                            <p className={`text-sm ${theme.textMuted}`}>{activeTab === 'pending' ? 'No outstanding balances.' : 'No records found.'}</p>
+                        </div>
+                    ) : (
+                        <div className={`divide-y ${theme.borderLight}`}>
+                            {(activeTab === 'pending' ? customerList : activeTab === 'history' ? historyData : returnsData).map((group) => {
+                                const key = activeTab === 'returns' ? group._id : (group.customerPhone || group.customerName || group.id || 'N/A');
+                                const isExpanded = expandedCustomers[key];
+                                return (
+                                    <div key={key}>
+                                        {/* Card header — tap to expand */}
+                                        <div
+                                            onClick={() => toggleCustomer(key)}
+                                            className={`p-4 cursor-pointer transition-colors ${isExpanded ? theme.pageBg : ''}`}
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isExpanded ? (activeTab === 'pending' ? 'bg-indigo-600' : 'bg-emerald-600') + ' text-white' : `${theme.pageBg} ${theme.textMuted}`}`}>
+                                                        <User size={20} />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className={`font-black text-sm truncate ${theme.textHeading}`}>{group.customerName || 'Walk-in Customer'}</p>
+                                                        <p className={`text-[11px] font-bold ${theme.textMuted} truncate`}>
+                                                            {group.customerPhone !== 'N/A' ? group.customerPhone : 'No Contact Info'}
+                                                            {activeTab === 'history' && group.orderNumber && ` • #${group.orderNumber}`}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    {activeTab === 'pending' && (
+                                                        <p className={`font-black text-sm ${group.totalBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                                                            {formatCurrency(group.totalBalance)}
+                                                        </p>
+                                                    )}
+                                                    {activeTab === 'history' && (
+                                                        <p className="font-black text-sm text-emerald-600">{formatCurrency(group.totalPaid)}</p>
+                                                    )}
+                                                    {activeTab === 'returns' && (
+                                                        <p className={`font-black text-sm ${group.netAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(group.netAmount)}</p>
+                                                    )}
+                                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${isExpanded ? 'rotate-180 ' + (activeTab === 'pending' ? 'bg-indigo-600' : 'bg-emerald-600') + ' text-white' : `${theme.pageBg} ${theme.textMuted}`}`}>
+                                                        <ChevronDown size={16} />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Inline stats row */}
+                                            {activeTab === 'pending' && (
+                                                <div className="flex gap-3 mt-3">
+                                                    <div className={`flex-1 p-2 rounded-xl ${theme.inputBg} text-center`}>
+                                                        <p className={`text-[9px] font-black uppercase tracking-widest ${theme.textMuted}`}>Total</p>
+                                                        <p className={`text-sm font-black ${theme.textHeading}`}>{formatCurrency(group.totalAmount)}</p>
+                                                    </div>
+                                                    <div className="flex-1 p-2 rounded-xl bg-green-500/10 text-center">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-green-600">Paid</p>
+                                                        <p className="text-sm font-black text-green-600">{formatCurrency(group.totalPaid)}</p>
+                                                    </div>
+                                                    <div className="flex-1 p-2 rounded-xl bg-orange-500/10 text-center">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-orange-600">Due</p>
+                                                        <p className="text-sm font-black text-orange-600">{formatCurrency(group.totalBalance)}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {activeTab === 'history' && (
+                                                <div className="flex gap-3 mt-3">
+                                                    <div className={`flex-1 p-2 rounded-xl ${theme.inputBg} text-center`}>
+                                                        <p className={`text-[9px] font-black uppercase tracking-widest ${theme.textMuted}`}>Invoice</p>
+                                                        <p className={`text-xs font-black ${theme.textHeading}`}>{formatDate(group.date)}</p>
+                                                    </div>
+                                                    <div className="flex-1 p-2 rounded-xl bg-emerald-500/10 text-center">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600">Amount</p>
+                                                        <p className="text-sm font-black text-emerald-600">{formatCurrency(group.totalPaid)}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {activeTab === 'returns' && (
+                                                <div className="flex gap-3 mt-3">
+                                                    <div className="flex-1 p-2 rounded-xl bg-orange-500/10 text-center">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-orange-600">Return</p>
+                                                        <p className="text-sm font-black text-orange-600">{formatCurrency(group.totalReturnAmount)}</p>
+                                                    </div>
+                                                    <div className="flex-1 p-2 rounded-xl bg-indigo-500/10 text-center">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-indigo-600">Exchange</p>
+                                                        <p className="text-sm font-black text-indigo-600">{formatCurrency(group.totalExchangeAmount)}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Expanded timeline */}
+                                        {isExpanded && (
+                                            <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-gray-50/50'} border-t ${theme.borderLight} p-4 animate-in slide-in-from-top-2 duration-300`}>
+                                                <HistoryTimeline
+                                                    onAction={(order) => { setSelectedOrder(order); setIsSheetOpen(true); }}
+                                                    onReturn={(order) => { setSelectedOrder(order); setIsReturnSheetOpen(true); }}
+                                                    events={(() => {
+                                                        const events = [];
+                                                        const ordersToProcess = activeTab === 'pending' ? group.orders : [group];
+                                                        ordersToProcess.forEach(order => {
+                                                            events.push({ id: `purchase-${order.id}`, type: 'PURCHASE', date: order.date, orderNumber: order.orderNumber, amount: order.grandTotal, balance: order.balanceAmount || 0, order: order });
+                                                            (order.payments || []).forEach(p => { events.push({ id: `payment-${p.id}`, type: 'PAYMENT', date: p.date, orderNumber: order.orderNumber, amount: p.amount, method: p.method }); });
+                                                        });
+                                                        return events.sort((a, b) => new Date(b.date) - new Date(a.date));
+                                                    })()}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
 

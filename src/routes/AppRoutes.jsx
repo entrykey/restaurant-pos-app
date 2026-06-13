@@ -47,6 +47,7 @@ import OperatingExpenses from "../pages/Dashboard/OperatingExpenses";
 import SalesList from "../pages/Dashboard/SalesList";
 import SaleMarking from "../pages/Sales/SaleMarking";
 import SalePage from "../pages/Sales/SalePage";
+import ReturnPage from "../pages/Sales/ReturnPage";
 
 
 const Staff = lazy(() => import("../pages/Staff/Staff"));
@@ -231,7 +232,7 @@ const AppRoutes = (props) => {
         <Route
           path={`${prefix}/dashboard/pay-out`}
           element={
-            <ProtectedRoute routeKey="DASHBOARD">
+            <ProtectedRoute routeKey="PAY_OUT">
               <PayOutList />
             </ProtectedRoute>
           }
@@ -471,6 +472,14 @@ const AppRoutes = (props) => {
           element={
             <ProtectedRoute routeKey="SALES_HISTORY">
               <SalePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={`${prefix}/sales/return`}
+          element={
+            <ProtectedRoute routeKey="SALES_HISTORY">
+              <ReturnPage />
             </ProtectedRoute>
           }
         />

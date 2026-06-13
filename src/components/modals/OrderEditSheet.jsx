@@ -10,6 +10,9 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
     const [items, setItems] = useState([]);
     const [notes, setNotes] = useState('');
     const [error, setError] = useState(null);
+    const [discountTotal, setDiscountTotal] = useState(0);
+    const [discountType, setDiscountType] = useState('flat'); // 'flat' | 'percent'
+    const [discountInput, setDiscountInput] = useState('');
     
     // Search state
     const [searchQuery, setSearchQuery] = useState('');
@@ -18,7 +21,6 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
 
     useEffect(() => {
         if (isOpen && order) {
-            // Initialize from current order
             setItems((order.items || []).map(item => ({
                 itemId: item.itemId?._id || item.itemId,
                 name: item.itemId?.name || item.itemName,
@@ -28,6 +30,11 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
                 weightBased: item.itemId?.weightBased || false
             })));
             setNotes(order.notes || '');
+            // Load existing discount from order
+            const existingDiscount = order.discountTotal || 0;
+            setDiscountTotal(existingDiscount);
+            setDiscountInput(existingDiscount > 0 ? String(existingDiscount) : '');
+            setDiscountType('flat');
             setError(null);
             setSearchQuery('');
             setSearchResults([]);
@@ -91,7 +98,7 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
         setItems(prev => prev.filter(i => String(i.itemId) !== String(itemId)));
     };
 
-    // Calculation logic (Simplified to match TakeawayOrder logic)
+    // Calculation logic
     const calculateTotals = () => {
         let subtotal = 0;
         let taxTotal = 0;
@@ -101,7 +108,6 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
             const itemTotal = item.price * item.quantity;
             subtotal += itemTotal;
 
-            // Simple tax calculation
             const txRate = item.taxPercent || 0;
             if (txRate > 0) {
                 const itemTax = parseFloat(((itemTotal * txRate) / 100).toFixed(4));
@@ -115,11 +121,21 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
 
         subtotal = parseFloat(subtotal.toFixed(4));
         taxTotal = parseFloat(taxTotal.toFixed(4));
-        const grandTotal = parseFloat((subtotal + taxTotal).toFixed(4));
-        return { subtotal, taxTotal, grandTotal, taxBreakdown: Object.values(taxBreakdown) };
+        // Apply discount
+        const disc = discountType === 'percent'
+            ? parseFloat(((subtotal * discountTotal) / 100).toFixed(4))
+            : discountTotal;
+        const grandTotal = parseFloat(Math.max(0, subtotal + taxTotal - disc).toFixed(4));
+        return { subtotal, taxTotal, grandTotal, discountTotal: disc, taxBreakdown: Object.values(taxBreakdown) };
     };
 
     const totals = calculateTotals();
+
+    const applyDiscount = (type, raw) => {
+        setDiscountType(type);
+        setDiscountInput(raw);
+        setDiscountTotal(parseFloat(raw) || 0);
+    };
 
     const handleSave = async () => {
         setError(null);
@@ -137,8 +153,6 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
                 items,
                 notes,
                 ...totals,
-                // If it's a completed order being edited, we may want to recalculate payment status?
-                // For now, we assume it stays completed but the totals change
                 paymentStatus: (order.totalPaid >= totals.grandTotal) ? 'PAID' : 'PARTIAL'
             });
             onSuccess?.();
@@ -279,6 +293,34 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
                             <span className={theme.textMuted}>Subtotal</span>
                             <span className={theme.textPrimary}>{formatCurrency(totals.subtotal)}</span>
                         </div>
+                        {/* Discount input */}
+                        <div className={`rounded-xl border ${theme.borderLight} ${theme.inputBg} overflow-hidden`}>
+                            <div className={`flex items-center border-b ${theme.borderLight}`}>
+                                <span className={`px-3 text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Discount</span>
+                                <div className="ml-auto flex">
+                                    <button type="button" onClick={() => applyDiscount('flat', discountInput)}
+                                        className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}>
+                                        ₹ Flat
+                                    </button>
+                                    <button type="button" onClick={() => applyDiscount('percent', discountInput)}
+                                        className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'percent' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}>
+                                        % Off
+                                    </button>
+                                </div>
+                            </div>
+                            <input type="number" min="0"
+                                value={discountInput}
+                                onChange={e => applyDiscount(discountType, e.target.value)}
+                                placeholder={discountType === 'percent' ? "Enter %" : "Enter amount"}
+                                className={`w-full px-3 py-2 text-sm font-black outline-none bg-transparent ${theme.textPrimary}`}
+                            />
+                        </div>
+                        {totals.discountTotal > 0 && (
+                            <div className="flex justify-between items-center text-sm font-bold text-emerald-600">
+                                <span>Discount Applied</span>
+                                <span>-{formatCurrency(totals.discountTotal)}</span>
+                            </div>
+                        )}
                         <div className="flex justify-between items-center text-sm font-bold">
                             <span className={theme.textMuted}>Tax Total</span>
                             <span className={theme.textPrimary}>{formatCurrency(totals.taxTotal)}</span>

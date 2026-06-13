@@ -65,6 +65,8 @@ const Inventory = ({
     const [localItems, setLocalItems] = useState([]);
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
+    const [pageSize, setPageSize] = useState(10);
     const [loadingItems, setLoadingItems] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [stockMap, setStockMap] = useState({}); // itemId -> quantityOnHand
@@ -155,7 +157,7 @@ const Inventory = ({
         try {
             const payload = {
                 page: currentPage,
-                limit: 5,
+                limit: pageSize,
                 search: inventorySearch,
                 filters: {
                     shopId: currentShopId,
@@ -170,6 +172,7 @@ const Inventory = ({
                 setLocalItems(response.data.map((item) => ({ ...item, id: item._id })));
                 if (response.pagination) {
                     setTotalPages(response.pagination.totalPages || 1);
+                    setTotalItems(response.pagination.total || 0);
                 }
             }
         } catch (error) {
@@ -181,6 +184,7 @@ const Inventory = ({
         activeTab,
         branchId,
         currentPage,
+        pageSize,
         currentShopId,
         inventorySearch,
         selectedCategory,
@@ -194,6 +198,11 @@ const Inventory = ({
     const handleCategoryChange = (val) => {
         const category = normalizeCategoryValue(val);
         setSelectedCategory(category);
+        setCurrentPage(1);
+    };
+
+    const handlePageSizeChange = (newSize) => {
+        setPageSize(Number(newSize));
         setCurrentPage(1);
     };
 
@@ -467,9 +476,36 @@ const Inventory = ({
             key: "sellingPrice",
             headerClassName: "text-center",
             className: "text-center",
-            render: (_, item) => (
-                <div className={`font-black ${theme.textHeading}`}>{formatCurrency(item.sellingPrice || item.pricing?.sellingPrice || 0)}</div>
-            )
+            render: (_, item) => {
+                const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+                const mrp = item.pricing?.mrp ?? item.mrp;
+                const pp = item.pricing?.purchasePrice ?? item.purchasePrice;
+                return (
+                    <div className="flex flex-col items-center gap-0.5">
+                        {sp != null && sp !== 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-black uppercase tracking-wider opacity-50 ${theme.textSecondary}`}>Sale</span>
+                                <span className={`font-black text-sm ${theme.textHeading}`}>{formatCurrency(sp)}</span>
+                            </div>
+                        )}
+                        {mrp != null && mrp !== 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-black uppercase tracking-wider opacity-50 ${theme.textSecondary}`}>MRP</span>
+                                <span className={`font-bold text-xs opacity-70 ${theme.textHeading}`}>{formatCurrency(mrp)}</span>
+                            </div>
+                        )}
+                        {pp != null && pp !== 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-black uppercase tracking-wider opacity-50 ${theme.textSecondary}`}>Purchase</span>
+                                <span className={`font-bold text-xs opacity-70 ${theme.textHeading}`}>{formatCurrency(pp)}</span>
+                            </div>
+                        )}
+                        {!sp && !mrp && !pp && (
+                            <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                        )}
+                    </div>
+                );
+            }
         },
         {
             header: "Show on Sale",
@@ -616,18 +652,50 @@ const Inventory = ({
             }
         },
         {
-            header: "Cost / Unit",
+            header: "Price",
             key: "costPerUnit",
             headerClassName: "text-right",
             className: "text-right",
-            render: (_, item) => (
-                <div className={`font-black ${theme.textHeading}`}>
-                    {formatCurrency(item.pricing?.purchasePrice || item.costPerUnit || 0)}
-                    <span className={`text-[10px] ml-1 opacity-40 font-black uppercase tracking-tighter`}>
-                        / {item.unitId?.name || ""}
-                    </span>
-                </div>
-            )
+            render: (_, item) => {
+                const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
+                const mrp = item.pricing?.mrp ?? item.mrp;
+                const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+                const unit = item.unitId?.name || "";
+                return (
+                    <div className="flex flex-col items-end gap-0.5">
+                        {pp != null && pp !== 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-black uppercase tracking-wider opacity-50 ${theme.textSecondary}`}>Purchase</span>
+                                <span className={`font-black text-sm ${theme.textHeading}`}>
+                                    {formatCurrency(pp)}
+                                    {unit && <span className="text-[10px] ml-1 opacity-40 font-black uppercase tracking-tighter">/ {unit}</span>}
+                                </span>
+                            </div>
+                        )}
+                        {mrp != null && mrp !== 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-black uppercase tracking-wider opacity-50 ${theme.textSecondary}`}>MRP</span>
+                                <span className={`font-bold text-xs opacity-70 ${theme.textHeading}`}>
+                                    {formatCurrency(mrp)}
+                                    {unit && <span className="text-[10px] ml-1 opacity-40 font-black uppercase tracking-tighter">/ {unit}</span>}
+                                </span>
+                            </div>
+                        )}
+                        {sp != null && sp !== 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-black uppercase tracking-wider opacity-50 ${theme.textSecondary}`}>Sale</span>
+                                <span className={`font-bold text-xs opacity-70 ${theme.textHeading}`}>
+                                    {formatCurrency(sp)}
+                                    {unit && <span className="text-[10px] ml-1 opacity-40 font-black uppercase tracking-tighter">/ {unit}</span>}
+                                </span>
+                            </div>
+                        )}
+                        {!pp && !mrp && !sp && (
+                            <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                        )}
+                    </div>
+                );
+            }
         },
         {
             header: "Show on Sale",
@@ -832,13 +900,37 @@ const Inventory = ({
 
                         {/* Price — right-aligned below stock */}
                         <div className={`text-sm font-black text-right ${theme.textHeading}`}>
-                            {activeTab === "raw"
-                                ? formatCurrency(item.pricing?.purchasePrice || item.costPerUnit || 0)
-                                : formatCurrency(item.sellingPrice || item.pricing?.sellingPrice || 0)
-                            }
-                            <div className="text-[10px] opacity-40 font-bold">
-                                {activeTab === "raw" ? "/ unit" : "sale price"}
-                            </div>
+                            {activeTab === "raw" ? (() => {
+                                const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
+                                const mrp = item.pricing?.mrp ?? item.mrp;
+                                const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+                                const primary = pp || mrp || sp;
+                                const label = pp ? "Purchase" : mrp ? "MRP" : "Sale";
+                                return primary ? (
+                                    <div className="flex flex-col items-end gap-0.5">
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[9px] opacity-40 font-bold uppercase">{label}</span>
+                                            <span>{formatCurrency(primary)}</span>
+                                        </div>
+                                        {pp && mrp ? <div className="text-[10px] opacity-40 font-bold">MRP {formatCurrency(mrp)}</div> : null}
+                                    </div>
+                                ) : <span className="opacity-40">—</span>;
+                            })() : (() => {
+                                const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+                                const mrp = item.pricing?.mrp ?? item.mrp;
+                                const pp = item.pricing?.purchasePrice ?? item.purchasePrice;
+                                const primary = sp || mrp || pp;
+                                const label = sp ? "Sale" : mrp ? "MRP" : "Purchase";
+                                return primary ? (
+                                    <div className="flex flex-col items-end gap-0.5">
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[9px] opacity-40 font-bold uppercase">{label}</span>
+                                            <span>{formatCurrency(primary)}</span>
+                                        </div>
+                                        {sp && mrp ? <div className="text-[10px] opacity-40 font-bold">MRP {formatCurrency(mrp)}</div> : null}
+                                    </div>
+                                ) : <span className="opacity-40">—</span>;
+                            })()}
                         </div>
                     </div>
                 </div>
@@ -931,7 +1023,7 @@ const Inventory = ({
     };
 
     return (
-        <div className={`flex flex-col h-full overflow-y-auto custom-scrollbar overflow-x-hidden ${theme.pageBg}`}>
+        <div className={`flex flex-col min-h-full overflow-x-hidden ${theme.pageBg}`}>
             {/* Header section */}
             <div className="p-4 md:p-6 flex-shrink-0">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
@@ -1042,14 +1134,17 @@ const Inventory = ({
                 </div>
             </div>
 
-            {/* Table section - FULL WIDTH with minimal padding */}
-            <div className="flex-1 px-2 md:px-4 pb-4 min-h-[500px] flex-shrink-0 md:flex-shrink">
+            {/* Table section */}
+            <div className="px-2 md:px-4 pb-10">
                 <CommonTable
                     columns={currentColumns}
                     data={filteredData}
                     isLoading={loadingItems}
                     currentPage={currentPage}
                     totalPages={totalPages}
+                    totalItems={totalItems}
+                    pageSize={pageSize}
+                    onPageSizeChange={handlePageSizeChange}
                     onPageChange={setCurrentPage}
                     className="max-h-full flex flex-col"
                     mobileCardRender={mobileCardRender}
@@ -1058,8 +1153,8 @@ const Inventory = ({
 
             {/* Product Create/Edit Modal */}
             {isProductModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 md:p-8 animate-in fade-in duration-200">
-                    <div className={`${theme.surfaceBg} w-full max-w-6xl max-h-[90vh] rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col border ${theme.borderLight} animate-in zoom-in-95 duration-200`}>
+                <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/40 backdrop-blur-sm md:p-8 animate-in fade-in duration-200">
+                    <div className={`${theme.surfaceBg} w-full max-w-6xl h-full md:h-auto md:max-h-[90vh] md:rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col border-0 md:border ${theme.borderLight} animate-in slide-in-from-bottom md:zoom-in-95 duration-200`}>
                          <button 
                             onClick={() => handleProductModalClose()}
                             className="absolute top-8 right-8 p-3 hover:bg-red-50 hover:text-red-500 rounded-full transition-all z-10"
