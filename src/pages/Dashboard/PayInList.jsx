@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import PayInSheet from '../../components/modals/PayInSheet';
 import OrderReturnSheet from '../../components/modals/OrderReturnSheet';
 import HistoryTimeline from '../../components/HistoryTimeline';
+import ExportSelectToolbar from '../../components/ExportSelectToolbar';
 
 const PayInList = () => {
     const { user } = useAuth();
@@ -94,6 +95,57 @@ const PayInList = () => {
         }));
     };
 
+    // ── Row selection ─────────────────────────────────────────────────────────
+    const [selectedKeys, setSelectedKeys] = useState(new Set());
+    const currentRows = activeTab === 'pending' ? customerList : activeTab === 'history' ? historyData : returnsData;
+    const allRowKeys = currentRows.map(r => activeTab === 'returns' ? r._id : (r.customerPhone || r.customerName || r.id || 'N/A'));
+    const allSelected = allRowKeys.length > 0 && allRowKeys.every(k => selectedKeys.has(k));
+    const someSelected = !allSelected && allRowKeys.some(k => selectedKeys.has(k));
+
+    const toggleRow = (key) => {
+        setSelectedKeys(prev => {
+            const next = new Set(prev);
+            next.has(key) ? next.delete(key) : next.add(key);
+            return next;
+        });
+    };
+    const toggleAll = () => setSelectedKeys(allSelected ? new Set() : new Set(allRowKeys));
+
+    useEffect(() => { setSelectedKeys(new Set()); }, [activeTab]);
+
+    const exportColumns = activeTab === 'pending'
+        ? [
+            { header: 'Customer', exportValue: r => r.customerName || 'Walk-in' },
+            { header: 'Phone', exportValue: r => r.customerPhone || '' },
+            { header: 'Total Limit', exportValue: r => r.totalAmount },
+            { header: 'Total Paid', exportValue: r => r.totalPaid },
+            { header: 'Balance Due', exportValue: r => r.totalBalance },
+          ]
+        : activeTab === 'history'
+        ? [
+            { header: 'Customer', exportValue: r => r.customerName || 'Walk-in' },
+            { header: 'Order Date', exportValue: r => r.date },
+            { header: 'Paid Date', exportValue: r => r.paidDate },
+            { header: 'Amount Paid', exportValue: r => r.totalPaid },
+          ]
+        : [
+            { header: 'Customer', exportValue: r => r.customerName || 'Walk-in' },
+            { header: 'Return Total', exportValue: r => r.totalReturnAmount },
+            { header: 'Exchange Total', exportValue: r => r.totalExchangeAmount },
+            { header: 'Net Balance', exportValue: r => r.netAmount },
+          ];
+
+    const getExportRows = () => {
+        const rows = selectedKeys.size > 0
+            ? currentRows.filter(r => selectedKeys.has(activeTab === 'returns' ? r._id : (r.customerPhone || r.customerName || r.id || 'N/A')))
+            : currentRows;
+        return rows.map(r => {
+            const obj = {};
+            exportColumns.forEach(col => { obj[col.header] = col.exportValue(r); });
+            return obj;
+        });
+    };
+
     return (
         <div className={`p-4 md:p-8 pb-32 space-y-8 w-full h-full overflow-y-auto animate-in fade-in duration-500 ${theme.pageBg}`}>
             <div className="flex items-center gap-4">
@@ -141,32 +193,44 @@ const PayInList = () => {
             </div>
 
             <div className={`overflow-hidden rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg}`}>
+                <ExportSelectToolbar
+                    rows={currentRows}
+                    selected={selectedKeys}
+                    allSelected={allSelected}
+                    someSelected={someSelected}
+                    onToggleAll={toggleAll}
+                    getExportRows={getExportRows}
+                    exportFilename={`payin-${activeTab}`}
+                    exportTitle={`Pay In — ${activeTab}`}
+                    columns={exportColumns}
+                />
                 {/* ── Desktop table ── */}
                 <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className={`${theme.pageBg} ${theme.textMuted} text-[10px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
-                                <th className="p-6">Customer</th>
+                                <th className="p-3 w-10"></th>
+                                <th className="p-3 text-xs">Customer</th>
                                 {activeTab === 'pending' ? (
                                     <>
-                                        <th className="p-6 text-right">Total Limit</th>
-                                        <th className="p-6 text-right">Total Paid</th>
-                                        <th className="p-6 text-right">Total Balance Due</th>
+                                        <th className="p-3 text-xs text-right">Total Limit</th>
+                                        <th className="p-3 text-xs text-right">Total Paid</th>
+                                        <th className="p-3 text-xs text-right">Total Balance Due</th>
                                     </>
                                 ) : activeTab === 'history' ? (
                                     <>
-                                        <th className="p-6 text-right">Invoice Date</th>
-                                        <th className="p-6 text-right">Paid Date</th>
-                                        <th className="p-6 text-right">Amount Paid</th>
+                                        <th className="p-3 text-xs text-right">Invoice Date</th>
+                                        <th className="p-3 text-xs text-right">Paid Date</th>
+                                        <th className="p-3 text-xs text-right">Amount Paid</th>
                                     </>
                                 ) : (
                                     <>
-                                        <th className="p-6 text-right">Return Total</th>
-                                        <th className="p-6 text-right">Exchange Total</th>
-                                        <th className="p-6 text-right">Net Balance</th>
+                                        <th className="p-3 text-xs text-right">Return Total</th>
+                                        <th className="p-3 text-xs text-right">Exchange Total</th>
+                                        <th className="p-3 text-xs text-right">Net Balance</th>
                                     </>
                                 )}
-                                <th className="p-6 text-center w-20">Action</th>
+                                <th className="p-3 text-xs text-center w-16">Action</th>
                             </tr>
                         </thead>
                         <tbody className={`divide-y ${theme.borderLight}`}>
@@ -188,12 +252,16 @@ const PayInList = () => {
                                         <React.Fragment key={key}>
                                             <tr
                                                 onClick={() => toggleCustomer(key)}
-                                                className={`group hover:${theme.pageBg} transition-all cursor-pointer ${isExpanded ? theme.pageBg : ''}`}
+                                                className={`group hover:${theme.pageBg} transition-all cursor-pointer ${isExpanded ? theme.pageBg : ''} ${selectedKeys.has(key) ? 'bg-indigo-50/40 dark:bg-indigo-900/10' : ''}`}
                                             >
-                                                <td className="p-6">
+                                                <td className="p-3 w-10" onClick={e => { e.stopPropagation(); toggleRow(key); }}>
+                                                    <input type="checkbox" checked={selectedKeys.has(key)} onChange={() => {}}
+                                                        className="w-4 h-4 rounded accent-indigo-600 cursor-pointer" />
+                                                </td>
+                                                <td className="p-3">
                                                     <div className="flex items-center gap-4">
-                                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${isExpanded ? (activeTab === 'pending' ? 'bg-indigo-600' : 'bg-emerald-600') + ' text-white' : `${theme.pageBg} ${theme.textMuted} group-hover:${activeTab === 'pending' ? 'bg-indigo-600' : 'bg-emerald-600'} group-hover:text-white`}`}>
-                                                            <User size={24} />
+                                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${isExpanded ? (activeTab === 'pending' ? 'bg-indigo-600' : 'bg-emerald-600') + ' text-white' : `${theme.pageBg} ${theme.textMuted} group-hover:${activeTab === 'pending' ? 'bg-indigo-600' : 'bg-emerald-600'} group-hover:text-white`}`}>
+                                                            <User size={18} />
                                                         </div>
                                                         <div>
                                                             <p className={`text-lg font-black tracking-tight transition-colors capitalize ${theme.textHeading}`}>
@@ -208,13 +276,13 @@ const PayInList = () => {
                                                 </td>
                                                 {activeTab === 'pending' ? (
                                                     <>
-                                                        <td className="p-6 text-right">
+                                                        <td className="p-3 text-right">
                                                             <p className={`text-lg font-black tracking-tight ${theme.textHeading}`}>{formatCurrency(group.totalAmount)}</p>
                                                         </td>
-                                                        <td className="p-6 text-right">
-                                                            <p className="text-lg font-black text-green-600 tracking-tight">{formatCurrency(group.totalPaid)}</p>
+                                                        <td className="p-3 text-right">
+                                                            <p className="text-sm font-black text-green-600 tracking-tight">{formatCurrency(group.totalPaid)}</p>
                                                         </td>
-                                                        <td className="p-6 text-right">
+                                                        <td className="p-3 text-right">
                                                             <p className={`text-lg font-black tracking-tight ${group.totalBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                                                                 {formatCurrency(group.totalBalance)}
                                                             </p>
@@ -222,32 +290,32 @@ const PayInList = () => {
                                                     </>
                                                 ) : activeTab === 'history' ? (
                                                     <>
-                                                        <td className="p-6 text-right">
+                                                        <td className="p-3 text-right">
                                                             <p className={`text-sm font-black ${theme.textHeading}`}>{formatDate(group.date)}</p>
                                                         </td>
-                                                        <td className="p-6 text-right">
+                                                        <td className="p-3 text-right">
                                                             <p className={`text-sm font-black text-emerald-600`}>{formatDate(group.paidDate)}</p>
                                                         </td>
-                                                        <td className="p-6 text-right">
+                                                        <td className="p-3 text-right">
                                                             <p className={`text-lg font-black text-emerald-600 tracking-tight`}>{formatCurrency(group.totalPaid)}</p>
                                                         </td>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <td className="p-6 text-right">
+                                                        <td className="p-3 text-right">
                                                             <p className={`text-lg font-black text-orange-600 tracking-tight`}>{formatCurrency(group.totalReturnAmount)}</p>
                                                         </td>
-                                                        <td className="p-6 text-right">
+                                                        <td className="p-3 text-right">
                                                             <p className={`text-lg font-black text-indigo-600 tracking-tight`}>{formatCurrency(group.totalExchangeAmount)}</p>
                                                         </td>
-                                                        <td className="p-6 text-right">
+                                                        <td className="p-3 text-right">
                                                             <p className={`text-lg font-black tracking-tight ${group.netAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>
                                                                 {formatCurrency(group.netAmount)}
                                                             </p>
                                                         </td>
                                                     </>
                                                 )}
-                                                <td className="p-6 text-center">
+                                                <td className="p-3 text-center">
                                                     <div className={`mx-auto w-10 h-10 rounded-full flex items-center justify-center transition-all ${isExpanded ? (activeTab === 'pending' ? 'bg-indigo-600' : 'bg-emerald-600') + ' text-white rotate-180' : `${theme.pageBg} ${theme.textMuted} hover:${activeTab === 'pending' ? 'bg-indigo-600' : 'bg-emerald-600'} hover:text-white`}`}>
                                                         <ChevronDown size={20} />
                                                     </div>
@@ -444,3 +512,4 @@ const PayInList = () => {
 };
 
 export default PayInList;
+

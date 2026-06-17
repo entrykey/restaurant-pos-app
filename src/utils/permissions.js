@@ -87,6 +87,10 @@ export const hasPermissionFor = (user, module, resource, action) => {
     if (resource === "inventory_settings") {
       return hasPermissionById(user, "settings", "settings.inventory_settings");
     }
+    if (resource === "barcode-bill") {
+      if (hasPermissionById(user, "settings", "MANAGE.BARCODE-BILL")) return true;
+      if (hasPermissionById(user, "settings", "barcode-bill.MANAGE")) return true;
+    }
     if (resource === "settings" && (action === "view" || action === "manage")) {
       if (hasPermissionById(user, "settings", "SETTINGS.GENERAL")) return true;
     }

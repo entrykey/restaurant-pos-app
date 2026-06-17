@@ -45,6 +45,7 @@ const emptyBranch = (organizationId, defaultUpiId = null) => ({
     },
     currency: "INR",
     upiId: defaultUpiId,
+    fssai: "",
     isMainBranch: false,
     status: BRANCH_STATUS.ACTIVE,
 });
@@ -1089,6 +1090,15 @@ const Organization = ({
                             value={branchForm.upiId ?? ""}
                             onChange={(e) => setBranchForm({ ...branchForm, upiId: e.target.value })}
                             placeholder="e.g. branch@upi"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">FSSAI License No.</label>
+                        <input
+                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                            value={branchForm.fssai ?? ""}
+                            onChange={(e) => setBranchForm({ ...branchForm, fssai: e.target.value })}
+                            placeholder="e.g. 12345678901234"
                         />
                     </div>
                     {(() => {

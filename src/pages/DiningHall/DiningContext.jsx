@@ -9,7 +9,7 @@ const DiningContext = createContext();
 export const useDining = () => useContext(DiningContext);
 
 export const DiningProvider = ({ children }) => {
-    const { currentTime, activeBranchId, enabledModules } = useApp();
+    const { currentTime, activeBranchId, enabledModules, branches } = useApp();
     const { user } = useAuth();
     const [tables, setTables] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -17,8 +17,18 @@ export const DiningProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [reservations, setReservations] = useState([]);
 
+    const resolveBranchId = useCallback(() => (
+        activeBranchId ||
+        user?.branch_id ||
+        user?.branchId ||
+        user?.branch ||
+        (user?.branchIds?.length ? user.branchIds[0] : null) ||
+        branches?.[0]?._id ||
+        null
+    ), [activeBranchId, user, branches]);
+
     const fetchDiningData = useCallback(async (isPolling = false) => {
-        const branchId = activeBranchId || user?.branchId || user?.branch || (user?.branchIds?.length ? user.branchIds[0] : null);
+        const branchId = resolveBranchId();
 
         if (!branchId) {
             if (!isPolling) {
@@ -43,8 +53,8 @@ export const DiningProvider = ({ children }) => {
                     date: new Date().toISOString().split("T")[0],
                     status: 'CONFIRMED'
                 }) : Promise.resolve({ data: [] }),
-                (isDiningEnabled || enabledModules?.TAKEAWAY)
-                    ? api.get('/orders', { params: { branchId, orderStatus: ['OPEN', 'IN_PROGRESS', 'READY', 'SERVED'] } })
+                isDiningEnabled
+                    ? tableService.getActiveTableOrders({ branchId })
                     : Promise.resolve({ data: [] }),
                 (isKdsEnabled || isDiningEnabled)
                     ? api.get('/kitchen/kots', { params: { branchId } })
@@ -66,6 +76,18 @@ export const DiningProvider = ({ children }) => {
             }
 
             const activeOrders = ordersRes?.data || ordersRes || [];
+            const ordersByTableId = new Map();
+            (Array.isArray(activeOrders) ? activeOrders : []).forEach((order) => {
+                const oTableId = order.tableId;
+                if (!oTableId) return;
+                const oTableIdStr = typeof oTableId === 'object'
+                    ? String(oTableId._id || oTableId.id || oTableId)
+                    : String(oTableId);
+                if (!ordersByTableId.has(oTableIdStr)) {
+                    ordersByTableId.set(oTableIdStr, order);
+                }
+            });
+
             const activeKots = kotsRes?.data || kotsRes || [];
 
             const rawCategories = categoriesRes?.data || categoriesRes || [];
@@ -85,21 +107,13 @@ export const DiningProvider = ({ children }) => {
             // Map backend _id to id for frontend consistency and merge active orders
             const mappedTables = displayTables.map(t => {
                 const tableId = String(t._id);
-                const activeOrderForTable = activeOrders.find(o => {
-                    const oTableId = o.tableId;
-                    if (!oTableId) return false;
-                    // tableId can be a string, ObjectId, or populated object
-                    const oTableIdStr = typeof oTableId === 'object'
-                        ? String(oTableId._id || oTableId.id || oTableId)
-                        : String(oTableId);
-                    return oTableIdStr === tableId;
-                });
+                const activeOrderForTable = ordersByTableId.get(tableId) || null;
 
-                let status = t.status || "available";
+                let status = (t.status || "available").toLowerCase();
                 let order = null;
 
                 if (activeOrderForTable) {
-                    status = "OCCUPIED"; // Force status if active order exists
+                    status = "occupied";
 
                     // Check if any KOT for this order is not served
                     const tableKots = activeKots.filter(kot => {
@@ -122,10 +136,14 @@ export const DiningProvider = ({ children }) => {
                     order = {
                         orderId: activeOrderForTable._id,
                         orderNumber: activeOrderForTable.orderNumber,
+                        grandTotal: activeOrderForTable.grandTotal,
                         items: (activeOrderForTable.items || []).map(item => ({
                             ...item,
                             id: item.itemId?._id || item.itemId,
                             name: item.itemId?.name || item.itemName,
+                            price: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
+                            sellingPrice: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
+                            taxPercent: item.taxPercent ?? 0,
                             // If the order already has at least one KOT, treat backend quantities as already sent
                             // so the POS can generate incremental KOTs only for newly added/increased items.
                             sentQuantity: (tableKots.length > 0 ? (item.quantity ?? 0) : (item.sentQuantity ?? 0)),
@@ -142,6 +160,8 @@ export const DiningProvider = ({ children }) => {
                         createdBy: activeOrderForTable.createdBy,
                         managedBy: activeOrderForTable.managedBy,
                         servedBy: activeOrderForTable.servedBy,
+                        actedBy: activeOrderForTable.actedBy || [],
+                        createdAt: activeOrderForTable.createdAt,
                     };
                 }
 
@@ -180,13 +200,7 @@ export const DiningProvider = ({ children }) => {
                     const nextOrder = nextTable.order;
 
                     const prevItemsCount = prevOrder?.items?.length || 0;
-                    if (prevItemsCount === 0) {
-                        // Keep some local fields if backend didn't send them
-                        return {
-                            ...nextTable,
-                            startTime: nextTable.startTime ?? prevTable.startTime ?? null,
-                        };
-                    }
+                    const hasLocalPending = Boolean(prevOrder?._localDraftPending);
 
                     const prevOrderId = prevOrder?.orderId;
                     const nextOrderId = nextOrder?.orderId;
@@ -197,31 +211,40 @@ export const DiningProvider = ({ children }) => {
                         nextHasBackendOrder &&
                         String(prevOrderId) === String(nextOrderId);
 
-                    // Preserve local draft carts:
-                    // - If no backend order id yet (purely local cart), always keep it.
-                    // - If this is the currently active table and we're still on the same backend order,
-                    //   keep the local items to avoid losing unsent edits between polls.
+                    // Only keep unsynced local edits on the active table; everyone else uses backend
                     const shouldPreserveLocalOrder =
-                        !prevHasBackendOrder ||
-                        (String(activeTableId) === key && (isSameBackendOrder || !nextHasBackendOrder));
+                        hasLocalPending &&
+                        String(activeTableId) === key &&
+                        prevItemsCount > 0 &&
+                        (isSameBackendOrder || !nextHasBackendOrder);
 
                     if (!shouldPreserveLocalOrder) {
                         return {
                             ...nextTable,
-                            startTime: nextTable.startTime ?? prevTable.startTime ?? null,
+                            status: nextOrder ? 'occupied' : (nextTable.status || 'available'),
+                            startTime: nextTable.startTime ?? prevTable.startTime ?? (nextOrder?.createdAt ? new Date(nextOrder.createdAt).getTime() : null),
                         };
                     }
 
                     return {
                         ...nextTable,
-                        status: prevTable.status ?? nextTable.status,
-                        startTime: prevTable.startTime ?? nextTable.startTime ?? null,
+                        status: 'occupied',
+                        startTime: prevTable.startTime ?? nextTable.startTime ?? (nextOrder?.createdAt ? new Date(nextOrder.createdAt).getTime() : null),
                         order: {
+                            ...nextOrder,
                             ...prevOrder,
-                            // Always refresh staff info from the latest backend data
+                            items: prevOrder.items,
+                            orderId: nextOrder?.orderId ?? prevOrder?.orderId,
+                            orderNumber: nextOrder?.orderNumber ?? prevOrder?.orderNumber,
+                            grandTotal: nextOrder?.grandTotal ?? prevOrder?.grandTotal,
                             createdBy: nextOrder?.createdBy ?? prevOrder.createdBy,
                             managedBy: nextOrder?.managedBy ?? prevOrder.managedBy,
                             servedBy: nextOrder?.servedBy ?? prevOrder.servedBy,
+                            actedBy: nextOrder?.actedBy ?? prevOrder.actedBy ?? [],
+                            isSentToKOT: nextOrder?.isSentToKOT ?? prevOrder?.isSentToKOT,
+                            kotStatus: nextOrder?.kotStatus ?? prevOrder?.kotStatus,
+                            kotSentAt: nextOrder?.kotSentAt ?? prevOrder?.kotSentAt,
+                            _localDraftPending: true,
                         },
                     };
                 });
@@ -233,7 +256,7 @@ export const DiningProvider = ({ children }) => {
         } finally {
             if (!isPolling) setLoading(false);
         }
-    }, [activeBranchId, activeTableId, user, enabledModules]);
+    }, [resolveBranchId, activeTableId, user, enabledModules]);
 
     useEffect(() => {
         if (!user) {
@@ -243,10 +266,9 @@ export const DiningProvider = ({ children }) => {
         
         fetchDiningData();
 
-        // Refresh dining hall data every 10 seconds to catch remote updates/reservations
         const intervalId = setInterval(() => {
             fetchDiningData(true);
-        }, 10000);
+        }, 2500);
 
         return () => clearInterval(intervalId);
     }, [user, fetchDiningData, enabledModules]);
@@ -285,7 +307,7 @@ export const DiningProvider = ({ children }) => {
 
             // Local update
             setTables(prev => prev.map(t =>
-                t.id === table.id ? { ...t, status: "OCCUPIED", startTime: Date.now() } : t
+                t.id === table.id ? { ...t, status: "occupied", startTime: Date.now() } : t
             ));
 
             setReservations(prev => prev.map(r =>

@@ -539,7 +539,8 @@ export const settingService = {
     },
     getSettingByKey: async (key, shopId, branchId = null) => {
         try {
-            const params = { shopId };
+            const params = {};
+            if (shopId) params.shopId = shopId;
             if (branchId) params.branchId = branchId;
             const response = await api.get(`/settings/${key}`, { params });
             return response.data;
@@ -827,6 +828,15 @@ export const itemService = {
             throw error.response ? error.response.data : error;
         }
     },
+    getPopularItems: async (params = {}) => {
+        try {
+            const response = await api.get('/items/popular', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching popular items:", error);
+            return [];
+        }
+    },
     bulkUploadItems: async (formData) => {
         try {
             const response = await api.post('/items/bulk-upload', formData, {
@@ -882,6 +892,15 @@ export const inventoryService = {
 };
 
 export const tableService = {
+    getActiveTableOrders: async (params = {}) => {
+        try {
+            const response = await api.get('/dining/tables/active-orders', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching active table orders:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
     getTables: async (params = {}) => {
         try {
             const response = await api.get('/dining/tables', { params });

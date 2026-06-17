@@ -36,8 +36,10 @@ export const ROUTE_ACCESS = Object.freeze({
   CLIENT_MANAGEMENT: { module: MODULES.CLIENT_MANAGEMENT },
   SALE_MARKING: { module: MODULES.SALE_MARKING, action: "MANAGE.SALEMARKING" },
   SALES_HISTORY: { module: MODULES.SALES_HISTORY, action: "MANAGE.SALES" },
+  SALES_RETURN: { module: MODULES.SALES_RETURN, action: "VIEW.SALESRETURN" },
   PAY_IN: { module: MODULES.PAY_IN, action: "VIEW PAYIN" },
   PAY_OUT: { module: MODULES.PAY_OUT, action: "VIEW PAYOUT" },
+  PURCHASE_RETURN: { module: MODULES.PURCHASE_RETURN, action: "VIEW.PURCHASERETURN" },
 });
 
 // Define order in sidebar
@@ -107,8 +109,10 @@ export const ROUTE_KEY_TO_PATH = Object.freeze({
   CLIENT_MANAGEMENT: "/client-management",
   SALE_MARKING: "/sale-marking",
   SALES_HISTORY: "/sales-history",
+  SALES_RETURN: "/salesreturn",
   PAY_IN: "/dashboard/pay-in",
   PAY_OUT: "/dashboard/pay-out",
+  PURCHASE_RETURN: "/purchasereturn",
 });
 
 /** Resolve first path the user is allowed to access (for redirect when denying a route) */

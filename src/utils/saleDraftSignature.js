@@ -1,3 +1,21 @@
+export const buildTableDraftSignature = ({ tableId, tableOrder }) => {
+    const items = tableOrder?.items || [];
+    return JSON.stringify({
+        tableId: tableId || null,
+        orderId: tableOrder?.orderId || null,
+        items: items.map((item) => ({
+            id: item.id || item._id,
+            quantity: item.quantity,
+            selectedUnit: item.selectedUnit || 'PRIMARY',
+            conversionFactor: item.conversionFactor || 1,
+            variantId: item.selectedVariant?._id || item.selectedVariant?.id || null,
+            notes: item.suggestion || '',
+            price: item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice || 0),
+            taxPercent: item.taxPercent,
+        })),
+    });
+};
+
 export const buildTakeawayDraftSignature = ({
     activeTabId,
     takeawayOrder,

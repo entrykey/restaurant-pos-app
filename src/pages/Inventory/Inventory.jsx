@@ -233,7 +233,7 @@ const Inventory = ({
         "unit_id", "selling_price", "tax_id", "hsn_sac_code", "status"
     ];
 
-    // Supplier is per purchase (purchase.model), not per item — same product can have different suppliers per purchase
+    // Supplier is per purchase (purchase.model), not per item � same product can have different suppliers per purchase
     const RAW_FIELD_KEYS = [
         "barcode", "item_code", "name", "description", "category_id",
         "unit_id", "purchase_price", "selling_price",
@@ -407,6 +407,7 @@ const Inventory = ({
         {
             header: "Category",
             key: "categoryId",
+            exportValue: (_, item) => item.categoryId?.name || item.categoryId?.id || "Other",
             render: (value, item) => (
                 <span className="bg-indigo-50 text-indigo-700 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wide">
                     {item.categoryId?.name || value?.name || "Other Category"}
@@ -427,7 +428,7 @@ const Inventory = ({
                 const low = qty !== null && qty <= min && min > 0;
                 
                 if (qty === null && damaged === 0) {
-                    return <span className="text-[11px] text-gray-300 font-bold">—</span>;
+                    return <span className="text-[11px] text-gray-300 font-bold">�</span>;
                 }
 
                 const handleStockClick = (e) => {
@@ -448,7 +449,7 @@ const Inventory = ({
                                 ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
                                 : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
                                 }`}>
-                                {low && <span title="Low stock">⚠️</span>}
+                                {low && <span title="Low stock">??</span>}
                                 {qty}
                                 <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
                             </div>
@@ -476,6 +477,16 @@ const Inventory = ({
             key: "sellingPrice",
             headerClassName: "text-center",
             className: "text-center",
+            exportValue: (_, item) => {
+                const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+                const mrp = item.pricing?.mrp ?? item.mrp;
+                const pp = item.pricing?.purchasePrice ?? item.purchasePrice;
+                const parts = [];
+                if (sp) parts.push(`Sale: ${sp}`);
+                if (mrp) parts.push(`MRP: ${mrp}`);
+                if (pp) parts.push(`Purchase: ${pp}`);
+                return parts.join(' | ') || '�';
+            },
             render: (_, item) => {
                 const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
                 const mrp = item.pricing?.mrp ?? item.mrp;
@@ -501,7 +512,7 @@ const Inventory = ({
                             </div>
                         )}
                         {!sp && !mrp && !pp && (
-                            <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                            <span className={`text-xs opacity-40 ${theme.textSecondary}`}>�</span>
                         )}
                     </div>
                 );
@@ -510,6 +521,7 @@ const Inventory = ({
         {
             header: "Show on Sale",
             key: "isSellable",
+            exportValue: (value) => (value !== false) ? "Yes" : "No",
             headerClassName: "text-center",
             className: "text-center",
             render: (value, item) => {
@@ -539,6 +551,7 @@ const Inventory = ({
         {
             header: "Status",
             key: "status",
+            exportValue: (value) => value || "INACTIVE",
             headerClassName: "text-center",
             className: "text-center",
             render: (value, item) => {
@@ -587,6 +600,7 @@ const Inventory = ({
         {
             header: "Category",
             key: "categoryId",
+            exportValue: (_, item) => item.categoryId?.name || "Other",
             render: (value, item) => (
                 <span className="bg-orange-50 text-orange-700 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wide">
                     {item.categoryId?.name || value?.name || "Other Category"}
@@ -607,7 +621,7 @@ const Inventory = ({
                 const low = qty !== null && qty <= min && min > 0;
                 
                 if (qty === null && damaged === 0) {
-                    return <span className="text-[11px] text-gray-300 font-bold">—</span>;
+                    return <span className="text-[11px] text-gray-300 font-bold">�</span>;
                 }
 
                 const handleStockClick = (e) => {
@@ -628,7 +642,7 @@ const Inventory = ({
                                 ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
                                 : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
                                 }`}>
-                                {low && <span title="Low stock">⚠️</span>}
+                                {low && <span title="Low stock">??</span>}
                                 {qty}
                                 <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
                             </div>
@@ -656,6 +670,17 @@ const Inventory = ({
             key: "costPerUnit",
             headerClassName: "text-right",
             className: "text-right",
+            exportValue: (_, item) => {
+                const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
+                const mrp = item.pricing?.mrp ?? item.mrp;
+                const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+                const unit = item.unitId?.name || "";
+                const parts = [];
+                if (pp) parts.push(`Purchase: ${pp}${unit ? ' /' + unit : ''}`);
+                if (mrp) parts.push(`MRP: ${mrp}`);
+                if (sp) parts.push(`Sale: ${sp}`);
+                return parts.join(' | ') || '�';
+            },
             render: (_, item) => {
                 const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
                 const mrp = item.pricing?.mrp ?? item.mrp;
@@ -691,7 +716,7 @@ const Inventory = ({
                             </div>
                         )}
                         {!pp && !mrp && !sp && (
-                            <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                            <span className={`text-xs opacity-40 ${theme.textSecondary}`}>�</span>
                         )}
                     </div>
                 );
@@ -700,6 +725,7 @@ const Inventory = ({
         {
             header: "Show on Sale",
             key: "isSellable",
+            exportValue: (value) => (value !== false) ? "Yes" : "No",
             headerClassName: "text-center",
             className: "text-center",
             render: (value, item) => {
@@ -729,6 +755,7 @@ const Inventory = ({
         {
             header: "Status",
             key: "status",
+            exportValue: (value) => value || "INACTIVE",
             headerClassName: "text-center",
             className: "text-center",
             render: (value, item) => {
@@ -805,12 +832,12 @@ const Inventory = ({
         )
     });
 
-    // ── Mobile card renderer ──────────────────────────────────────────────────
-    // Truncates name to 7 chars + "…", stacks: name/code → category → stock/price → actions
+    // -- Mobile card renderer --------------------------------------------------
+    // Truncates name to 7 chars + "�", stacks: name/code ? category ? stock/price ? actions
     const mobileCardRender = (item) => {
         const id = item._id || item.id;
         const rawName = item.name || "";
-        const shortName = rawName.length > 7 ? rawName.slice(0, 7) + "…" : rawName;
+        const shortName = rawName.length > 7 ? rawName.slice(0, 7) + "�" : rawName;
         const code = item.itemCode || id;
         const categoryName = item.categoryId?.name || "Other";
 
@@ -860,7 +887,7 @@ const Inventory = ({
                                         : "bg-emerald-50 text-emerald-700 border-emerald-200"
                                     }`}
                                 >
-                                    {low && <span>⚠️</span>}
+                                    {low && <span>??</span>}
                                     {qty}
                                     <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
                                 </button>
@@ -898,7 +925,7 @@ const Inventory = ({
                             </span>
                         )}
 
-                        {/* Price — right-aligned below stock */}
+                        {/* Price � right-aligned below stock */}
                         <div className={`text-sm font-black text-right ${theme.textHeading}`}>
                             {activeTab === "raw" ? (() => {
                                 const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
@@ -914,7 +941,7 @@ const Inventory = ({
                                         </div>
                                         {pp && mrp ? <div className="text-[10px] opacity-40 font-bold">MRP {formatCurrency(mrp)}</div> : null}
                                     </div>
-                                ) : <span className="opacity-40">—</span>;
+                                ) : <span className="opacity-40">�</span>;
                             })() : (() => {
                                 const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
                                 const mrp = item.pricing?.mrp ?? item.mrp;
@@ -929,13 +956,13 @@ const Inventory = ({
                                         </div>
                                         {sp && mrp ? <div className="text-[10px] opacity-40 font-bold">MRP {formatCurrency(mrp)}</div> : null}
                                     </div>
-                                ) : <span className="opacity-40">—</span>;
+                                ) : <span className="opacity-40">�</span>;
                             })()}
                         </div>
                     </div>
                 </div>
 
-                {/* Row 2: Actions — icon + label so no tooltip needed on mobile */}
+                {/* Row 2: Actions � icon + label so no tooltip needed on mobile */}
                 <div className="flex items-center gap-2 flex-wrap">
                     {/* Show on Sale toggle */}
                     <button
@@ -1120,7 +1147,7 @@ const Inventory = ({
                     )}
                 </div>
 
-                {/* Category Filter — same line as tabs on desktop, below on mobile/tablet */}
+                {/* Category Filter � same line as tabs on desktop, below on mobile/tablet */}
                 <div className="w-full lg:w-56">
                     <CommonSelect
                         options={categoryOptions}
@@ -1148,6 +1175,22 @@ const Inventory = ({
                     onPageChange={setCurrentPage}
                     className="max-h-full flex flex-col"
                     mobileCardRender={mobileCardRender}
+                    exportFilename={`items-${activeTab}-${new Date().toISOString().split('T')[0]}`}
+                    exportTitle={`${activeTab === 'menu' ? 'Menu' : activeTab === 'raw' ? 'Stock' : 'Trade'} Items Export`}
+                    onFetchAll={async () => {
+                        const response = await itemService.getItems({
+                            page: 1,
+                            limit: 9999,
+                            search: inventorySearch || undefined,
+                            filters: {
+                                shopId: currentShopId,
+                                branchId,
+                                itemType: activeTab === "menu" ? "MANUFACTURED" : activeTab === "raw" ? "STOCK" : "TRADE",
+                                categoryId: selectedCategory === "ALL" ? undefined : selectedCategory,
+                            },
+                        });
+                        return (response?.data || []).map(item => ({ ...item, id: item._id }));
+                    }}
                 />
             </div>
 
@@ -1204,8 +1247,8 @@ const Inventory = ({
 
             {/* Item History Modal */}
             {isHistoryModalOpen && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className={`${theme.surfaceBg} w-full max-w-4xl max-h-[85vh] rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col border ${theme.borderLight} animate-in zoom-in-95 duration-200`}>
+                <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
+                    <div className={`${theme.surfaceBg} w-full h-full sm:h-auto sm:max-w-4xl sm:max-h-[85vh] sm:rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col border ${theme.borderLight} animate-in slide-in-from-bottom sm:zoom-in-95 duration-200`}>
                         <div className={`p-4 sm:p-8 border-b ${theme.borderLight} flex justify-between items-center`}>
                             <div>
                                 <h3 className={`text-lg sm:text-2xl font-black ${theme.textHeading}`}>Transaction History</h3>
@@ -1225,7 +1268,7 @@ const Inventory = ({
                             </button>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto p-8">
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
                             {loadingHistory ? (
                                 <div className="flex flex-col items-center justify-center py-20">
                                     <ThemeLoader size="lg" />
@@ -1269,18 +1312,27 @@ const Inventory = ({
                                                             {movement.type}
                                                         </span>
                                                     </div>
-                                                    {/* Row 2: Qty In / Qty Out / Balance */}
+                                                    {/* Row 2: Invoice number if available */}
+                                                    {(movement.invoiceNumber || movement.orderNumber || movement.purchaseNumber) && (
+                                                        <div className="mb-3">
+                                                            <p className={`text-[10px] font-black uppercase tracking-wider ${theme.tableHeaderText}`}>Invoice</p>
+                                                            <p className={`text-sm font-bold ${theme.textPrimary}`}>
+                                                                #{movement.invoiceNumber || movement.orderNumber || movement.purchaseNumber}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {/* Row 3: Qty In / Qty Out / Balance */}
                                                     <div className={`grid grid-cols-3 gap-2 pt-3 border-t ${theme.tableBorder}`}>
                                                         <div className="text-center">
                                                             <div className={`text-[10px] font-black uppercase tracking-wider ${theme.tableHeaderText} mb-1`}>Qty In</div>
                                                             <div className={`text-sm font-black ${theme.successText}`}>
-                                                                {movement.quantityIn > 0 ? `+${movement.quantityIn}` : "—"}
+                                                                {movement.quantityIn > 0 ? `+${movement.quantityIn}` : "�"}
                                                             </div>
                                                         </div>
                                                         <div className="text-center">
                                                             <div className={`text-[10px] font-black uppercase tracking-wider ${theme.tableHeaderText} mb-1`}>Qty Out</div>
                                                             <div className="text-sm font-black text-red-500">
-                                                                {movement.quantityOut > 0 ? `-${movement.quantityOut}` : "—"}
+                                                                {movement.quantityOut > 0 ? `-${movement.quantityOut}` : "�"}
                                                             </div>
                                                         </div>
                                                         <div className="text-center">
@@ -1301,6 +1353,7 @@ const Inventory = ({
                                             <tr className={theme.tableHeaderBg}>
                                                 <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider`}>Date</th>
                                                 <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider`}>Type</th>
+                                                <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider`}>Invoice</th>
                                                 <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider text-right`}>Qty In</th>
                                                 <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider text-right`}>Qty Out</th>
                                                 <th className={`px-6 py-4 text-xs font-black uppercase ${theme.tableHeaderText} tracking-wider text-right`}>Balance</th>
@@ -1327,6 +1380,9 @@ const Inventory = ({
                                                             <span className={`px-3 py-1 rounded-lg text-[10px] font-black border tracking-wider ${badgeClass}`}>
                                                                 {movement.type}
                                                             </span>
+                                                        </td>
+                                                        <td className={`px-6 py-4 text-sm font-bold ${theme.textPrimary}`}>
+                                                            {movement.invoiceNumber || movement.orderNumber || movement.purchaseNumber ? `#${movement.invoiceNumber || movement.orderNumber || movement.purchaseNumber}` : "—"}
                                                         </td>
                                                         <td className={`px-6 py-4 text-sm font-black text-right ${theme.successText}`}>
                                                             {movement.quantityIn > 0 ? `+${movement.quantityIn}` : "-"}
@@ -1368,3 +1424,4 @@ const Inventory = ({
 };
 
 export default Inventory;
+

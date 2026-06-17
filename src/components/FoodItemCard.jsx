@@ -89,7 +89,11 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
                         </span>
                         {(['STOCK', 'TRADE', 'MANUFACTURED'].includes(item.itemType) || item.stockSettings?.stockApplicable === true) && (
                             <span className={`text-[9px] font-black px-2 py-0.5 rounded-lg border ${isOutOfStock ? 'bg-red-50 text-red-500 border-red-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                                Qty: {item.quantityOnHand ?? 0}
+                                Qty: {Number.isFinite(item.quantityOnHand)
+                                    ? (Number.isInteger(item.quantityOnHand)
+                                        ? item.quantityOnHand
+                                        : parseFloat(Number(item.quantityOnHand).toFixed(2)))
+                                    : 0}
                             </span>
                         )}
                     </div>

@@ -735,6 +735,7 @@ const Reports = ({
                                 </div>
                             </div>
                             <CommonTable
+                                selectable={false}
                                 columns={[
                                     ...(reportBranchFilter === "all" ? [{
                                         header: "Branch",
@@ -794,6 +795,7 @@ const Reports = ({
                                 Item-wise Sales
                             </h3>
                             <CommonTable
+                                selectable={false}
                                 columns={[
                                     { 
                                         header: "Item Name", 
@@ -1020,6 +1022,7 @@ const Reports = ({
                                             ) : (
                                                 <div className={`${theme.pageBg} rounded-[32px] border ${theme.borderLight} overflow-hidden shadow-sm`}>
                                                     <CommonTable
+                                                        selectable={false}
                                                         columns={[
                                                             { header: "Tax Profile", key: "system", className: "font-black text-[10px] text-indigo-500 uppercase tracking-wider" },
                                                             { 
@@ -1069,6 +1072,8 @@ const Reports = ({
                                 Staff Performance ({rangeLabel})
                             </h3>
                             <CommonTable
+                                selectable={false}
+                                showExport={false}
                                 columns={[
                                     { header: "Staff Name", key: "employeeName", className: `font-bold ${theme.textPrimary}` },
                                     { 
@@ -1303,6 +1308,7 @@ const Reports = ({
                             </div>
                             
                             <CommonTable
+                                selectable={false}
                                 columns={[
                                     ...(reportBranchFilter === "all" ? [{
                                         header: "Branch",
@@ -1382,6 +1388,7 @@ const Reports = ({
 
                                     {partyTab === "customers" ? (
                                         <CommonTable
+                                            selectable={false}
                                             columns={[
                                                 { header: "Customer", key: "name", className: `font-bold ${theme.textPrimary}` },
                                                 { header: "Orders", key: "stats.orders", className: "text-center font-bold", render: (_, r) => r.stats.orders },
@@ -1405,6 +1412,7 @@ const Reports = ({
                                         />
                                     ) : (
                                         <CommonTable
+                                            selectable={false}
                                             columns={[
                                                 { header: "Supplier", key: "name", className: `font-bold ${theme.textPrimary}` },
                                                 { header: "Last Invoice", key: "stats.lastInvoiceNumber", className: "font-mono text-xs font-bold text-center", render: (_, r) => r?.stats?.lastInvoiceNumber || "N/A" },
@@ -1446,6 +1454,7 @@ const Reports = ({
                                         <div className="lg:col-span-2 space-y-4">
                                             <h4 className={`text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>Ledger</h4>
                                             <CommonTable
+                                                selectable={false}
                                                 columns={[
                                                     { header: "Date", key: "date", render: (v) => new Date(v).toLocaleDateString() },
                                                     { header: "Reference", key: "reference", className: "font-mono text-xs" },
@@ -1533,3 +1542,4 @@ const Reports = ({
 };
 
 export default Reports;
+

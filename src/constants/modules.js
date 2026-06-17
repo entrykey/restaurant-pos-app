@@ -34,4 +34,6 @@ export const MODULES = Object.freeze({
   SALES_HISTORY: "SALES HISTORY",
   PAY_IN: "pay in",
   PAY_OUT: "pay out",
+  SALES_RETURN: "SALES RETURN",
+  PURCHASE_RETURN: "PURCHASE RETURN",
 });

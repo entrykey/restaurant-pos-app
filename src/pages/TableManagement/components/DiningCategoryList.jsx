@@ -9,6 +9,7 @@ import { usePermission } from '../../../auth/usePermission';
 import { MODULES } from '../../../constants/modules';
 import { Edit2, Trash2, ChevronDown, Plus, Users, LayoutDashboard, Monitor, MonitorOff, TableProperties, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import ExportSelectToolbar from '../../../components/ExportSelectToolbar';
 
 const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const { theme } = useTheme();
@@ -102,6 +103,26 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
         const totalCapacity = tables.reduce((sum, t) => sum + (t.capacity || 0), 0);
         return { totalTables, activeTables, totalCapacity };
     }, [tables]);
+
+    // ── Row selection ─────────────────────────────────────────────────────────
+    const [selectedKeys, setSelectedKeys] = useState(new Set());
+    const allRowKeys = categories.map(c => c._id);
+    const allSelected = allRowKeys.length > 0 && allRowKeys.every(k => selectedKeys.has(k));
+    const someSelected = !allSelected && allRowKeys.some(k => selectedKeys.has(k));
+    const toggleRow = (key) => setSelectedKeys(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    const toggleAll = () => setSelectedKeys(allSelected ? new Set() : new Set(allRowKeys));
+    useEffect(() => { setSelectedKeys(new Set()); }, [categories]);
+
+    const exportColumns = [
+        { header: 'Category', exportValue: r => r.name },
+        { header: 'Environment', exportValue: r => r.environment === 'AC' ? 'AC Room' : 'Non-AC Area' },
+        { header: 'Active', exportValue: r => r.isActive ? 'Yes' : 'No' },
+        { header: 'Tables', exportValue: r => (groupedTables[r._id] || []).length },
+    ];
+    const getExportRows = () => {
+        const rows = selectedKeys.size > 0 ? categories.filter(c => selectedKeys.has(c._id)) : categories;
+        return rows.map(r => { const obj = {}; exportColumns.forEach(col => { obj[col.header] = col.exportValue(r); }); return obj; });
+    };
 
     useEffect(() => {
         fetchData();
@@ -350,10 +371,23 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                 </div>
 
                 {/* ── Desktop table layout (sm+) ── */}
-                <div className="hidden sm:block overflow-x-auto">
+                <div className="hidden sm:block">
+                    <ExportSelectToolbar
+                        rows={categories}
+                        selected={selectedKeys}
+                        allSelected={allSelected}
+                        someSelected={someSelected}
+                        onToggleAll={toggleAll}
+                        getExportRows={getExportRows}
+                        exportFilename="dining-categories"
+                        exportTitle="Dining Categories"
+                        columns={exportColumns}
+                    />
+                    <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className={`${theme.pageBg} ${theme.textMuted} text-[10px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
+                                <th className="p-3 w-10"></th>
                                 <th className="p-6 w-12">#</th>
                                 <th className="p-6">Dining Category</th>
                                 <th className="p-6">Environment</th>
@@ -371,8 +405,12 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                                     <React.Fragment key={category._id}>
                                         <tr
                                             onClick={() => toggleCategory(category._id)}
-                                            className={`group hover:${theme.pageBg} transition-all cursor-pointer ${isExpanded ? theme.pageBg : ''}`}
+                                            className={`group hover:${theme.pageBg} transition-all cursor-pointer ${isExpanded ? theme.pageBg : ''} ${selectedKeys.has(category._id) ? 'bg-indigo-50/40 dark:bg-indigo-900/10' : ''}`}
                                         >
+                                            <td className="p-3 w-10" onClick={e => { e.stopPropagation(); toggleRow(category._id); }}>
+                                                <input type="checkbox" checked={selectedKeys.has(category._id)} onChange={() => {}}
+                                                    className="w-4 h-4 rounded accent-indigo-600 cursor-pointer" />
+                                            </td>
                                             <td className={`p-6 text-xs font-black ${theme.textMuted}`}>{(currentPage - 1) * pageSize + catIdx + 1}</td>
                                             <td className="p-6">
                                                 <div className="flex items-center gap-4">
@@ -515,6 +553,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                             )}
                         </tbody>
                     </table>
+                    </div>{/* end overflow-x-auto */}
                 </div>{/* end desktop table */}
 
                 {/* Pagination */}

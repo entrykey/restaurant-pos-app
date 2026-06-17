@@ -93,11 +93,13 @@ const DiningHall = ({
         addTableTab(table.parentTableId, pName);
         setView("order");
         setOrderSearch("");
+        refreshData?.();
         navigate(`/dininghall/table/${table.parentTableId}`);
       } else {
         addTableTab(table.id, tableName);
         setView("order");
         setOrderSearch("");
+        refreshData?.();
         navigate(`/dininghall/table/${table.id}`);
       }
     }
@@ -303,7 +305,13 @@ const DiningHall = ({
                 hasReservation={hasReservation}
                 isAdmin={isAdmin}
                 totalLabel={
-                  displayTable.order ? formatCurrency(calculateTotal(displayTable.order)) : null
+                  displayTable.order
+                    ? formatCurrency(
+                        displayTable.order.grandTotal != null
+                          ? displayTable.order.grandTotal
+                          : calculateTotal(displayTable.order)
+                      )
+                    : null
                 }
                 onSelect={handleTableSelect}
                 onMarkArrived={handleMarkArrived}

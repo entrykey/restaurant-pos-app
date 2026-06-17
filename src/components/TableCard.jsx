@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { usePermission } from "../auth/usePermission";
+import { formatParticipantLabel, getOrderParticipantNames } from "../utils/orderParticipants";
 
 const TableCard = ({
   table,
@@ -128,23 +129,13 @@ const TableCard = ({
         </div>
 
         {table.status === "occupied" && table.order && (() => {
-          const staffName = (() => {
-            const managed = table.order.managedBy;
-            const created = table.order.createdBy;
-            if (typeof managed === "object" && managed !== null) {
-              return managed.name || managed.username;
-            }
-            if (typeof created === "object" && created !== null) {
-              return created.name || created.username;
-            }
-            return null;
-          })();
-          if (!staffName) return null;
+          const displayText = formatParticipantLabel(getOrderParticipantNames(table.order));
+          if (!displayText) return null;
           return (
-            <div className="flex items-center gap-1.5 text-[9px] font-bold text-white/75 truncate">
-              <UserCheck size={10} className="shrink-0 text-white/50" />
-              <span className="text-white/45 uppercase tracking-wider">Managed by</span>
-              <span className="text-white/90 truncate">{staffName}</span>
+            <div className="flex items-center gap-1.5 text-[9px] font-bold text-white/90 truncate">
+              <UserCheck size={10} className="shrink-0 text-white/70" />
+              <span className="text-white/60 uppercase tracking-wider">Managed by</span>
+              <span className="text-white truncate">{displayText}</span>
             </div>
           );
         })()}

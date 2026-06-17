@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Briefcase, Layers, Zap } from 'lucide-react';
+import { Briefcase, Layers, Zap, Shield } from 'lucide-react';
 import { useTheme } from "../../context/ThemeContext";
 
 import BusinessTypesTab from './BusinessTypesTab';
 import BusinessSubTypesTab from './BusinessSubTypesTab';
 import CapabilitiesTab from './CapabilitiesTab';
+import DefaultRolesTab from './DefaultRolesTab';
 
 const BusinessTypesPage = () => {
     const { theme } = useTheme();
@@ -53,6 +54,16 @@ const BusinessTypesPage = () => {
                         <Zap size={18} />
                         Capabilities
                     </button>
+                    <button
+                        onClick={() => setActiveTab('roles')}
+                        className={`flex items-center gap-2 px-4 py-3 border-b-2 font-bold whitespace-nowrap transition-colors ${activeTab === 'roles'
+                            ? `border-indigo-600 text-indigo-600`
+                            : `border-transparent ${theme.textMuted} hover:${theme.textPrimary}`
+                            }`}
+                    >
+                        <Shield size={18} />
+                        Default Roles
+                    </button>
                 </div>
             </div>
 
@@ -60,6 +71,7 @@ const BusinessTypesPage = () => {
                 {activeTab === 'types' && <BusinessTypesTab />}
                 {activeTab === 'subtypes' && <BusinessSubTypesTab />}
                 {activeTab === 'capabilities' && <CapabilitiesTab />}
+                {activeTab === 'roles' && <DefaultRolesTab />}
             </div>
         </div>
     );

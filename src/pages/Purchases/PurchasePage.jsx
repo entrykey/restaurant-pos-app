@@ -14,6 +14,7 @@ import CommonSelect from "../../components/ui/CommonSelect";
 import InvoiceScannerModal from "../../components/modals/InvoiceScannerModal";
 import { findBestStockMatch, normalizeScannedProductName } from "../../utils/invoiceItemMatch";
 import { toast } from "react-hot-toast";
+import { loadPurchaseInvoiceSettings } from "../../utils/printSettingsUtils";
 import {
     TAX_SYSTEMS,
     BRANCH_STATUS,
@@ -56,6 +57,7 @@ const PurchasePage = () => {
     const [shopInfo, setShopInfo] = useState(null);
     const [shopTaxes, setShopTaxes] = useState([]);
     const [units, setUnits] = useState([]);
+    const [purchaseInvoiceSettings, setPurchaseInvoiceSettings] = useState(null);
 
     const [formData, setFormData] = useState({
         supplierId: "",
@@ -406,6 +408,14 @@ const PurchasePage = () => {
         }
     }, [location.state, handleAddItem]);
 
+    useEffect(() => {
+        const branchId = formData.branchId || activeBranchId;
+        if (!currentShopId || !branchId) return;
+        loadPurchaseInvoiceSettings(currentShopId, branchId)
+            .then(setPurchaseInvoiceSettings)
+            .catch(() => setPurchaseInvoiceSettings(null));
+    }, [currentShopId, activeBranchId, formData.branchId]);
+
 
 
     // --- Calculations ---
@@ -714,9 +724,10 @@ const PurchasePage = () => {
         }
     };
 
-    const handlePrintInvoice = () => {
+    const handlePrintInvoice = async () => {
         const supplier = suppliers.find(s => s._id === formData.supplierId);
         const branchContext = branches.find(b => b._id === formData.branchId || b.id === formData.branchId);
+        const pis = purchaseInvoiceSettings || await loadPurchaseInvoiceSettings(currentShopId, formData.branchId);
 
         const formatAddress = (addr) => {
             if (!addr) return '';
@@ -849,19 +860,20 @@ const PurchasePage = () => {
         <div class="title-section">
           <h1>Purchase Invoice</h1>
           <div class="meta-info">
-            <div><strong>Date:</strong> ${new Date(formData.invoiceDate).toLocaleDateString()}</div>
-            <div><strong>Ref No:</strong> ${formData.purchaseNumber || '—'}</div>
-            <div><strong>Supplier Inv:</strong> ${formData.supplierInvoiceNumber || '—'}</div>
-            ${formData.invoiceNumber ? `<div><strong>System Inv:</strong> ${formData.invoiceNumber}</div>` : ''}
+            ${pis.includePurchaseDate !== false ? `<div><strong>Date:</strong> ${new Date(formData.invoiceDate).toLocaleDateString()}</div>` : ''}
+            ${pis.includeInvoiceNumber !== false ? `<div><strong>Ref No:</strong> ${formData.purchaseNumber || '—'}</div>` : ''}
+            ${pis.includeInvoiceNumber !== false ? `<div><strong>Supplier Inv:</strong> ${formData.supplierInvoiceNumber || '—'}</div>` : ''}
+            ${pis.includeInvoiceNumber !== false && formData.invoiceNumber ? `<div><strong>System Inv:</strong> ${formData.invoiceNumber}</div>` : ''}
           </div>
         </div>
         <div style="text-align: right;">
           ${shopInfo?.logoUrl ? `<img src="${shopInfo.logoUrl.startsWith('http') ? shopInfo.logoUrl : (api.defaults.baseURL.replace(/\/api\/?$/, '') + shopInfo.logoUrl)}" style="max-height: 60px; margin-bottom: 10px;" />` : ''}
-          <div style="font-size: 18px; font-weight: 900;">${shopInfo?.name || 'Restaurant POS'}</div>
+          ${pis.includeShopName !== false ? `<div style="font-size: 18px; font-weight: 900;">${shopInfo?.name || 'Restaurant POS'}</div>` : ''}
         </div>
       </div>
 
       <div class="address-grid">
+        ${pis.includeSupplierDetails !== false ? `
         <div class="address-box">
           <h3>Supplier Details</h3>
           <div class="address-content">
@@ -871,14 +883,15 @@ const PurchasePage = () => {
             ${supplier?.email ? `<div class="address-detail">Email: ${supplier.email}</div>` : ''}
             ${supplier?.taxNumber ? `<div class="address-detail">TAX ID: ${supplier.taxNumber}</div>` : ''}
           </div>
-        </div>
+        </div>` : ''}
         <div class="address-box">
           <h3>Billed To (Branch)</h3>
           <div class="address-content">
             <strong>${branchContext ? branchContext.name : (shopInfo?.name || 'Main Branch')}</strong>
-            <div class="address-detail">${formatAddress(branchContext?.address)}</div>
-            ${branchContext?.address?.city ? `<div class="address-detail">${branchContext.address.city}, ${branchContext.address.state?.name || branchContext.address.state || ''}</div>` : ''}
-            ${branchContext?.taxProfile?.registrationNumber ? `<div class="address-detail">GST/TAX: ${branchContext.taxProfile.registrationNumber}</div>` : ''}
+            ${pis.includeBranchAddress !== false ? `<div class="address-detail">${formatAddress(branchContext?.address)}</div>` : ''}
+            ${pis.includeBranchAddress !== false && branchContext?.address?.city ? `<div class="address-detail">${branchContext.address.city}, ${branchContext.address.state?.name || branchContext.address.state || ''}</div>` : ''}
+            ${pis.includeGstNumber && branchContext?.taxProfile?.registrationNumber ? `<div class="address-detail">GST/TAX: ${branchContext.taxProfile.registrationNumber}</div>` : ''}
+            ${pis.includeFssai && branchContext?.fssai ? `<div class="address-detail">FSSAI: ${branchContext.fssai}</div>` : ''}
           </div>
         </div>
       </div>
@@ -899,7 +912,7 @@ const PurchasePage = () => {
               <td style="color:#888">${String(idx + 1).padStart(2, '0')}</td>
               <td>
                 <div class="item-name">${it.name || 'Unknown'}</div>
-                <div class="item-code">${it.itemCode || ''}</div>
+                ${pis.includeItemCode !== false && it.itemCode ? `<div class="item-code">${it.itemCode}</div>` : ''}
               </td>
               <td style="text-align: center;">${it.quantity}</td>
               <td style="text-align: right;">${formatCurrency(it.purchasePrice)}</td>
@@ -941,7 +954,8 @@ const PurchasePage = () => {
       </div>
 
       <div class="footer">
-        Supplier Invoice generated from Restaurant POS system behalf of ${shopInfo?.name || 'Restaurant'}
+        ${pis.footerText || `Supplier Invoice generated from Restaurant POS system behalf of ${shopInfo?.name || 'Restaurant'}`}
+        ${pis.includeNotes !== false && formData.notes ? `<div style="margin-top:8px; text-transform:none; letter-spacing:0;">Notes: ${formData.notes}</div>` : ''}
       </div>
     </div>
     <script>

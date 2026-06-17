@@ -48,6 +48,9 @@ import SalesList from "../pages/Dashboard/SalesList";
 import SaleMarking from "../pages/Sales/SaleMarking";
 import SalePage from "../pages/Sales/SalePage";
 import ReturnPage from "../pages/Sales/ReturnPage";
+import SalesReturnsPage from "../pages/Sales/SalesReturnsPage";
+import PurchaseReturnsPage from "../pages/Purchases/PurchaseReturnsPage";
+import PurchaseReturnPage from "../pages/Purchases/PurchaseReturnPage";
 
 
 const Staff = lazy(() => import("../pages/Staff/Staff"));
@@ -483,6 +486,14 @@ const AppRoutes = (props) => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path={`${prefix}/salesreturn`}
+          element={
+            <ProtectedRoute routeKey="SALES_RETURN">
+              <SalesReturnsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Settings Route */}
         <Route
@@ -663,6 +674,22 @@ const AppRoutes = (props) => {
               <PurchaseList
                 hasPermissionFor={hasPermissionFor || props.hasPermissionFor}
               />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={`${prefix}/purchasereturn`}
+          element={
+            <ProtectedRoute routeKey="PURCHASE_RETURN">
+              <PurchaseReturnsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={`${prefix}/purchases/return`}
+          element={
+            <ProtectedRoute routeKey="PURCHASE_RETURN">
+              <PurchaseReturnPage />
             </ProtectedRoute>
           }
         />

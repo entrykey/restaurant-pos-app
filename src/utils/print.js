@@ -1,3 +1,5 @@
+import { buildUpiQrPrintHtml } from './upiQr';
+
 export function escapeHtml(input) {
   return String(input ?? "")
     .replaceAll("&", "&amp;")
@@ -90,16 +92,36 @@ function printViaIframe({ title = "", html }) {
 
   const doPrint = () => {
     try {
+      if (!iframe || !iframe.contentWindow) return;
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
+    } catch (e) {
+      console.warn('Print failed:', e);
     } finally {
-      // Cleanup after giving the print dialog a moment to open
       setTimeout(removeExistingPrintFrame, 1000);
     }
   };
 
-  // Some browsers need a tick to finish layout
-  setTimeout(doPrint, 50);
+  const waitForImages = () => {
+    const images = Array.from(doc.images || []);
+    const pending = images.filter((img) => !img.complete);
+    if (!pending.length) {
+      setTimeout(doPrint, 50);
+      return;
+    }
+    let loaded = 0;
+    const onDone = () => {
+      loaded += 1;
+      if (loaded >= pending.length) setTimeout(doPrint, 50);
+    };
+    pending.forEach((img) => {
+      img.addEventListener('load', onDone);
+      img.addEventListener('error', onDone);
+    });
+    setTimeout(doPrint, 1500);
+  };
+
+  waitForImages();
   return true;
 }
 
@@ -107,9 +129,14 @@ function openPrintWindow({ title = "", html }) {
   const w = window.open("", "_blank", "noopener,noreferrer,width=420,height=720");
   if (!w) return false;
 
-  w.document.open();
-  w.document.write(getPrintDocumentHtml({ title, html }));
-  w.document.close();
+  try {
+    w.document.open();
+    w.document.write(getPrintDocumentHtml({ title, html }));
+    w.document.close();
+  } catch (e) {
+    console.warn('Print window write failed:', e);
+    return false;
+  }
 
   // Trigger print from the opened window
   try {
@@ -141,17 +168,63 @@ function printHtml({ title = "", html }) {
   }
 }
 
-function buildHeaderHtml({ logoUrl, shopName, branchName, contact, addressLines }) {
-  const addr = (addressLines || []).filter(Boolean).map(escapeHtml).join("<br/>");
-  return `
+function buildHeaderHtml({ logoUrl, shopName, branchName, contact, addressLines, extraInfo, formatSettings }) {
+  const settings = formatSettings || {};
+  const parts = [];
+
+  const order = settings.elementsOrder || ['logo', 'shopName', 'branchName', 'address', 'contact', 'gstNumber', 'fssai'];
+  order.forEach((key) => {
+    if (key === 'logo' && settings.includeLogo !== false && logoUrl) {
+      parts.push(`<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />`);
+    }
+    if (key === 'shopName' && settings.includeShopName !== false && shopName) {
+      parts.push(`<div class="lg bold">${escapeHtml(shopName)}</div>`);
+    }
+    if (key === 'branchName' && settings.includeBranchName !== false && branchName) {
+      parts.push(`<div class="md bold">${escapeHtml(branchName)}</div>`);
+    }
+    if (key === 'address' && settings.includeAddress !== false) {
+      const addr = (addressLines || []).filter(Boolean).map(escapeHtml).join("<br/>");
+      if (addr) parts.push(`<div class="tiny muted">${addr}</div>`);
+    }
+    if (key === 'contact' && settings.includeContact !== false && contact) {
+      parts.push(`<div class="sm bold">${escapeHtml(contact)}</div>`);
+    }
+    if (key === 'gstNumber' && settings.includeGstNumber && extraInfo?.gstNumber) {
+      parts.push(`<div class="tiny muted">GSTIN: ${escapeHtml(extraInfo.gstNumber)}</div>`);
+    }
+    if (key === 'fssai' && settings.includeFssai && extraInfo?.fssai) {
+      parts.push(`<div class="tiny muted">FSSAI: ${escapeHtml(extraInfo.fssai)}</div>`);
+    }
+  });
+
+  // Fallback when no elementsOrder
+  if (!settings.elementsOrder) {
+    const addr = (addressLines || []).filter(Boolean).map(escapeHtml).join("<br/>");
+    return `
     <div class="center">
-      ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />` : ""}
-      ${shopName ? `<div class="lg bold">${escapeHtml(shopName)}</div>` : ""}
-      ${branchName ? `<div class="md bold">${escapeHtml(branchName)}</div>` : ""}
-      ${contact ? `<div class="sm bold">${escapeHtml(contact)}</div>` : ""}
-      ${addr ? `<div class="tiny muted">${addr}</div>` : ""}
+      ${settings.includeLogo !== false && logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />` : ""}
+      ${settings.includeShopName !== false && shopName ? `<div class="lg bold">${escapeHtml(shopName)}</div>` : ""}
+      ${settings.includeBranchName !== false && branchName ? `<div class="md bold">${escapeHtml(branchName)}</div>` : ""}
+      ${settings.includeContact !== false && contact ? `<div class="sm bold">${escapeHtml(contact)}</div>` : ""}
+      ${settings.includeAddress !== false && addr ? `<div class="tiny muted">${addr}</div>` : ""}
+      ${settings.includeGstNumber && extraInfo?.gstNumber ? `<div class="tiny muted">GSTIN: ${escapeHtml(extraInfo.gstNumber)}</div>` : ""}
+      ${settings.includeFssai && extraInfo?.fssai ? `<div class="tiny muted">FSSAI: ${escapeHtml(extraInfo.fssai)}</div>` : ""}
     </div>
   `;
+  }
+
+  return `<div class="center">${parts.join("")}</div>`;
+}
+
+function buildUpiHtml(extraInfo, formatSettings, amount, payeeName) {
+  if (!formatSettings?.includeUpiCode || !extraInfo?.upiId) return "";
+  return buildUpiQrPrintHtml({
+    upiId: extraInfo.upiId,
+    payeeName: extraInfo.payeeName || payeeName || 'Shop',
+    amount: amount ?? extraInfo.billAmount,
+    label: 'Scan to pay',
+  });
 }
 
 export function printKot({
@@ -215,13 +288,22 @@ export function printBill({
   offers = [],
   staffName,
   formatCurrency = (n) => String(n ?? ""),
+  billSettings,
+  extraInfo,
+  paymentMethod,
 }) {
-  const headerHtml = buildHeaderHtml(header || {});
+  const formatSettings = billSettings?.thermal || billSettings || {};
+  const paperWidth = formatSettings.paperWidthMm || 80;
+  const baseFont = formatSettings.baseFontSize || 12;
+
+  const headerHtml = buildHeaderHtml({ ...header, extraInfo, formatSettings });
   const metaLines = [
-    meta?.orderLabel,
-    meta?.tableLabel,
-    meta?.customerLabel,
+    formatSettings.includeInvoiceNumber !== false ? meta?.invoiceLabel : null,
+    formatSettings.includeOrderNumber !== false ? meta?.orderLabel : null,
+    formatSettings.includeTable !== false ? meta?.tableLabel : null,
+    formatSettings.includeCustomer !== false ? meta?.customerLabel : null,
     meta?.printedAt,
+    formatSettings.includePaymentMethod && paymentMethod ? `Payment: ${paymentMethod}` : null,
   ].filter(Boolean);
 
   const rows = (items || []).map((it, idx) => {
@@ -240,17 +322,34 @@ export function printBill({
   }).join("");
 
   // Build offer rows
-  const offerRows = (offers || []).filter(o => o && (o.discount || o.discountAmount) > 0).map(o =>
-    `<div class="row" style="color:#16a34a;"><span>${escapeHtml(o.name || o.offerName || "Offer")}</span><span>- ${escapeHtml(formatCurrency(o.discount || o.discountAmount || 0))}</span></div>`
-  ).join("");
+  const offerRows = formatSettings.includeOffers !== false
+    ? (offers || []).filter(o => o && (o.discount || o.discountAmount) > 0).map(o =>
+        `<div class="row" style="color:#16a34a;"><span>${escapeHtml(o.name || o.offerName || "Offer")}</span><span>- ${escapeHtml(formatCurrency(o.discount || o.discountAmount || 0))}</span></div>`
+      ).join("")
+    : "";
+
+  const taxBreakdownHtml = formatSettings.includeTaxBreakdown !== false ? `
+        ${totals?.taxBreakdown && totals.taxBreakdown.cgst > 0 ? `<div class="row tiny muted" style="padding-left: 10px;"><span>CGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.cgst))}</span></div>` : ""}
+        ${totals?.taxBreakdown && totals.taxBreakdown.sgst > 0 ? `<div class="row tiny muted" style="padding-left: 10px;"><span>SGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.sgst))}</span></div>` : ""}
+        ${totals?.taxBreakdown && totals.taxBreakdown.igst > 0 ? `<div class="row tiny muted" style="padding-left: 10px;"><span>IGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.igst))}</span></div>` : ""}
+  ` : "";
+
+  const footerText = formatSettings.includeThankYou !== false
+    ? (formatSettings.footerText || "Thank you! Visit Again")
+    : "";
+
+  const upiHtml = buildUpiHtml(extraInfo, formatSettings, totals?.finalTotal, header?.shopName);
+  const staffHtml = formatSettings.includeStaff !== false && staffName
+    ? `<div class="center tiny muted">Billed by: ${escapeHtml(staffName)}</div>`
+    : "";
 
   const html = `
-    <div class="paper">
+    <div class="paper" style="width:${paperWidth}mm; font-size:${baseFont}px;">
       ${headerHtml}
       <div class="hr"></div>
       <div class="center md bold">BILL</div>
       ${metaLines.length ? `<div class="center tiny muted">${metaLines.map(escapeHtml).join(" • ")}</div>` : ""}
-      ${staffName ? `<div class="center tiny muted">Billed by: ${escapeHtml(staffName)}</div>` : ""}
+      ${staffHtml}
       <div class="hr"></div>
 
       <table>
@@ -272,17 +371,14 @@ export function printBill({
         ${offerRows}
         ${totals?.discountAmount ? `<div class="row"><span class="muted">Discount</span><span>- ${escapeHtml(formatCurrency(totals.discountAmount))}</span></div>` : ""}
         <div class="row"><span class="muted text-xs">Tax</span><span>${escapeHtml(formatCurrency(totals?.taxAmount ?? 0))}</span></div>
-        
-        ${totals?.taxBreakdown && totals.taxBreakdown.cgst > 0 ? `<div class="row tiny muted" style="padding-left: 10px;"><span>CGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.cgst))}</span></div>` : ""}
-        ${totals?.taxBreakdown && totals.taxBreakdown.sgst > 0 ? `<div class="row tiny muted" style="padding-left: 10px;"><span>SGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.sgst))}</span></div>` : ""}
-        ${totals?.taxBreakdown && totals.taxBreakdown.igst > 0 ? `<div class="row tiny muted" style="padding-left: 10px;"><span>IGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.igst))}</span></div>` : ""}
-
+        ${taxBreakdownHtml}
         ${totals?.roundOff ? `<div class="row"><span class="muted">Round off</span><span>${escapeHtml(formatCurrency(totals.roundOff))}</span></div>` : ""}
         <div class="row md bold"><span>Total</span><span>${escapeHtml(formatCurrency(totals?.finalTotal ?? 0))}</span></div>
       </div>
 
+      ${upiHtml}
       <div class="hr"></div>
-      <div class="center sm muted" style="margin-top: 6px; font-style: italic;">Thank you! Visit Again</div>
+      ${footerText ? `<div class="center sm muted" style="margin-top: 6px; font-style: italic;">${escapeHtml(footerText)}</div>` : ""}
     </div>
   `;
 
@@ -297,8 +393,19 @@ export function printBillA4({
   offers = [],
   staffName,
   formatCurrency = (n) => String(n ?? ""),
+  billSettings,
+  extraInfo,
+  paymentMethod,
 }) {
+  const formatSettings = billSettings?.a4 || billSettings || {};
   const addr = (header?.addressLines || []).filter(Boolean);
+  const showGst = formatSettings.includeGstNumber && extraInfo?.gstNumber;
+  const showFssai = formatSettings.includeFssai && extraInfo?.fssai;
+  const showUpi = formatSettings.includeUpiCode && extraInfo?.upiId;
+  const upiQrHtml = showUpi ? buildUpiHtml(extraInfo, formatSettings, totals?.finalTotal, header?.shopName) : '';
+  const footerText = formatSettings.includeThankYou !== false
+    ? (formatSettings.footerText || "Thank you! Visit Again")
+    : "";
   const html = `
     <div style="padding: 0; margin: 0;">
       <style>
@@ -334,30 +441,34 @@ export function printBillA4({
           <div>
             <h1 class="title">Tax Invoice</h1>
             <div class="meta">
-              ${meta?.orderLabel ? `<div><strong>Invoice:</strong> ${escapeHtml(meta.orderLabel)}</div>` : ""}
-              ${meta?.tableLabel ? `<div><strong>Table:</strong> ${escapeHtml(meta.tableLabel)}</div>` : ""}
-              ${meta?.customerLabel ? `<div><strong>Customer:</strong> ${escapeHtml(meta.customerLabel)}</div>` : ""}
+              ${formatSettings.includeInvoiceNumber !== false && meta?.invoiceLabel ? `<div><strong>Invoice:</strong> ${escapeHtml(meta.invoiceLabel)}</div>` : ""}
+              ${formatSettings.includeOrderNumber !== false && meta?.orderLabel ? `<div><strong>Order:</strong> ${escapeHtml(meta.orderLabel)}</div>` : ""}
+              ${formatSettings.includeTable !== false && meta?.tableLabel ? `<div><strong>Table:</strong> ${escapeHtml(meta.tableLabel)}</div>` : ""}
+              ${formatSettings.includeCustomer !== false && meta?.customerLabel ? `<div><strong>Customer:</strong> ${escapeHtml(meta.customerLabel)}</div>` : ""}
               ${meta?.printedAt ? `<div><strong>Date:</strong> ${escapeHtml(meta.printedAt)}</div>` : ""}
+              ${formatSettings.includePaymentMethod && paymentMethod ? `<div><strong>Payment:</strong> ${escapeHtml(paymentMethod)}</div>` : ""}
             </div>
           </div>
           <div class="brand">
-            ${header?.logoUrl ? `<img src="${escapeHtml(header.logoUrl)}" alt="logo" />` : ""}
-            <div class="shop">${escapeHtml(header?.shopName || "")}</div>
-            <div style="font-size:12px; color:#444; font-weight:700;">${escapeHtml(header?.branchName || "")}</div>
+            ${formatSettings.includeLogo !== false && header?.logoUrl ? `<img src="${escapeHtml(header.logoUrl)}" alt="logo" />` : ""}
+            ${formatSettings.includeShopName !== false ? `<div class="shop">${escapeHtml(header?.shopName || "")}</div>` : ""}
+            ${formatSettings.includeBranchName !== false ? `<div style="font-size:12px; color:#444; font-weight:700;">${escapeHtml(header?.branchName || "")}</div>` : ""}
           </div>
         </div>
 
         <div class="grid">
           <div class="box">
             <h3>Sold By</h3>
-            <div class="name">${escapeHtml(header?.shopName || "")}</div>
-            ${addr.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("")}
-            ${header?.contact ? `<div class="line">Ph: ${escapeHtml(header.contact)}</div>` : ""}
+            ${formatSettings.includeShopName !== false ? `<div class="name">${escapeHtml(header?.shopName || "")}</div>` : ""}
+            ${formatSettings.includeAddress !== false ? addr.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("") : ""}
+            ${formatSettings.includeContact !== false && header?.contact ? `<div class="line">Ph: ${escapeHtml(header.contact)}</div>` : ""}
+            ${showGst ? `<div class="line">GSTIN: ${escapeHtml(extraInfo.gstNumber)}</div>` : ""}
+            ${showFssai ? `<div class="line">FSSAI: ${escapeHtml(extraInfo.fssai)}</div>` : ""}
           </div>
           <div class="box">
             <h3>Branch</h3>
-            <div class="name">${escapeHtml(header?.branchName || "")}</div>
-            ${addr.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("")}
+            ${formatSettings.includeBranchName !== false ? `<div class="name">${escapeHtml(header?.branchName || "")}</div>` : ""}
+            ${formatSettings.includeAddress !== false ? addr.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("") : ""}
           </div>
         </div>
 
@@ -388,23 +499,25 @@ export function printBillA4({
         <div class="totals">
           <div class="totalsBox">
             <div class="row"><span>Subtotal</span><span>${escapeHtml(formatCurrency(totals?.subtotal ?? 0))}</span></div>
-            ${(offers || []).filter(o => o && (o.discount || o.discountAmount) > 0).map(o =>
+            ${formatSettings.includeOffers !== false ? (offers || []).filter(o => o && (o.discount || o.discountAmount) > 0).map(o =>
               `<div class="row" style="color:#16a34a;"><span>${escapeHtml(o.name || o.offerName || "Offer")}</span><span>- ${escapeHtml(formatCurrency(o.discount || o.discountAmount || 0))}</span></div>`
-            ).join("")}
+            ).join("") : ""}
             ${(totals?.discountAmount ?? 0) ? `<div class="row"><span>Discount</span><span>- ${escapeHtml(formatCurrency(totals.discountAmount))}</span></div>` : ""}
             <div class="row"><span>Tax</span><span>${escapeHtml(formatCurrency(totals?.taxAmount ?? 0))}</span></div>
             
-            ${totals?.taxBreakdown && totals.taxBreakdown.cgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>CGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.cgst))}</span></div>` : ""}
-            ${totals?.taxBreakdown && totals.taxBreakdown.sgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>SGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.sgst))}</span></div>` : ""}
-            ${totals?.taxBreakdown && totals.taxBreakdown.igst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>IGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.igst))}</span></div>` : ""}
+            ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.cgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>CGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.cgst))}</span></div>` : ""}
+            ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.sgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>SGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.sgst))}</span></div>` : ""}
+            ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.igst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>IGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.igst))}</span></div>` : ""}
 
             <div class="row grand"><span>Grand Total</span><span>${escapeHtml(formatCurrency(totals?.finalTotal ?? 0))}</span></div>
+            ${upiQrHtml}
           </div>
         </div>
 
         <div class="foot">
-          ${staffName ? `Billed by: ${escapeHtml(staffName)} &nbsp;|&nbsp; ` : ""}
-          Thank you! Visit Again &nbsp;|&nbsp; Invoice generated by ${escapeHtml(header?.shopName || "POS")}
+          ${formatSettings.includeStaff !== false && staffName ? `Billed by: ${escapeHtml(staffName)} &nbsp;|&nbsp; ` : ""}
+          ${footerText ? `${escapeHtml(footerText)} &nbsp;|&nbsp; ` : ""}
+          Invoice generated by ${escapeHtml(header?.shopName || "POS")}
         </div>
       </div>
     </div>

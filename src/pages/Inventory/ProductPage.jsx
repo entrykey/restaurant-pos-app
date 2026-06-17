@@ -103,7 +103,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         isDefault: false
     });
 
-    const baseCoreFields = ["barcode", "name", "category_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type", "is_sellable"];
+    const baseCoreFields = ["barcode", "name", "category_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type", "is_sellable", "weight_based"];
     if (!isEditing) baseCoreFields.push("opening_stock");
     const CORE_FIELD_KEYS = showAdvanced ? baseCoreFields : ["unit_id", ...baseCoreFields];
 

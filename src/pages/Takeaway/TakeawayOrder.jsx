@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
     Menu as MenuIcon,
     ShoppingCart,
@@ -16,6 +16,8 @@ import {
     Info,
     Mic,
     MicOff,
+    ArrowUpDown,
+    Flame,
 } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import FoodItemCard from "../../components/FoodItemCard";
@@ -27,6 +29,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useOrder } from "../../context/OrderContext";
 import { useTakeaway } from "./TakeawayContext";
 import { toast } from "react-hot-toast";
+import {
+    applyCartStockToMenu,
+    buildBaseStockMap,
+    canAddToCart,
+    collectOpenCartItems,
+} from "../../utils/cartStockUtils";
 
 const TakeawayOrder = ({
     isTakeaway,
@@ -70,7 +78,7 @@ const TakeawayOrder = ({
     } = useOrder();
     const {
         selectedCustomer, setSelectedCustomer,
-        resetTakeaway
+        resetTakeaway, tabs, activeTabId,
     } = useTakeaway();
 
     const location = useLocation();
@@ -102,7 +110,7 @@ const TakeawayOrder = ({
 
             const data = res.data;
             if (data.product) {
-                initiateAddItem(data.product, data.quantity || 1);
+                handleInitiateAddItem(data.product, data.quantity || 1);
                 toast.success(`Voice added: ${data.quantity || 1} ${data.product.name}`);
             } else {
                 toast.error("Could not find matching product from voice input.");
@@ -167,8 +175,14 @@ const TakeawayOrder = ({
     const [isSearchingRemote, setIsSearchingRemote] = useState(false);
     const [remoteMenu, setRemoteMenu] = useState(null); // null → use local menu
     const [localMenu, setLocalMenu] = useState([]);
+    const [baseStockMap, setBaseStockMap] = useState({});
     const [isMenuLoading, setIsMenuLoading] = useState(false);
-    const [activeOfferTip, setActiveOfferTip] = useState(null); // { x: number, y: number, offer: any }
+    const [activeOfferTip, setActiveOfferTip] = useState(null);
+
+    // Sort state: 'popular' | 'name' | 'stock'
+    const [sortMode, setSortMode] = useState('popular');
+    // Map of itemId -> totalOrdered
+    const [popularityMap, setPopularityMap] = useState({}); // { x: number, y: number, offer: any }
 
     const fetchMenu = React.useCallback(async () => {
         setIsMenuLoading(true);
@@ -203,6 +217,7 @@ const TakeawayOrder = ({
                 quantityOnHand: item.quantityOnHand ?? 0,
             }));
             setLocalMenu(mapped);
+            setBaseStockMap(buildBaseStockMap(mapped));
             if (setMenu) setMenu(mapped); // Sync with global if provided
         } catch (err) {
             console.error("Failed to fetch fresh menu:", err);
@@ -214,6 +229,19 @@ const TakeawayOrder = ({
     useEffect(() => {
         fetchMenu();
     }, [fetchMenu]);
+
+    // Fetch popularity data
+    useEffect(() => {
+        const shopId = currentUser?.shopId || currentUser?.shop_id;
+        if (!shopId) return;
+        itemService.getPopularItems({ shopId, branchId: activeBranchId || undefined, limit: 30 })
+            .then(data => {
+                const map = {};
+                (data || []).forEach(p => { map[p.itemId] = p.totalOrdered; });
+                setPopularityMap(map);
+            })
+            .catch(() => {});
+    }, [currentUser?.shopId, currentUser?.shop_id, activeBranchId]);
 
     const [customerSearchResults, setCustomerSearchResults] = useState([]);
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -351,6 +379,7 @@ const TakeawayOrder = ({
                 }));
 
                 setRemoteMenu(mapped);
+                setBaseStockMap((prev) => ({ ...prev, ...buildBaseStockMap(mapped) }));
             } catch (err) {
                 console.error("Failed to AI-search menu:", err);
                 setRemoteMenu(null);
@@ -367,6 +396,45 @@ const TakeawayOrder = ({
 
     const activeMenu = remoteMenu || localMenu || menu || [];
 
+    const currentOrder = useMemo(() => (
+        isTakeaway
+            ? takeawayOrder
+            : tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))?.order || { items: [] }
+    ), [isTakeaway, takeawayOrder, tables, activeTableId]);
+
+    const allCartItems = useMemo(() => collectOpenCartItems({
+        currentOrderItems: currentOrder?.items || [],
+        isTakeaway,
+        tabs,
+        activeTabId,
+        tables,
+        activeTableId,
+    }), [currentOrder?.items, isTakeaway, tabs, activeTabId, tables, activeTableId]);
+
+    const displayMenu = useMemo(
+        () => applyCartStockToMenu(activeMenu, allCartItems, baseStockMap),
+        [activeMenu, allCartItems, baseStockMap],
+    );
+
+    const handleInitiateAddItem = useCallback((menuItem, quantity = 1) => {
+        if (!canAddToCart(menuItem, allCartItems, baseStockMap, quantity)) {
+            toast.error(`Insufficient stock for ${menuItem.name}`);
+            return;
+        }
+        initiateAddItem(menuItem, quantity);
+    }, [allCartItems, baseStockMap, initiateAddItem]);
+
+    const handleUpdateItemQuantity = useCallback((itemIndex, delta) => {
+        if (delta > 0) {
+            const item = currentOrder?.items?.[itemIndex];
+            if (item && !canAddToCart(item, allCartItems, baseStockMap, delta)) {
+                toast.error(`Insufficient stock for ${item.name}`);
+                return;
+            }
+        }
+        updateItemQuantity(itemIndex, delta);
+    }, [allCartItems, baseStockMap, currentOrder?.items, updateItemQuantity]);
+
     // Global Barcode Listener for POS
     const handleBarcodeSearch = useCallback(async (code) => {
         if (!code) return;
@@ -374,13 +442,13 @@ const TakeawayOrder = ({
         const cleanCode = String(code).trim().toLowerCase();
         
         // 1. Search in local active menu first
-        const found = activeMenu.find(it => 
+        const found = displayMenu.find(it => 
             (it.itemCode && String(it.itemCode).toLowerCase() === cleanCode) || 
             (it.barcode && String(it.barcode).toLowerCase() === cleanCode)
         );
 
         if (found) {
-            initiateAddItem(found);
+            handleInitiateAddItem(found);
             toast.success(`Added ${found.name} to cart`, {
                 icon: '🛒',
                 duration: 2000,
@@ -421,8 +489,11 @@ const TakeawayOrder = ({
                     price: foundRemote.pricing?.sellingPrice ?? foundRemote.price ?? 0,
                     category: foundRemote.categoryId?.name || foundRemote.category || "Others",
                     unitName: foundRemote.unitId?.name || foundRemote.unitName || "Unit",
+                    quantityOnHand: foundRemote.quantityOnHand ?? 0,
+                    itemType: foundRemote.itemType,
+                    stockSettings: foundRemote.stockSettings,
                 };
-                initiateAddItem(normalizedItem);
+                handleInitiateAddItem(normalizedItem);
                 toast.success(`Added ${normalizedItem.name} to cart`, { icon: '🛒' });
             } else {
                 toast.error(`Code "${code}" not found`);
@@ -431,7 +502,7 @@ const TakeawayOrder = ({
             console.error("POS Barcode search failed:", error);
             toast.error(`Search failed for "${code}"`);
         }
-    }, [activeMenu, initiateAddItem, currentUser?.shop_id, activeBranchId]);
+    }, [displayMenu, handleInitiateAddItem, currentUser?.shop_id, activeBranchId]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -466,11 +537,7 @@ const TakeawayOrder = ({
     }, [handleBarcodeSearch]);
 
     // Derive categories dynamically from the menu prop (already normalized in AppContent)
-    const categories = ["All", ...new Set(activeMenu.map((item) => item.category || "Others"))];
-
-    const currentOrder = isTakeaway
-        ? takeawayOrder
-        : tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))?.order || { items: [] };
+    const categories = ["All", ...new Set(displayMenu.map((item) => item.category || "Others"))];
 
     const activeTable = !isTakeaway && activeTableId ? tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) : null;
     const displayTitle = activeTable
@@ -524,6 +591,20 @@ const TakeawayOrder = ({
                 >
                     {/* On small screens: entire section scrolls. On xl+: only grid scrolls */}
                     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto xl:overflow-hidden custom-scrollbar p-2 sm:p-4">
+                    {/* Breadcrumb — only shown for table orders */}
+                    {!isTakeaway && (
+                        <button
+                            onClick={() => {
+                                setIsTakeaway(false);
+                                setView("tables");
+                                navigate("/dininghall");
+                            }}
+                            className={`flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest mb-3 transition-colors hover:opacity-70 ${theme.textMuted} w-fit`}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            Dining Hall
+                        </button>
+                    )}
                     <div className="flex justify-between items-center mb-2 sm:mb-6">
                         <h2 className={`text-lg sm:text-xl md:text-2xl font-black ${theme.textHeading}`}>
                             {displayTitle}
@@ -750,22 +831,78 @@ const TakeawayOrder = ({
                                 <span className="hidden sm:inline">List</span>
                             </button>
                         </div>
+
+                        {/* Sort buttons */}
+                        <div className={`inline-flex rounded-xl ${theme.surfaceBg} shadow-sm border ${theme.borderLight} overflow-hidden shrink-0`}>
+                            {[
+                                { key: 'popular', icon: <Flame size={13} />, label: 'Hot' },
+                                { key: 'name',    icon: <ArrowUpDown size={13} />, label: 'Name' },
+                                { key: 'stock',   icon: <ArrowUpDown size={13} />, label: 'Stock' },
+                            ].map((s, i) => (
+                                <button
+                                    key={s.key}
+                                    type="button"
+                                    onClick={() => setSortMode(s.key)}
+                                    className={`px-2 sm:px-3 py-2 text-xs font-semibold flex items-center gap-1 ${i > 0 ? `border-l ${theme.borderLight}` : ''} ${sortMode === s.key ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:${theme.sectionBg}`}`}
+                                    title={`Sort by ${s.label}`}
+                                >
+                                    {s.icon}
+                                    <span className="hidden sm:inline">{s.label}</span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:pb-3 shrink-0 no-scrollbar">
-                        {categories.map((cat) => (
-                            <button
-                                key={cat}
-                                onClick={() => setActiveMenuCategory(cat)}
-                                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full font-bold whitespace-nowrap transition-all border-2 text-xs sm:text-sm ${activeMenuCategory === cat
-                                    ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
-                                    : `${theme.surfaceBg} ${theme.borderLight} ${theme.textMuted}`
-                                    }`}
-                            >
-                                {cat}
-                            </button>
-                        ))}
+                        {categories.map((cat) => {
+                            const catCount = cat === "All"
+                                ? activeMenu.length
+                                : activeMenu.filter(i => i.category === cat).length;
+                            return (
+                                <button
+                                    key={cat}
+                                    onClick={() => setActiveMenuCategory(cat)}
+                                    className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full font-bold whitespace-nowrap transition-all border-2 text-xs sm:text-sm flex items-center gap-1.5 ${activeMenuCategory === cat
+                                        ? "bg-indigo-600 border-indigo-600 text-white shadow-md"
+                                        : `${theme.surfaceBg} ${theme.borderLight} ${theme.textMuted}`
+                                        }`}
+                                >
+                                    {cat}
+                                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${activeMenuCategory === cat ? 'bg-white/25 text-white' : `${theme.pageBg} ${theme.textSecondary}`}`}>
+                                        {catCount}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
+
+                    {/* Available item count bar */}
+                    {!isMenuLoading && (() => {
+                        const filtered = activeMenu.filter(i =>
+                            activeMenuCategory === "All" || i.category === activeMenuCategory
+                        );
+                        const inStock = filtered.filter(i => (i.quantityOnHand ?? 1) > 0).length;
+                        const outOfStock = filtered.length - inStock;
+                        return (
+                            <div className="flex items-center gap-3 text-[11px] font-black shrink-0">
+                                <span className={`${theme.textSecondary}`}>
+                                    <span className="text-indigo-500">{filtered.length}</span> items
+                                </span>
+                                {inStock > 0 && (
+                                    <span className="flex items-center gap-1 text-emerald-500">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                                        {inStock} in stock
+                                    </span>
+                                )}
+                                {outOfStock > 0 && (
+                                    <span className={`flex items-center gap-1 ${theme.textMuted}`}>
+                                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" />
+                                        {outOfStock} out of stock
+                                    </span>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     <div
                         className={`${viewMode === "grid"
@@ -779,28 +916,49 @@ const TakeawayOrder = ({
                                 <p className={`font-bold ${theme.textSecondary}`}>Refreshing Fresh Menu...</p>
                             </div>
                         ) : (
-                            activeMenu
+                            displayMenu
                                 .filter((item) =>
                                     activeMenuCategory === "All" ||
                                     item.category === activeMenuCategory
                                 )
+                                .map(item => ({ ...item, _orderCount: popularityMap[item.id || item._id] || 0 }))
                                 .sort((a, b) => {
-                                    const aHasStock = a.quantityOnHand > 0;
-                                    const bHasStock = b.quantityOnHand > 0;
-                                    if (aHasStock && !bHasStock) return -1;
-                                    if (!aHasStock && bHasStock) return 1;
+                                    if (sortMode === 'popular') {
+                                        // Primary: most ordered first; secondary: in-stock first
+                                        if (b._orderCount !== a._orderCount) return b._orderCount - a._orderCount;
+                                        const aStock = a.quantityOnHand > 0;
+                                        const bStock = b.quantityOnHand > 0;
+                                        if (aStock && !bStock) return -1;
+                                        if (!aStock && bStock) return 1;
+                                        return 0;
+                                    }
+                                    if (sortMode === 'name') return (a.name || '').localeCompare(b.name || '');
+                                    if (sortMode === 'stock') {
+                                        const aQ = a.quantityOnHand ?? 0;
+                                        const bQ = b.quantityOnHand ?? 0;
+                                        return bQ - aQ;
+                                    }
                                     return 0;
                                 })
-                                .map((item) => (
-                                    <FoodItemCard
-                                        key={item.id}
-                                        item={item}
-                                        formatCurrency={formatCurrency}
-                                        onSelect={(item) => initiateAddItem(item)}
-                                        viewMode={viewMode}
-                                        disabled={false}
-                                    />
-                                ))
+                                .map((item) => {
+                                    const isHot = item._orderCount > 0 && popularityMap[item.id || item._id] > 0;
+                                    return (
+                                        <div key={item.id} className="relative">
+                                            {isHot && (
+                                                <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-0.5 bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md pointer-events-none">
+                                                    <Flame size={9} /> HOT
+                                                </div>
+                                            )}
+                                            <FoodItemCard
+                                                item={item}
+                                                formatCurrency={formatCurrency}
+                                                onSelect={(item) => handleInitiateAddItem(item)}
+                                                viewMode={viewMode}
+                                                disabled={false}
+                                            />
+                                        </div>
+                                    );
+                                })
                         )}
                     </div>
                     </div>{/* end scroll wrapper */}
@@ -844,7 +1002,7 @@ const TakeawayOrder = ({
                                             <div className="flex gap-3 flex-1 min-w-0">
                                                 <div className={`flex flex-col items-center ${theme.pageBg} rounded-xl p-1.5 h-fit shrink-0`}>
                                                     <button
-                                                        onClick={() => updateItemQuantity(idx, 1)}
+                                                        onClick={() => handleUpdateItemQuantity(idx, 1)}
                                                         className={`p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors`}
                                                     >
                                                         <Plus size={18} />
@@ -855,7 +1013,7 @@ const TakeawayOrder = ({
                                                             : item.quantity}
                                                     </span>
                                                     <button
-                                                        onClick={() => updateItemQuantity(idx, -1)}
+                                                        onClick={() => handleUpdateItemQuantity(idx, -1)}
                                                         className={`p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors`}
                                                     >
                                                         <Minus size={18} />

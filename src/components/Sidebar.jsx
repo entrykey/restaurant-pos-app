@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
     Utensils,
     Globe,
@@ -31,6 +31,9 @@ import {
     Zap,
     ClipboardList,
     Wallet,
+    RotateCcw,
+    Receipt,
+    Coins,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
@@ -83,6 +86,15 @@ const Sidebar = ({
     const [isSalesExpanded, setIsSalesExpanded] = useState(true);
     const [isPurchasesExpanded, setIsPurchasesExpanded] = useState(true);
     const closeMobile = () => onMobileClose?.();
+
+    // Close all subitems when sidebar is collapsed
+    useEffect(() => {
+        if (!isExpanded) {
+            setIsSelfServiceExpanded(false);
+            setIsSalesExpanded(false);
+            setIsPurchasesExpanded(false);
+        }
+    }, [isExpanded]);
 
     const getLogoSrc = () => {
         if (!organization?.logoUrl) return null;
@@ -310,6 +322,11 @@ const Sidebar = ({
             onClick: () => { setView("sales-history"); navigate("/sales-history"); closeMobile(); },
             isActive: checkActive(view, "sales-history", "SALES_HISTORY")
         },
+        SALES_RETURN: {
+            icon: RotateCcw, label: "Sales Returns",
+            onClick: () => { setView("salesreturn"); navigate("/salesreturn"); closeMobile(); },
+            isActive: checkActive(view, "salesreturn", "SALES_RETURN") || location.pathname.includes("/salesreturn")
+        },
         PAY_IN: {
             icon: Wallet, label: "Pay In",
             onClick: () => { setView("pay-in"); navigate("/dashboard/pay-in"); closeMobile(); },
@@ -376,9 +393,14 @@ const Sidebar = ({
             isActive: checkActive(view, "service", "SERVICE")
         },
         PURCHASES: {
-            icon: ShoppingCart, label: "All Purchases",
+            icon: ShoppingCart, label: "Purchase Invoice",
             onClick: () => { setView("purchases"); navigate("/purchases"); closeMobile(); },
             isActive: checkActive(view, "purchases", "PURCHASES")
+        },
+        PURCHASE_RETURN: {
+            icon: RotateCcw, label: "Purchase Returns",
+            onClick: () => { setView("purchasereturn"); navigate("/purchasereturn"); closeMobile(); },
+            isActive: checkActive(view, "purchasereturn", "PURCHASE_RETURN") || location.pathname.includes("/purchasereturn")
         },
         BUSINESS_TYPES: {
             icon: Briefcase, label: "Business Types",
@@ -416,14 +438,14 @@ const Sidebar = ({
             children: ['MYATTENDANCE', 'MYLEAVES', 'MYSALARY'].filter(k => canAccessRoute(can, canModule, k))
         },
         SALES: {
-            icon: ShoppingBag, label: "Sales",
+            icon: Coins, label: "Sales",
             isGroup: true,
-            children: ['SALE_MARKING', 'SALES_HISTORY', 'PAY_IN'].filter(k => canAccessRoute(can, canModule, k))
+            children: ['SALE_MARKING', 'SALES_HISTORY', 'SALES_RETURN', 'PAY_IN'].filter(k => canAccessRoute(can, canModule, k))
         },
         PURCHASES_GROUP: {
             icon: ShoppingCart, label: "Purchases",
             isGroup: true,
-            children: ['PURCHASES', 'PAY_OUT'].filter(k => canAccessRoute(can, canModule, k))
+            children: ['PURCHASES', 'PURCHASE_RETURN', 'PAY_OUT'].filter(k => canAccessRoute(can, canModule, k))
         }
     };
 
@@ -435,26 +457,41 @@ const Sidebar = ({
             const isSales = key === 'SALES';
             const isPurchases = key === 'PURCHASES_GROUP';
             const isOpen = isSelfService ? isSelfServiceExpanded : (isSales ? isSalesExpanded : (isPurchases ? isPurchasesExpanded : false));
-            const toggle = () => isSelfService ? setIsSelfServiceExpanded(!isSelfServiceExpanded) : (isSales ? setIsSalesExpanded(!isSalesExpanded) : (isPurchases ? setIsPurchasesExpanded(!isPurchasesExpanded) : null));
+            const toggle = () => {
+                if (!isExpanded) {
+                    setIsExpanded(true);
+                }
+                if (isSelfService) {
+                    setIsSelfServiceExpanded(!isSelfServiceExpanded);
+                } else if (isSales) {
+                    setIsSalesExpanded(!isSalesExpanded);
+                } else if (isPurchases) {
+                    setIsPurchasesExpanded(!isPurchasesExpanded);
+                }
+            };
 
             return (
                 <div key={key} className="w-full flex flex-col mb-2">
                     <div className={`relative flex w-full ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:justify-center'}`}>
                         <button
-                            onClick={toggle}
+                            onClick={config.isGroup ? toggle : config.onClick}
                             className={`p-3 md:p-4 transition-all flex items-center w-full ${isExpanded
                                 ? 'gap-4 justify-start rounded-xl md:rounded-2xl'
-                                : 'justify-start md:justify-center gap-4 md:gap-0 rounded-2xl md:rounded-[24px]'
+                                : 'flex-col justify-center gap-1 rounded-2xl md:rounded-[24px]'
                                 } ${isAnyChildActive ? theme.sidebarItemActiveBg : theme.sidebarItemHoverBg}`}
                         >
                             <config.icon className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
-                            <div className={`flex-1 flex items-center justify-between overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-0 md:opacity-0 md:hidden'}`}>
-                                <span className="font-bold text-sm whitespace-nowrap">{config.label}</span>
-                                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </div>
+                            {isExpanded ? (
+                                <div className={`flex-1 flex items-center justify-between overflow-hidden transition-all duration-300 max-w-[150px] opacity-100`}>
+                                    <span className="font-bold text-sm whitespace-nowrap">{config.label}</span>
+                                    {config.isGroup && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
+                                </div>
+                            ) : (
+                                <span className="font-bold text-[10px] whitespace-nowrap mt-1">{config.label}</span>
+                            )}
                         </button>
                     </div>
-                    {isOpen && (isExpanded || mobileOpen) && (
+                    {isOpen && (
                         <div className="mt-1 flex flex-col items-stretch space-y-1">
                             {config.children.map(childKey => {
                                 const childConfig = MODULE_CONFIG[childKey];

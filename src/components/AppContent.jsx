@@ -15,8 +15,9 @@ import { useOnlineOrders } from "../pages/OnlineOrders/OnlineOrderContext";
 import { useAuth } from "../context/AuthContext";
 import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from "../utils/permissions";
 import { formatCurrency } from "../utils/format";
-import { buildTakeawayDraftSignature } from "../utils/saleDraftSignature";
+import { buildTakeawayDraftSignature, buildTableDraftSignature } from "../utils/saleDraftSignature";
 import { printBill, printBillA4, printKot } from "../utils/print";
+import { loadBillPrintSettings, buildBillExtraInfo, printSaleOrder } from "../utils/printSettingsUtils";
 import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService } from "../services/api";
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
 import { TextProvider } from "../context/TextContext";
@@ -92,7 +93,7 @@ const AppContent = () => {
         return {
             ...order,
             createdBy: order?.createdBy || staff,
-            managedBy: staff,
+            managedBy: order?.managedBy || staff,
         };
     };
     const sessionInfo = auth.sessionInfo;
@@ -575,6 +576,10 @@ const AppContent = () => {
     const draftSyncTimeoutRef = useRef(null);
     const draftSyncInFlightRef = useRef(false);
     const lastDraftSignatureRef = useRef("");
+    const tableDraftSyncTimeoutRef = useRef(null);
+    const tableDraftSyncInFlightRef = useRef(false);
+    const lastTableDraftSignatureRef = useRef("");
+    const tableDraftOrderIdRef = useRef(null);
 
     // Customization State
     const [customizingItem, setCustomizingItem] = useState(null);
@@ -900,17 +905,19 @@ const AppContent = () => {
             };
 
             const tableLabel = isTakeaway ? "Takeaway" : (table?.name || activeTable?.name || "");
-            const invoiceLabel = orderFromBackend?.invoiceNumber ? `Invoice: ${orderFromBackend.invoiceNumber}` : "";
-            const orderLabel = orderFromBackend?.orderNumber ? `Order: ${orderFromBackend.orderNumber}` : "";
             const customerLabel = orderFromBackend?.customerId?.name
                 ? `Customer: ${orderFromBackend.customerId.name}${orderFromBackend.customerId.phone ? ` (${orderFromBackend.customerId.phone})` : ""}`
                 : "";
+
+            const billSettings = await loadBillPrintSettings(currentShopId, getResolvedBranchId());
+            const extraInfo = buildBillExtraInfo(activeBranch, organization);
 
             const printer = format === "a4" ? printBillA4 : printBill;
             printer({
                 header: getPrintHeader(orderFromBackend),
                 meta: {
-                    orderLabel: [invoiceLabel, orderLabel].filter(Boolean).join(" • "),
+                    invoiceLabel: orderFromBackend?.invoiceNumber || "",
+                    orderLabel: orderFromBackend?.orderNumber || "",
                     tableLabel: tableLabel ? `Table: ${tableLabel}` : "",
                     customerLabel,
                     printedAt: new Date().toLocaleString(),
@@ -923,6 +930,8 @@ const AppContent = () => {
                 })),
                 staffName: orderFromBackend?.createdBy?.name || currentUser?.name || "",
                 formatCurrency,
+                billSettings,
+                extraInfo,
             });
         } catch (e) {
             console.error("Print bill failed:", e);
@@ -1114,6 +1123,169 @@ const AppContent = () => {
         currentUser?._id
     ]);
 
+    // Keep draft order id in sync when opening an occupied table
+    useEffect(() => {
+        if (!tableId) {
+            tableDraftOrderIdRef.current = null;
+            return;
+        }
+        const table = tables.find(
+            (t) => String(t.id) === String(tableId) || String(t._id) === String(tableId)
+        );
+        if (table?.order?.orderId) {
+            tableDraftOrderIdRef.current = table.order.orderId;
+        }
+    }, [tableId, tables]);
+
+    // Live sync dine-in table cart to backend so other staff see occupied tables + items
+    useEffect(() => {
+        const shouldSyncTableDraft = Boolean(
+            !isTakeaway &&
+            tableId &&
+            activeOrderType === "DINE_IN" &&
+            currentShopId &&
+            getResolvedBranchId()
+        );
+
+        if (!shouldSyncTableDraft) return;
+
+        const table = tables.find(
+            (t) => String(t.id) === String(tableId) || String(t._id) === String(tableId)
+        );
+        const tableOrder = table?.order || { items: [] };
+
+        const signature = buildTableDraftSignature({ tableId, tableOrder });
+        if (signature === lastTableDraftSignatureRef.current) return;
+
+        if (tableDraftSyncTimeoutRef.current) {
+            clearTimeout(tableDraftSyncTimeoutRef.current);
+        }
+
+        tableDraftSyncTimeoutRef.current = setTimeout(async () => {
+            if (tableDraftSyncInFlightRef.current) return;
+            tableDraftSyncInFlightRef.current = true;
+            try {
+                const orderItems = tableOrder?.items || [];
+
+                if (orderItems.length === 0) {
+                    if (tableOrder?.orderId) {
+                        await orderService.updateStatus(tableOrder.orderId, { status: "CANCELLED" });
+                        tableDraftOrderIdRef.current = null;
+                        setTables((prev) =>
+                            prev.map((t) => {
+                                const match = String(t.id) === String(tableId) || String(t._id) === String(tableId);
+                                if (!match) return t;
+                                return { ...t, status: "available", order: null, startTime: null };
+                            })
+                        );
+                    }
+                    lastTableDraftSignatureRef.current = signature;
+                    return;
+                }
+
+                const billDetails = calculateBillDetails(
+                    orderItems,
+                    billDiscount || { type: "flat", value: 0 },
+                    settings?.defaultTaxPercent || 0,
+                    true,
+                    exchangeCredit,
+                    branchStateCode,
+                    null
+                );
+                const payloadItems = buildOrderPayloadItems(orderItems);
+                const tableLabel = table?.name || table?.tableNumber || tableId;
+                const payload = {
+                    shopId: currentShopId,
+                    branchId: getResolvedBranchId(),
+                    businessType: businessType || "RESTAURANT",
+                    orderType: "DINE_IN",
+                    customerId: null,
+                    customerName: "",
+                    customerPhone: "",
+                    tableId: table?._id || table?.id || tableId,
+                    items: payloadItems,
+                    ...buildOrderTotalsFromBill(billDetails),
+                    orderStatus: "OPEN",
+                    createdBy: currentUser?._id,
+                    notes: `Live table draft: ${tableLabel}`,
+                    draftSync: true,
+                };
+
+                if (!tableOrder?.orderId) {
+                    payload.managedBy = currentUser?._id;
+                }
+
+                let nextOrderId = tableOrder?.orderId || tableDraftOrderIdRef.current;
+                let createdOrderNumber = tableOrder?.orderNumber || null;
+                let savedOrder = null;
+                if (nextOrderId) {
+                    savedOrder = await orderService.updateOrder(nextOrderId, payload);
+                } else {
+                    savedOrder = await orderService.createOrder({
+                        ...payload,
+                        managedBy: currentUser?._id,
+                    });
+                    nextOrderId = savedOrder?._id || savedOrder?.id || null;
+                    createdOrderNumber = savedOrder?.orderNumber || savedOrder?.orderNo || null;
+                }
+
+                if (nextOrderId) {
+                    tableDraftOrderIdRef.current = nextOrderId;
+                    setTables((prev) =>
+                        prev.map((t) => {
+                            const match = String(t.id) === String(tableId) || String(t._id) === String(tableId);
+                            if (!match) return t;
+                            return {
+                                ...t,
+                                status: "occupied",
+                                startTime: t.startTime || Date.now(),
+                                order: {
+                                    ...(t.order || {}),
+                                    orderId: nextOrderId,
+                                    orderNumber: createdOrderNumber || t.order?.orderNumber || savedOrder?.orderNumber || null,
+                                    items: orderItems,
+                                    managedBy: savedOrder?.managedBy ?? t.order?.managedBy,
+                                    createdBy: savedOrder?.createdBy ?? t.order?.createdBy,
+                                    actedBy: savedOrder?.actedBy ?? t.order?.actedBy ?? [],
+                                    grandTotal: savedOrder?.grandTotal ?? billDetails?.finalTotal,
+                                    _localDraftPending: false,
+                                },
+                            };
+                        })
+                    );
+                    refreshData();
+                }
+
+                lastTableDraftSignatureRef.current = signature;
+            } catch (error) {
+                console.error("Live table draft sync failed:", error);
+            } finally {
+                tableDraftSyncInFlightRef.current = false;
+            }
+        }, 500);
+
+        return () => {
+            if (tableDraftSyncTimeoutRef.current) {
+                clearTimeout(tableDraftSyncTimeoutRef.current);
+            }
+        };
+    }, [
+        isTakeaway,
+        tableId,
+        tables,
+        activeOrderType,
+        currentShopId,
+        activeBranchId,
+        settings?.defaultTaxPercent,
+        billDiscount,
+        exchangeCredit,
+        branchStateCode,
+        businessType,
+        currentUser?._id,
+        setTables,
+        refreshData,
+    ]);
+
     useEffect(() => {
         if (takeawayOrder?.isHistoryEdit && takeawayOrder?.historyEditBaseline) {
             lastDraftSignatureRef.current = takeawayOrder.historyEditBaseline;
@@ -1125,6 +1297,16 @@ const AppContent = () => {
     }, [activeTabId, takeawayOrder?.isHistoryEdit, takeawayOrder?.historyEditBaseline, takeawayOrder?.orderId]);
 
     const addToCart = (item, quantity, variant, extras, enteredUnit = null) => {
+        // Normalize item identifier so offers and grouping survive refresh/hydration.
+        const stableId = item?._id || item?.id;
+        if (!stableId) return;
+
+        const normalizedItem = {
+            ...item,
+            id: stableId,
+            _id: stableId,
+        };
+
         let finalQuantity = parseFloat(quantity);
 
         // --- Advanced Offer Logic (Auto-Add & BOGO) ---
@@ -1132,7 +1314,7 @@ const AppContent = () => {
         const triggeredOffers = (offers || []).filter(o => 
             o.isActive && 
             o.condition?.applyOn === "ITEM" && 
-            (o.condition?.itemIds || []).map(String).includes(String(item.id || item._id)) &&
+            (o.condition?.itemIds || []).map(String).includes(String(normalizedItem.id || normalizedItem._id)) &&
             o.reward?.rewardType === "FREE_ITEM"
         );
 
@@ -1142,7 +1324,7 @@ const AppContent = () => {
             
             // Check if it's the same item (BOGO style) or a different item (Cross-item)
             const rewardItemIds = offer.reward.itemIds || (offer.reward.specificItemId ? [offer.reward.specificItemId] : []);
-            const isSameItem = rewardItemIds.length === 0 || rewardItemIds.map(String).includes(String(item.id || item._id));
+            const isSameItem = rewardItemIds.length === 0 || rewardItemIds.map(String).includes(String(normalizedItem.id || normalizedItem._id));
             
             if (isSameItem) {
                 // For BOGO: If adding 'buyQty' multiples, we can automatically add the 'freeQty' multiples
@@ -1151,7 +1333,7 @@ const AppContent = () => {
                     const numSets = quantity / buyQty;
                     const totalFreeToAdd = numSets * freeQty;
                     finalQuantity = quantity + totalFreeToAdd;
-                    toast.success(`${offer.name} Applied: Added ${totalFreeToAdd} extra free ${item.name}`, { 
+                    toast.success(`${offer.name} Applied: Added ${totalFreeToAdd} extra free ${normalizedItem.name}`, { 
                         icon: '🎁',
                         duration: 3000
                     });
@@ -1159,7 +1341,7 @@ const AppContent = () => {
             } else {
                 // Cross-item offer (Buy Pepsi, Get Lays Free)
                 const freeItemId = rewardItemIds[0];
-                const freeItem = menu.find(m => m.id === freeItemId || m._id === freeItemId);
+                const freeItem = menu.find(m => String(m.id || m._id) === String(freeItemId));
                 
                 if (freeItem && quantity >= buyQty) {
                     const numSets = Math.floor(quantity / buyQty);
@@ -1178,7 +1360,7 @@ const AppContent = () => {
         });
 
         const orderItem = {
-            ...item,
+            ...normalizedItem,
             quantity: finalQuantity,
             selectedVariant: variant,
             selectedExtras: extras,
@@ -1191,7 +1373,7 @@ const AppContent = () => {
             .sort()
             .join("|");
         const variantKey = variant ? variant.name : "std";
-        const groupKey = `${item.id}|${variantKey}|${extrasKey}`;
+        const groupKey = `${normalizedItem.id}|${variantKey}|${extrasKey}`;
 
         const updateOrderItems = (currentItems) => {
             const existingIndex = currentItems.findIndex((i) => {
@@ -1200,7 +1382,7 @@ const AppContent = () => {
                     .sort()
                     .join("|");
                 const iVariantKey = i.selectedVariant ? i.selectedVariant.name : "std";
-                const iGroupKey = `${i.id}|${iVariantKey}|${iExtraKey}`;
+                const iGroupKey = `${(i._id || i.id)}|${iVariantKey}|${iExtraKey}`;
                 return iGroupKey === groupKey;
             });
 
@@ -1242,6 +1424,7 @@ const AppContent = () => {
                                 ...currentOrder,
                                 items: updateOrderItems(currentOrder.items),
                                 isSentToKOT: false,
+                                _localDraftPending: true,
                             }),
                         };
                     }
@@ -1332,7 +1515,7 @@ const AppContent = () => {
                             ...t,
                             status: newItems.length > 0 ? "occupied" : "available",
                             order: newItems.length > 0
-                                ? withStaffTracking({ ...t.order, items: newItems, isSentToKOT: false })
+                                ? withStaffTracking({ ...t.order, items: newItems, isSentToKOT: false, _localDraftPending: true })
                                 : null,
                         };
                     }
@@ -1367,7 +1550,7 @@ const AppContent = () => {
                         const newItems = updateList(t.order.items);
                         return {
                             ...t,
-                            order: withStaffTracking({ ...t.order, items: newItems, isSentToKOT: false }),
+                            order: withStaffTracking({ ...t.order, items: newItems, isSentToKOT: false, _localDraftPending: true }),
                         };
                     }
                     return t;

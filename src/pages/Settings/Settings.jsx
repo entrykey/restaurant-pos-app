@@ -9,7 +9,8 @@ import {
     History,
     Search,
     Wallet,
-    ShoppingBag
+    ShoppingBag,
+    Printer
 } from "lucide-react";
 import AttributeSettings from "./AttributeSettings";
 import UnitSettings from "./UnitSettings";
@@ -17,6 +18,7 @@ import CategorySettings from "./CategorySettings";
 import AppearanceSettings from "./AppearanceSettings";
 import TaxSettings from "./TaxSettings";
 import SaleSettings from "./SaleSettings";
+import BarcodeBillSettings from "./BarcodeBillSettings";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
@@ -43,6 +45,7 @@ const Settings = ({
     const canViewAttributes = hasPermissionFor?.('settings', 'inventory_settings', 'manage');
     const canViewAppearance = hasPermissionFor?.('settings', 'settings', 'appearence_settings');
     const canViewPayroll = hasPermissionFor?.(ROUTE_ACCESS.PAYROLL_SETTINGS.module, ROUTE_ACCESS.PAYROLL_SETTINGS.resource, ROUTE_ACCESS.PAYROLL_SETTINGS.action);
+    const canViewBarcodeBill = hasPermissionFor?.(ROUTE_ACCESS.BARCODE_BILL_SETTINGS.module, ROUTE_ACCESS.BARCODE_BILL_SETTINGS.resource, ROUTE_ACCESS.BARCODE_BILL_SETTINGS.action);
     const isSuperAdmin = currentUser?.isSuperAdmin === true;
 
     const allTabs = [
@@ -50,6 +53,7 @@ const Settings = ({
         { id: "sale-settings", label: "Sale Settings", icon: ShoppingBag, show: isSuperAdmin || canViewSaleSettings },
         { id: "payroll", label: "Payroll", icon: Wallet, show: isSuperAdmin || canViewPayroll },
         { id: "attributes", label: "Inventory Settings", icon: Package, show: canViewAttributes },
+        { id: "barcode-bill", label: "Barcode & Bill", icon: Printer, show: isSuperAdmin || canViewBarcodeBill },
         { id: "appearance", label: "Appearance", icon: Palette, show: canViewAppearance || isSuperAdmin },
     ];
 
@@ -190,7 +194,7 @@ const Settings = ({
         }
     };
 
-    if (!canViewGeneral && !canViewAttributes && !isSuperAdmin) {
+    if (!canViewGeneral && !canViewAttributes && !canViewBarcodeBill && !isSuperAdmin) {
         return (
             <div className={`p-8 text-center ${theme.textSecondary} font-bold`}>
                 You don't have permission to access settings.
@@ -346,6 +350,10 @@ const Settings = ({
                         ) : (
                             <div className="grid grid-cols-1 gap-6">
                                 {backendSettings.filter(s => {
+                                    const printSettingsKeys = [
+                                        'BARCODE_PRINT_SETTINGS', 'BILL_PRINT_SETTINGS', 'PURCHASE_INVOICE_SETTINGS'
+                                    ];
+                                    if (printSettingsKeys.includes(s.key)) return false;
                                     if (isSuperAdmin) return s.isSystem;
                                     // For shop owners, show them all settings EXCEPT superadmin-only or settings that belong to other tabs
                                     const saleSettingsKeys = [
@@ -426,6 +434,11 @@ const Settings = ({
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
                         <AppearanceSettings />
                     </div>
+                );
+
+            case "barcode-bill":
+                return (
+                    <BarcodeBillSettings currentUser={currentUser} />
                 );
 
 

@@ -25,4 +25,14 @@ export const businessTypesService = {
     // --- Meta ---
     getAllModules: () => api.get('/modules'),
     getAllPermissions: () => api.get('/permissions'),
+
+    // --- Default Roles (per business type / subtype) ---
+    getDefaultRoles: (params) => api.get('/business-type-default-roles', { params }),
+    getMergedDefaultRoles: (businessType, subType) => api.get('/business-type-default-roles', {
+        params: { businessType, subType, merged: 'true' },
+    }),
+    getDefaultRoleAllowedPermissions: (params) => api.get('/business-type-default-roles/allowed-permissions', { params }),
+    createDefaultRole: (data) => api.post('/business-type-default-roles', data),
+    updateDefaultRole: (id, data) => api.put(`/business-type-default-roles/${id}`, data),
+    deleteDefaultRole: (id) => api.delete(`/business-type-default-roles/${id}`),
 };

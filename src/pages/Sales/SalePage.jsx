@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
     ArrowLeft, Save, Plus, Trash2, Search, User, Building, Package,
-    Check, X, Phone, MapPin, Loader2, ShoppingBag, CreditCard, Banknote
+    Check, X, Phone, MapPin, Loader2, ShoppingBag, CreditCard, Banknote, Printer
 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import { itemService, shopService, taxService, unitService, orderService, customerService } from "../../services/api";
@@ -14,6 +14,7 @@ import DatePicker from "../../components/ui/DatePicker";
 import CommonSelect from "../../components/ui/CommonSelect";
 import { toast } from "react-hot-toast";
 import { applyBogoQuantity, getCrossItemFreeAdds } from "../../utils/posOfferHelpers";
+import { loadBillPrintSettings, buildBillExtraInfo, buildPrintHeader, printSaleOrder } from "../../utils/printSettingsUtils";
 
 const PAYMENT_METHODS = [
     { id: "CASH", label: "Cash", icon: Banknote },
@@ -32,7 +33,7 @@ const calcLineTax = (price, qty, taxPercent) => {
 const SalePage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { activeBranchId, formatCurrency, branches, currentShopId, businessType } = useApp();
+    const { activeBranchId, formatCurrency, branches, currentShopId, businessType, organization } = useApp();
     const { calculateBillDetails, fetchActiveOffers, dismissOffer, offers } = useOrder();
     const { theme } = useTheme();
 
@@ -60,6 +61,8 @@ const SalePage = () => {
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [productPrefillData, setProductPrefillData] = useState(null);
     const [discountType, setDiscountType] = useState('flat'); // 'flat' | 'percent'
+    const [printInvoice, setPrintInvoice] = useState(true);
+    const [billPrintSettings, setBillPrintSettings] = useState(null);
 
     const fetchInitialData = useCallback(async (branchIdArg) => {
         const branchId = branchIdArg || formData.branchId || activeBranchId;
@@ -109,6 +112,21 @@ const SalePage = () => {
             fetchActiveOffers(currentShopId, activeBranchId);
         }
     }, [currentShopId, activeBranchId, fetchActiveOffers]);
+
+    useEffect(() => {
+        const loadPrintPrefs = async () => {
+            const branchId = formData.branchId || activeBranchId;
+            if (!currentShopId || !branchId) return;
+            try {
+                const settings = await loadBillPrintSettings(currentShopId, branchId);
+                setBillPrintSettings(settings);
+                setPrintInvoice(settings.printOnCompleteSale !== false);
+            } catch {
+                setPrintInvoice(true);
+            }
+        };
+        loadPrintPrefs();
+    }, [currentShopId, activeBranchId, formData.branchId]);
 
     const buildLineItem = useCallback((item, quantity) => {
         const sellingPrice = item.pricing?.sellingPrice ?? item.sellingPrice ?? 0;
@@ -365,6 +383,28 @@ const SalePage = () => {
             });
 
             await orderService.updateStatus(orderId, { status: "COMPLETED" });
+
+            if (printInvoice) {
+                try {
+                    const orderFromBackend = await orderService.getOrderById(orderId);
+                    const branch = branches.find((b) => (b._id || b.id) === formData.branchId);
+                    const settings = billPrintSettings || await loadBillPrintSettings(currentShopId, formData.branchId);
+                    await printSaleOrder({
+                        order: orderFromBackend,
+                        format: settings.defaultFormat,
+                        billSettings: settings,
+                        header: buildPrintHeader({ organization, branch, orderFromBackend, currentUser: user }),
+                        extraInfo: buildBillExtraInfo(branch, organization),
+                        formatCurrency,
+                        staffName: user?.name,
+                        paymentMethod: paymentMethod,
+                    });
+                } catch (printErr) {
+                    console.error('Print invoice failed:', printErr);
+                    toast.error('Sale saved but printing failed');
+                }
+            }
+
             toast.success("Sale recorded successfully");
             navigate("/sales-history");
         } catch (error) {
@@ -815,6 +855,16 @@ const SalePage = () => {
                         </div>
 
                         <div className="flex flex-col gap-2 mt-6 md:mt-10 md:flex-row">
+                            <label className={`flex items-center gap-2 px-4 py-3 rounded-2xl border ${theme.borderLight} cursor-pointer md:order-first`}>
+                                <input
+                                    type="checkbox"
+                                    checked={printInvoice}
+                                    onChange={(e) => setPrintInvoice(e.target.checked)}
+                                    className="rounded text-indigo-500"
+                                />
+                                <Printer size={16} className={theme.textMuted} />
+                                <span className={`text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Print Invoice</span>
+                            </label>
                             <button
                                 type="submit"
                                 disabled={loading || formData.items.length === 0}

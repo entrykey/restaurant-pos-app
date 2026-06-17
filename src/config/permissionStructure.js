@@ -55,7 +55,7 @@ export const MODULE_RESOURCES = Object.freeze({
   [MODULES.RESERVATIONS]: ["reservation"],
   [MODULES.INVENTORY]: ["inventory", "menu", "tradeitem"],
   [MODULES.REPORTS]: ["report"],
-  [MODULES.SETTINGS]: ["settings", "inventory_settings", "sale_settings"],
+  [MODULES.SETTINGS]: ["settings", "inventory_settings", "sale_settings", "barcode-bill"],
   [MODULES.STAFF]: ["staff"],
   [MODULES.SERVICE]: ["service", "jobcard"],
   [MODULES.SUPPLIER]: ["supplier"],
@@ -126,6 +126,7 @@ export const ROUTE_ACCESS = Object.freeze({
   ATTENDANCE_LOGS: { module: MODULES.STAFF, resource: "ATTENDANCE", action: "LOGS" },
   PAYROLL_SETTINGS: { module: MODULES.SETTINGS, resource: "PAYROLL", action: "SETTINGS" },
   SALE_SETTINGS: { module: MODULES.SETTINGS, resource: "SALE", action: "SETTINGS" },
+  BARCODE_BILL_SETTINGS: { module: MODULES.SETTINGS, resource: "barcode-bill", action: "MANAGE" },
   SALE_MARKING: { module: MODULES.SALE_MARKING, resource: "salemarking", action: "manage" },
 });
 
@@ -216,6 +217,7 @@ function buildPermissionsWithLabels() {
     r(MODULES.INVENTORY, "inventory", "manage", "Manage Inventory"),
     r(MODULES.SETTINGS, "settings", "manage", "Manage Settings"),
     r(MODULES.SETTINGS, "settings", "appearence_settings", "Appearance Settings"),
+    r(MODULES.SETTINGS, "barcode-bill", "MANAGE", "Barcode & Bill Settings"),
     r(MODULES.STAFF, "staff", "manage", "Manage Staff & Roles"),
     r(MODULES.SERVICE, "service", "manage", "Manage Service"),
     r(MODULES.SUPPLIER, "supplier", "manage", "Manage Suppliers"),

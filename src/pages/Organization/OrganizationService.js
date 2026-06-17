@@ -150,6 +150,7 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
         allowInterState: b.taxProfile?.isInterStateAllowed || false
       },
       upiId: b.upiId || "",
+      fssai: b.fssai || "",
       currency: b.currency?.code || "INR",
       isMainBranch: b.isMainBranch,
       status: b.status
@@ -234,7 +235,8 @@ export const saveBranch = async (branchData) => {
       currency: {
         code: branchData.currency
       },
-      upiId: branchData.upiId
+      upiId: branchData.upiId,
+      fssai: branchData.fssai || null
     };
 
     if (branchData.id) {

@@ -58,7 +58,7 @@ export const ALL_FIELDS = {
     expiry_tracking: { key: "expiryTracking", label: "Expiry Tracking", type: "boolean", defaultValue: false, section: "Tracking" },
     serial_tracking: { key: "serialTracking", label: "Serial Tracking", type: "boolean", defaultValue: false, section: "Tracking" },
 
-    weight_based: { key: "weightBased", label: "Weight Based Selling", type: "boolean", defaultValue: false, section: "Tracking" },
+    weight_based: { key: "weightBased", label: "Weight Based Selling", type: "boolean", defaultValue: false, section: "Common" },
 
     // Status
     status: {

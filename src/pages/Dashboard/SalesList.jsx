@@ -184,7 +184,7 @@ const ReturnDetailModal = ({ isOpen, onClose, returnData, theme, formatCurrency,
     );
 };
 
-const SalesList = () => {
+const SalesList = ({ initialTab, hideTabs = false } = {}) => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { user } = useAuth();
@@ -192,7 +192,10 @@ const SalesList = () => {
     const { formatCurrency: appFormatCurrency } = useApp();
     const fmt = appFormatCurrency || formatCurrency;
 
-    const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') === 'returns' ? 'returns' : 'history');
+    const [activeTab, setActiveTab] = useState(() => {
+        if (initialTab === 'returns' || initialTab === 'history') return initialTab;
+        return searchParams.get('tab') === 'returns' ? 'returns' : 'history';
+    });
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);
@@ -202,6 +205,13 @@ const SalesList = () => {
             setSearchParams({});
         }
     };
+
+    // If a page wants to force a tab (separate returns page), keep it in sync.
+    useEffect(() => {
+        if (initialTab === 'returns' || initialTab === 'history') {
+            setActiveTab(initialTab);
+        }
+    }, [initialTab]);
     const [loading, setLoading] = useState(true);
     const [sales, setSales] = useState([]);
     const [returns, setReturns] = useState([]);
@@ -353,8 +363,12 @@ const SalesList = () => {
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
-                    <h1 className={`text-2xl md:text-4xl font-black ${theme.textHeading} tracking-tight`}>Sales Invoice</h1>
-                    <p className={`${theme.textMuted} mt-1 font-medium`}>Manage your shop's sales invoices and processed returns</p>
+                    <h1 className={`text-2xl md:text-4xl font-black ${theme.textHeading} tracking-tight`}>
+                        {activeTab === 'returns' ? 'Sales Returns' : 'Sales Invoice'}
+                    </h1>
+                    <p className={`${theme.textMuted} mt-1 font-medium`}>
+                        {activeTab === 'returns' ? 'Manage your shop\'s processed returns and exchanges' : 'Manage your shop\'s sales invoices and processed returns'}
+                    </p>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
@@ -531,36 +545,38 @@ const SalesList = () => {
             )}
 
             {/* Tabs */}
-            <div className={`flex flex-row gap-1 p-1.5 rounded-2xl shadow-sm w-full md:w-fit ${theme.surfaceBg}`}>
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === 'history'}
-                    onClick={() => handleTabChange('history')}
-                    className={`flex-1 md:flex-none px-4 md:px-6 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${
-                        activeTab === 'history'
-                            ? `${theme.primaryIconBg} ${theme.primaryIconText}`
-                            : `${theme.textSecondary} hover:opacity-80`
-                    }`}
-                >
-                    <ShoppingBag size={16} />
-                    All Sales
-                </button>
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === 'returns'}
-                    onClick={() => handleTabChange('returns')}
-                    className={`flex-1 md:flex-none px-4 md:px-6 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${
-                        activeTab === 'returns'
-                            ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
-                            : `${theme.textSecondary} hover:opacity-80`
-                    }`}
-                >
-                    <RotateCcw size={16} />
-                    Sales Returns
-                </button>
-            </div>
+            {!hideTabs && (
+                <div className={`flex flex-row gap-1 p-1.5 rounded-2xl shadow-sm w-full md:w-fit ${theme.surfaceBg}`}>
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeTab === 'history'}
+                        onClick={() => handleTabChange('history')}
+                        className={`flex-1 md:flex-none px-4 md:px-6 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${
+                            activeTab === 'history'
+                                ? `${theme.primaryIconBg} ${theme.primaryIconText}`
+                                : `${theme.textSecondary} hover:opacity-80`
+                        }`}
+                    >
+                        <ShoppingBag size={16} />
+                        All Sales
+                    </button>
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeTab === 'returns'}
+                        onClick={() => handleTabChange('returns')}
+                        className={`flex-1 md:flex-none px-4 md:px-6 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${
+                            activeTab === 'returns'
+                                ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
+                                : `${theme.textSecondary} hover:opacity-80`
+                        }`}
+                    >
+                        <RotateCcw size={16} />
+                        Sales Returns
+                    </button>
+                </div>
+            )}
 
             {/* Table */}
             <CommonTable
