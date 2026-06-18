@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin } from 'lucide-react';
+import { Users, Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin, Gift } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { MODULES } from '../../constants/modules';
-import { branchService, customerService } from '../../services/api';
+import { branchService, customerService, loyaltyService, api } from '../../services/api';
 import CommonTable from '../../components/CommonTable';
 import Supplier from '../Suppliers/Supplier';
 import { SupplierService } from '../Suppliers/SupplierService';
+import { toast } from 'react-hot-toast';
 
 const PARTIES_MODULE = MODULES.PARTIES;
 
@@ -15,6 +16,7 @@ const PARTIES_MODULE = MODULES.PARTIES;
 const Parties = ({ hasPermissionFor }) => {
     const { theme } = useTheme();
     const { activeBranchId } = useApp();
+    const { user } = useAuth();
     const [tab, setTab] = useState('suppliers'); // 'suppliers' | 'customers'
     const [customers, setCustomers] = useState([]);
     const [customerLoading, setCustomerLoading] = useState(false);
@@ -35,6 +37,19 @@ const Parties = ({ hasPermissionFor }) => {
         discountPercentage: 0
     });
 
+    // Loyalty settings state
+    const [loyaltySettings, setLoyaltySettings] = useState(null);
+    const [loyaltyModalOpen, setLoyaltyModalOpen] = useState(false);
+    const [loyaltyForm, setLoyaltyForm] = useState({
+        conversionRate: 100,
+        pointsPerCurrency: 1,
+        redemptionValue: 1,
+        minPointsToRedeem: 10,
+        maxRedemptionPercentage: 100,
+        isActive: true
+    });
+    const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+
     // Permissions logic
     const canSupplierView = hasPermissionFor?.(PARTIES_MODULE, 'supplier', 'view');
     const canSupplierCreate = hasPermissionFor?.(PARTIES_MODULE, 'supplier', 'create');
@@ -44,6 +59,50 @@ const Parties = ({ hasPermissionFor }) => {
     const canCustomerCreate = hasPermissionFor?.(PARTIES_MODULE, 'customer', 'create');
     const canCustomerEdit = hasPermissionFor?.(PARTIES_MODULE, 'customer', 'edit');
     const canCustomerDelete = hasPermissionFor?.(PARTIES_MODULE, 'customer', 'delete');
+
+    // Load loyalty settings
+    useEffect(() => {
+        const loadLoyaltySettings = async () => {
+            if (!user?.shopId) return;
+            try {
+                const settings = await loyaltyService.getSettings(user.shopId);
+                setLoyaltySettings(settings);
+                setLoyaltyForm({
+                    conversionRate: settings.conversionRate || 100,
+                    pointsPerCurrency: settings.pointsPerCurrency || 1,
+                    redemptionValue: settings.redemptionValue || 1,
+                    minPointsToRedeem: settings.minPointsToRedeem || 10,
+                    maxRedemptionPercentage: settings.maxRedemptionPercentage || 100,
+                    isActive: settings.isActive !== undefined ? settings.isActive : true
+                });
+            } catch (error) {
+                console.error('Failed to load loyalty settings:', error);
+            }
+        };
+        if (tab === 'customers') {
+            loadLoyaltySettings();
+        }
+    }, [tab, user?.shopId]);
+
+    const openLoyaltyModal = () => {
+        setLoyaltyModalOpen(true);
+    };
+
+    const saveLoyaltySettings = async (e) => {
+        e.preventDefault();
+        if (!user?.shopId) return;
+        setLoyaltyLoading(true);
+        try {
+            const updated = await loyaltyService.updateSettings(user.shopId, loyaltyForm);
+            setLoyaltySettings(updated);
+            setLoyaltyModalOpen(false);
+            toast.success('Loyalty settings updated successfully');
+        } catch (error) {
+            toast.error('Failed to update loyalty settings: ' + (error?.message || 'Unknown error'));
+        } finally {
+            setLoyaltyLoading(false);
+        }
+    };
 
     const loadCustomers = React.useCallback(async (search = '', page = 1) => {
         if (!activeBranchId) return;
@@ -179,6 +238,39 @@ const Parties = ({ hasPermissionFor }) => {
             )
         },
         {
+            header: 'Loyalty Points',
+            key: 'loyaltyPoints',
+            render: (v, row) => (
+                <div className="flex items-center gap-1.5">
+                    <Gift size={14} className="text-amber-500" />
+                    <span className={`font-black text-sm ${theme.textPrimary}`}>{v || 0}</span>
+                    <span className={`text-xs ${theme.textMuted}`}>pts</span>
+                    {/* Quick test button to add points */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const points = prompt('Add test points:', '50');
+                            if (points) {
+                                api.post('/customers/test-loyalty-points', {
+                                    customerId: row._id || row.id,
+                                    points: parseInt(points)
+                                }).then(() => {
+                                    toast.success(`Added ${points} points!`);
+                                    loadCustomers(customerSearch, customerPage);
+                                }).catch(err => {
+                                    toast.error('Failed to add points: ' + (err.response?.data?.message || err.message));
+                                });
+                            }
+                        }}
+                        className="ml-2 text-xs text-amber-600 hover:text-amber-700 font-bold"
+                        title="Add test points"
+                    >
+                        +
+                    </button>
+                </div>
+            )
+        },
+        {
             header: 'Status',
             key: 'status',
             render: (v, row) => (
@@ -281,6 +373,17 @@ const Parties = ({ hasPermissionFor }) => {
                                 className={`w-full pl-10 pr-4 py-3 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 font-medium text-sm ${theme.surfaceBg} ${theme.textPrimary}`}
                             />
                         </div>
+                        <button
+                            type="button"
+                            onClick={openLoyaltyModal}
+                            className="flex-shrink-0 bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 md:px-6 py-3 rounded-2xl font-black shadow-xl hover:from-amber-600 hover:to-orange-600 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
+                            title="Loyalty Points Settings"
+                        >
+                            <Gift size={18} />
+                            <span className="hidden sm:inline">
+                                {loyaltySettings ? `${loyaltySettings.conversionRate} = 1 pt` : 'Loyalty'}
+                            </span>
+                        </button>
                         {canCustomerCreate && (
                             <button
                                 type="button"
@@ -377,6 +480,151 @@ const Parties = ({ hasPermissionFor }) => {
                             <div className="flex gap-4 pt-4">
                                 <button type="button" onClick={() => setCustomerModalOpen(false)} className={`flex-1 py-4 rounded-2xl font-bold ${theme.textSecondary} ${theme.inputBg} hover:opacity-80`}>Cancel</button>
                                 <button type="submit" className="flex-1 py-4 rounded-2xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl flex items-center justify-center gap-2"><Save size={20} />{editingCustomer ? 'Save Changes' : 'Create Customer'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Loyalty Settings Modal */}
+            {loyaltyModalOpen && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className={`${theme.surfaceBg} rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto`}>
+                        <div className={`p-6 md:p-8 border-b sticky top-0 z-10 flex justify-between items-center ${theme.surfaceBg} ${theme.borderLight}`}>
+                            <h3 className={`text-2xl font-black flex items-center gap-3 ${theme.textHeading}`}>
+                                <Gift className="text-amber-500" />
+                                Loyalty Points Settings
+                            </h3>
+                            <button type="button" onClick={() => setLoyaltyModalOpen(false)} className={`p-2 rounded-full ${theme.textSecondary} hover:bg-gray-100 dark:hover:bg-gray-800`}><X size={24} /></button>
+                        </div>
+                        <form onSubmit={saveLoyaltySettings} className="p-6 md:p-8 space-y-6">
+                            <div className={`p-4 rounded-2xl border-2 border-dashed ${theme.borderLight} bg-amber-50 dark:bg-amber-900/10`}>
+                                <p className={`text-sm font-bold ${theme.textSecondary} mb-2`}>
+                                    Configure how customers earn and redeem loyalty points. Points are earned on purchases and can be used to discount future orders.
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted} flex items-center gap-2`}>
+                                        Spend Amount for 1 Point
+                                        <span className="text-amber-500">*</span>
+                                    </label>
+                                    <input 
+                                        type="number" 
+                                        required
+                                        min="1"
+                                        step="0.01"
+                                        className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} 
+                                        value={loyaltyForm.conversionRate} 
+                                        onChange={e => setLoyaltyForm(f => ({ ...f, conversionRate: e.target.value }))} 
+                                        placeholder="100" 
+                                    />
+                                    <p className={`text-[11px] ${theme.textMuted}`}>Customer spends this amount to earn points</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>
+                                        Points Per Conversion
+                                    </label>
+                                    <input 
+                                        type="number" 
+                                        required
+                                        min="0.01"
+                                        step="0.01"
+                                        className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} 
+                                        value={loyaltyForm.pointsPerCurrency} 
+                                        onChange={e => setLoyaltyForm(f => ({ ...f, pointsPerCurrency: e.target.value }))} 
+                                        placeholder="1" 
+                                    />
+                                    <p className={`text-[11px] ${theme.textMuted}`}>Points earned per conversion rate</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>
+                                        Redemption Value (1 pt = ?)
+                                    </label>
+                                    <input 
+                                        type="number" 
+                                        required
+                                        min="0.01"
+                                        step="0.01"
+                                        className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} 
+                                        value={loyaltyForm.redemptionValue} 
+                                        onChange={e => setLoyaltyForm(f => ({ ...f, redemptionValue: e.target.value }))} 
+                                        placeholder="1" 
+                                    />
+                                    <p className={`text-[11px] ${theme.textMuted}`}>Currency value of 1 point when redeemed</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>
+                                        Minimum Points to Redeem
+                                    </label>
+                                    <input 
+                                        type="number" 
+                                        required
+                                        min="0"
+                                        step="1"
+                                        className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} 
+                                        value={loyaltyForm.minPointsToRedeem} 
+                                        onChange={e => setLoyaltyForm(f => ({ ...f, minPointsToRedeem: e.target.value }))} 
+                                        placeholder="10" 
+                                    />
+                                    <p className={`text-[11px] ${theme.textMuted}`}>Minimum points required for redemption</p>
+                                </div>
+
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className={`text-xs font-black uppercase ${theme.textMuted}`}>
+                                        Max Bill Redemption (%)
+                                    </label>
+                                    <input 
+                                        type="number" 
+                                        required
+                                        min="0"
+                                        max="100"
+                                        step="1"
+                                        className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} 
+                                        value={loyaltyForm.maxRedemptionPercentage} 
+                                        onChange={e => setLoyaltyForm(f => ({ ...f, maxRedemptionPercentage: e.target.value }))} 
+                                        placeholder="100" 
+                                    />
+                                    <p className={`text-[11px] ${theme.textMuted}`}>Maximum percentage of bill amount that can be paid with points</p>
+                                </div>
+
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={loyaltyForm.isActive}
+                                            onChange={e => setLoyaltyForm(f => ({ ...f, isActive: e.target.checked }))}
+                                            className="w-5 h-5 rounded accent-amber-500 cursor-pointer"
+                                        />
+                                        <span className={`text-sm font-bold ${theme.textPrimary}`}>Enable Loyalty Points System</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className={`p-4 rounded-2xl ${theme.inputBg} space-y-2`}>
+                                <p className={`text-xs font-black uppercase ${theme.textMuted}`}>Example Calculation:</p>
+                                <p className={`text-sm font-bold ${theme.textPrimary}`}>
+                                    Spend ₹{loyaltyForm.conversionRate} → Earn {loyaltyForm.pointsPerCurrency} point(s)
+                                </p>
+                                <p className={`text-sm font-bold ${theme.textPrimary}`}>
+                                    Redeem {loyaltyForm.minPointsToRedeem} points → Save ₹{(loyaltyForm.minPointsToRedeem * loyaltyForm.redemptionValue).toFixed(2)}
+                                </p>
+                            </div>
+
+                            <div className="flex gap-4 pt-4">
+                                <button type="button" onClick={() => setLoyaltyModalOpen(false)} className={`flex-1 py-4 rounded-2xl font-bold ${theme.textSecondary} ${theme.inputBg} hover:opacity-80`}>Cancel</button>
+                                <button 
+                                    type="submit" 
+                                    disabled={loyaltyLoading}
+                                    className="flex-1 py-4 rounded-2xl font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-xl flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {loyaltyLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save size={20} />}
+                                    {loyaltyLoading ? 'Saving...' : 'Save Settings'}
+                                </button>
                             </div>
                         </form>
                     </div>

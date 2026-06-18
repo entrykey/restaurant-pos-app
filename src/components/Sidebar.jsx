@@ -475,10 +475,10 @@ const Sidebar = ({
                     <div className={`relative flex w-full ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:justify-center'}`}>
                         <button
                             onClick={config.isGroup ? toggle : config.onClick}
-                            className={`p-3 md:p-4 transition-all flex items-center w-full ${isExpanded
+                            className={`p-3 md:p-4 transition-all duration-300 ease-out flex items-center w-full ${isExpanded
                                 ? 'gap-4 justify-start rounded-xl md:rounded-2xl'
-                                : 'flex-col justify-center gap-1 rounded-2xl md:rounded-[24px]'
-                                } ${isAnyChildActive ? theme.sidebarItemActiveBg : theme.sidebarItemHoverBg}`}
+                                : 'justify-start gap-4 md:flex-col md:justify-center md:gap-1 rounded-2xl md:rounded-[24px]'
+                                } ${isAnyChildActive ? `${theme.sidebarItemActiveBg} shadow-2xl shadow-indigo-500/30 md:scale-110 ring-2 ring-indigo-400/20` : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-lg`}`}
                         >
                             <config.icon className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
                             {isExpanded ? (
@@ -487,7 +487,7 @@ const Sidebar = ({
                                     {config.isGroup && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
                                 </div>
                             ) : (
-                                <span className="font-bold text-[10px] whitespace-nowrap mt-1">{config.label}</span>
+                                <span className="font-bold text-sm md:text-[10px] whitespace-nowrap md:mt-1">{config.label}</span>
                             )}
                         </button>
                     </div>
@@ -519,17 +519,17 @@ const Sidebar = ({
             <div key={key} className={`relative flex w-full mb-2 ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:justify-center'}`}>
                 <button
                     onClick={onClick}
-                    className={`p-3 md:p-4 transition-all flex items-center w-full ${isExpanded
+                    className={`p-3 md:p-4 transition-all duration-300 ease-out flex items-center w-full ${isExpanded
                         ? 'gap-4 justify-start rounded-xl md:rounded-2xl'
-                        : 'justify-start md:justify-center gap-4 md:gap-0 rounded-2xl md:rounded-[24px]'
+                        : 'justify-start gap-4 md:flex-col md:justify-center md:gap-1 rounded-2xl md:rounded-[24px]'
                         } ${isActive
-                            ? `${theme.sidebarItemActiveBg} shadow-xl md:scale-105`
-                            : `${theme.sidebarItemHoverBg} hover:scale-105`
+                            ? `${theme.sidebarItemActiveBg} shadow-2xl shadow-indigo-500/30 md:scale-110 ring-2 ring-indigo-400/20`
+                            : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-lg`
                         }`}
                     title={!isExpanded ? label : undefined}
                 >
                     <Icon className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
-                    <span className={`font-bold text-sm whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-0 md:opacity-0'}`}>
+                    <span className={`font-bold text-sm md:text-[10px] whitespace-nowrap overflow-hidden transition-all duration-300 md:mt-1 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-full'}`}>
                         {label}
                     </span>
                 </button>

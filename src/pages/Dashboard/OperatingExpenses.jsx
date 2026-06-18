@@ -5,9 +5,10 @@ import { useTheme } from '../../context/ThemeContext';
 import { shopExpenseService } from '../../services/api/shopExpenses';
 import { dashboardService } from '../../services/api';
 import OperatingExpenseCard from '../../components/cards/OperatingExpenseCard';
-import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, Coins, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, Coins, TrendingDown, FileText, ArrowRightCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import CommonSelect from '../../components/ui/CommonSelect';
+import { PurchaseService } from '../../services/PurchaseService';
 
 const OperatingExpenses = () => {
     const { user } = useAuth();
@@ -22,7 +23,7 @@ const OperatingExpenses = () => {
     const [newCategoryName, setNewCategoryName] = useState('');
     const [showAddInput, setShowAddInput] = useState(false);
     const [showBranchDropdown, setShowBranchDropdown] = useState(false);
-    const [activeTab, setActiveTab] = useState('expenses'); // 'expenses' or 'timeline'
+    const [activeTab, setActiveTab] = useState('expenses'); // 'expenses', 'drafts', or 'timeline'
     const [todayProfit, setTodayProfit] = useState(0);
     const [profitTimeline, setProfitTimeline] = useState([]);
     const [expandedDate, setExpandedDate] = useState(null);
@@ -64,24 +65,66 @@ const OperatingExpenses = () => {
             const shopId = resolvedShopId;
             const branchId = selectedBranchId;
             
-            // Fetch Fixed Expenses
+            // Fetch Fixed Expenses (including drafts)
             const expenseRes = await shopExpenseService.getExpenses(shopId, branchId);
             const fetchedExpenses = expenseRes.data;
 
-            // Ensure default categories exist in the list
-            const finalExpenses = [...fetchedExpenses];
-            defaultCategories.forEach(cat => {
-                if (!finalExpenses.find(e => e.category === cat)) {
+            // Separate drafts from actual expenses
+            const actualExpenses = fetchedExpenses.filter(e => !e.isDraft && e.category !== 'Stock');
+            const draftExpenses = fetchedExpenses.filter(e => e.isDraft);
+
+            if (activeTab === 'drafts') {
+                // Show only draft expenses
+                setExpenses(draftExpenses);
+            } else if (activeTab === 'expenses') {
+                // Ensure default categories exist in actual expenses
+                const finalExpenses = [...actualExpenses];
+                defaultCategories.forEach(cat => {
+                    if (!finalExpenses.find(e => e.category === cat)) {
+                        finalExpenses.push({
+                            category: cat,
+                            amount: 0,
+                            term: 'monthly',
+                            isDefault: true,
+                            isNew: true
+                        });
+                    }
+                });
+
+                // Fetch Stock Expenses (Purchases for this branch) and combine into one
+                const purchaseRes = await PurchaseService.getPurchases({
+                    shopId,
+                    branchId,
+                    status: 'COMPLETED',
+                    limit: 1000
+                });
+                
+                // Calculate total stock amount from all purchases
+                const totalStockAmount = (purchaseRes?.purchases || []).reduce((sum, purchase) => {
+                    return sum + (purchase.grandTotal || 0);
+                }, 0);
+
+                // Find existing Stock expense or create new one
+                const existingStockExpense = fetchedExpenses.find(e => e.category === 'Stock');
+                if (existingStockExpense) {
                     finalExpenses.push({
-                        category: cat,
-                        amount: 0,
-                        term: 'monthly',
-                        isDefault: true,
-                        isNew: true
+                        ...existingStockExpense,
+                        amount: totalStockAmount,
+                        isPurchase: true
+                    });
+                } else {
+                    finalExpenses.push({
+                        category: 'Stock',
+                        amount: totalStockAmount,
+                        term: 'one time',
+                        isDefault: false,
+                        isNew: false,
+                        isPurchase: true
                     });
                 }
-            });
-            setExpenses(finalExpenses);
+                
+                setExpenses(finalExpenses);
+            }
 
             // Fetch Today's Profit for header
             const dashboardData = await dashboardService.getShopDashboard(shopId);
@@ -96,7 +139,7 @@ const OperatingExpenses = () => {
         } finally {
             setLoading(false);
         }
-    }, [user?.shopId, user?.shop_id, selectedBranchId]);
+    }, [user?.shopId, user?.shop_id, selectedBranchId, activeTab]);
 
     useEffect(() => {
         fetchData();
@@ -124,7 +167,8 @@ const OperatingExpenses = () => {
                 category: expense.category,
                 amount: expense.amount,
                 term: expense.term,
-                isDefault: expense.isDefault || false
+                isDefault: expense.isDefault || false,
+                isDraft: activeTab === 'drafts'
             });
             fetchData();
         } catch (error) {
@@ -165,15 +209,53 @@ const OperatingExpenses = () => {
             amount: 0,
             term: 'monthly',
             isDefault: false,
-            isNew: true
+            isNew: true,
+            isDraft: activeTab === 'drafts'
         }, ...expenses]);
 
         setNewCategoryName('');
         setShowAddInput(false);
     };
 
+    const handleMoveToDraft = async (expense) => {
+        const shopId = user?.shopId || user?.shop_id;
+        const branchId = selectedBranchId;
+        
+        setSavingId(expense._id);
+        try {
+            await shopExpenseService.upsertExpense(shopId, branchId, {
+                ...expense,
+                isDraft: true
+            });
+            fetchData();
+        } catch (error) {
+            console.error("Failed to move to draft:", error);
+            alert("Failed to move to draft");
+        } finally {
+            setSavingId(null);
+        }
+    };
+
+    const handleMoveToExpense = async (expense) => {
+        if (!expense._id) {
+            alert("Please save the draft first");
+            return;
+        }
+
+        setSavingId(expense._id);
+        try {
+            await shopExpenseService.moveDraftToExpense(expense._id);
+            fetchData();
+        } catch (error) {
+            console.error("Failed to move to expenses:", error);
+            alert("Failed to move to expenses");
+        } finally {
+            setSavingId(null);
+        }
+    };
+
     const totalDailyExpense = expenses.reduce((sum, exp) => {
-        if (exp.term === 'one time') return sum;
+        if (exp.term === 'one time' || exp.isDraft) return sum;
         const termDaysMap = {
             'daily': 1, 'monthly': 30, '2months': 60, '3months': 90, '6months': 180, 'yearly': 365
         };
@@ -237,7 +319,7 @@ const OperatingExpenses = () => {
                 </div>
             </div>
 
-            {/* Tab Swicting */}
+            {/* Tab Switching */}
             <div className={`flex gap-2 p-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl w-fit`}>
                 <button
                     onClick={() => setActiveTab('expenses')}
@@ -248,6 +330,16 @@ const OperatingExpenses = () => {
                 >
                     <Settings2 size={18} />
                     Manage Expenses
+                </button>
+                <button
+                    onClick={() => setActiveTab('drafts')}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm uppercase tracking-widest transition-all ${activeTab === 'drafts'
+                        ? 'bg-amber-600 text-white shadow-lg'
+                        : `${theme.textMuted} hover:bg-gray-100 dark:hover:bg-white/5`
+                        }`}
+                >
+                    <FileText size={18} />
+                    Draft Expenses
                 </button>
                 <button
                     onClick={() => setActiveTab('timeline')}
@@ -261,21 +353,23 @@ const OperatingExpenses = () => {
                 </button>
             </div>
 
-            {activeTab === 'expenses' ? (
+            {activeTab === 'expenses' || activeTab === 'drafts' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {/* Add Category Card */}
                     {!showAddInput ? (
                         <button
                             onClick={() => setShowAddInput(true)}
-                            className={`h-full min-h-[200px] border-2 border-dashed ${theme.borderLight} rounded-[32px] flex flex-col items-center justify-center gap-4 text-gray-400 hover:text-indigo-600 hover:border-indigo-600 hover:bg-indigo-50/50 transition-all group order-last`}
+                            className={`h-full min-h-[200px] border-2 border-dashed ${activeTab === 'drafts' ? 'border-amber-300' : theme.borderLight} rounded-[32px] flex flex-col items-center justify-center gap-4 ${activeTab === 'drafts' ? 'text-amber-600 hover:border-amber-500 hover:bg-amber-50/50' : 'text-gray-400 hover:text-indigo-600 hover:border-indigo-600 hover:bg-indigo-50/50'} transition-all group order-last`}
                         >
-                            <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-2xl group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/30 transition-colors">
+                            <div className={`p-4 ${activeTab === 'drafts' ? 'bg-amber-50' : 'bg-gray-50 dark:bg-white/5'} rounded-2xl ${activeTab === 'drafts' ? 'group-hover:bg-amber-100 dark:group-hover:bg-amber-900/30' : 'group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/30'} transition-colors`}>
                                 <Plus size={32} />
                             </div>
-                            <span className="font-bold uppercase tracking-widest text-sm text-[11px]">Add Custom Category</span>
+                            <span className="font-bold uppercase tracking-widest text-sm text-[11px]">
+                                {activeTab === 'drafts' ? 'Add Draft Category' : 'Add Custom Category'}
+                            </span>
                         </button>
                     ) : (
-                        <div className={`${theme.surfaceBg} p-6 rounded-[32px] border-2 border-indigo-500 shadow-xl space-y-4 flex flex-col items-center justify-center order-first animate-in zoom-in-95 duration-200`}>
+                        <div className={`${theme.surfaceBg} p-6 rounded-[32px] border-2 ${activeTab === 'drafts' ? 'border-amber-500' : 'border-indigo-500'} shadow-xl space-y-4 flex flex-col items-center justify-center order-first animate-in zoom-in-95 duration-200`}>
                             <div className="w-full">
                                 <label className={`block text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>New Category Name</label>
                                 <input
@@ -291,7 +385,7 @@ const OperatingExpenses = () => {
                             <div className="flex gap-2 w-full">
                                 <button
                                     onClick={handleAddCategory}
-                                    className="flex-1 bg-indigo-600 text-white p-4 rounded-xl font-black shadow-lg hover:bg-indigo-700 transition-all"
+                                    className={`flex-1 ${activeTab === 'drafts' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'} text-white p-4 rounded-xl font-black shadow-lg transition-all`}
                                 >
                                     ADD
                                 </button>
@@ -305,14 +399,17 @@ const OperatingExpenses = () => {
                         </div>
                     )}
 
+                    {/* Show regular expenses or drafts based on active tab */}
                     {expenses.map((expense, idx) => (
                         <OperatingExpenseCard
                             key={expense._id || expense.category || idx}
                             {...expense}
-                            isSaving={savingId === idx}
+                            isSaving={savingId === idx || savingId === expense._id}
+                            isDraft={activeTab === 'drafts'}
                             onUpdate={(updates) => handleUpdate(idx, updates)}
                             onSave={() => handleSave(idx)}
                             onDelete={() => handleDelete(idx)}
+                            onMoveToExpense={activeTab === 'drafts' ? () => handleMoveToExpense(expense) : null}
                         />
                     ))}
                 </div>

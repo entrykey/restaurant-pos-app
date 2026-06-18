@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { dashboardService } from '../../services/api';
 import { PurchaseService } from '../../services/PurchaseService';
 import { formatCurrency } from '../../utils/format';
-import { ArrowLeft, Truck, ChevronDown, Calendar, Package, ReceiptText, ArrowRightCircle, Building, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Truck, ChevronDown, Calendar, Package, ReceiptText, ArrowRightCircle, Building, RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PayOutSheet from '../../components/modals/PayOutSheet';
 import PurchaseReturnSheet from '../../components/modals/PurchaseReturnSheet';
@@ -24,6 +24,13 @@ const PayOutList = () => {
     const [isReturnSheetOpen, setIsReturnSheetOpen] = useState(false);
     const [expandedSuppliers, setExpandedSuppliers] = useState({});
     const navigate = useNavigate();
+
+    // Search and filter states
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showFilter, setShowFilter] = useState(false);
+    const [sortBy, setSortBy] = useState('balance');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const filterRef = useRef(null);
 
     const fetchData = useCallback(async () => {
         try {
@@ -51,6 +58,18 @@ const PayOutList = () => {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Close filter panel on outside click
+    useEffect(() => {
+        if (!showFilter) return;
+        const handler = (e) => {
+            if (filterRef.current && !filterRef.current.contains(e.target)) {
+                setShowFilter(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showFilter]);
 
     const formatDate = (dateString) => {
         if (!dateString) return '';
@@ -85,9 +104,38 @@ const PayOutList = () => {
             return acc;
         }, {});
 
-        // Convert grouped object to array and sort by total balance desc
-        return Object.values(grouped).sort((a, b) => b.totalBalance - a.totalBalance);
-    }, [data]);
+        let result = Object.values(grouped);
+
+        // Apply search filter
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            result = result.filter(s => 
+                (s.supplierName && s.supplierName.toLowerCase().includes(query)) ||
+                (s.supplierPhone && s.supplierPhone.includes(query))
+            );
+        }
+
+        // Apply sorting
+        result.sort((a, b) => {
+            let aVal, bVal;
+            
+            if (sortBy === 'balance') {
+                aVal = a.totalBalance;
+                bVal = b.totalBalance;
+            } else if (sortBy === 'name') {
+                aVal = (a.supplierName || '').toLowerCase();
+                bVal = (b.supplierName || '').toLowerCase();
+                return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            } else if (sortBy === 'amount') {
+                aVal = a.totalAmount;
+                bVal = b.totalAmount;
+            }
+            
+            return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+        });
+
+        return result;
+    }, [data, searchQuery, sortBy, sortOrder]);
 
     const toggleSupplier = (supplierId) => {
         setExpandedSuppliers(prev => ({
@@ -192,6 +240,110 @@ const PayOutList = () => {
                 >
                     <RotateCcw size={18} /> Return History
                 </button>
+            </div>
+
+            {/* Search and Filter Row */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full">
+                {/* Search Input */}
+                <div className="relative flex-1">
+                    <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={20} />
+                    <input
+                        type="text"
+                        placeholder="Search by supplier name, phone..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className={`w-full pl-12 pr-4 py-3.5 rounded-2xl border outline-none transition-all font-bold ${theme.surfaceBg} ${theme.borderLight} focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10`}
+                    />
+                </div>
+                
+                {/* Filter Button */}
+                <div ref={filterRef} className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setShowFilter(f => !f)}
+                        className={`relative p-3.5 rounded-2xl border transition-colors ${
+                            showFilter ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' : `${theme.borderLight} ${theme.textPrimary} hover:bg-gray-50 dark:hover:bg-white/5`
+                        }`}
+                    >
+                        <SlidersHorizontal size={22} />
+                    </button>
+
+                    {/* Filter Panel */}
+                    {showFilter && (
+                        <div className={`absolute right-0 top-full mt-2 z-50 w-72 rounded-3xl shadow-2xl border p-4 space-y-4 ${theme.surfaceBg} ${theme.borderLight}`}>
+                            <div className="flex items-center justify-between">
+                                <span className={`text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Sort & Filter</span>
+                                <button 
+                                    onClick={() => {
+                                        setSortBy('balance');
+                                        setSortOrder('desc');
+                                    }}
+                                    className="text-[10px] font-black text-indigo-500 hover:text-indigo-700"
+                                >
+                                    Reset
+                                </button>
+                            </div>
+
+                            {/* Sort By */}
+                            <div>
+                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>
+                                    Sort by
+                                </label>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                    {[
+                                        { value: 'balance', label: 'Balance' },
+                                        { value: 'name', label: 'Name' },
+                                        { value: 'amount', label: 'Amount' },
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.value}
+                                            onClick={() => setSortBy(opt.value)}
+                                            className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${
+                                                sortBy === opt.value 
+                                                    ? 'bg-indigo-600 text-white' 
+                                                    : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`
+                                            }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Sort Order */}
+                            <div>
+                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>
+                                    Order
+                                </label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {[
+                                        { value: 'desc', label: '↓ High to Low' },
+                                        { value: 'asc', label: '↑ Low to High' },
+                                    ].map(opt => (
+                                        <button
+                                            key={opt.value}
+                                            onClick={() => setSortOrder(opt.value)}
+                                            className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${
+                                                sortOrder === opt.value 
+                                                    ? 'bg-indigo-600 text-white' 
+                                                    : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`
+                                            }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => setShowFilter(false)}
+                                className="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all"
+                            >
+                                Apply
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className={`overflow-hidden rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg}`}>

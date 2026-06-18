@@ -28,13 +28,15 @@ const PaymentModal = ({
     setCustPhone,
     existingCustomerId,
     exchangeCredit = 0,
-    originalOrderId = null
+    originalOrderId = null,
+    loyaltyDiscount = { points: 0, amount: 0 },
+    billDiscount = { type: 'flat', value: 0 }
 }) => {
     const { theme } = useTheme();
     const {
         billingStage,
         setBillingStage,
-        billDiscount,
+        // billDiscount removed from here - now using prop
         isAutoRoundOff,
         couponCode,
         setCouponCode,
@@ -96,10 +98,16 @@ const PaymentModal = ({
         customerStateCode
     );
 
+    // Apply loyalty discount to final total
+    const finalBillDetails = loyaltyDiscount.amount > 0 ? {
+        ...billDetails,
+        finalTotal: Math.max(0, billDetails.finalTotal - loyaltyDiscount.amount)
+    } : billDetails;
+
     // Helper: Get remaining balance
     const getRemainingBalance = () => {
         const paid = selectedPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
-        return Math.max(0, billDetails.finalTotal - paid);
+        return Math.max(0, finalBillDetails.finalTotal - paid);
     };
 
     const remainingBalance = getRemainingBalance();
@@ -143,8 +151,8 @@ const PaymentModal = ({
 
     return (
         <>
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-            <div className={`${theme.surfaceBg} w-full max-w-lg xl:max-w-5xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95 duration-300`}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-0 sm:p-4">
+            <div className={`${theme.surfaceBg} w-full h-full sm:h-auto sm:w-full sm:max-w-lg lg:max-w-4xl xl:max-w-6xl sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col sm:max-h-[95vh] animate-in zoom-in-95 duration-300`}>
                 {/* Header */}
                 <div className={`p-6 ${theme.pageBg} border-b ${theme.borderLight} flex justify-between items-center shrink-0`}>
                     <div>
@@ -173,43 +181,43 @@ const PaymentModal = ({
                 </div>
 
                 {/* Content Body */}
-                <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                <div className="flex-1 overflow-y-auto min-h-0">
                     {billingStage === "review" && (
-                        <div className="flex-1 flex flex-col xl:flex-row overflow-hidden min-h-0">
+                        <div className="flex flex-col lg:flex-row h-full">
                             {/* Left Side: Items (Scrollable) */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar xl:border-r xl:border-dashed border-gray-200 dark:border-white/10">
-                                <section className="space-y-4">
-                                    <p className={`text-xs font-black ${theme.textMuted} uppercase tracking-[0.2em]`}>
+                            <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5 space-y-3 sm:space-y-4 custom-scrollbar lg:border-r lg:border-dashed lg:border-gray-200 dark:lg:border-white/10">
+                                <section className="space-y-3 sm:space-y-4">
+                                    <p className={`text-[10px] sm:text-xs font-black ${theme.textMuted} uppercase tracking-[0.2em]`}>
                                         Items to Bill
                                     </p>
-                                    <div className="space-y-3">
+                                    <div className="space-y-2 sm:space-y-2.5">
                                         {orderItems.map((item, i) => (
                                             <div
                                                 key={i}
-                                                className={`flex justify-between items-start text-sm border-b border-dashed ${theme.borderLight} pb-3 last:border-0 hover:bg-gray-50/50 dark:hover:bg-white/2 p-2 rounded-xl transition-colors`}
+                                                className={`flex justify-between items-start text-xs sm:text-sm border-b border-dashed ${theme.borderLight} pb-2 sm:pb-2.5 last:border-0 hover:bg-gray-50/50 dark:hover:bg-white/2 p-1.5 sm:p-2 rounded-lg transition-colors`}
                                             >
-                                                <div className="flex gap-4 min-w-0">
-                                                    <span className={`font-black ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'} shrink-0`}>
+                                                <div className="flex gap-2 sm:gap-3 min-w-0">
+                                                    <span className={`font-black ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'} shrink-0 text-xs sm:text-sm`}>
                                                         {item.quantity}x
                                                     </span>
                                                     <div className="min-w-0">
                                                         <div className="flex flex-col">
-                                                            <span className={`font-black ${theme.textPrimary} leading-tight text-sm md:text-base truncate`}>
+                                                            <span className={`font-black ${theme.textPrimary} leading-tight text-xs sm:text-sm truncate`}>
                                                                 {item.name}
-                                                                <span className={`ml-2 text-[10px] ${theme.textMuted} font-bold opacity-60`}>
+                                                                <span className={`ml-1.5 text-[9px] sm:text-[10px] ${theme.textMuted} font-bold opacity-60`}>
                                                                     ({(item.taxPercent !== undefined && item.taxPercent !== null) ? item.taxPercent : (settings?.defaultTaxPercent || 0)}%)
                                                                 </span>
                                                             </span>
                                                             {item.selectedVariant && (
-                                                                <span className="text-[10px] text-indigo-500 font-black uppercase tracking-widest mt-0.5">{item.selectedVariant.name}</span>
+                                                                <span className="text-[9px] sm:text-[10px] text-indigo-500 font-black uppercase tracking-widest mt-0.5">{item.selectedVariant.name}</span>
                                                             )}
                                                         </div>
                                                         {item.selectedExtras?.length > 0 && (
-                                                            <div className={`text-[10px] font-bold ${theme.textMuted} uppercase tracking-wider mt-1 text-orange-500`}>+ Extras</div>
+                                                            <div className={`text-[9px] sm:text-[10px] font-bold ${theme.textMuted} uppercase tracking-wider mt-0.5 text-orange-500`}>+ Extras</div>
                                                         )}
                                                     </div>
                                                 </div>
-                                                <span className={`font-black ${theme.textPrimary} text-base shrink-0 ml-4`}>
+                                                <span className={`font-black ${theme.textPrimary} text-xs sm:text-sm lg:text-base shrink-0 ml-3`}>
                                                     {formatCurrency(calculateItemTotal(item))}
                                                 </span>
                                             </div>
@@ -219,7 +227,7 @@ const PaymentModal = ({
                             </div>
 
                             {/* Right Side: Discounts & Summary (Fixed height or smaller scroll) */}
-                            <div className="w-full xl:w-[450px] flex flex-col p-4 md:p-6 space-y-4 md:space-y-6 shrink-0 bg-gray-50/30 dark:bg-white/2">
+                            <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col p-3 sm:p-4 lg:p-5 space-y-3 sm:space-y-4 shrink-0 bg-gray-50/30 dark:bg-white/2 lg:overflow-y-auto custom-scrollbar">
                                 {/* Coupon Code Section */}
                                 {(hasPermissionFor?.("pos", "order", "apply_discount") || (hasPermission && hasPermission("APPLY_DISCOUNTS"))) && (
                                     <section className={`${theme.mode === 'dark' ? 'bg-orange-900/10' : 'bg-orange-50'} p-4 md:p-5 rounded-2xl md:rounded-[32px] border ${theme.mode === 'dark' ? 'border-orange-900/40' : 'border-orange-100'} space-y-3 md:space-y-4`}>
@@ -259,28 +267,28 @@ const PaymentModal = ({
                                 )}
 
                                 {/* Bill Summary (Compact/Fixed visibility) */}
-                                <div className={`${theme.surfaceBg} p-5 md:p-8 rounded-[30px] md:rounded-[40px] border ${theme.borderLight} shadow-xl shadow-black/5 space-y-3 md:space-y-4`}>
-                                    <div className="space-y-2 md:space-y-3">
-                                        <div className={`flex justify-between ${theme.textMuted} text-xs md:text-sm font-bold`}>
+                                <div className={`${theme.surfaceBg} p-3 sm:p-4 lg:p-5 rounded-2xl lg:rounded-[30px] border ${theme.borderLight} shadow-xl shadow-black/5 space-y-2 sm:space-y-2.5 lg:space-y-3`}>
+                                    <div className="space-y-1.5 sm:space-y-2">
+                                        <div className={`flex justify-between ${theme.textMuted} text-[11px] sm:text-xs lg:text-sm font-bold`}>
                                             <span>Subtotal</span>
                                             <span className={theme.textPrimary}>{formatCurrency(billDetails.subtotal)}</span>
                                         </div>
                                         
                                         {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
-                                            <div className="space-y-1.5 md:space-y-2 py-0.5 md:py-1">
+                                            <div className="space-y-1 sm:space-y-1.5">
                                                 {billDetails.appliedOffers.map((offer, oIdx) => (
-                                                    <div key={offer.offerId || oIdx} className="flex justify-between items-center text-[10px] md:text-xs text-emerald-600 font-black bg-emerald-50 dark:bg-emerald-900/20 px-2 md:px-3 py-1.5 md:py-2 rounded-lg md:rounded-xl border border-emerald-100 dark:border-emerald-900/40 gap-2">
+                                                    <div key={offer.offerId || oIdx} className="flex justify-between items-center text-[9px] sm:text-[10px] lg:text-xs text-emerald-600 font-black bg-emerald-50 dark:bg-emerald-900/20 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg border border-emerald-100 dark:border-emerald-900/40 gap-2">
                                                         <span className="uppercase tracking-tight truncate">{offer.name}</span>
-                                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
                                                             <span>-{formatCurrency(offer.discount)}</span>
                                                             {offer.offerId && (
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => dismissOffer(offer.offerId)}
-                                                                    className="p-1 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                                                                    className="p-0.5 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
                                                                     title="Remove offer"
                                                                 >
-                                                                    <X size={12} />
+                                                                    <X size={10} />
                                                                 </button>
                                                             )}
                                                         </div>
@@ -289,51 +297,73 @@ const PaymentModal = ({
                                             </div>
                                         )}
                                         
-                                        {billDetails.discountAmount > 0 && (
-                                            <div className="flex justify-between text-emerald-600 text-xs md:text-sm font-black italic">
+                                        {billDiscount && billDiscount.value > 0 && (
+                                            <div className="flex justify-between text-emerald-600 text-[11px] sm:text-xs lg:text-sm font-black bg-emerald-50 dark:bg-emerald-900/20 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
+                                                <div className="flex flex-col">
+                                                    <span>Customer Discount</span>
+                                                    {billDiscount.type === 'percent' && (
+                                                        <span className="text-[9px] sm:text-[10px] opacity-70 uppercase tracking-wider">{billDiscount.value}% OFF</span>
+                                                    )}
+                                                </div>
+                                                <span>-{formatCurrency(billDetails.discountAmount)}</span>
+                                            </div>
+                                        )}
+
+                                        {billDetails.discountAmount > 0 && !billDiscount?.value && (
+                                            <div className="flex justify-between text-emerald-600 text-[11px] sm:text-xs lg:text-sm font-black italic">
                                                 <span>Coupon Discount</span>
                                                 <span>-{formatCurrency(billDetails.discountAmount)}</span>
                                             </div>
                                         )}
 
-                                        <div className={`flex flex-col gap-1.5 md:gap-2 pt-1.5 md:pt-2 border-t border-dashed ${theme.borderLight}`}>
-                                            <div className={`flex justify-between ${theme.textMuted} text-xs md:text-sm font-bold`}>
+                                        <div className={`flex flex-col gap-1 sm:gap-1.5 pt-1.5 sm:pt-2 border-t border-dashed ${theme.borderLight}`}>
+                                            <div className={`flex justify-between ${theme.textMuted} text-[11px] sm:text-xs lg:text-sm font-bold`}>
                                                 <span>Total Tax</span>
                                                 <span className={theme.textPrimary}>{formatCurrency(billDetails.taxAmount)}</span>
                                             </div>
                                             
                                             {billDetails.taxBreakdown && (billDetails.taxBreakdown.cgst > 0 || billDetails.taxBreakdown.sgst > 0) && (
-                                                <div className="grid grid-cols-2 gap-2 md:gap-4">
-                                                    <div className="p-1.5 md:p-2 rounded-lg md:rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
-                                                        <p className={`text-[7px] md:text-[8px] font-black uppercase text-gray-400 mb-0.5`}>CGST</p>
-                                                        <p className={`text-[10px] md:text-xs font-black ${theme.textPrimary}`}>{formatCurrency(billDetails.taxBreakdown.cgst)}</p>
+                                                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                                                    <div className="p-1.5 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
+                                                        <p className={`text-[7px] sm:text-[8px] font-black uppercase text-gray-400 mb-0.5`}>CGST</p>
+                                                        <p className={`text-[10px] sm:text-xs font-black ${theme.textPrimary}`}>{formatCurrency(billDetails.taxBreakdown.cgst)}</p>
                                                     </div>
-                                                    <div className="p-1.5 md:p-2 rounded-lg md:rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
-                                                        <p className={`text-[7px] md:text-[8px] font-black uppercase text-gray-400 mb-0.5`}>SGST</p>
-                                                        <p className={`text-[10px] md:text-xs font-black ${theme.textPrimary}`}>{formatCurrency(billDetails.taxBreakdown.sgst)}</p>
+                                                    <div className="p-1.5 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
+                                                        <p className={`text-[7px] sm:text-[8px] font-black uppercase text-gray-400 mb-0.5`}>SGST</p>
+                                                        <p className={`text-[10px] sm:text-xs font-black ${theme.textPrimary}`}>{formatCurrency(billDetails.taxBreakdown.sgst)}</p>
                                                     </div>
                                                 </div>
                                             )}
                                         </div>
                                         
                                         {billDetails.roundOff !== 0 && (
-                                            <div className={`flex justify-between ${theme.textMuted} text-[10px] md:text-xs font-bold italic`}>
+                                            <div className={`flex justify-between ${theme.textMuted} text-[10px] sm:text-xs font-bold italic`}>
                                                 <span>Round Off</span>
                                                 <span>{formatCurrency(billDetails.roundOff)}</span>
                                             </div>
                                         )}
 
                                         {exchangeCredit > 0 && (
-                                            <div className="flex justify-between text-orange-600 text-xs md:text-sm font-black border-t border-dashed mt-1.5 md:mt-2 pt-2 md:pt-3">
+                                            <div className="flex justify-between text-orange-600 text-[11px] sm:text-xs lg:text-sm font-black border-t border-dashed mt-1.5 pt-1.5 sm:pt-2">
                                                 <span>Exchange Credit</span>
                                                 <span>-{formatCurrency(exchangeCredit)}</span>
                                             </div>
                                         )}
+
+                                        {loyaltyDiscount.amount > 0 && (
+                                            <div className="flex justify-between text-amber-600 text-[11px] sm:text-xs lg:text-sm font-black bg-amber-50 dark:bg-amber-900/20 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl border border-amber-200 dark:border-amber-800">
+                                                <div className="flex flex-col">
+                                                    <span>Loyalty Points Redeemed</span>
+                                                    <span className="text-[9px] sm:text-[10px] opacity-70 uppercase tracking-wider">{loyaltyDiscount.points} pts</span>
+                                                </div>
+                                                <span>-{formatCurrency(loyaltyDiscount.amount)}</span>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    <div className={`flex justify-between items-end pt-3 md:pt-4 border-t-4 border-double ${theme.borderLight}`}>
-                                        <span className={`text-[10px] md:text-sm font-black ${theme.textMuted} uppercase tracking-widest pb-1`}>Amount Due</span>
-                                        <span className={`text-2xl md:text-4xl font-black ${theme.textHeading}`}>{formatCurrency(billDetails.finalTotal)}</span>
+                                    <div className={`flex justify-between items-end pt-2 sm:pt-2.5 lg:pt-3 border-t-4 border-double ${theme.borderLight}`}>
+                                        <span className={`text-[9px] sm:text-[10px] lg:text-xs font-black ${theme.textMuted} uppercase tracking-widest`}>Amount Due</span>
+                                        <span className={`text-xl sm:text-2xl lg:text-3xl font-black ${theme.textHeading}`}>{formatCurrency(finalBillDetails.finalTotal)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -600,20 +630,20 @@ const PaymentModal = ({
                 </div>
 
                 {/* Footer Actions (Compact) */}
-                <div className={`p-6 border-t ${theme.borderLight} ${theme.pageBg} shrink-0`}>
+                <div className={`p-3 sm:p-4 md:p-5 border-t ${theme.borderLight} ${theme.pageBg} shrink-0`}>
                     {billingStage === "review" && (
-                        <div className="flex flex-col lg:flex-row gap-4 md:gap-6 max-w-5xl mx-auto w-full">
-                            <div className="flex flex-col sm:flex-row flex-1 gap-3 md:gap-4">
+                        <div className="flex flex-col gap-2.5 sm:gap-3 max-w-5xl mx-auto w-full">
+                            <div className="flex flex-col sm:flex-row flex-1 gap-2 sm:gap-2.5">
                                 <button
                                     type="button"
                                     onClick={() => onPrintBill?.(printFormat)}
-                                    className={`flex-1 py-3 md:py-4 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-2 border-indigo-100 dark:border-indigo-900/40 rounded-2xl md:rounded-3xl font-black text-base md:text-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 flex items-center justify-center gap-3 transition-all active:scale-95 shadow-sm`}
+                                    className={`flex-1 py-2.5 sm:py-3 md:py-3.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-2 border-indigo-100 dark:border-indigo-900/40 rounded-xl sm:rounded-2xl font-black text-sm sm:text-base md:text-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm touch-manipulation`}
                                 >
-                                    <Printer size={22} className="text-indigo-500" />
+                                    <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-500" />
                                     <span className="font-black uppercase tracking-tight">Print Bill</span>
                                 </button>
-                                <div className={`px-4 md:px-6 py-3 md:py-4 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl md:rounded-3xl flex items-center justify-between sm:justify-start gap-4`}>
-                                    <span className={`text-[9px] md:text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>Format</span>
+                                <div className={`px-3 sm:px-4 py-2.5 sm:py-3 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl sm:rounded-2xl flex items-center justify-between sm:justify-start gap-2 sm:gap-3`}>
+                                    <span className={`text-[9px] sm:text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>Format</span>
                                     <CommonSelect
                                         options={[
                                             { label: "Thermal", value: "thermal" },
@@ -621,8 +651,8 @@ const PaymentModal = ({
                                         ]}
                                         value={printFormat}
                                         onChange={(val) => setPrintFormat(val)}
-                                        className="w-28 md:w-32"
-                                        triggerClassName="!px-3 !py-1 !rounded-xl !bg-transparent !border-none !shadow-none !text-xs md:!text-sm"
+                                        className="w-24 sm:w-28"
+                                        triggerClassName="!px-2.5 sm:!px-3 !py-1 !rounded-lg sm:!rounded-xl !bg-transparent !border-none !shadow-none !text-xs"
                                         labelKey="label"
                                         valueKey="value"
                                     />
@@ -635,7 +665,7 @@ const PaymentModal = ({
                                     setBillingStage("payment");
                                     setSelectedPayments([]);
                                 }}
-                                className="w-full lg:w-auto lg:min-w-[380px] py-4 bg-indigo-600 text-white rounded-2xl md:rounded-3xl font-black text-base md:text-xl shadow-2xl shadow-indigo-500/30 hover:bg-indigo-700 flex justify-center px-6 items-center group active:scale-95 transition-all"
+                                className="w-full py-3 sm:py-3.5 md:py-4 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-xl sm:rounded-2xl font-black text-base sm:text-lg md:text-xl shadow-2xl shadow-indigo-500/30 hover:from-indigo-700 hover:to-indigo-800 flex justify-center px-4 items-center group active:scale-95 transition-all touch-manipulation"
                             >
                                 <span className="group-hover:translate-x-1 transition-transform">Proceed to Checkout</span>
                             </button>
@@ -649,7 +679,7 @@ const PaymentModal = ({
                                     setBillingStage("review");
                                     setSelectedPayments([]);
                                 }}
-                                className={`w-full py-4 ${theme.surfaceBg} ${theme.textMuted} border-2 border-dashed ${theme.borderLight} rounded-3xl font-black uppercase tracking-widest hover:text-indigo-600 hover:border-indigo-600 transition-all active:scale-95`}
+                                className={`w-full py-3 sm:py-3.5 ${theme.surfaceBg} ${theme.textMuted} border-2 border-dashed ${theme.borderLight} rounded-xl sm:rounded-2xl font-black text-sm sm:text-base uppercase tracking-widest hover:text-indigo-600 hover:border-indigo-600 transition-all active:scale-95 touch-manipulation`}
                             >
                                 Re-Review Bill Details
                             </button>

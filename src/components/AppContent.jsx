@@ -18,7 +18,7 @@ import { formatCurrency } from "../utils/format";
 import { buildTakeawayDraftSignature, buildTableDraftSignature } from "../utils/saleDraftSignature";
 import { printBill, printBillA4, printKot } from "../utils/print";
 import { loadBillPrintSettings, buildBillExtraInfo, printSaleOrder } from "../utils/printSettingsUtils";
-import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService } from "../services/api";
+import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService, loyaltyService } from "../services/api";
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
 import { TextProvider } from "../context/TextContext";
 import { useTheme } from "../context/ThemeContext";
@@ -133,7 +133,7 @@ const AppContent = () => {
         isTakeaway, setIsTakeaway, takeawayOrder, setTakeawayOrder,
         takeawayCustName, setTakeawayCustName, takeawayCustPhone, setTakeawayCustPhone,
         resetTakeaway, tableId, activeTabId, selectedCustomer,
-        tabs, closeTab
+        tabs, closeTab, loyaltyDiscount, billDiscount: takeawayBillDiscount
     } = useTakeaway();
 
     const {
@@ -1820,6 +1820,60 @@ const AppContent = () => {
                 // createOrder already sets it to COMPLETED, but we update status just in case to ensure synchronization
                 await orderService.updateStatus(currentOrderId, { status: 'COMPLETED' });
 
+                // Award loyalty points if customer is selected
+                if (selectedCustomer?._id && billDetails.finalTotal > 0) {
+                    try {
+                        const loyaltySettings = await loyaltyService.getSettings(currentShopId);
+                        
+                        if (loyaltySettings && loyaltySettings.isActive) {
+                            // Check if loyalty points were used (discount applied)
+                            const loyaltyDiscountApplied = billDiscount?.type === 'flat' && billDiscount?.value > 0;
+                            
+                            if (loyaltyDiscountApplied) {
+                                // Calculate points redeemed based on discount amount
+                                const pointsRedeemed = Math.round(billDiscount.value / (loyaltySettings.redemptionValue || 1));
+                                
+                                if (pointsRedeemed > 0) {
+                                    // Redeem the points
+                                    await loyaltyService.redeemPoints({
+                                        customerId: selectedCustomer._id,
+                                        shopId: currentShopId,
+                                        orderId: currentOrderId,
+                                        points: pointsRedeemed,
+                                        amountRedeemed: billDiscount.value
+                                    });
+                                }
+                            }
+                            
+                            // Calculate points earned (on amount after discount)
+                            const pointsEarned = Math.floor(
+                                (billDetails.finalTotal / loyaltySettings.conversionRate) * 
+                                (loyaltySettings.pointsPerCurrency || 1)
+                            );
+                            
+                            if (pointsEarned > 0) {
+                                await loyaltyService.addPoints({
+                                    customerId: selectedCustomer._id,
+                                    shopId: currentShopId,
+                                    orderId: currentOrderId,
+                                    points: pointsEarned,
+                                    amountSpent: billDetails.finalTotal,
+                                    description: `Earned ${pointsEarned} points from purchase of ${formatCurrency(billDetails.finalTotal)}`
+                                });
+                                
+                                // Show success message with points earned
+                                toast.success(`Order completed! 🎉 Earned ${pointsEarned} loyalty points!`, {
+                                    duration: 4000,
+                                    icon: '🎁'
+                                });
+                            }
+                        }
+                    } catch (loyaltyErr) {
+                        console.warn('Failed to process loyalty points:', loyaltyErr);
+                        // Non-fatal - order still completes
+                    }
+                }
+
                 // Mark all linked KOTs as COMPLETED (direct served — no KDS interaction needed)
                 try {
                     await api.post('/kitchen/kots/complete-by-order', {
@@ -1874,10 +1928,15 @@ const AppContent = () => {
                 setView("tables");
                 setActiveTableId(null);
             } else {
+                // After successful payment in takeaway mode, reset the order
+                resetTakeaway();
                 setView("order");
             }
             
-            toast.success("Order completed successfully!");
+            // Show success toast only if loyalty points weren't awarded (no customer selected)
+            if (!selectedCustomer?._id) {
+                toast.success("Order completed successfully!");
+            }
         } catch (err) {
             console.error("Failed to finalize order / payment:", err);
             setSalesHistory((prev) => [...prev, saleRecord]);
@@ -2098,6 +2157,8 @@ const AppContent = () => {
                 existingCustomerId={activeOrderCustomerId}
                 exchangeCredit={exchangeCredit}
                 originalOrderId={originalOrderId}
+                loyaltyDiscount={loyaltyDiscount}
+                billDiscount={isTakeaway ? takeawayBillDiscount : billDiscount}
             />
 
             <ExpenseModal

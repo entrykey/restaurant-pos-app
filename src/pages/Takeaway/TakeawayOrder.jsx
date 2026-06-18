@@ -18,11 +18,12 @@ import {
     MicOff,
     ArrowUpDown,
     Flame,
+    Gift,
 } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import FoodItemCard from "../../components/FoodItemCard";
 import { useApp } from "../../context/AppContext";
-import { itemService, customerService, api } from "../../services/api";
+import { itemService, customerService, api, loyaltyService } from "../../services/api";
 import { DEFAULT_ITEM_IMAGE, getBingImage } from "../../utils/getImage";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -74,11 +75,13 @@ const TakeawayOrder = ({
     const {
         isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
         setOriginalOrderId, setReturnedItems,
-        resetExchange, billDiscount, setBillDiscount, dismissOffer
+        resetExchange, dismissOffer
     } = useOrder();
     const {
         selectedCustomer, setSelectedCustomer,
         resetTakeaway, tabs, activeTabId,
+        billDiscount, setBillDiscount, // Regular customer discount
+        loyaltyDiscount, setLoyaltyDiscount, // Separate loyalty points discount
     } = useTakeaway();
 
     const location = useLocation();
@@ -86,6 +89,9 @@ const TakeawayOrder = ({
     const initRef = useRef(false);
     const scanBufferRef = useRef("");
     const lastScanKeyTimeRef = useRef(Date.now());
+    
+    // Track previous order item count to detect when order is cleared (payment completed)
+    const prevOrderItemsCount = useRef(takeawayOrder?.items?.length || 0);
 
     // --- Voice Recognition Logic ---
     const { transcript, listening, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
@@ -174,6 +180,22 @@ const TakeawayOrder = ({
     const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
     const [isSearchingRemote, setIsSearchingRemote] = useState(false);
     const [remoteMenu, setRemoteMenu] = useState(null); // null → use local menu
+
+    // Auto-switch to menu tab on mobile after order is cleared (payment completed)
+    useEffect(() => {
+        const currentItemsCount = takeawayOrder?.items?.length || 0;
+        
+        // If previous count was > 0 and current is 0, order was just cleared (payment completed)
+        if (prevOrderItemsCount.current > 0 && currentItemsCount === 0 && isTakeaway) {
+            // Switch to menu tab on mobile screens with a small delay to ensure smooth transition
+            setTimeout(() => {
+                setMobileOrderTab("menu");
+            }, 100);
+        }
+        
+        // Update the ref for next comparison
+        prevOrderItemsCount.current = currentItemsCount;
+    }, [takeawayOrder?.items?.length, isTakeaway]);
     const [localMenu, setLocalMenu] = useState([]);
     const [baseStockMap, setBaseStockMap] = useState({});
     const [isMenuLoading, setIsMenuLoading] = useState(false);
@@ -257,6 +279,12 @@ const TakeawayOrder = ({
     const [discountInputType, setDiscountInputType] = useState("flat"); // 'flat' | 'percent'
     const [discountInputValue, setDiscountInputValue] = useState("");
 
+    // Loyalty redemption state
+    const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
+    const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState("");
+    const [loyaltySettings, setLoyaltySettings] = useState(null);
+    const [isLoadingLoyalty, setIsLoadingLoyalty] = useState(false);
+
     const handleCustomerSearch = async (term, type) => {
         if (!term || term.length < 2) {
             setCustomerSearchResults([]);
@@ -325,6 +353,71 @@ const TakeawayOrder = ({
         setDiscountInputType(type);
         setDiscountInputValue(raw);
         setBillDiscount({ type, value: val });
+    };
+
+    // Load loyalty settings
+    useEffect(() => {
+        const loadLoyaltySettings = async () => {
+            if (!currentUser?.shopId) return;
+            try {
+                const settings = await loyaltyService.getSettings(currentUser.shopId);
+                setLoyaltySettings(settings);
+            } catch (error) {
+                console.error('Failed to load loyalty settings:', error);
+            }
+        };
+        loadLoyaltySettings();
+    }, [currentUser?.shopId]);
+
+    // Calculate max redeemable points based on bill total and settings
+    const getMaxRedeemablePoints = () => {
+        if (!selectedCustomer || !loyaltySettings) return 0;
+        
+        const availablePoints = selectedCustomer.loyaltyPoints || 0;
+        const billTotal = actualBillDetails.subtotal || 0;
+        
+        // Calculate max discount allowed (based on maxRedemptionPercentage)
+        const maxDiscount = (billTotal * (loyaltySettings.maxRedemptionPercentage || 100)) / 100;
+        
+        // Calculate max points that can be redeemed
+        const maxPointsByDiscount = Math.floor(maxDiscount / (loyaltySettings.redemptionValue || 1));
+        
+        // Return the minimum of available points and max allowed points
+        return Math.min(availablePoints, maxPointsByDiscount);
+    };
+
+    const handleUseLoyaltyPoints = async () => {
+        const pointsToUse = parseInt(loyaltyPointsToRedeem) || 0;
+        
+        if (pointsToUse < (loyaltySettings?.minPointsToRedeem || 10)) {
+            toast.error(`Minimum ${loyaltySettings?.minPointsToRedeem || 10} points required`);
+            return;
+        }
+
+        const maxPoints = getMaxRedeemablePoints();
+        if (pointsToUse > maxPoints) {
+            toast.error(`Maximum ${maxPoints} points can be redeemed`);
+            return;
+        }
+
+        if (pointsToUse > (selectedCustomer?.loyaltyPoints || 0)) {
+            toast.error('Insufficient loyalty points');
+            return;
+        }
+
+        // Calculate discount amount
+        const discountAmount = pointsToUse * (loyaltySettings?.redemptionValue || 1);
+        
+        // Apply as loyalty discount (separate from customer discount)
+        setLoyaltyDiscount({ points: pointsToUse, amount: discountAmount });
+        
+        setShowLoyaltyModal(false);
+        setLoyaltyPointsToRedeem("");
+        
+        toast.success(`${pointsToUse} points redeemed! ₹${discountAmount} off your bill`, {
+            icon: '🎁',
+            duration: 3000
+        });
     };
 
     // Debounced AI/Backend search
@@ -552,11 +645,31 @@ const TakeawayOrder = ({
 
     const billDetails = calculateBillDetails(
         currentOrder.items,
-        billDiscount,
+        // Combine customer discount and loyalty discount
+        {
+            type: 'flat',
+            value: (billDiscount.type === 'flat' ? billDiscount.value : 0) + loyaltyDiscount.amount
+        },
         settings?.defaultTaxPercent || 0,
         false,
         isTakeaway ? exchangeCredit : 0
     );
+
+    // Recalculate with percentage discount if needed
+    const actualBillDetails = billDiscount.type === 'percent' ? calculateBillDetails(
+        currentOrder.items,
+        billDiscount,
+        settings?.defaultTaxPercent || 0,
+        false,
+        isTakeaway ? exchangeCredit : 0
+    ) : billDetails;
+
+    // Add loyalty discount to the final calculation
+    const finalBillDetails = loyaltyDiscount.amount > 0 ? {
+        ...actualBillDetails,
+        discountAmount: actualBillDetails.discountAmount + loyaltyDiscount.amount,
+        finalTotal: Math.max(0, actualBillDetails.finalTotal - loyaltyDiscount.amount)
+    } : actualBillDetails;
 
     return (
         <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg}`}>
@@ -625,24 +738,51 @@ const TakeawayOrder = ({
                             {/* Single unified customer search */}
                             <div className="relative" ref={custSearchRef}>
                                 {selectedCustomer ? (
-                                    <div className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg}`}>
-                                        <div className="min-w-0">
-                                            <span className={`font-black text-sm ${theme.textPrimary}`}>{selectedCustomer.name || selectedCustomer.phone}</span>
-                                            {selectedCustomer.phone && <span className={`text-xs ml-2 ${theme.textMuted}`}>{selectedCustomer.phone}</span>}
+                                    <div className={`space-y-2`}>
+                                        <div className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg}`}>
+                                            <div className="min-w-0 flex-1">
+                                                <span className={`font-black text-sm ${theme.textPrimary}`}>{selectedCustomer.name || selectedCustomer.phone}</span>
+                                                {selectedCustomer.phone && <span className={`text-xs ml-2 ${theme.textMuted}`}>{selectedCustomer.phone}</span>}
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedCustomer(null);
+                                                    setTakeawayCustName("");
+                                                    setTakeawayCustPhone("");
+                                                    setCustSearchTerm("");
+                                                    setBillDiscount({ type: 'flat', value: 0 });
+                                                    setLoyaltyDiscount({ points: 0, amount: 0 }); // Clear loyalty discount
+                                                    setDiscountInputValue("");
+                                                }}
+                                                className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                                            >
+                                                <X size={16} />
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={() => {
-                                                setSelectedCustomer(null);
-                                                setTakeawayCustName("");
-                                                setTakeawayCustPhone("");
-                                                setCustSearchTerm("");
-                                                setBillDiscount({ type: 'flat', value: 0 });
-                                                setDiscountInputValue("");
-                                            }}
-                                            className="text-gray-400 hover:text-red-500 flex-shrink-0"
-                                        >
-                                            <X size={16} />
-                                        </button>
+                                        {/* Loyalty Points Display - Always show if customer is selected */}
+                                        <div className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800`}>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center">
+                                                    <Gift size={16} className="text-white" />
+                                                </div>
+                                                <div>
+                                                    <p className={`text-xs font-bold ${theme.textMuted}`}>Loyalty Points</p>
+                                                    <p className={`text-lg font-black ${theme.textPrimary}`}>{selectedCustomer.loyaltyPoints || 0} pts</p>
+                                                </div>
+                                            </div>
+                                            {(selectedCustomer.loyaltyPoints || 0) >= 10 ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowLoyaltyModal(true)}
+                                                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-black transition-colors flex items-center gap-1"
+                                                >
+                                                    <Gift size={12} />
+                                                    Use Points
+                                                </button>
+                                            ) : (
+                                                <span className={`text-xs ${theme.textMuted}`}>Min: 10 pts</span>
+                                            )}
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="relative">
@@ -674,11 +814,16 @@ const TakeawayOrder = ({
                                                         onMouseDown={() => selectCustomer(cust)}
                                                         className={`p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer border-b ${theme.borderLight} last:border-0 flex items-center justify-between`}
                                                     >
-                                                        <div>
+                                                        <div className="flex-1">
                                                             <div className={`font-bold text-sm ${theme.textPrimary}`}>{cust.name}</div>
-                                                            <div className={`text-xs ${theme.textMuted}`}>
-                                                                {cust.phone}
-                                                                {cust.discountPercentage > 0 && <span className="text-emerald-600 ml-2">· {cust.discountPercentage}% disc</span>}
+                                                            <div className={`text-xs ${theme.textMuted} flex items-center gap-2 flex-wrap`}>
+                                                                <span>{cust.phone}</span>
+                                                                {cust.discountPercentage > 0 && <span className="text-emerald-600">· {cust.discountPercentage}% disc</span>}
+                                                                {cust.loyaltyPoints > 0 && (
+                                                                    <span className="flex items-center gap-1 text-amber-600">
+                                                                        · <Gift size={10} /> {cust.loyaltyPoints} pts
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                         <Check size={14} className="text-indigo-500 opacity-0 group-hover:opacity-100" />
@@ -1000,23 +1145,23 @@ const TakeawayOrder = ({
                                     <div key={item.id + idx} className={`p-3 hover:${themeName === 'dark' ? 'bg-gray-800' : 'bg-gray-50'} transition-colors ${theme.surfaceBg}`}>
                                         <div className="flex justify-between items-start gap-2">
                                             <div className="flex gap-3 flex-1 min-w-0">
-                                                <div className={`flex flex-col items-center ${theme.pageBg} rounded-xl p-1.5 h-fit shrink-0`}>
+                                                <div className={`flex flex-col items-center ${theme.pageBg} rounded-xl sm:rounded-xl md:rounded-2xl p-1 sm:p-1.5 h-fit shrink-0 shadow-sm`}>
                                                     <button
                                                         onClick={() => handleUpdateItemQuantity(idx, 1)}
-                                                        className={`p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors`}
+                                                        className={`w-full p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 rounded-lg sm:rounded-lg md:rounded-xl transition-all duration-200 shadow-md hover:shadow-lg hover:scale-110 active:scale-95 touch-manipulation`}
                                                     >
-                                                        <Plus size={18} />
+                                                        <Plus className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 mx-auto" strokeWidth={3} />
                                                     </button>
-                                                    <span className={`font-black text-base py-1 w-8 text-center ${theme.textPrimary}`}>
+                                                    <span className={`font-black text-xs sm:text-sm md:text-base py-0.5 sm:py-1 md:py-1.5 w-6 sm:w-7 md:w-9 text-center ${theme.textPrimary}`}>
                                                         {item.sellingType === "Weight" && item.enteredUnit === "g"
                                                             ? `${parseFloat((item.quantity * 1000).toFixed(0))}`
                                                             : item.quantity}
                                                     </span>
                                                     <button
                                                         onClick={() => handleUpdateItemQuantity(idx, -1)}
-                                                        className={`p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors`}
+                                                        className={`w-full p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 rounded-lg sm:rounded-lg md:rounded-xl transition-all duration-200 shadow-md hover:shadow-lg hover:scale-110 active:scale-95 touch-manipulation`}
                                                     >
-                                                        <Minus size={18} />
+                                                        <Minus className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 mx-auto" strokeWidth={3} />
                                                     </button>
                                                 </div>
                                                 <div className="flex-1 min-w-0">
@@ -1163,13 +1308,13 @@ const TakeawayOrder = ({
                         )}
                     </div>
 
-                    <div className={`p-3 xl:p-6 ${theme.surfaceBg} border-t ${theme.borderLight} shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 space-y-2`}>
+                    <div className={`p-3 xl:p-6 ${theme.surfaceBg} border-t ${theme.borderLight} shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 space-y-2 max-h-[50vh] xl:max-h-none overflow-y-auto`}>
                         {(() => {
                             return (
                                 <>
                                     <div className={`flex justify-between items-center text-xs md:text-sm ${theme.textMuted}`}>
                                         <span>Subtotal</span>
-                                        <span className={theme.textPrimary}>{formatCurrency(billDetails.subtotal)}</span>
+                                        <span className={theme.textPrimary}>{formatCurrency(finalBillDetails.subtotal)}</span>
                                     </div>
 
                                     {/* Discount input */}
@@ -1229,7 +1374,7 @@ const TakeawayOrder = ({
     
                                     <div className={`flex justify-between items-center text-xs md:text-sm ${theme.textMuted}`}>
                                         <span>Tax</span>
-                                        <span className={theme.textPrimary}>{formatCurrency(billDetails.taxAmount)}</span>
+                                        <span className={theme.textPrimary}>{formatCurrency(finalBillDetails.taxAmount)}</span>
                                     </div>
 
                                     {billDiscount.value > 0 && (
@@ -1242,6 +1387,31 @@ const TakeawayOrder = ({
                                         </div>
                                     )}
 
+                                    {loyaltyDiscount.amount > 0 && (
+                                        <div className={`flex justify-between items-center text-sm font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800`}>
+                                            <div className="flex flex-col">
+                                                <div className="flex items-center gap-2">
+                                                    <Gift size={14} />
+                                                    <span>Loyalty Points Redeemed</span>
+                                                </div>
+                                                <span className="text-[10px] opacity-70 uppercase tracking-wider">{loyaltyDiscount.points} pts used</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span>-{formatCurrency(loyaltyDiscount.amount)}</span>
+                                                <button
+                                                    onClick={() => {
+                                                        setLoyaltyDiscount({ points: 0, amount: 0 });
+                                                        toast.success('Loyalty discount removed');
+                                                    }}
+                                                    className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-full transition-colors"
+                                                    title="Remove loyalty discount"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {isTakeaway && exchangeCredit > 0 && (
                                         <div className={`flex justify-between items-center text-sm font-bold text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100`}>
                                             <span>Exchange Credit</span>
@@ -1251,7 +1421,7 @@ const TakeawayOrder = ({
     
                                     <div className={`flex justify-between items-center text-xl font-black ${theme.textHeading} pt-2 border-t-2 border-dashed ${theme.borderLight}`}>
                                         <span>Total</span>
-                                        <span>{formatCurrency(billDetails.finalTotal)}</span>
+                                        <span>{formatCurrency(finalBillDetails.finalTotal)}</span>
                                     </div>
                                 </>
                             );
@@ -1326,6 +1496,113 @@ const TakeawayOrder = ({
                     </div>
                     {/* Tiny arrow */}
                     <div className={`absolute top-[-6px] right-4 w-3 h-3 ${themeName === 'dark' ? 'bg-gray-900 border-l border-t border-gray-700' : 'bg-white border-l border-t border-gray-200'} rotate-45`}></div>
+                </div>
+            )}
+
+            {/* Loyalty Points Redemption Modal */}
+            {showLoyaltyModal && selectedCustomer && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                    <div className={`${theme.surfaceBg} rounded-[32px] shadow-2xl w-full max-w-md`}>
+                        <div className={`p-6 border-b ${theme.borderLight} flex items-center justify-between`}>
+                            <h3 className={`text-xl font-black ${theme.textHeading} flex items-center gap-2`}>
+                                <Gift className="text-amber-500" size={24} />
+                                Redeem Loyalty Points
+                            </h3>
+                            <button onClick={() => setShowLoyaltyModal(false)} className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 ${theme.textMuted}`}>
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            {/* Available Points */}
+                            <div className={`p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800`}>
+                                <p className={`text-xs font-bold ${theme.textMuted} mb-1`}>Available Points</p>
+                                <p className={`text-3xl font-black ${theme.textPrimary}`}>{selectedCustomer.loyaltyPoints || 0} pts</p>
+                                <p className={`text-xs ${theme.textMuted} mt-1`}>
+                                    = ₹{((selectedCustomer.loyaltyPoints || 0) * (loyaltySettings?.redemptionValue || 1)).toFixed(2)} value
+                                </p>
+                            </div>
+
+                            {/* Points Input */}
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase ${theme.textMuted}`}>
+                                    Points to Redeem
+                                </label>
+                                <input
+                                    type="number"
+                                    min={loyaltySettings?.minPointsToRedeem || 10}
+                                    max={getMaxRedeemablePoints()}
+                                    value={loyaltyPointsToRedeem}
+                                    onChange={(e) => setLoyaltyPointsToRedeem(e.target.value)}
+                                    placeholder={`Min: ${loyaltySettings?.minPointsToRedeem || 10} pts`}
+                                    className={`w-full p-4 border rounded-2xl outline-none font-bold text-lg ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                />
+                                <div className="flex items-center justify-between">
+                                    <p className={`text-xs ${theme.textMuted}`}>
+                                        Min: {loyaltySettings?.minPointsToRedeem || 10} pts
+                                    </p>
+                                    <p className={`text-xs ${theme.textMuted}`}>
+                                        Max: {getMaxRedeemablePoints()} pts
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Quick Select Buttons */}
+                            <div className="grid grid-cols-3 gap-2">
+                                {[25, 50, 100].map(pts => {
+                                    const maxPts = getMaxRedeemablePoints();
+                                    const availablePts = selectedCustomer.loyaltyPoints || 0;
+                                    const canUse = pts <= maxPts && pts <= availablePts;
+                                    
+                                    return (
+                                        <button
+                                            key={pts}
+                                            disabled={!canUse}
+                                            onClick={() => setLoyaltyPointsToRedeem(pts.toString())}
+                                            className={`py-2 px-3 rounded-xl font-bold text-sm transition-all ${
+                                                canUse 
+                                                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50' 
+                                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            {pts} pts
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Discount Preview */}
+                            {loyaltyPointsToRedeem && parseInt(loyaltyPointsToRedeem) > 0 && (
+                                <div className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.borderLight}`}>
+                                    <p className={`text-xs font-bold ${theme.textMuted} mb-1`}>You'll Save</p>
+                                    <p className={`text-2xl font-black text-emerald-600`}>
+                                        ₹{(parseInt(loyaltyPointsToRedeem) * (loyaltySettings?.redemptionValue || 1)).toFixed(2)}
+                                    </p>
+                                    <p className={`text-xs ${theme.textMuted} mt-1`}>
+                                        Remaining: {(selectedCustomer.loyaltyPoints || 0) - parseInt(loyaltyPointsToRedeem)} pts
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowLoyaltyModal(false)}
+                                    className={`flex-1 py-3 rounded-2xl font-bold ${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleUseLoyaltyPoints}
+                                    disabled={!loyaltyPointsToRedeem || parseInt(loyaltyPointsToRedeem) < (loyaltySettings?.minPointsToRedeem || 10)}
+                                    className="flex-1 py-3 rounded-2xl font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                >
+                                    <Gift size={18} />
+                                    Apply Discount
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

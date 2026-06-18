@@ -525,6 +525,71 @@ export const customerService = {
     }
 };
 
+export const loyaltyService = {
+    // Get loyalty settings for a shop
+    getSettings: async (shopId) => {
+        try {
+            const response = await api.get(`/loyalty/settings/${shopId}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching loyalty settings:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    // Update loyalty settings
+    updateSettings: async (shopId, payload) => {
+        try {
+            const response = await api.put(`/loyalty/settings/${shopId}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating loyalty settings:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    // Get customer loyalty points
+    getCustomerPoints: async (customerId) => {
+        try {
+            const response = await api.get(`/loyalty/customer/${customerId}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching customer loyalty points:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    // Add loyalty points (on purchase)
+    addPoints: async (payload) => {
+        try {
+            // payload: { customerId, points, orderId, transactionType, description }
+            const response = await api.post('/loyalty/add-points', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error adding loyalty points:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    // Redeem loyalty points
+    redeemPoints: async (payload) => {
+        try {
+            // payload: { customerId, points, orderId, amountRedeemed }
+            const response = await api.post('/loyalty/redeem-points', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error redeeming loyalty points:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    // Get loyalty transaction history
+    getTransactions: async (customerId, params = {}) => {
+        try {
+            const response = await api.get(`/loyalty/transactions/${customerId}`, { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching loyalty transactions:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+
 export const settingService = {
     getSettings: async (shopId) => {
         try {

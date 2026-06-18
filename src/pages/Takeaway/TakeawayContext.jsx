@@ -13,6 +13,8 @@ const INITIAL_TAB_DATA = {
     takeawayCustName: "",
     takeawayCustPhone: "",
     selectedCustomer: null,
+    billDiscount: { type: "flat", value: 0 }, // Add tab-specific discount
+    loyaltyDiscount: { points: 0, amount: 0 }, // Separate loyalty discount tracking
     isTakeaway: true,
     tableId: null
 };
@@ -53,10 +55,18 @@ export const TakeawayProvider = ({ children }) => {
     const [takeawayCustName, setTakeawayCustName] = useState("");
     const [takeawayCustPhone, setTakeawayCustPhone] = useState("");
     const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const [billDiscount, setBillDiscount] = useState({ type: "flat", value: 0 }); // Add tab-specific discount state
+    const [loyaltyDiscount, setLoyaltyDiscount] = useState({ points: 0, amount: 0 }); // Separate loyalty discount
     const [tableId, setTableId] = useState(null);
+    
+    // Flag to prevent persistence loop during reset
+    const isResettingRef = React.useRef(false);
+    const persistTimeoutRef = React.useRef(null);
 
     // Sync: Load active tab data into states when activeTabId changes
     useEffect(() => {
+        if (isResettingRef.current) return; // Skip sync during reset
+        
         const targetTab = tabs.find(t => t.id === activeTabId);
         if (targetTab) {
             setIsTakeaway(targetTab.isTakeaway);
@@ -64,12 +74,16 @@ export const TakeawayProvider = ({ children }) => {
             setTakeawayCustName(targetTab.takeawayCustName || "");
             setTakeawayCustPhone(targetTab.takeawayCustPhone || "");
             setSelectedCustomer(targetTab.selectedCustomer || null);
+            setBillDiscount(targetTab.billDiscount || { type: "flat", value: 0 }); // Load tab-specific discount
+            setLoyaltyDiscount(targetTab.loyaltyDiscount || { points: 0, amount: 0 }); // Load loyalty discount
             setTableId(targetTab.tableId || null);
         }
-    }, [activeTabId]);
+    }, [activeTabId, tabs]);
 
     // Persistence: Sync active takeaway tab state to the tabs array and localStorage
     useEffect(() => {
+        if (isResettingRef.current) return; // Skip persistence during reset
+        
         const shouldPersistTabs = isTakeaway && !tableId;
 
         if (!shouldPersistTabs) {
@@ -78,29 +92,45 @@ export const TakeawayProvider = ({ children }) => {
             return;
         }
 
-        const updatedTabs = tabs.map(t => {
-            if (t.id === activeTabId) {
-                return {
-                    ...t,
-                    isTakeaway,
-                    takeawayOrder,
-                    takeawayCustName,
-                    takeawayCustPhone,
-                    selectedCustomer,
-                    tableId: null
-                };
-            }
-            return t;
-        });
-        
-        // Only update if something actually changed to avoid unnecessary renders
-        const isDifferent = JSON.stringify(updatedTabs) !== JSON.stringify(tabs);
-        if (isDifferent) {
-            setTabs(updatedTabs);
-            localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
+        // Clear any pending persistence timeout
+        if (persistTimeoutRef.current) {
+            clearTimeout(persistTimeoutRef.current);
         }
-        localStorage.setItem('pos_active_tab_id', activeTabId.toString());
-    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, tableId, activeTabId, tabs]);
+
+        // Debounce persistence to avoid rapid updates
+        persistTimeoutRef.current = setTimeout(() => {
+            const updatedTabs = tabs.map(t => {
+                if (t.id === activeTabId) {
+                    return {
+                        ...t,
+                        isTakeaway,
+                        takeawayOrder,
+                        takeawayCustName,
+                        takeawayCustPhone,
+                        selectedCustomer,
+                        billDiscount, // Save tab-specific discount
+                        loyaltyDiscount, // Save loyalty discount
+                        tableId: null
+                    };
+                }
+                return t;
+            });
+            
+            // Only update if something actually changed to avoid unnecessary renders
+            const isDifferent = JSON.stringify(updatedTabs) !== JSON.stringify(tabs);
+            if (isDifferent) {
+                setTabs(updatedTabs);
+                localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
+            }
+            localStorage.setItem('pos_active_tab_id', activeTabId.toString());
+        }, 100); // 100ms debounce
+
+        return () => {
+            if (persistTimeoutRef.current) {
+                clearTimeout(persistTimeoutRef.current);
+            }
+        };
+    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, billDiscount, loyaltyDiscount, tableId, activeTabId, tabs]);
 
     const addTab = () => {
         const nextId = Math.max(...tabs.map(t => t.id), 0) + 1;
@@ -118,6 +148,8 @@ export const TakeawayProvider = ({ children }) => {
         setTakeawayCustName(tName || "");
         setTakeawayCustPhone("");
         setSelectedCustomer(null);
+        setBillDiscount({ type: "flat", value: 0 }); // Reset discount for table
+        setLoyaltyDiscount({ points: 0, amount: 0 }); // Reset loyalty discount
     };
 
     const switchTab = (id) => {
@@ -142,6 +174,9 @@ export const TakeawayProvider = ({ children }) => {
     };
 
     const resetTakeaway = () => {
+        // Set flag to prevent sync/persistence loops
+        isResettingRef.current = true;
+        
         setTakeawayOrder(prev => ({
             ...INITIAL_TAB_DATA.takeawayOrder,
             orderType: prev?.orderType || 'TAKEAWAY'
@@ -149,8 +184,60 @@ export const TakeawayProvider = ({ children }) => {
         setTakeawayCustName("");
         setTakeawayCustPhone("");
         setSelectedCustomer(null);
+        setBillDiscount({ type: "flat", value: 0 }); // Reset discount
+        setLoyaltyDiscount({ points: 0, amount: 0 }); // Reset loyalty discount
         setIsTakeaway(true);
         setTableId(null);
+        
+        // Update the active tab in the tabs array immediately
+        setTabs(prev => prev.map(t => {
+            if (t.id === activeTabId) {
+                return {
+                    ...t,
+                    takeawayOrder: {
+                        ...INITIAL_TAB_DATA.takeawayOrder,
+                        orderType: t.takeawayOrder?.orderType || 'TAKEAWAY'
+                    },
+                    takeawayCustName: "",
+                    takeawayCustPhone: "",
+                    selectedCustomer: null,
+                    billDiscount: { type: "flat", value: 0 },
+                    loyaltyDiscount: { points: 0, amount: 0 },
+                    isTakeaway: true,
+                    tableId: null
+                };
+            }
+            return t;
+        }));
+        
+        // Clear localStorage immediately
+        setTimeout(() => {
+            const updatedTabs = tabs.map(t => {
+                if (t.id === activeTabId) {
+                    return {
+                        ...t,
+                        takeawayOrder: {
+                            ...INITIAL_TAB_DATA.takeawayOrder,
+                            orderType: t.takeawayOrder?.orderType || 'TAKEAWAY'
+                        },
+                        takeawayCustName: "",
+                        takeawayCustPhone: "",
+                        selectedCustomer: null,
+                        billDiscount: { type: "flat", value: 0 },
+                        loyaltyDiscount: { points: 0, amount: 0 },
+                        isTakeaway: true,
+                        tableId: null
+                    };
+                }
+                return t;
+            });
+            localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
+        }, 0);
+        
+        // Reset flag after a delay to allow state updates to settle
+        setTimeout(() => {
+            isResettingRef.current = false;
+        }, 300);
     };
 
     const clearAllTabs = () => {
@@ -175,6 +262,7 @@ export const TakeawayProvider = ({ children }) => {
         setTakeawayCustName(currentTab.takeawayCustName || "");
         setTakeawayCustPhone(currentTab.takeawayCustPhone || "");
         setSelectedCustomer(currentTab.selectedCustomer || null);
+        setBillDiscount(currentTab.billDiscount || { type: "flat", value: 0 }); // Load discount
     };
 
     const loadHistorySale = (orderState, customerName, customerPhone, selectedCustomerData, historyEditBaseline) => {
@@ -189,6 +277,7 @@ export const TakeawayProvider = ({ children }) => {
         setTakeawayCustName(customerName || "");
         setTakeawayCustPhone(customerPhone || "");
         setSelectedCustomer(selectedCustomerData || null);
+        // Don't set discount here - let it be applied based on customer selection
 
         setTabs((prev) => prev.map((tab) => (
             tab.id === activeTabId
@@ -200,6 +289,9 @@ export const TakeawayProvider = ({ children }) => {
                     takeawayCustName: customerName || "",
                     takeawayCustPhone: customerPhone || "",
                     selectedCustomer: selectedCustomerData || null,
+                    billDiscount: selectedCustomerData?.discountPercentage > 0 
+                        ? { type: 'percent', value: selectedCustomerData.discountPercentage }
+                        : { type: "flat", value: 0 }
                 }
                 : tab
         )));
@@ -218,6 +310,10 @@ export const TakeawayProvider = ({ children }) => {
                 setTakeawayCustPhone,
                 selectedCustomer,
                 setSelectedCustomer,
+                billDiscount, // Export tab-specific discount
+                setBillDiscount, // Export tab-specific discount setter
+                loyaltyDiscount, // Export loyalty discount
+                setLoyaltyDiscount, // Export loyalty discount setter
                 tableId,
                 setTableId,
                 resetTakeaway,

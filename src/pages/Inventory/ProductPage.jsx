@@ -1169,6 +1169,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                         ) : (
                                             <input
                                                 type={field.type}
+                                                onWheel={(e) => field.type === 'number' ? e.target.blur() : null}
                                                 value={formData[field.key] !== undefined ? formData[field.key] : ""}
                                                 onChange={(e) => handleChange(fieldKey, e.target.value)}
                                                 className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
@@ -1325,6 +1326,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                         ) : (
                                                             <input
                                                                 type={field.type}
+                                                                onWheel={(e) => field.type === 'number' ? e.target.blur() : null}
                                                                 value={formData[field.key] !== undefined ? formData[field.key] : ""}
                                                                 onChange={(e) => handleChange(field.originalKey, e.target.value)}
                                                                 className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
@@ -1476,6 +1478,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Price *</label>
                                 <input
                                     type="number"
+                                    onWheel={(e) => e.target.blur()}
                                     value={newPortion.price}
                                     onChange={(e) => setNewPortion({ ...newPortion, price: e.target.value })}
                                     placeholder="0.00"
@@ -1486,6 +1489,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>MRP</label>
                                 <input
                                     type="number"
+                                    onWheel={(e) => e.target.blur()}
                                     value={newPortion.mrp}
                                     onChange={(e) => setNewPortion({ ...newPortion, mrp: e.target.value })}
                                     placeholder="0.00"
@@ -1496,6 +1500,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Qty Factor</label>
                                 <input
                                     type="number"
+                                    onWheel={(e) => e.target.blur()}
                                     value={newPortion.quantityFactor}
                                     onChange={(e) => setNewPortion({ ...newPortion, quantityFactor: parseFloat(e.target.value || 1) })}
                                     placeholder="1.0"
@@ -1602,6 +1607,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                         <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Qty</label>
                                         <input
                                             type="number"
+                                            onWheel={(e) => e.target.blur()}
                                             value={ingredientQty}
                                             onChange={(e) => setIngredientQty(e.target.value)}
                                             placeholder="0"
