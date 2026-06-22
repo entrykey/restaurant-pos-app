@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     FileText,
+    FileSpreadsheet,
     Download,
     TrendingUp,
     Utensils,
@@ -29,7 +30,7 @@ import api, { reportsService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { printCustomHtml, escapeHtml } from "../../utils/print";
-import ProfitLossAccordion from "./ProfitLossAccordion";
+import { exportProfitLoss } from "../../utils/exportProfitLoss";
 
 const toAbsoluteLogoUrl = (logoUrl) => {
     if (!logoUrl) return null;
@@ -444,6 +445,19 @@ const Reports = ({
     };
 
     const handleExportPDF = () => {
+        // Special handling for Profit & Loss report
+        if (reportCategory === "profit_loss" && profitLossReport) {
+            exportProfitLoss(
+                profitLossReport, 
+                'pdf', 
+                `P&L_${filterStartDate}_${filterEndDate}`, 
+                organization?.businessName || headerShopName || 'Shop', 
+                branches.find(b => String(b._id) === String(reportBranchFilter))?.name || headerBranchName
+            );
+            return;
+        }
+
+        // Default handling for other reports
         const { columns, rows } = buildReportData();
         if (!columns.length) return;
 
@@ -494,6 +508,19 @@ const Reports = ({
     };
 
     const handleExportXLSX = () => {
+        // Special handling for Profit & Loss report
+        if (reportCategory === "profit_loss" && profitLossReport) {
+            exportProfitLoss(
+                profitLossReport, 
+                'xlsx', 
+                `P&L_${filterStartDate}_${filterEndDate}`, 
+                organization?.businessName || headerShopName || 'Shop', 
+                branches.find(b => String(b._id) === String(reportBranchFilter))?.name || headerBranchName
+            );
+            return;
+        }
+
+        // Default handling for other reports
         const { columns, rows } = buildReportData();
         if (!columns.length) return;
 
@@ -1251,16 +1278,109 @@ const Reports = ({
                             <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
                                 Profit & Loss Statement ({rangeLabel})
                             </h3>
-                            {profitLossReport ? (
-                                <ProfitLossAccordion
-                                    profitLossReport={profitLossReport}
-                                    salesInRange={salesInRange}
-                                    expandedPlSections={expandedPlSections}
-                                    togglePlSection={togglePlSection}
-                                    formatCurrency={formatCurrency}
-                                    currency={currency}
-                                    theme={theme}
-                                />
+                            
+                            {profitLossReport && profitLossReport.sections ? (
+                                <div className={`${theme.pageBg} rounded-3xl border ${theme.borderLight} p-8 space-y-8`}>
+                                    {/* Render each section */}
+                                    {profitLossReport.sections.map((section, idx) => (
+                                        <div key={idx} className="space-y-4">
+                                            {/* Section Header with underline */}
+                                            <div className="border-b-2 border-gray-400 dark:border-gray-600 pb-2">
+                                                <h4 className={`text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>
+                                                    {section.label}
+                                                </h4>
+                                            </div>
+                                            
+                                            {/* Section Items */}
+                                            {section.items && section.items.length > 0 ? (
+                                                <div className="space-y-2 pl-4">
+                                                    {section.items.map((item, itemIdx) => (
+                                                        <div key={itemIdx} className="flex justify-between items-center py-1">
+                                                            <span className={`text-sm font-medium ${theme.textPrimary}`}>
+                                                                {item.label || item.name || 'Unknown'}
+                                                            </span>
+                                                            <span className={`text-sm font-bold tabular-nums ${
+                                                                section.type === 'credit' 
+                                                                    ? 'text-green-600 dark:text-green-400' 
+                                                                    : 'text-red-600 dark:text-red-400'
+                                                            }`}>
+                                                                {formatCurrency(item.amount, currency)}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className={`text-sm ${theme.textMuted} italic pl-4`}>No items</p>
+                                            )}
+                                            
+                                            {/* Section Total */}
+                                            <div className="border-t border-dashed border-gray-300 dark:border-gray-600 pt-3 flex justify-between items-center">
+                                                <span className={`text-sm font-black uppercase ${theme.textPrimary}`}>
+                                                    Total {section.label}
+                                                </span>
+                                                <span className={`text-base font-black tabular-nums ${
+                                                    section.type === 'credit' 
+                                                        ? 'text-green-700 dark:text-green-300' 
+                                                        : 'text-red-700 dark:text-red-300'
+                                                }`}>
+                                                    {formatCurrency(section.total, currency)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Gross Profit */}
+                                    {profitLossReport.grossProfit !== undefined && (
+                                        <div className="border-t-4 border-double border-gray-400 dark:border-gray-600 pt-4">
+                                            <div className="flex justify-between items-center py-2">
+                                                <span className={`text-base font-black uppercase ${theme.textHeading}`}>
+                                                    Gross Profit
+                                                </span>
+                                                <span className={`text-xl font-black tabular-nums ${
+                                                    profitLossReport.grossProfit >= 0 
+                                                        ? 'text-blue-600 dark:text-blue-400' 
+                                                        : 'text-orange-600 dark:text-orange-400'
+                                                }`}>
+                                                    {formatCurrency(profitLossReport.grossProfit, currency)}
+                                                </span>
+                                            </div>
+                                            {profitLossReport.grossMarginPercent !== undefined && (
+                                                <p className={`text-xs font-bold ${theme.textMuted} text-right`}>
+                                                    {profitLossReport.grossMarginPercent.toFixed(2)}% margin
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                    
+                                    {/* Net Profit */}
+                                    {profitLossReport.netProfit !== undefined && (
+                                        <div className="border-t-4 border-double border-black dark:border-white pt-4 mt-6">
+                                            <div className="flex justify-between items-center py-3 px-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700">
+                                                <span className={`text-xl font-black uppercase tracking-wide ${theme.textHeading}`}>
+                                                    Net Profit
+                                                </span>
+                                                <div className="text-right">
+                                                    <span className={`text-3xl font-black tabular-nums ${
+                                                        profitLossReport.netProfit >= 0 
+                                                            ? 'text-emerald-600 dark:text-emerald-400' 
+                                                            : 'text-red-600 dark:text-red-400'
+                                                    }`}>
+                                                        {formatCurrency(profitLossReport.netProfit, currency)}
+                                                    </span>
+                                                    {profitLossReport.netMarginPercent !== undefined && (
+                                                        <p className={`text-xs font-bold mt-1 ${
+                                                            profitLossReport.netProfit >= 0 
+                                                                ? 'text-emerald-700 dark:text-emerald-500' 
+                                                                : 'text-red-700 dark:text-red-500'
+                                                        }`}>
+                                                            {profitLossReport.netMarginPercent.toFixed(2)}% margin
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             ) : (
                                 <p className={`text-sm font-bold ${theme.textMuted}`}>No profit & loss data for this period.</p>
                             )}
