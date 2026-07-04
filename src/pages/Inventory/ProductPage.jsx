@@ -50,6 +50,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     const [itemAttributes, setItemAttributes] = useState(location.state?.itemAttributes || {});
     const [ingredients, setIngredients] = useState(location.state?.ingredients || []);
     const [shopTaxes, setShopTaxes] = useState([]);
+    const [selectedTaxType, setSelectedTaxType] = useState(""); // For tax type selection (INCLUSIVE/EXCLUSIVE)
     const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState("");
     const [isCategorySaving, setIsCategorySaving] = useState(false);
@@ -652,10 +653,15 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         } else if (fieldKey === "unit_id" || fieldKey === "secondary_unit_id") {
             options = units.map(u => ({ label: u.name || u.code, value: u._id }));
         } else if (fieldKey === "tax_percent") {
-            options = shopTaxes.map(t => {
-                const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
-                return { label: `${t.name} (${t.percentage}% - ${typeStr})`, value: t._id };
-            });
+            // Filter taxes based on selected tax type
+            const filteredTaxes = selectedTaxType 
+                ? shopTaxes.filter(t => (t.taxType || 'INCLUSIVE').toUpperCase() === selectedTaxType)
+                : [];
+            
+            options = filteredTaxes.map(t => ({
+                label: `${t.name} (${t.percentage}%)`,
+                value: t._id
+            }));
         }
 
         acc[section].push({ 
@@ -1076,12 +1082,66 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 } else if (fieldKey === 'unit_id' || fieldKey === 'secondary_unit_id') {
                                     options = units.map(u => ({ label: u.name, value: u._id }));
                                 } else if (fieldKey === 'tax_percent') {
-                                    options = shopTaxes.map(t => {
-                                        const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
-                                        return { label: `${t.name} (${t.percentage}% - ${typeStr})`, value: t._id };
-                                    });
+                                    // Filter taxes based on selected tax type
+                                    const filteredTaxes = selectedTaxType 
+                                        ? shopTaxes.filter(t => (t.taxType || 'INCLUSIVE').toUpperCase() === selectedTaxType)
+                                        : [];
+                                    
+                                    options = filteredTaxes.map(t => ({
+                                        label: `${t.name} (${t.percentage}%)`,
+                                        value: t._id
+                                    }));
                                 } else if (fieldKey === 'item_type') {
                                     options = field.options || ["STOCK", "SERVICE", "MANUFACTURED"];
+                                }
+
+                                // Special rendering for tax_percent - show tax type selector first
+                                if (fieldKey === 'tax_percent') {
+                                    return (
+                                        <React.Fragment key={fieldKey}>
+                                            {/* Tax Type Selector */}
+                                            <div>
+                                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
+                                                    Tax Type <span className="text-red-500">*</span>
+                                                </label>
+                                                <CommonSelect
+                                                    options={[
+                                                        { label: "Inclusive", value: "INCLUSIVE" },
+                                                        { label: "Exclusive", value: "EXCLUSIVE" }
+                                                    ]}
+                                                    value={selectedTaxType}
+                                                    onChange={(val) => {
+                                                        setSelectedTaxType(val);
+                                                        // Reset tax selection when type changes
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            taxId: "",
+                                                            taxPercent: 0
+                                                        }));
+                                                    }}
+                                                    placeholder="Select Tax Type..."
+                                                    className="w-full"
+                                                />
+                                            </div>
+                                            
+                                            {/* Tax Percentage Selector - only show if tax type is selected */}
+                                            {selectedTaxType && (
+                                                <div>
+                                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
+                                                        {field.label} {isRequired && <span className="text-red-500">*</span>}
+                                                    </label>
+                                                    <CommonSelect
+                                                        options={options}
+                                                        value={formData.taxId || ""}
+                                                        onChange={(val) => handleChange(fieldKey, val)}
+                                                        placeholder={options.length === 0 ? `No ${selectedTaxType.toLowerCase()} taxes available` : `Select ${field.label}...`}
+                                                        className="w-full"
+                                                        disabled={options.length === 0}
+                                                    />
+                                                </div>
+                                            )}
+                                        </React.Fragment>
+                                    );
                                 }
 
                                 return (

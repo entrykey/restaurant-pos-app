@@ -211,12 +211,14 @@ const PurchasePage = () => {
                 dueDate: p.dueDate ? new Date(p.dueDate).toISOString().split('T')[0] : "",
                 items: data.items.map(it => {
                     const productMaster = it.itemId;
+                    const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
                     return {
                         ...it,
                         itemId: productMaster?._id || productMaster,
                         name: productMaster?.name || it.itemName || "Unknown Item",
                         itemCode: productMaster?.itemCode || "",
                         taxPercent: it.taxPercent || productMaster?.taxPercent || 0,
+                        taxType: taxObj?.taxType || "",
                         unitId: it.unitId || productMaster?.unitId?._id || productMaster?.unitId,
                         primaryUnitName: productMaster?.unitId?.name || it.unitName || "",
                         unitName: it.unitName || productMaster?.unitId?.name || "",
@@ -264,6 +266,7 @@ const PurchasePage = () => {
             hasIndividualBarcode: item.tracking?.serialTracking || false,
             taxId: item.taxId || null,
             taxPercent: item.taxPercent || 0,
+            taxType: "", // For two-step tax selection
             taxAmount: (() => {
                 const taxObj = item.taxId ? shopTaxes.find(t => t._id === item.taxId) : shopTaxes.find(t => t.percentage === Number(item.taxPercent || 0));
                 const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
@@ -1994,27 +1997,50 @@ const PurchasePage = () => {
                                                 </div>
                                             </td>
                                             <td className="py-5 px-2">
+                                                {/* Tax Type Selector */}
                                                 <CommonSelect
                                                     options={[
-                                                        { label: "0%", value: "0" },
-                                                        ...shopTaxes.map(t => {
-                                                            const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
-                                                            return { label: `${t.name} (${t.percentage}% - ${typeStr})`, value: String(t._id) };
-                                                        })
-                                                     ]}
-                                                     value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
-                                                     onChange={(val) => {
-                                                         if (val === "0" || val === 0) {
-                                                             handleItemChange(idx, { taxId: null, taxPercent: 0 });
-                                                         } else {
-                                                             const selectedTax = shopTaxes.find(t => t._id === val);
-                                                             if (selectedTax) {
-                                                                 handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage });
-                                                             }
-                                                         }
-                                                     }}
-                                                     className="w-full text-[11px] font-black"
-                                                 />
+                                                        { label: "Select Type...", value: "" },
+                                                        { label: "Inclusive", value: "INCLUSIVE" },
+                                                        { label: "Exclusive", value: "EXCLUSIVE" }
+                                                    ]}
+                                                    value={it.taxType || ""}
+                                                    onChange={(val) => {
+                                                        handleItemChange(idx, {
+                                                            taxType: val,
+                                                            taxId: null,
+                                                            taxPercent: 0
+                                                        });
+                                                    }}
+                                                    className="w-full text-[11px] font-black mb-2"
+                                                />
+                                                
+                                                {/* Tax Percentage Selector - only show if type is selected */}
+                                                {it.taxType && (
+                                                    <CommonSelect
+                                                        options={[
+                                                            { label: "0%", value: "0" },
+                                                            ...shopTaxes
+                                                                .filter(t => (t.taxType || 'INCLUSIVE').toUpperCase() === it.taxType)
+                                                                .map(t => ({
+                                                                    label: `${t.name} (${t.percentage}%)`,
+                                                                    value: String(t._id)
+                                                                }))
+                                                        ]}
+                                                        value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
+                                                        onChange={(val) => {
+                                                            if (val === "0" || val === 0) {
+                                                                handleItemChange(idx, { taxId: null, taxPercent: 0 });
+                                                            } else {
+                                                                const selectedTax = shopTaxes.find(t => t._id === val);
+                                                                if (selectedTax) {
+                                                                    handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage });
+                                                                }
+                                                            }
+                                                        }}
+                                                        className="w-full text-[11px] font-black"
+                                                    />
+                                                )}
                                              </td>
                                             <td className="py-5 px-2 text-right font-black">
                                                 {(() => {
@@ -2114,17 +2140,39 @@ const PurchasePage = () => {
 
                                             {/* Tax + Total */}
                                             <div className="grid grid-cols-2 gap-3 items-end">
-                                                <div>
-                                                    <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Tax</label>
+                                                <div className="space-y-2">
+                                                    <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Tax Type</label>
                                                     <CommonSelect
-                                                        options={[{ label: "0%", value: "0" }, ...shopTaxes.map(t => ({ label: `${t.name} (${t.percentage}%)`, value: String(t._id) }))]}
-                                                        value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
+                                                        options={[
+                                                            { label: "Select...", value: "" },
+                                                            { label: "Inclusive", value: "INCLUSIVE" },
+                                                            { label: "Exclusive", value: "EXCLUSIVE" }
+                                                        ]}
+                                                        value={it.taxType || ""}
                                                         onChange={(val) => {
-                                                            if (val === "0" || val === 0) { handleItemChange(idx, { taxId: null, taxPercent: 0 }); }
-                                                            else { const selectedTax = shopTaxes.find(t => t._id === val); if (selectedTax) handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage }); }
+                                                            handleItemChange(idx, {
+                                                                taxType: val,
+                                                                taxId: null,
+                                                                taxPercent: 0
+                                                            });
                                                         }}
                                                         className="w-full text-[11px] font-black"
                                                     />
+                                                    
+                                                    {it.taxType && (
+                                                        <>
+                                                            <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Tax %</label>
+                                                            <CommonSelect
+                                                                options={[{ label: "0%", value: "0" }, ...shopTaxes.filter(t => (t.taxType || 'INCLUSIVE').toUpperCase() === it.taxType).map(t => ({ label: `${t.name} (${t.percentage}%)`, value: String(t._id) }))]}
+                                                                value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
+                                                                onChange={(val) => {
+                                                                    if (val === "0" || val === 0) { handleItemChange(idx, { taxId: null, taxPercent: 0 }); }
+                                                                    else { const selectedTax = shopTaxes.find(t => t._id === val); if (selectedTax) handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage }); }
+                                                                }}
+                                                                className="w-full text-[11px] font-black"
+                                                            />
+                                                        </>
+                                                    )}
                                                 </div>
                                                 <div className={`p-3 rounded-2xl text-right ${theme.inputBg}`}>
                                                     <div className={`text-[9px] font-black uppercase tracking-widest ${theme.textMuted}`}>Total</div>
