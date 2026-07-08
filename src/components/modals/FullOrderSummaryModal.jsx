@@ -22,6 +22,34 @@ const FullOrderSummaryModal = ({
     const branchStateCode = activeBranch?.address?.state?.code;
     const [customerStateCode, setCustomerStateCode] = React.useState(null);
 
+    // Deduplicate items: group identical items (same id, variant, extras) into one line with combined quantity
+    const deduplicatedItems = React.useMemo(() => {
+        if (!orderItems || orderItems.length === 0) return [];
+        
+        const itemMap = new Map();
+        
+        orderItems.forEach(item => {
+            const itemId = String(item._id || item.id);
+            const extrasKey = (item.selectedExtras || [])
+                .map(e => `${e.name}-${e.quantity}`)
+                .sort()
+                .join("|");
+            const variantKey = item.selectedVariant ? item.selectedVariant.name : "std";
+            const groupKey = `${itemId}|${variantKey}|${extrasKey}`;
+            
+            if (itemMap.has(groupKey)) {
+                // Merge quantities
+                const existing = itemMap.get(groupKey);
+                existing.quantity += item.quantity;
+            } else {
+                // Add new entry (clone to avoid mutation)
+                itemMap.set(groupKey, { ...item });
+            }
+        });
+        
+        return Array.from(itemMap.values());
+    }, [orderItems]);
+
     if (!isOpen) return null;
 
     return (
@@ -48,13 +76,13 @@ const FullOrderSummaryModal = ({
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
                     {/* Items List */}
-                    {(!orderItems || orderItems.length === 0) ? (
+                    {(!deduplicatedItems || deduplicatedItems.length === 0) ? (
                         <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-50">
                             <ShoppingBag size={64} className="mb-4" />
                             <p className="text-xl font-bold">Order is empty</p>
                         </div>
                     ) : (
-                        orderItems.map((item, idx) => (
+                        deduplicatedItems.map((item, idx) => (
                             <div
                                 key={idx}
                                 className="flex justify-between items-start p-4 bg-gray-50 rounded-2xl border border-gray-100"
@@ -122,7 +150,7 @@ const FullOrderSummaryModal = ({
                     <div className="flex justify-between items-center">
                         <span className="text-xl font-bold text-gray-500">Total Items</span>
                         <span className="text-xl font-bold text-gray-900">
-                            {(orderItems || []).length}
+                            {deduplicatedItems.length}
                         </span>
                     </div>
                     {(() => {

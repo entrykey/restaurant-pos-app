@@ -99,3 +99,37 @@ export const collectOpenCartItems = ({
 
     return items;
 };
+
+/**
+ * Deduplicates cart items by grouping identical items (same ID, variant, and extras)
+ * and combining their quantities into a single line item.
+ * 
+ * @param {Array} cartItems - Array of cart items to deduplicate
+ * @returns {Array} - Deduplicated array with combined quantities
+ */
+export const deduplicateCartItems = (cartItems = []) => {
+    if (!cartItems || cartItems.length === 0) return [];
+    
+    const itemMap = new Map();
+    
+    cartItems.forEach(item => {
+        const itemId = String(item._id || item.id);
+        const extrasKey = (item.selectedExtras || [])
+            .map(e => `${e.name}-${e.quantity}`)
+            .sort()
+            .join("|");
+        const variantKey = item.selectedVariant ? item.selectedVariant.name : "std";
+        const groupKey = `${itemId}|${variantKey}|${extrasKey}`;
+        
+        if (itemMap.has(groupKey)) {
+            // Merge quantities
+            const existing = itemMap.get(groupKey);
+            existing.quantity += item.quantity;
+        } else {
+            // Add new entry (clone to avoid mutation)
+            itemMap.set(groupKey, { ...item });
+        }
+    });
+    
+    return Array.from(itemMap.values());
+};

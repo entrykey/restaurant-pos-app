@@ -1359,15 +1359,6 @@ const AppContent = () => {
             }
         });
 
-        const orderItem = {
-            ...normalizedItem,
-            quantity: finalQuantity,
-            selectedVariant: variant,
-            selectedExtras: extras,
-            suggestion: "",
-            enteredUnit: enteredUnit,
-        };
-
         const extrasKey = extras
             .map((e) => `${e.name}-${e.quantity}`)
             .sort()
@@ -1376,26 +1367,49 @@ const AppContent = () => {
         const groupKey = `${normalizedItem.id}|${variantKey}|${extrasKey}`;
 
         const updateOrderItems = (currentItems) => {
-            const existingIndex = currentItems.findIndex((i) => {
-                const iExtraKey = (i.selectedExtras || [])
+            // First, find if there's an existing item with the same groupKey
+            let existingIndex = -1;
+            for (let i = 0; i < currentItems.length; i++) {
+                const item = currentItems[i];
+                const itemId = String(item._id || item.id);
+                const normalizedId = String(normalizedItem.id);
+                
+                // Skip if different item IDs
+                if (itemId !== normalizedId) continue;
+                
+                const iExtraKey = (item.selectedExtras || [])
                     .map((e) => `${e.name}-${e.quantity}`)
                     .sort()
                     .join("|");
-                const iVariantKey = i.selectedVariant ? i.selectedVariant.name : "std";
-                const iGroupKey = `${(i._id || i.id)}|${iVariantKey}|${iExtraKey}`;
-                return iGroupKey === groupKey;
-            });
+                const iVariantKey = item.selectedVariant ? item.selectedVariant.name : "std";
+                
+                // Check if variant and extras match
+                if (iVariantKey === variantKey && iExtraKey === extrasKey) {
+                    existingIndex = i;
+                    break;
+                }
+            }
 
             if (existingIndex >= 0) {
+                // Update existing item quantity
                 const newItems = [...currentItems];
                 const existingItem = newItems[existingIndex];
-                const newQty = existingItem.quantity + quantity;
+                const newQty = existingItem.quantity + finalQuantity;
                 newItems[existingIndex] = {
                     ...existingItem,
                     quantity: parseFloat(newQty.toFixed(3)),
                 };
                 return newItems;
             } else {
+                // Add new item
+                const orderItem = {
+                    ...normalizedItem,
+                    quantity: finalQuantity,
+                    selectedVariant: variant,
+                    selectedExtras: extras,
+                    suggestion: "",
+                    enteredUnit: enteredUnit,
+                };
                 return [...currentItems, orderItem];
             }
         };

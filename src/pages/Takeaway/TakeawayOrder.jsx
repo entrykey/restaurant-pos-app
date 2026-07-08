@@ -495,6 +495,35 @@ const TakeawayOrder = ({
             : tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))?.order || { items: [] }
     ), [isTakeaway, takeawayOrder, tables, activeTableId]);
 
+    // Deduplicate cart items for display
+    const deduplicatedOrderItems = useMemo(() => {
+        const items = currentOrder?.items || [];
+        if (items.length === 0) return items;
+        
+        const itemMap = new Map();
+        
+        items.forEach((item, originalIndex) => {
+            const itemId = String(item._id || item.id);
+            const extrasKey = (item.selectedExtras || [])
+                .map(e => `${e.name}-${e.quantity}`)
+                .sort()
+                .join("|");
+            const variantKey = item.selectedVariant ? item.selectedVariant.name : "std";
+            const groupKey = `${itemId}|${variantKey}|${extrasKey}`;
+            
+            if (itemMap.has(groupKey)) {
+                // Merge quantities - keep track of first index for updates
+                const existing = itemMap.get(groupKey);
+                existing.quantity += item.quantity;
+            } else {
+                // Add new entry (clone to avoid mutation) and track original index
+                itemMap.set(groupKey, { ...item, _originalIndex: originalIndex });
+            }
+        });
+        
+        return Array.from(itemMap.values());
+    }, [currentOrder?.items]);
+
     const allCartItems = useMemo(() => collectOpenCartItems({
         currentOrderItems: currentOrder?.items || [],
         isTakeaway,
@@ -1141,13 +1170,13 @@ const TakeawayOrder = ({
                             </div>
                         ) : (
                             <div className={`divide-y ${theme.borderLight} border rounded-xl`}>
-                                {currentOrder.items.map((item, idx) => (
+                                {deduplicatedOrderItems.map((item, idx) => (
                                     <div key={item.id + idx} className={`p-3 hover:${themeName === 'dark' ? 'bg-gray-800' : 'bg-gray-50'} transition-colors ${theme.surfaceBg}`}>
                                         <div className="flex justify-between items-start gap-2">
                                             <div className="flex gap-3 flex-1 min-w-0">
                                                 <div className={`flex flex-col items-center ${theme.pageBg} rounded-xl sm:rounded-xl md:rounded-2xl p-1 sm:p-1.5 h-fit shrink-0 shadow-sm`}>
                                                     <button
-                                                        onClick={() => handleUpdateItemQuantity(idx, 1)}
+                                                        onClick={() => handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, 1)}
                                                         className={`w-full p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 rounded-lg sm:rounded-lg md:rounded-xl transition-all duration-200 shadow-md hover:shadow-lg hover:scale-110 active:scale-95 touch-manipulation`}
                                                     >
                                                         <Plus className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 mx-auto" strokeWidth={3} />
@@ -1158,7 +1187,7 @@ const TakeawayOrder = ({
                                                             : item.quantity}
                                                     </span>
                                                     <button
-                                                        onClick={() => handleUpdateItemQuantity(idx, -1)}
+                                                        onClick={() => handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, -1)}
                                                         className={`w-full p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 rounded-lg sm:rounded-lg md:rounded-xl transition-all duration-200 shadow-md hover:shadow-lg hover:scale-110 active:scale-95 touch-manipulation`}
                                                     >
                                                         <Minus className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 mx-auto" strokeWidth={3} />

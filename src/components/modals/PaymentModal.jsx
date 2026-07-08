@@ -84,6 +84,34 @@ const PaymentModal = ({
         }
     }, [isOpen, custName, custPhone]);
 
+    // Deduplicate items: group identical items (same id, variant, extras) into one line with combined quantity
+    const deduplicatedItems = React.useMemo(() => {
+        if (!orderItems || orderItems.length === 0) return [];
+        
+        const itemMap = new Map();
+        
+        orderItems.forEach(item => {
+            const itemId = String(item._id || item.id);
+            const extrasKey = (item.selectedExtras || [])
+                .map(e => `${e.name}-${e.quantity}`)
+                .sort()
+                .join("|");
+            const variantKey = item.selectedVariant ? item.selectedVariant.name : "std";
+            const groupKey = `${itemId}|${variantKey}|${extrasKey}`;
+            
+            if (itemMap.has(groupKey)) {
+                // Merge quantities
+                const existing = itemMap.get(groupKey);
+                existing.quantity += item.quantity;
+            } else {
+                // Add new entry (clone to avoid mutation)
+                itemMap.set(groupKey, { ...item });
+            }
+        });
+        
+        return Array.from(itemMap.values());
+    }, [orderItems]);
+
     // Handle early return after hooks
     if (!isOpen) return null;
 
@@ -191,7 +219,7 @@ const PaymentModal = ({
                                         Items to Bill
                                     </p>
                                     <div className="space-y-2 sm:space-y-2.5">
-                                        {orderItems.map((item, i) => (
+                                        {deduplicatedItems.map((item, i) => (
                                             <div
                                                 key={i}
                                                 className={`flex justify-between items-start text-xs sm:text-sm border-b border-dashed ${theme.borderLight} pb-2 sm:pb-2.5 last:border-0 hover:bg-gray-50/50 dark:hover:bg-white/2 p-1.5 sm:p-2 rounded-lg transition-colors`}

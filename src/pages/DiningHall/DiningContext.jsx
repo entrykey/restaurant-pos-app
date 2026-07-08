@@ -3,6 +3,7 @@ import { useApp } from "../../context/AppContext";
 import { useAuth } from "../../context/AuthContext";
 import api, { tableService, tableMergeService, diningCategoryService } from "../../services/api";
 import { reservationsService } from "../Reservations/ReservationsService";
+import { deduplicateCartItems } from "../../utils/cartStockUtils";
 
 const DiningContext = createContext();
 
@@ -133,21 +134,26 @@ export const DiningProvider = ({ children }) => {
                         kotStatus = "preparing"; // Default to preparing if anything is pending
                     }
 
+                    const rawItems = (activeOrderForTable.items || []).map(item => ({
+                        ...item,
+                        id: item.itemId?._id || item.itemId,
+                        name: item.itemId?.name || item.itemName,
+                        price: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
+                        sellingPrice: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
+                        taxPercent: item.taxPercent ?? 0,
+                        // If the order already has at least one KOT, treat backend quantities as already sent
+                        // so the POS can generate incremental KOTs only for newly added/increased items.
+                        sentQuantity: (tableKots.length > 0 ? (item.quantity ?? 0) : (item.sentQuantity ?? 0)),
+                    }));
+
+                    // Deduplicate items to fix any duplicates from backend
+                    const deduplicatedItems = deduplicateCartItems(rawItems);
+
                     order = {
                         orderId: activeOrderForTable._id,
                         orderNumber: activeOrderForTable.orderNumber,
                         grandTotal: activeOrderForTable.grandTotal,
-                        items: (activeOrderForTable.items || []).map(item => ({
-                            ...item,
-                            id: item.itemId?._id || item.itemId,
-                            name: item.itemId?.name || item.itemName,
-                            price: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
-                            sellingPrice: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
-                            taxPercent: item.taxPercent ?? 0,
-                            // If the order already has at least one KOT, treat backend quantities as already sent
-                            // so the POS can generate incremental KOTs only for newly added/increased items.
-                            sentQuantity: (tableKots.length > 0 ? (item.quantity ?? 0) : (item.sentQuantity ?? 0)),
-                        })),
+                        items: deduplicatedItems,
                         isSentToKOT: tableKots.length > 0,
                         kotStatus: kotStatus,
                         // Use startedAt from a PREPARING/READY kot (when KDS worker started it),
@@ -200,6 +206,7 @@ export const DiningProvider = ({ children }) => {
                     const nextOrder = nextTable.order;
 
                     const prevItemsCount = prevOrder?.items?.length || 0;
+                    const nextItemsCount = nextOrder?.items?.length || 0;
                     const hasLocalPending = Boolean(prevOrder?._localDraftPending);
 
                     const prevOrderId = prevOrder?.orderId;
@@ -212,11 +219,12 @@ export const DiningProvider = ({ children }) => {
                         String(prevOrderId) === String(nextOrderId);
 
                     // Only keep unsynced local edits on the active table; everyone else uses backend
+                    // IMPORTANT: Also preserve if the local items count is different from backend to prevent flickering
                     const shouldPreserveLocalOrder =
                         hasLocalPending &&
                         String(activeTableId) === key &&
                         prevItemsCount > 0 &&
-                        (isSameBackendOrder || !nextHasBackendOrder);
+                        (isSameBackendOrder || !nextHasBackendOrder || prevItemsCount !== nextItemsCount);
 
                     if (!shouldPreserveLocalOrder) {
                         return {
