@@ -42,7 +42,8 @@ api.interceptors.response.use(
 
         if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
             // Prevent infinite loops if refresh endpoint itself fails
-            if (originalRequest.url.includes('/auth/refresh')) {
+            // Also skip refresh for login endpoint to show proper login error messages
+            if (originalRequest.url.includes('/auth/refresh') || originalRequest.url.includes('/auth/login')) {
                 return Promise.reject(error);
             }
 

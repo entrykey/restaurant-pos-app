@@ -6,6 +6,8 @@ import toast from "react-hot-toast";
 import Layout from "./Layout";
 import AppRoutes from "../routes/AppRoutes";
 import Login from "../pages/Login";
+import RegisterShop from "../pages/RegisterShop";
+import ForgotPassword from "../pages/ForgotPassword";
 import LandingPage from "../pages/LandingPage";
 import { useApp } from "../context/AppContext";
 import { useOrder } from "../context/OrderContext";
@@ -1997,6 +1999,18 @@ const AppContent = () => {
                         onSetEnabledModules={setEnabledModules}
                     />
                 } />
+                <Route path="/register" element={
+                    <div className={`fixed inset-0 flex items-center justify-center p-4 overflow-y-auto ${theme?.background || 'bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-800'}`}>
+                        <RegisterShop
+                            onBack={() => navigate('/login')}
+                            onRegisterSuccess={() => {
+                                navigate('/login');
+                                alert('Shop Registered Successfully! Please login.');
+                            }}
+                        />
+                    </div>
+                } />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         );
