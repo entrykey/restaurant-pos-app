@@ -1,18 +1,23 @@
-export const isStockTracked = (item) => (
-    ['STOCK', 'TRADE', 'MANUFACTURED'].includes(item?.itemType)
-    || item?.stockSettings?.stockApplicable === true
-);
+export const isStockTracked = (item) => {
+    if (!item) return false;
+    if (item.stockSettings?.stockApplicable === false || item.stockApplicable === false) return false;
+    if (item.stockSettings?.stockApplicable === true || item.stockApplicable === true) return true;
+    if (['STOCK', 'TRADE', 'MANUFACTURED'].includes(item.itemType)) return true;
+    if (Array.isArray(item.ingredients) && item.ingredients.length > 0) return true;
+    return false;
+};
 
-export const allowsNegativeStock = (item) => item?.stockSettings?.allowNegativeStock === true;
+export const allowsNegativeStock = (item) => (
+    item?.stockSettings?.allowNegativeStock === true || item?.allowNegativeStock === true
+);
 
 export const getCartLineStockQty = (cartItem) => {
     let qty = Number(cartItem?.quantity) || 0;
     if (cartItem?.selectedUnit === 'SECONDARY') {
         qty *= Number(cartItem.conversionFactor) || 1;
     }
-    if (cartItem?.selectedVariant?.quantityFactor) {
-        qty *= Number(cartItem.selectedVariant.quantityFactor) || 1;
-    }
+    const factor = Number(cartItem?.selectedVariant?.quantityFactor ?? cartItem?.quantityFactor) || 1;
+    qty *= factor;
     return qty;
 };
 
@@ -20,10 +25,23 @@ export const getCartStockReservations = (cartItems = []) => {
     const map = new Map();
     (cartItems || []).forEach((line) => {
         if (!isStockTracked(line)) return;
-        const id = String(line.id || line._id);
-        if (!id) return;
         const add = getCartLineStockQty(line);
-        map.set(id, (map.get(id) || 0) + add);
+
+        // If line item has recipe ingredients, reserve on each raw ingredient
+        if (Array.isArray(line?.ingredients) && line.ingredients.length > 0) {
+            line.ingredients.forEach((ing) => {
+                const ingId = String(ing.rawItemId || ing.itemId || ing._id || '');
+                if (!ingId) return;
+                const qtyNeeded = Number(ing.quantity) || 1;
+                map.set(ingId, (map.get(ingId) || 0) + (add * qtyNeeded));
+            });
+        }
+
+        // Reserve direct item stock if item does not rely solely on recipe ingredients
+        const id = String(line.id || line._id);
+        if (id && (line.itemType !== 'MANUFACTURED' || !Array.isArray(line?.ingredients) || line.ingredients.length === 0)) {
+            map.set(id, (map.get(id) || 0) + add);
+        }
     });
     return map;
 };
@@ -33,45 +51,69 @@ export const buildBaseStockMap = (menuItems = []) => {
     menuItems.forEach((item) => {
         const id = String(item.id || item._id);
         if (!id) return;
-        map[id] = Number(item.quantityOnHand) || 0;
+        map[id] = Math.max(0, Number(item.quantityOnHand) || 0);
     });
     return map;
 };
 
 export const applyCartStockToMenu = (menuItems = [], cartItems = [], baseStockMap = {}) => {
-    const reservations = getCartStockReservations(cartItems);
     return menuItems.map((item) => {
         if (!isStockTracked(item)) return item;
         const id = String(item.id || item._id);
-        const base = baseStockMap[id] ?? (Number(item.quantityOnHand) || 0);
-        const reserved = reservations.get(id) || 0;
-        const available = parseFloat(Math.max(0, base - reserved).toFixed(3));
+        const base = baseStockMap[id] ?? Math.max(0, Number(item.quantityOnHand) || 0);
+        const available = getAvailableStock(item, cartItems, baseStockMap);
         return {
             ...item,
-            quantityOnHand: available,
+            quantityOnHand: available === Infinity ? base : available,
             _baseQuantityOnHand: base,
         };
     });
 };
 
 export const getAvailableStock = (item, cartItems = [], baseStockMap = {}) => {
-    if (!isStockTracked(item)) return Infinity;
     if (allowsNegativeStock(item)) return Infinity;
+    if (!isStockTracked(item)) return Infinity;
+
+    const reservations = getCartStockReservations(cartItems);
+    let available = Infinity;
     const id = String(item.id || item._id);
-    const base = baseStockMap[id] ?? (Number(item._baseQuantityOnHand ?? item.quantityOnHand) || 0);
-    const reserved = getCartStockReservations(cartItems).get(id) || 0;
-    return parseFloat(Math.max(0, base - reserved).toFixed(3));
+
+    // Check recipe ingredient stock availability for manufactured items
+    if (Array.isArray(item?.ingredients) && item.ingredients.length > 0) {
+        for (const ing of item.ingredients) {
+            const ingId = String(ing.rawItemId || ing.itemId || ing._id || '');
+            if (!ingId) continue;
+            const ingBase = baseStockMap[ingId] ?? Math.max(0, Number(ing.quantityOnHand) || 0);
+            const ingReserved = reservations.get(ingId) || 0;
+            const ingAvail = Math.max(0, ingBase - ingReserved);
+            const qtyNeeded = Number(ing.quantity) || 1;
+            const maxPortions = Math.floor(ingAvail / qtyNeeded);
+            if (maxPortions < available) {
+                available = maxPortions;
+            }
+        }
+    } else {
+        // Direct item stock check
+        const base = baseStockMap[id] ?? Math.max(0, Number(item._baseQuantityOnHand ?? item.quantityOnHand) || 0);
+        const reserved = reservations.get(id) || 0;
+        available = Math.max(0, base - reserved);
+    }
+
+    return available === Infinity ? Infinity : parseFloat(Math.max(0, available).toFixed(3));
 };
 
 export const canAddToCart = (item, cartItems, baseStockMap, quantity = 1, variant = null, selectedUnit = null) => {
-    if (!isStockTracked(item) || allowsNegativeStock(item)) return true;
-    const id = String(item.id || item._id);
-    const base = baseStockMap[id] ?? (Number(item._baseQuantityOnHand ?? item.quantityOnHand) || 0);
-    const reserved = getCartStockReservations(cartItems).get(id) || 0;
+    if (allowsNegativeStock(item)) return true;
+    if (!isStockTracked(item)) return true;
+
+    const available = getAvailableStock(item, cartItems, baseStockMap);
+    if (available === Infinity) return true;
+
     let need = Number(quantity) || 0;
     if (selectedUnit === 'SECONDARY') need *= Number(item.conversionFactor) || 1;
     if (variant?.quantityFactor) need *= Number(variant.quantityFactor) || 1;
-    return base - reserved >= need - 0.001;
+
+    return available >= need - 0.001;
 };
 
 export const collectOpenCartItems = ({

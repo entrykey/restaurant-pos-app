@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Minus, Calculator, FileText, Calendar, Coins } from 'lucide-react';
+import { X, Plus, Minus, Equal, Calculator, FileText, Calendar, Coins } from 'lucide-react';
 import ThemeLoader from '../ui/ThemeLoader';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -12,7 +12,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
     const { theme } = useTheme();
     const { organization, formatCurrency } = useApp();
     const currency = organization?.defaultCurrency || 'USD';
-    const [adjustmentType, setAdjustmentType] = useState('ADD'); // 'ADD' or 'SUBTRACT'
+    const [adjustmentType, setAdjustmentType] = useState('ADD'); // 'ADD', 'SUBTRACT', or 'SET'
     const [quantity, setQuantity] = useState('');
     const [price, setPrice] = useState('');
     const [description, setDescription] = useState('');
@@ -57,7 +57,8 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!quantity || isNaN(quantity) || Number(quantity) <= 0) {
+        const numQty = Number(quantity);
+        if (quantity === '' || isNaN(quantity) || (adjustmentType !== 'SET' && numQty <= 0) || (adjustmentType === 'SET' && numQty < 0)) {
             alert("Please enter a valid quantity");
             return;
         }
@@ -67,17 +68,17 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
             const payload = {
                 itemId: item._id || item.id,
                 branchId,
-                quantity: Number(quantity),
+                quantity: numQty,
                 type: adjustmentType,
                 atPrice: price ? Number(price) : undefined,
-                description,
+                description: description || `Stock adjustment (${adjustmentType})`,
                 adjustmentDate: new Date(adjustmentDate)
             };
 
             await inventoryService.adjustInventory(payload);
 
             // Record as expense if adding/reducing stock with a price
-            if (price && Number(quantity) > 0) {
+            if (price && Number(quantity) > 0 && adjustmentType !== 'SET') {
                 try {
                     const shopId = user?.shop_id || user?.shopId;
                     if (shopId && branchId) {
@@ -131,28 +132,39 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                         <label className={`block text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>
                             <span className="text-red-500 mr-1">*</span> Choose adjustment
                         </label>
-                        <div className={`flex p-1.5 rounded-2xl w-fit ${theme.inputBg} border ${theme.borderLight}`}>
+                        <div className={`flex flex-wrap p-1.5 rounded-2xl w-fit ${theme.inputBg} border ${theme.borderLight} gap-1`}>
                             <button
                                 type="button"
                                 onClick={() => setAdjustmentType('ADD')}
-                                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black transition-all ${
+                                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-sm transition-all ${
                                     adjustmentType === 'ADD' 
                                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' 
                                     : `${theme.textMuted} hover:text-blue-500`
                                 }`}
                             >
-                                <Plus size={18} /> Add Stock
+                                <Plus size={16} /> Add Stock
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setAdjustmentType('SUBTRACT')}
-                                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black transition-all ${
+                                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-sm transition-all ${
                                     adjustmentType === 'SUBTRACT' 
                                     ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' 
                                     : `${theme.textMuted} hover:text-red-500`
                                 }`}
                             >
-                                <Minus size={18} /> Reduce Stock
+                                <Minus size={16} /> Reduce Stock
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAdjustmentType('SET')}
+                                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-sm transition-all ${
+                                    adjustmentType === 'SET' 
+                                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30' 
+                                    : `${theme.textMuted} hover:text-emerald-500`
+                                }`}
+                            >
+                                <Equal size={16} /> Set Count
                             </button>
                         </div>
                     </div>

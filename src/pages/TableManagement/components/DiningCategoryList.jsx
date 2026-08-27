@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTheme } from '../../../context/ThemeContext';
-import { diningCategoryService, tableService } from '../../../services/api';
+import { diningCategoryService, tableService, reservationService } from '../../../services/api';
 import DiningCategoryDialog from './DiningCategoryDialog';
 import TableDialog from './TableDialog';
 import { useAuth } from '../../../context/AuthContext';
@@ -14,7 +14,10 @@ import ExportSelectToolbar from '../../../components/ExportSelectToolbar';
 const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const { theme } = useTheme();
     const { user } = useAuth();
-    const { activeBranchId } = useApp();
+    const { activeBranchId, currentShopId } = useApp();
+    const branchId = activeBranchId;
+    const shopId = currentShopId || user?.shop_id;
+    const reservationsService = reservationService;
     const { can } = usePermission();
     
     const [categories, setCategories] = useState([]);
@@ -50,10 +53,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     const hasCategoryEdit = can(MODULES.TABLE_MANAGEMENT, 'DININGCATEGORY.EDITING') || user?.role?.name === 'SuperAdmin';
     const hasTableEdit = can(MODULES.TABLE_MANAGEMENT, 'TABLE.EDITING') || user?.role?.name === 'SuperAdmin';
 
-    const branchId = activeBranchId || user?.branchId || user?.branch || (user?.branchIds?.length ? user.branchIds[0] : null);
-    const shopId = user?.shop_id || user?.shopId || user?.shop;
-
-    const fetchData = useCallback(async (page = 1) => {
+    const fetchData = useCallback(async (page = currentPage) => {
         if (!branchId) {
             setCategories([]);
             setTables([]);
@@ -65,16 +65,68 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
         try {
             const params = { all: true, branchId, page, limit: pageSize };
 
-            const [catRes, tableRes] = await Promise.all([
+            const [catRes, tableRes, ordersRes, reservationsRes] = await Promise.allSettled([
                 diningCategoryService.getCategories(params),
-                tableService.getTables({ all: true, branchId })
+                tableService.getTables({ all: true, branchId }),
+                tableService.getActiveTableOrders({ branchId }),
+                reservationsService.getReservations({
+                    branchId,
+                    date: new Date().toISOString().split("T")[0]
+                })
             ]);
 
-            setCategories(catRes.data || []);
-            setTotalPages(catRes.pagination?.totalPages || 1);
-            setTotalCount(catRes.pagination?.total || 0);
-            setCurrentPage(catRes.pagination?.page || page);
-            setTables(tableRes || []);
+            const catData = catRes.status === 'fulfilled' ? (catRes.value?.data || catRes.value || []) : [];
+            const rawTables = tableRes.status === 'fulfilled' ? (tableRes.value || []) : [];
+            const activeOrders = ordersRes.status === 'fulfilled' ? (ordersRes.value?.data || ordersRes.value || []) : [];
+            const rawReservations = reservationsRes.status === 'fulfilled' ? (reservationsRes.value?.data || reservationsRes.value || []) : [];
+
+            const ordersMap = new Map();
+            (Array.isArray(activeOrders) ? activeOrders : []).forEach(order => {
+                const tId = String(order.tableId?._id || order.tableId);
+                if (tId) ordersMap.set(tId, order);
+            });
+
+            const resMap = new Map();
+            const nowMs = Date.now();
+            (Array.isArray(rawReservations) ? rawReservations : []).forEach(res => {
+                if (res.status === 'CANCELLED' || res.status === 'COMPLETED') return;
+
+                // Automatically vacate table once reserved time + duration has passed
+                const resTime = new Date(res.reservationTime).getTime();
+                const durationMs = (res.durationMinutes || 120) * 60 * 1000;
+                if (!isNaN(resTime) && (resTime + durationMs) <= nowMs) {
+                    return;
+                }
+
+                const tId = String(res.tableId?._id || res.tableId);
+                if (tId) resMap.set(tId, res);
+            });
+
+            const enrichedTables = rawTables.map(t => {
+                const tableId = String(t._id);
+                const hasOrder = ordersMap.has(tableId);
+                const reservation = resMap.get(tableId);
+
+                let status = t.status || 'AVAILABLE';
+                if (hasOrder || (reservation && reservation.status === 'SEATED')) {
+                    status = 'OCCUPIED';
+                } else if (reservation && reservation.status === 'CONFIRMED') {
+                    status = 'RESERVED';
+                }
+
+                return {
+                    ...t,
+                    status,
+                    hasActiveOrder: hasOrder,
+                    reservation
+                };
+            });
+
+            setCategories(catData);
+            setTotalPages(catRes.status === 'fulfilled' ? (catRes.value?.pagination?.totalPages || 1) : 1);
+            setTotalCount(catRes.status === 'fulfilled' ? (catRes.value?.pagination?.total || 0) : 0);
+            setCurrentPage(catRes.status === 'fulfilled' ? (catRes.value?.pagination?.page || page) : page);
+            setTables(enrichedTables);
         } catch (error) {
             console.error('Error fetching data:', error);
             if (!error.message?.includes("not enabled")) {
@@ -83,7 +135,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
         } finally {
             setIsLoading(false);
         }
-    }, [branchId, pageSize]);
+    }, [branchId, pageSize, currentPage]);
 
     const handlePageChange = (page) => {
         setCurrentPage(page);
@@ -99,9 +151,12 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
     // Summary stats from loaded tables
     const summary = useMemo(() => {
         const totalTables = tables.length;
-        const activeTables = tables.filter(t => t.isActive !== false).length;
+        const configuredActive = tables.filter(t => t.isActive !== false).length;
+        const occupiedTables = tables.filter(t => t.isActive !== false && t.status === 'OCCUPIED').length;
+        const reservedTables = tables.filter(t => t.isActive !== false && t.status === 'RESERVED').length;
+        const availableTables = tables.filter(t => t.isActive !== false && (t.status === 'AVAILABLE' || !t.status)).length;
         const totalCapacity = tables.reduce((sum, t) => sum + (t.capacity || 0), 0);
-        return { totalTables, activeTables, totalCapacity };
+        return { totalTables, configuredActive, availableTables, occupiedTables, reservedTables, totalCapacity };
     }, [tables]);
 
     // ── Row selection ─────────────────────────────────────────────────────────
@@ -247,15 +302,20 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                             <p className={`text-[11px] font-bold ${theme.textMuted}`}>across {totalCount} area{totalCount !== 1 ? 's' : ''}</p>
                         </div>
                     </div>
-                    {/* Active Tables */}
+                    {/* Active / Available Tables */}
                     <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
                         <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
                             <CheckCircle2 size={20} className="text-emerald-500" />
                         </div>
                         <div>
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Active Tables</p>
-                            <p className={`text-xl font-black text-emerald-500`}>{summary.activeTables}</p>
-                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>{summary.totalTables - summary.activeTables} inactive</p>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Table Availability</p>
+                            <p className={`text-xl font-black text-emerald-500`}>{summary.availableTables} <span className="text-xs font-bold text-gray-400">Available</span></p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>
+                                {summary.occupiedTables > 0 ? `${summary.occupiedTables} occupied` : ''}
+                                {summary.occupiedTables > 0 && summary.reservedTables > 0 ? ', ' : ''}
+                                {summary.reservedTables > 0 ? `${summary.reservedTables} reserved` : ''}
+                                {summary.occupiedTables === 0 && summary.reservedTables === 0 ? 'All active tables available' : ''}
+                            </p>
                         </div>
                     </div>
                     {/* Total Capacity */}
@@ -330,19 +390,19 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                                         {categoryTables.length > 0 ? (
                                             <div className="grid grid-cols-2 gap-3">
                                                 {categoryTables.map((table) => (
-                                                    <div key={table._id} className={`p-4 rounded-2xl border transition-all ${theme.surfaceBg} ${table.isActive ? `border-indigo-100 dark:border-indigo-900/40 shadow-sm` : 'border-dashed opacity-60 grayscale'}`}>
+                                                    <div key={table._id} className={`p-4 rounded-2xl border transition-all ${theme.surfaceBg} ${!table.isActive ? 'border-dashed opacity-60 grayscale' : table.status === 'OCCUPIED' ? 'border-red-300 dark:border-red-900/50 bg-red-50/20 dark:bg-red-950/10 shadow-sm' : table.status === 'RESERVED' ? 'border-amber-300 dark:border-amber-900/50 bg-amber-50/20 dark:bg-amber-950/10 shadow-sm' : 'border-indigo-100 dark:border-indigo-900/40 shadow-sm'}`}>
                                                         <div className="flex justify-between items-start mb-3">
                                                             <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${table.isActive ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30' : 'bg-gray-100 text-gray-400'}`}>
                                                                 <LayoutDashboard size={16} />
                                                             </div>
-                                                            <button onClick={() => handleToggleTableStatus(table)} className={`p-1.5 rounded-lg transition-colors ${table.isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
+                                                            <button onClick={() => handleToggleTableStatus(table)} className={`p-1.5 rounded-lg transition-colors ${table.isActive ? 'text-indigo-600' : 'text-gray-400'}`} title={table.isActive ? "Active in system (Click to deactivate)" : "Inactive in system (Click to activate)"}>
                                                                 {table.isActive ? <Monitor size={14} /> : <MonitorOff size={14} />}
                                                             </button>
                                                         </div>
                                                         <p className={`font-black text-sm ${theme.textPrimary}`}>{table.tableNumber}</p>
                                                         <p className={`text-[10px] font-bold ${theme.textMuted} flex items-center gap-1 mt-0.5`}><Users size={9} /> {table.capacity} seats</p>
                                                         <div className={`flex items-center justify-between mt-3 pt-2 border-t ${theme.borderLight}`}>
-                                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg ${table.status === 'AVAILABLE' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20' : table.status === 'OCCUPIED' ? 'bg-red-50 text-red-600 dark:bg-red-900/20' : 'bg-orange-50 text-orange-600 dark:bg-orange-900/20'}`}>
+                                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg border ${table.status === 'OCCUPIED' ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800' : table.status === 'RESERVED' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800' : 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'}`}>
                                                                 {table.status || 'AVAILABLE'}
                                                             </span>
                                                             {hasTableEdit && (
@@ -466,7 +526,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                                         {/* Expandable Table Row */}
                                         {isExpanded && (
                                             <tr>
-                                                <td colSpan={6} className="p-0 border-none bg-transparent">
+                                                <td colSpan={7} className="p-0 border-none bg-transparent">
                                                     <div className={`${theme.mode === 'dark' ? 'bg-slate-900/50' : 'bg-gray-50/50'} border-t ${theme.borderLight} p-8 animate-in slide-in-from-top-2 duration-300 overflow-hidden`}>
                                                         <div className="flex justify-between items-center mb-6">
                                                             <h4 className={`text-sm font-black uppercase tracking-widest ${theme.textPrimary} flex items-center gap-2`}>
@@ -485,7 +545,7 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                                                                 {categoryTables.map((table) => (
                                                                     <div 
                                                                         key={table._id}
-                                                                        className={`p-6 rounded-[2rem] border transition-all ${theme.surfaceBg} ${table.isActive ? 'border-indigo-100 hover:border-indigo-300 shadow-sm' : 'border-dashed opacity-60 grayscale'}`}
+                                                                        className={`p-6 rounded-[2rem] border transition-all ${theme.surfaceBg} ${!table.isActive ? 'border-dashed opacity-60 grayscale' : table.status === 'OCCUPIED' ? 'border-red-300 dark:border-red-900/50 bg-red-50/20 dark:bg-red-950/10 shadow-sm' : table.status === 'RESERVED' ? 'border-amber-300 dark:border-amber-900/50 bg-amber-50/20 dark:bg-amber-950/10 shadow-sm' : 'border-indigo-100 hover:border-indigo-300 shadow-sm'}`}
                                                                     >
                                                                         <div className="flex justify-between items-start mb-4">
                                                                             <div className="flex items-center gap-3">
@@ -503,16 +563,17 @@ const DiningCategoryList = ({ triggerCreate, onResetCreate }) => {
                                                                             <button
                                                                                 onClick={() => handleToggleTableStatus(table)}
                                                                                 className={`p-2 rounded-lg transition-colors ${table.isActive ? 'text-indigo-600 hover:bg-indigo-50' : 'text-gray-400 hover:bg-gray-100'}`}
-                                                                                title={table.isActive ? "Deactivate" : "Activate"}
+                                                                                title={table.isActive ? "Active in system (Click to deactivate)" : "Inactive in system (Click to activate)"}
                                                                             >
                                                                                 {table.isActive ? <Monitor size={18} /> : <MonitorOff size={18} />}
                                                                             </button>
                                                                         </div>
 
                                                                         <div className="flex items-center justify-between pt-4 border-t border-gray-50 dark:border-white/5">
-                                                                            <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg ${
-                                                                                table.status === 'AVAILABLE' ? 'bg-emerald-50 text-emerald-600' : 
-                                                                                table.status === 'OCCUPIED' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
+                                                                            <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border ${
+                                                                                table.status === 'OCCUPIED' ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800' : 
+                                                                                table.status === 'RESERVED' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800' : 
+                                                                                'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
                                                                             }`}>
                                                                                 {table.status || 'AVAILABLE'}
                                                                             </span>

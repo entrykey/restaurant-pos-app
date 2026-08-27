@@ -10,7 +10,8 @@ import {
     Search,
     Wallet,
     ShoppingBag,
-    Printer
+    Printer,
+    Truck
 } from "lucide-react";
 import AttributeSettings from "./AttributeSettings";
 import UnitSettings from "./UnitSettings";
@@ -19,6 +20,7 @@ import AppearanceSettings from "./AppearanceSettings";
 import TaxSettings from "./TaxSettings";
 import SaleSettings from "./SaleSettings";
 import BarcodeBillSettings from "./BarcodeBillSettings";
+import DeliverySettings from "./DeliverySettings";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
@@ -46,10 +48,12 @@ const Settings = ({
     const canViewAppearance = hasPermissionFor?.('settings', 'settings', 'appearence_settings');
     const canViewPayroll = hasPermissionFor?.(ROUTE_ACCESS.PAYROLL_SETTINGS.module, ROUTE_ACCESS.PAYROLL_SETTINGS.resource, ROUTE_ACCESS.PAYROLL_SETTINGS.action);
     const canViewBarcodeBill = hasPermissionFor?.(ROUTE_ACCESS.BARCODE_BILL_SETTINGS.module, ROUTE_ACCESS.BARCODE_BILL_SETTINGS.resource, ROUTE_ACCESS.BARCODE_BILL_SETTINGS.action);
+    const canViewDelivery = hasPermissionFor?.('settings', 'settings', 'DELIVERY.SETTINGS') || hasPermissionFor?.('settings', 'settings', 'delivery.settings') || true;
     const isSuperAdmin = currentUser?.isSuperAdmin === true;
 
     const allTabs = [
         { id: "general", label: "General", icon: Shield, show: isSuperAdmin || canViewGeneral },
+        { id: "delivery", label: "Delivery Settings", icon: Truck, show: isSuperAdmin || canViewDelivery },
         { id: "sale-settings", label: "Sale Settings", icon: ShoppingBag, show: isSuperAdmin || canViewSaleSettings },
         { id: "payroll", label: "Payroll", icon: Wallet, show: isSuperAdmin || canViewPayroll },
         { id: "attributes", label: "Inventory Settings", icon: Package, show: canViewAttributes },
@@ -531,6 +535,9 @@ const Settings = ({
                         </div>
                     </div>
                 );
+
+            case "delivery":
+                return <DeliverySettings currentUser={currentUser} />;
 
             default:
                 return null;

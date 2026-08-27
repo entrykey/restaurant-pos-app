@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ChevronRight, Save, X, ArrowLeft, Calendar, Clock, Users, MessageSquare, Phone, User, LayoutGrid, MapPin } from 'lucide-react';
+import { ChevronRight, Save, X, ArrowLeft, Calendar, Clock, Users, MessageSquare, Phone, User, LayoutGrid, MapPin, Timer } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -145,7 +145,19 @@ const ReservationForm = () => {
     }, [formData.phone, isEditing]);
 
     const handleChange = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+        let finalValue = value;
+        if (field === 'phone') {
+            // Strip out non-digit characters and limit length to 10 digits
+            finalValue = value.replace(/\D/g, '').slice(0, 10);
+        } else if (field === 'customerName') {
+            // Strip out special characters and numbers (allow only letters, spaces, hyphens, and apostrophes)
+            finalValue = value.replace(/[^a-zA-Z\s'-]/g, '');
+        } else if (field === 'guests') {
+            // Ensure guests count is positive
+            finalValue = Math.max(1, parseInt(value) || 1);
+        }
+
+        setFormData(prev => ({ ...prev, [field]: finalValue }));
         if (errors[field]) {
             setErrors(prev => {
                 const newErrors = { ...prev };
@@ -157,11 +169,36 @@ const ReservationForm = () => {
 
     const validate = () => {
         const newErrors = {};
-        if (!formData.customerName) newErrors.customerName = "Customer name is required";
-        if (!formData.phone) newErrors.phone = "Phone number is required";
-        if (!formData.date) newErrors.date = "Date is required";
+
+        // Customer Name Validation
+        const trimmedName = formData.customerName?.trim() || "";
+        if (!trimmedName) {
+            newErrors.customerName = "Customer name is required";
+        } else if (!/^[a-zA-Z\s'-]+$/.test(trimmedName)) {
+            newErrors.customerName = "Customer name can only contain letters and spaces";
+        } else if (trimmedName.length < 2) {
+            newErrors.customerName = "Customer name must be at least 2 characters";
+        }
+
+        // Phone Number Validation
+        if (!formData.phone) {
+            newErrors.phone = "Phone number is required";
+        } else if (!/^\d+$/.test(formData.phone)) {
+            newErrors.phone = "Phone number must contain only digits";
+        } else if (formData.phone.length < 10) {
+            newErrors.phone = "Phone number must be a 10-digit number";
+        } else if (formData.phone.length > 10) {
+            newErrors.phone = "Phone number cannot exceed 10 digits";
+        }
+
+        const todayStr = new Date().toISOString().split("T")[0];
+        if (!formData.date) {
+            newErrors.date = "Date is required";
+        } else if (formData.date < todayStr) {
+            newErrors.date = "Past dates are not allowed for reservations";
+        }
         if (!formData.time) newErrors.time = "Time is required";
-        if (formData.guests < 1) newErrors.guests = "At least 1 guest required";
+        if (!formData.guests || formData.guests < 1) newErrors.guests = "At least 1 guest required";
         if (!formData.tableId) newErrors.tableId = "Table selection is required";
 
         setErrors(newErrors);
@@ -246,13 +283,15 @@ const ReservationForm = () => {
                                     Phone Number <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
-                                    <Phone className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={18} />
+                                    <Phone className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted} z-10 pointer-events-none`} size={18} />
                                     <input
                                         type="tel"
                                         value={formData.phone}
                                         onChange={(e) => handleChange('phone', e.target.value)}
-                                        className={`w-full pl-12 pr-4 py-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors.phone ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                        placeholder="Mobile Number"
+                                        maxLength={10}
+                                        inputMode="numeric"
+                                        className={`w-full h-[58px] pl-12 pr-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors.phone ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                                        placeholder="10-digit Mobile Number"
                                     />
                                 </div>
                                 {errors.phone && <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors.phone}</p>}
@@ -263,13 +302,13 @@ const ReservationForm = () => {
                                     Customer Name <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
-                                    <User className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={18} />
+                                    <User className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted} z-10 pointer-events-none`} size={18} />
                                     <input
                                         type="text"
                                         value={formData.customerName}
                                         onChange={(e) => handleChange('customerName', e.target.value)}
-                                        className={`w-full pl-12 pr-4 py-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors.customerName ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                        placeholder="Full Name"
+                                        className={`w-full h-[58px] pl-12 pr-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors.customerName ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                                        placeholder="Full Name (Letters only)"
                                     />
                                 </div>
                                 {errors.customerName && <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors.customerName}</p>}
@@ -291,7 +330,8 @@ const ReservationForm = () => {
                                 <DatePicker
                                     value={formData.date}
                                     onChange={(val) => handleChange('date', val)}
-                                    className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors.date ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                                    minDate={new Date().toISOString().split("T")[0]}
+                                    className={`w-full h-[58px] px-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors.date ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
                                 />
                                 {errors.date && <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors.date}</p>}
                             </div>
@@ -301,12 +341,12 @@ const ReservationForm = () => {
                                     Time <span className="text-red-500">*</span>
                                 </label>
                                 <div className="relative">
-                                    <Clock className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={18} />
+                                    <Clock className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted} z-10 pointer-events-none`} size={18} />
                                     <input
                                         type="time"
                                         value={formData.time}
                                         onChange={(e) => handleChange('time', e.target.value)}
-                                        className={`w-full pl-12 pr-4 py-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all dark:[color-scheme:dark] ${errors.time ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                                        className={`w-full h-[58px] pl-12 pr-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all dark:[color-scheme:dark] ${errors.time ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
                                     />
                                 </div>
                                 {errors.time && <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors.time}</p>}
@@ -316,28 +356,27 @@ const ReservationForm = () => {
                                 <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
                                     Guests <span className="text-red-500">*</span>
                                 </label>
-                                <div className="flex items-center gap-4">
-                                    <div className={`flex-1 flex items-center ${theme.inputBg} border-2 ${theme.inputBorder} rounded-2xl p-1 h-[60px]`}>
+                                <div className={`w-full h-[58px] px-4 border-2 rounded-2xl flex items-center justify-between ${theme.inputBg} ${errors.guests ? 'border-red-400' : theme.inputBorder}`}>
+                                    <div className="flex items-center gap-3">
+                                        <Users size={18} className={`${theme.textMuted} shrink-0`} />
                                         <button
                                             type="button"
                                             onClick={() => handleChange('guests', Math.max(1, formData.guests - 1))}
-                                            className={`w-10 h-10 ${theme.cardBg} rounded-xl shadow-sm text-indigo-500 font-black flex items-center justify-center hover:opacity-80 transition-opacity`}
+                                            className={`w-9 h-9 ${theme.cardBg} rounded-xl border ${theme.borderLight} shadow-sm text-indigo-500 font-black flex items-center justify-center hover:opacity-80 transition-opacity active:scale-95`}
                                         >
                                             -
                                         </button>
-                                        <span className={`flex-1 text-center font-black ${theme.textPrimary}`}>{formData.guests}</span>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleChange('guests', formData.guests + 1)}
-                                            className={`w-10 h-10 ${theme.cardBg} rounded-xl shadow-sm text-indigo-500 font-black flex items-center justify-center hover:opacity-80 transition-opacity`}
-                                        >
-                                            +
-                                        </button>
                                     </div>
-                                    <div className={`${theme.textMuted} bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl`}>
-                                        <Users size={20} className="text-indigo-500" />
-                                    </div>
+                                    <span className={`font-black ${theme.textPrimary} text-center`}>{formData.guests} {formData.guests === 1 ? 'Guest' : 'Guests'}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleChange('guests', formData.guests + 1)}
+                                        className={`w-9 h-9 ${theme.cardBg} rounded-xl border ${theme.borderLight} shadow-sm text-indigo-500 font-black flex items-center justify-center hover:opacity-80 transition-opacity active:scale-95`}
+                                    >
+                                        +
+                                    </button>
                                 </div>
+                                {errors.guests && <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors.guests}</p>}
                             </div>
 
                             <div>
@@ -349,6 +388,8 @@ const ReservationForm = () => {
                                     value={formData.durationMinutes}
                                     onChange={(val) => handleChange('durationMinutes', val)}
                                     placeholder="Select Duration"
+                                    icon={Timer}
+                                    triggerClassName={`h-[58px] border-2 rounded-2xl ${theme.inputBorder}`}
                                 />
                             </div>
 
@@ -356,42 +397,38 @@ const ReservationForm = () => {
                                 <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
                                     Dining Category <span className="text-red-500">*</span>
                                 </label>
-                                <div className="relative">
-                                    <MapPin className={`absolute left-4 top-[22px] -translate-y-1/2 ${theme.textMuted} z-10`} size={18} />
-                                    <CommonSelect
-                                        options={categories}
-                                        value={selectedCategoryId}
-                                        onChange={(val) => setSelectedCategoryId(val)}
-                                        placeholder="Select Category"
-                                        labelKey="name"
-                                        valueKey="_id"
-                                        className="pl-10"
-                                    />
-                                </div>
+                                <CommonSelect
+                                    options={categories}
+                                    value={selectedCategoryId}
+                                    onChange={(val) => setSelectedCategoryId(val)}
+                                    placeholder="Select Category"
+                                    labelKey="name"
+                                    valueKey="_id"
+                                    icon={MapPin}
+                                    triggerClassName={`h-[58px] border-2 rounded-2xl ${theme.inputBorder}`}
+                                />
                             </div>
 
                             <div>
                                 <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
                                     Assign Table <span className="text-red-500">*</span>
                                 </label>
-                                <div className="relative">
-                                    <LayoutGrid className={`absolute left-4 top-[22px] -translate-y-1/2 ${theme.textMuted} z-10`} size={18} />
-                                    <CommonSelect
-                                        options={tables}
-                                        value={formData.tableId}
-                                        onChange={(val) => handleChange('tableId', val)}
-                                        placeholder={selectedCategoryId ? "Select Table" : "Select Category First"}
-                                        labelKey="tableNumber"
-                                        valueKey="_id"
-                                        renderOption={(table) => (
-                                            <div className={`font-black ${theme.textPrimary}`}>
-                                                Table {table.tableNumber} <span className={`text-[10px] ${theme.textMuted} ml-2 font-bold`}>({table.capacity}p)</span>
-                                            </div>
-                                        )}
-                                        className="pl-10"
-                                        disabled={!selectedCategoryId}
-                                    />
-                                </div>
+                                <CommonSelect
+                                    options={tables}
+                                    value={formData.tableId}
+                                    onChange={(val) => handleChange('tableId', val)}
+                                    placeholder={selectedCategoryId ? "Select Table" : "Select Category First"}
+                                    labelKey="tableNumber"
+                                    valueKey="_id"
+                                    icon={LayoutGrid}
+                                    renderOption={(table) => (
+                                        <div className={`font-black ${theme.textPrimary}`}>
+                                            Table {table.tableNumber} <span className={`text-[10px] ${theme.textMuted} ml-2 font-bold`}>({table.capacity}p)</span>
+                                        </div>
+                                    )}
+                                    disabled={!selectedCategoryId}
+                                    triggerClassName={`h-[58px] border-2 rounded-2xl ${errors.tableId ? 'border-red-400 focus:border-red-500' : theme.inputBorder}`}
+                                />
                                 {errors.tableId && <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors.tableId}</p>}
                             </div>
                         </div>
@@ -408,7 +445,7 @@ const ReservationForm = () => {
                                 Special Requests / Notes
                             </label>
                             <div className="relative">
-                                <MessageSquare className={`absolute left-4 top-4 ${theme.textMuted}`} size={18} />
+                                <MessageSquare className={`absolute left-4 top-5 ${theme.textMuted}`} size={18} />
                                 <textarea
                                     value={formData.specialRequests}
                                     onChange={(e) => handleChange('specialRequests', e.target.value)}

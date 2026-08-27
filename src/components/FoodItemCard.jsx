@@ -1,19 +1,12 @@
 import React, { useMemo } from "react";
-import { CircleDashed, Plus, Sparkles } from "lucide-react";
+import { Plus, Sparkles } from "lucide-react";
 import { DEFAULT_ITEM_IMAGE, getBingImage } from "../utils/getImage";
-import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
+import { isStockTracked, allowsNegativeStock, getAvailableStock } from "../utils/cartStockUtils";
 
 const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disabled = false }) => {
     const { theme } = useTheme();
-    const { activeBranchId, branches } = useApp();
     const isGrid = viewMode === "grid";
-
-    // Get currency from branch
-    const currencyCode = useMemo(() => {
-        const branch = branches.find(b => b.id === activeBranchId || b._id === activeBranchId);
-        return branch?.currency?.code || "INR";
-    }, [branches, activeBranchId]);
 
     const formatPriceWithCurrency = (price) => {
         if (price === undefined || price === null) return formatCurrency ? formatCurrency(0) : "0.00";
@@ -21,15 +14,10 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
     };
 
     const isOutOfStock = useMemo(() => {
-        // STOCK, TRADE, and MANUFACTURED items are inventory-tracked. 
-        // If stock is not applicable, they are never out of stock.
-        const stockApplicable = ['STOCK', 'TRADE', 'MANUFACTURED'].includes(item.itemType) || item.stockSettings?.stockApplicable === true;
-        const allowNegative = item.stockSettings?.allowNegativeStock === true;
-        
-        if (stockApplicable && !allowNegative) {
-            return (item.quantityOnHand || 0) <= 0;
-        }
-        return false;
+        if (!isStockTracked(item) || allowsNegativeStock(item)) return false;
+        const available = Number.isFinite(item?.quantityOnHand) ? item.quantityOnHand : getAvailableStock(item);
+        if (available === Infinity) return false;
+        return available <= 0;
     }, [item]);
 
     const isEffectivelyDisabled = disabled || isOutOfStock;
@@ -110,18 +98,18 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
 
                     <div className="mt-2 flex items-center justify-between">
                         <div className="flex-1">
-                            {item.variants && item.variants.length > 0 && (
+                            {((item.portionPricing && item.portionPricing.length > 0) || (item.variants && item.variants.length > 0)) && (
                                 <div className="flex flex-wrap gap-1">
-                                    {item.variants?.slice(0, 2).map((v) => (
+                                    {(item.portionPricing?.length > 0 ? item.portionPricing : item.variants)?.slice(0, 2).map((v) => (
                                         <span
                                             key={v.name}
-                                            className="text-[9px] md:text-[10px] bg-indigo-50 text-indigo-700 px-1 rounded"
+                                            className="text-[9px] md:text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-md font-bold"
                                         >
-                                            {v.name}
+                                            {v.name}: {formatPriceWithCurrency(v.price)}
                                         </span>
                                     ))}
-                                    {item.variants?.length > 2 && (
-                                        <span className="text-[10px] text-gray-400">...</span>
+                                    {((item.portionPricing?.length || 0) + (item.variants?.length || 0)) > 2 && (
+                                        <span className="text-[10px] text-gray-400 font-bold">...</span>
                                     )}
                                 </div>
                             )}
@@ -130,7 +118,11 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
                         {isGrid && (
                             <div className="text-right">
                                 <p className="text-indigo-600 font-black text-sm md:text-base">
-                                    {item.sellingType === "Weight" ? `${formatPriceWithCurrency(item.price)}/${item.unitName || 'kg'}` : formatPriceWithCurrency(item.price)}
+                                    {item.sellingType === "Weight" 
+                                        ? `${formatPriceWithCurrency(item.price)}/${item.unitName || 'kg'}` 
+                                        : (item.portionPricing?.length > 0
+                                            ? `${formatPriceWithCurrency(Math.min(...item.portionPricing.map(p => p.price)))} - ${formatPriceWithCurrency(Math.max(...item.portionPricing.map(p => p.price)))}`
+                                            : formatPriceWithCurrency(item.price))}
                                 </p>
                             </div>
                         )}
@@ -141,7 +133,11 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
                     <div className="flex flex-col items-end justify-between h-full gap-1">
                         <div className="text-right">
                             <p className="text-indigo-600 font-black text-sm md:text-base">
-                                {item.sellingType === "Weight" ? `${formatPriceWithCurrency(item.price)}/${item.unitName || 'kg'}` : formatPriceWithCurrency(item.price)}
+                                {item.sellingType === "Weight" 
+                                    ? `${formatPriceWithCurrency(item.price)}/${item.unitName || 'kg'}` 
+                                    : (item.portionPricing?.length > 0
+                                        ? `${formatPriceWithCurrency(Math.min(...item.portionPricing.map(p => p.price)))} - ${formatPriceWithCurrency(Math.max(...item.portionPricing.map(p => p.price)))}`
+                                        : formatPriceWithCurrency(item.price))}
                             </p>
                         </div>
 

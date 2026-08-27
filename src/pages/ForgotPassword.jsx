@@ -29,12 +29,12 @@ export default function ForgotPassword() {
     setSuccess("");
 
     if (!email.trim()) {
-      setError("Email is required");
+      setError("Please enter your email address");
       return;
     }
 
     if (!validateEmail(email)) {
-      setError("Invalid email format");
+      setError("Please enter a valid email address");
       return;
     }
 
@@ -57,12 +57,12 @@ export default function ForgotPassword() {
     setSuccess("");
 
     if (!otp.trim()) {
-      setError("OTP is required");
+      setError("Please enter the 6-digit OTP");
       return;
     }
 
     if (otp.length !== 6) {
-      setError("OTP must be 6 digits");
+      setError("Please enter a valid 6-digit OTP");
       return;
     }
 
@@ -85,7 +85,7 @@ export default function ForgotPassword() {
     setSuccess("");
 
     if (!newPassword) {
-      setError("New password is required");
+      setError("Please enter a new password");
       return;
     }
 
@@ -176,7 +176,18 @@ export default function ForgotPassword() {
                 <input
                   type="text"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value.toLowerCase())}
+                  onChange={(e) => {
+                    const inputEl = e.target;
+                    const cursorStart = inputEl.selectionStart;
+                    const cursorEnd = inputEl.selectionEnd;
+                    const value = inputEl.value.toLowerCase();
+                    setEmail(value);
+                    requestAnimationFrame(() => {
+                      if (inputEl && inputEl.setSelectionRange) {
+                        inputEl.setSelectionRange(cursorStart, cursorEnd);
+                      }
+                    });
+                  }}
                   className={`w-full p-3 border rounded-xl outline-none text-sm ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                   placeholder="your.email@example.com"
                   autoComplete="off"
@@ -244,7 +255,24 @@ export default function ForgotPassword() {
                 <input
                   type="password"
                   value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
+                  onChange={(e) => {
+                    const inputEl = e.target;
+                    const cursorStart = inputEl.selectionStart;
+                    const rawVal = inputEl.value;
+
+                    // Filter out disallowed special characters (e.g. {, }, ^, ~, |, <, >, \, /, ", ')
+                    const cleanVal = rawVal.replace(/[^a-zA-Z0-9@#$!%&*_\-\.]/g, '');
+                    const hadInvalidChar = cleanVal !== rawVal;
+
+                    setNewPassword(cleanVal);
+
+                    requestAnimationFrame(() => {
+                      if (inputEl && inputEl.setSelectionRange) {
+                        const pos = hadInvalidChar ? Math.max(0, cursorStart - 1) : cursorStart;
+                        inputEl.setSelectionRange(pos, pos);
+                      }
+                    });
+                  }}
                   className={`w-full p-3 border rounded-xl outline-none text-sm ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText}`}
                   placeholder="Minimum 6 characters"
                   autoComplete="new-password"

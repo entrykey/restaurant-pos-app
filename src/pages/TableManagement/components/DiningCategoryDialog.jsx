@@ -69,7 +69,34 @@ const DiningCategoryDialog = ({ isOpen, onClose, onSuccess, category, shopId, br
     const handleTableChange = (index, field, value) => {
         setTables(prev => {
             const updated = [...prev];
-            updated[index] = { ...updated[index], [field]: value };
+            if (field === 'capacity') {
+                if (value === '' || value === null || value === undefined) {
+                    updated[index] = { ...updated[index], capacity: '' };
+                } else {
+                    const parsed = parseInt(value);
+                    if (isNaN(parsed)) {
+                        updated[index] = { ...updated[index], capacity: '' };
+                    } else {
+                        const clamped = Math.min(100, Math.max(1, parsed));
+                        updated[index] = { ...updated[index], capacity: clamped };
+                    }
+                }
+            } else {
+                updated[index] = { ...updated[index], [field]: value };
+            }
+            return updated;
+        });
+    };
+
+    const handleTableBlur = (index) => {
+        setTables(prev => {
+            const updated = [...prev];
+            const currentCap = updated[index]?.capacity;
+            if (!currentCap || parseInt(currentCap) < 1) {
+                updated[index] = { ...updated[index], capacity: 1 };
+            } else if (parseInt(currentCap) > 100) {
+                updated[index] = { ...updated[index], capacity: 100 };
+            }
             return updated;
         });
     };
@@ -78,6 +105,11 @@ const DiningCategoryDialog = ({ isOpen, onClose, onSuccess, category, shopId, br
         if (e) e.preventDefault();
         if (!formData.name) {
             toast.error("Category name is required");
+            return;
+        }
+
+        if (tables.some(t => !t.capacity || parseInt(t.capacity) < 1 || parseInt(t.capacity) > 100)) {
+            toast.error("Table seats must be between 1 and 100");
             return;
         }
 
@@ -281,8 +313,11 @@ const DiningCategoryDialog = ({ isOpen, onClose, onSuccess, category, shopId, br
                                                 <label className={`block text-[10px] font-black uppercase tracking-widest mb-1 ${theme.textMuted}`}>Seats</label>
                                                 <input
                                                     type="number"
+                                                    min="1"
+                                                    max="100"
                                                     value={t.capacity}
-                                                    onChange={(e) => handleTableChange(idx, 'capacity', parseInt(e.target.value || 0))}
+                                                    onChange={(e) => handleTableChange(idx, 'capacity', e.target.value)}
+                                                    onBlur={() => handleTableBlur(idx)}
                                                     className={`w-full px-3 py-2 rounded-lg border ${theme.inputBorder} ${theme.inputBg} text-sm font-bold focus:border-indigo-400 outline-none`}
                                                 />
                                             </div>

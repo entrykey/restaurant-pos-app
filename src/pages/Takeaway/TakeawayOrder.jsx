@@ -48,6 +48,7 @@ const TakeawayOrder = ({
     calculateBillDetails,
     handlePrintReceipt,
     handleSendToKOT,
+    isSubmittingKOT = false,
     setIsPaymentModalOpen,
     setBillingStage,
     initiateAddItem,
@@ -82,6 +83,7 @@ const TakeawayOrder = ({
         resetTakeaway, tabs, activeTabId,
         billDiscount, setBillDiscount, // Regular customer discount
         loyaltyDiscount, setLoyaltyDiscount, // Separate loyalty points discount
+        setTakeawayOrder,
     } = useTakeaway();
 
     const location = useLocation();
@@ -250,6 +252,15 @@ const TakeawayOrder = ({
 
     useEffect(() => {
         fetchMenu();
+    }, [fetchMenu, location.pathname]);
+
+    // Re-fetch fresh menu and stock level whenever window gains focus
+    useEffect(() => {
+        const handleFocus = () => {
+            fetchMenu();
+        };
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
     }, [fetchMenu]);
 
     // Fetch popularity data
@@ -495,6 +506,52 @@ const TakeawayOrder = ({
             : tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))?.order || { items: [] }
     ), [isTakeaway, takeawayOrder, tables, activeTableId]);
 
+    // Sync KOT status for active order from backend/KDS
+    useEffect(() => {
+        if (!currentOrder?.isSentToKOT || !currentOrder?.orderId) return;
+
+        let active = true;
+        const syncKOTStatus = async () => {
+            try {
+                const branchId = activeBranchId || currentUser?.branchId || currentUser?.branch_id;
+                if (!branchId) return;
+                const res = await api.get('/kitchen/kots', { params: { branchId } });
+                if (!active) return;
+                const kots = res?.data || res || [];
+                const orderKots = (kots || []).filter(kot => {
+                    const oid = kot.orderId?._id || kot.orderId;
+                    return String(oid) === String(currentOrder.orderId);
+                });
+                if (orderKots.length === 0) return;
+
+                let computedStatus = "preparing";
+                if (orderKots.some(k => k.status === "PREPARING" || k.status === "PENDING")) {
+                    computedStatus = "preparing";
+                } else if (orderKots.every(k => k.status === "SERVED" || k.status === "COMPLETED")) {
+                    computedStatus = "served";
+                } else if (orderKots.every(k => k.status === "READY" || k.status === "SERVED" || k.status === "COMPLETED")) {
+                    computedStatus = "ready";
+                }
+
+                if (computedStatus !== currentOrder.kotStatus) {
+                    setTakeawayOrder(prev => ({
+                        ...prev,
+                        kotStatus: computedStatus
+                    }));
+                }
+            } catch (err) {
+                console.error("Failed to sync KOT status:", err);
+            }
+        };
+
+        syncKOTStatus();
+        const interval = setInterval(syncKOTStatus, 6000);
+        return () => {
+            active = false;
+            clearInterval(interval);
+        };
+    }, [currentOrder?.isSentToKOT, currentOrder?.orderId, currentOrder?.kotStatus, activeBranchId, currentUser, setTakeawayOrder]);
+
     // Deduplicate cart items for display
     const deduplicatedOrderItems = useMemo(() => {
         const items = currentOrder?.items || [];
@@ -549,9 +606,12 @@ const TakeawayOrder = ({
     const handleUpdateItemQuantity = useCallback((itemIndex, delta) => {
         if (delta > 0) {
             const item = currentOrder?.items?.[itemIndex];
-            if (item && !canAddToCart(item, allCartItems, baseStockMap, delta)) {
-                toast.error(`Insufficient stock for ${item.name}`);
-                return;
+            if (item) {
+                const addQty = item.sellingType === "Weight" ? delta * 0.25 : delta;
+                if (!canAddToCart(item, allCartItems, baseStockMap, addQty)) {
+                    toast.error(`Insufficient stock for ${item.name}`);
+                    return;
+                }
             }
         }
         updateItemQuantity(itemIndex, delta);
@@ -941,21 +1001,21 @@ const TakeawayOrder = ({
                     {/* Search + view mode */}
                     <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-4">
                         <div className="relative flex-1">
-                            <Search className={`absolute left-3 top-3 ${theme.textMuted}`} size={16} />
+                            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
                             <input
                                 value={orderSearch}
                                 onChange={(e) => setOrderSearch(e.target.value)}
                                 placeholder={listening ? "Listening..." : "Search menu..."}
-                                className={`w-full pl-9 pr-9 p-2 sm:p-3 border ${theme.borderLight} rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm ${theme.inputBg} ${theme.textPrimary}`}
+                                className={`w-full pl-10 pr-10 py-2 sm:py-3 border ${theme.borderLight} rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm ${theme.inputBg} ${theme.textPrimary}`}
                             />
                             {isSearchingRemote && (
-                                <Loader2 className="absolute right-3 top-3.5 h-4 w-4 text-indigo-500 animate-spin" />
+                                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-indigo-500 animate-spin" />
                             )}
                             {!isSearchingRemote && orderSearch && (
                                 <button
                                     type="button"
                                     onClick={() => setOrderSearch("")}
-                                    className="absolute right-3 top-3 text-xs text-gray-400 hover:text-gray-600"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600"
                                 >
                                     Clear
                                 </button>
@@ -1154,9 +1214,15 @@ const TakeawayOrder = ({
                                 <Printer size={20} />
                             </button>
                             {isSentToKOT && (
-                                <span className={`flex items-center gap-1 text-xs font-bold uppercase ${currentOrder.kotStatus === 'preparing' ? 'text-orange-500 animate-pulse' : 'text-green-600'}`}>
+                                <span className={`flex items-center gap-1 text-xs font-bold uppercase ${
+                                    currentOrder.kotStatus === 'preparing' 
+                                        ? 'text-orange-500 animate-pulse' 
+                                        : currentOrder.kotStatus === 'served'
+                                        ? 'text-blue-600'
+                                        : 'text-green-600'
+                                }`}>
                                     {currentOrder.kotStatus === 'preparing' ? <Utensils size={14} /> : <Check size={14} />}
-                                    {currentOrder.kotStatus === 'preparing' ? "Preparing..." : "KOT Ready"}
+                                    {currentOrder.kotStatus === 'preparing' ? "Preparing..." : currentOrder.kotStatus === 'served' ? "Served" : "KOT Ready"}
                                 </span>
                             )}
                         </div>
@@ -1208,6 +1274,11 @@ const TakeawayOrder = ({
                                                             />
                                                             <span className={`font-bold text-sm ${theme.textPrimary} leading-tight truncate`}>
                                                                 {item.name}
+                                                                {item.selectedVariant && (
+                                                                    <span className="ml-1 text-xs text-indigo-600 font-black">
+                                                                        ({item.selectedVariant.name})
+                                                                    </span>
+                                                                )}
                                                                 <span className={`ml-1 text-[10px] ${theme.textMuted} font-medium`}>
                                                                     ({(item.taxPercent !== undefined && item.taxPercent !== null) ? item.taxPercent : (settings?.defaultTaxPercent || 0)}%)
                                                                 </span>
@@ -1412,7 +1483,7 @@ const TakeawayOrder = ({
                                                 <span>Customer Discount</span>
                                                 {billDiscount.type === 'percent' && <span className="text-[10px] opacity-70 uppercase tracking-wider">{billDiscount.value}% Off</span>}
                                             </div>
-                                            <span>-{formatCurrency(billDetails.discountAmount)}</span>
+                                            <span>-{formatCurrency(actualBillDetails.discountAmount)}</span>
                                         </div>
                                     )}
 
@@ -1459,10 +1530,25 @@ const TakeawayOrder = ({
                             {(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) && (
                                 <button
                                     onClick={handleSendToKOT}
-                                    disabled={currentOrder.items.length === 0 || (!hasPendingKitchenItems)}
+                                    disabled={currentOrder.items.length === 0 || !hasPendingKitchenItems || isSubmittingKOT}
+                                    title={
+                                        isSubmittingKOT
+                                            ? "Sending KOT..."
+                                            : !hasPendingKitchenItems && currentOrder.items.length > 0
+                                            ? "All items in cart have been sent to KOT. Add new items to send additional KOT."
+                                            : "Send KOT to Kitchen"
+                                    }
                                     className="py-2.5 xl:py-4 rounded-lg xl:rounded-xl text-sm font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-1 md:gap-2"
                                 >
-                                    <Printer size={16} /> KOT
+                                    {isSubmittingKOT ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" /> Sending...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Printer size={16} /> KOT
+                                        </>
+                                    )}
                                 </button>
                             )}
                             <button

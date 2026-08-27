@@ -5,8 +5,12 @@ const KDSCard = ({ order, type = 'table', typeLabel, isAdditional = false, onUpd
     const { theme, themeName } = useTheme();
     const status = order.status || 'PENDING';
     const isDirectServed = status === 'COMPLETED';
+    const isServed = status === 'SERVED' || status === 'COMPLETED';
     const referenceTime = status === 'PREPARING' ? order.startedAt : order.createdAt;
-    const timeAgo = referenceTime ? Math.max(0, Math.floor((currentTime - new Date(referenceTime).getTime()) / 60000)) : 0;
+
+    // For completed/served orders, freeze the timer at completion time (order.servedAt || order.updatedAt)
+    const endTime = isServed ? new Date(order.servedAt || order.updatedAt || order.createdAt).getTime() : currentTime;
+    const timeAgo = referenceTime ? Math.max(0, Math.floor((endTime - new Date(referenceTime).getTime()) / 60000)) : 0;
 
     // Color based on status and waiting time
     const getStatusColor = () => {
@@ -18,6 +22,9 @@ const KDSCard = ({ order, type = 'table', typeLabel, isAdditional = false, onUpd
     };
 
     const getTimeColor = (mins) => {
+        if (isServed) {
+            return `text-emerald-600 ${themeName === 'dark' ? 'bg-emerald-900/40' : 'bg-emerald-50'}`;
+        }
         if (status === 'PREPARING') {
             if (order.estimatedTime && mins >= order.estimatedTime) return 'text-red-500 bg-red-500/10 animate-pulse';
             return 'text-orange-600 bg-orange-500/10';
@@ -44,14 +51,14 @@ const KDSCard = ({ order, type = 'table', typeLabel, isAdditional = false, onUpd
             {/* Card Header */}
             <div className={`p-4 ${theme.pageBg} border-b ${theme.borderLight} flex justify-between items-center`}>
                 <div className="min-w-0 flex-1">
-                    <h3 className={`text-xl font-black ${theme.textHeading} truncate flex items-center gap-2`}>
-                        <span>{typeLabel || (type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online')}</span>
+                    <h3 className={`text-xl font-black ${theme.textHeading} flex items-center flex-wrap gap-2 min-w-0`}>
+                        <span className="truncate">{typeLabel || (type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online')}</span>
                         {isAdditional && (
-                            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full uppercase tracking-widest border border-red-200 shadow-sm">Add-on</span>
+                            <span className="shrink-0 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full uppercase tracking-widest border border-red-200 shadow-sm">Add-on</span>
                         )}
                         {isDirectServed && (
-                            <span className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full uppercase tracking-widest border border-emerald-200 dark:border-emerald-800 shadow-sm flex items-center gap-1">
-                                <ShoppingBag size={9} /> Direct Served
+                            <span className="shrink-0 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-200 dark:border-emerald-800 shadow-sm flex items-center gap-1.5 font-black">
+                                <ShoppingBag size={12} className="shrink-0" /> Direct Served
                             </span>
                         )}
                     </h3>

@@ -197,12 +197,12 @@ export const AppProvider = ({ children }) => {
     }, [isAuthenticated, stableShopId]);
 
     // When branches are updated externally (e.g. from AppContent fetchOrg),
-    // ensure activeBranchId still points to a valid branch.
+    // ensure activeBranchId still points to a valid existing branch.
     // IMPORTANT: Do NOT include activeBranchId in the dep array — only react to branch list changes.
     useEffect(() => {
         if (!branches || branches.length === 0) return;
         const currentId = localStorage.getItem("pos_activeBranchId");
-        const safeCurrentId = (currentId === "null" || currentId === "undefined") ? null : currentId;
+        const safeCurrentId = (currentId === "null" || currentId === "undefined" || currentId === "") ? null : currentId;
         const isValid = safeCurrentId && branches.some(b => String(b._id || b.id) === String(safeCurrentId));
         if (!isValid) {
             const firstBranchId = branches[0]._id || branches[0].id;

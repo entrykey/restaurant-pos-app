@@ -6,7 +6,11 @@ export const LIVE_SUBSCRIPTION_STATUSES = ["active", "trial", "grace", "base", "
 
 export function computeUserHasActiveSubscription(user, organization) {
     if (organization?.canWrite === true) return true;
-    if (organization?.trialRunStatus === "approved") return true;
+    
+    const trialStatus = String(organization?.trialRunStatus || user?.subscription?.trialRunStatus || "").toLowerCase();
+    if (trialStatus === "approved") return true;
+    if (organization?.isTrialRunApproved === true || user?.subscription?.isTrialRunApproved === true) return true;
+    if (user?.subscription?.plan === "Trial Run") return true;
 
     const orgId = organization?.id ?? organization?._id;
     if (orgId != null && orgId !== "") {

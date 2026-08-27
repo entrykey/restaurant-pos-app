@@ -317,11 +317,11 @@ const RepackModal = ({ isOpen, onClose, sourceItem, sourceStock = 0, onRepackCom
                                         step="any"
                                         value={amountPerPack}
                                         onChange={(e) => setAmountPerPack(e.target.value)}
-                                        className={`w-full p-4 pr-16 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-black text-lg ${theme.inputBg} ${theme.textPrimary}`}
+                                        className={`w-full p-4 pr-28 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-black text-lg ${theme.inputBg} ${theme.textPrimary} no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                                         placeholder="0.00"
                                         required
                                     />
-                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-indigo-500/10 text-indigo-500 rounded-xl text-[10px] font-black uppercase border border-indigo-500/20">
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-indigo-500/10 text-indigo-500 rounded-xl text-[10px] font-black uppercase border border-indigo-500/20 pointer-events-none">
                                         {sourceUnit}
                                     </div>
                                 </div>
@@ -343,7 +343,7 @@ const RepackModal = ({ isOpen, onClose, sourceItem, sourceStock = 0, onRepackCom
                                         max={maxPacks > 0 ? maxPacks : undefined}
                                         value={packsToCreate}
                                         onChange={(e) => setPacksToCreate(e.target.value)}
-                                        className={`w-full p-4 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-black text-lg ${theme.inputBg} ${theme.textPrimary}`}
+                                        className={`w-full p-4 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-black text-lg ${theme.inputBg} ${theme.textPrimary} no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                                         placeholder="0"
                                         required
                                     />

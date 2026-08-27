@@ -42,6 +42,8 @@ export const MODULES = Object.freeze({
   SUBSCRIPTION_MANAGEMENT: "subscription_management",
   OFFER_MANAGEMENT: "OFFER_MANAGEMENT",
   SALE_MARKING: "SALE MARKING",
+  DELIVERY_MANAGEMENT: "DELIVERY.MANAGEMENT",
+  DELIVERY_SETTLEMENT: "DELIVERY.SETTLEMENT",
 });
 
 /**
@@ -128,6 +130,8 @@ export const ROUTE_ACCESS = Object.freeze({
   SALE_SETTINGS: { module: MODULES.SETTINGS, resource: "SALE", action: "SETTINGS" },
   BARCODE_BILL_SETTINGS: { module: MODULES.SETTINGS, resource: "barcode-bill", action: "MANAGE" },
   SALE_MARKING: { module: MODULES.SALE_MARKING, resource: "salemarking", action: "manage" },
+  DELIVERY_MANAGEMENT: { module: MODULES.DELIVERY_MANAGEMENT, resource: "delivery", action: "MANAGE.DELIVERY.REQUESTS" },
+  DELIVERY_SETTLEMENT: { module: MODULES.DELIVERY_SETTLEMENT, resource: "settlement", action: "DELIVERY.COLLECTION" },
 });
 
 /** Optional: page-level "manage" for sections that have edit/delete (e.g. staff.staff.manage) */

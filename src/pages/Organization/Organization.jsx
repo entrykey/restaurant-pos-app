@@ -289,6 +289,7 @@ const Organization = ({
                 organization.businessName !== originalOrg.businessName ||
                 organization.ownerName !== originalOrg.ownerName ||
                 organization.ownerEmail !== originalOrg.ownerEmail ||
+                organization.ownerContact !== originalOrg.ownerContact ||
                 organization.defaultCountry !== originalOrg.defaultCountry ||
                 organization.defaultCurrency !== originalOrg.defaultCurrency ||
                 organization.defaultTaxSystem !== originalOrg.defaultTaxSystem ||
@@ -327,12 +328,37 @@ const Organization = ({
 
     const handleSaveChanges = async () => {
         if (!organization?.id || !canEditOrg) return;
+
+        if (!organization.businessName?.trim()) {
+            toast.error("Business Name is required");
+            return;
+        }
+
+        const email = organization.ownerEmail?.trim() || "";
+        const phone = (organization.ownerContact || user?.phone || "")?.trim();
+
+        // Check if neither email nor phone is provided for login
+        if (!email && !phone) {
+            toast.error("Either an email address or phone number is required for login.");
+            return;
+        }
+
+        // Validate email format if provided
+        if (email) {
+            const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+            if (!emailRegex.test(email)) {
+                toast.error("Please enter a valid email address");
+                return;
+            }
+        }
+
         setIsSaving(true);
         try {
             const updatePayload = {
-                name: organization.businessName,
+                name: organization.businessName.trim(),
                 ownerName: organization.ownerName,
-                ownerEmail: organization.ownerEmail,
+                ownerEmail: email,
+                ownerContact: phone,
                 defaultCountryCode: organization.defaultCountry || null,
                 defaultCurrencyCode: organization.defaultCurrency || null,
                 defaultTaxSystem: organization.defaultTaxSystem || null,
@@ -344,7 +370,11 @@ const Organization = ({
             setIsDirty(false);
         } catch (error) {
             console.error("Failed to update organization:", error);
-            toast.error(error.message || "Failed to update organization");
+            const rawMsg = error.message || error.response?.data?.message || "Failed to update organization";
+            const cleanMsg = rawMsg.includes("Validation failed:") || rawMsg.includes("Path `name`")
+                ? "Business Name is required"
+                : rawMsg;
+            toast.error(cleanMsg);
         } finally {
             setIsSaving(false);
         }
@@ -637,6 +667,19 @@ const Organization = ({
 
                 {/* Organization Details */}
                 <div className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight || 'border-slate-100 dark:border-slate-700'}`}>
+                    {profileCompletion < 100 && (
+                        <div className="mb-6 p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-4 animate-in fade-in">
+                            <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-500 shrink-0">
+                                <AlertTriangle size={24} />
+                            </div>
+                            <div>
+                                <h5 className="text-sm font-black text-amber-500 uppercase tracking-wide">Warning: Profile Incomplete ({profileCompletion}%)</h5>
+                                <p className={`text-xs mt-1 font-medium leading-relaxed ${theme.textSecondary || 'text-gray-400'}`}>
+                                    Your organization profile is incomplete. Please fill in all required fields marked with <span className="text-red-400 font-bold">✖</span> below to complete setup.
+                                </p>
+                            </div>
+                        </div>
+                    )}
                     <div className={`mb-6 p-5 rounded-3xl border ${profileCompletion >= 100 ? 'border-green-200 bg-green-50/70 dark:bg-green-900/20' : 'border-amber-200 bg-amber-50/80 dark:bg-amber-900/20'}`}>
                         <div className="flex items-center justify-between gap-4 mb-3">
                             <h4 className={`text-lg font-black ${theme.textHeading}`}>Profile Completion</h4>
@@ -745,6 +788,22 @@ const Organization = ({
                                     value={organization?.ownerEmail ?? ""}
                                     onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerEmail: e.target.value })}
                                     readOnly={!canEditOrg}
+                                    placeholder="owner@example.com"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Owner Phone / Mobile</label>
+                                <input
+                                    type="tel"
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                    value={organization?.ownerContact ?? ""}
+                                    onChange={(e) => {
+                                        if (!canEditOrg) return;
+                                        const cleanPhone = e.target.value.replace(/[^0-9\s\-\(\)\+]/g, '');
+                                        setOrganization({ ...organization, ownerContact: cleanPhone });
+                                    }}
+                                    readOnly={!canEditOrg}
+                                    placeholder="+91 98765 43210"
                                 />
                             </div>
                             <div className="space-y-2">

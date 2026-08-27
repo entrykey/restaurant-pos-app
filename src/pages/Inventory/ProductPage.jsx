@@ -104,8 +104,9 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         isDefault: false
     });
 
-    const baseCoreFields = ["barcode", "name", "category_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type", "is_sellable", "weight_based"];
-    if (!isEditing) baseCoreFields.push("opening_stock");
+    const isPortionActive = Boolean(newPortion.name?.trim() || newPortion.price !== "" || newPortion.mrp !== "");
+
+    const baseCoreFields = ["barcode", "name", "category_id", "purchase_price", "selling_price", "mrp", "tax_percent", "item_type", "is_sellable", "weight_based", "opening_stock"];
     const CORE_FIELD_KEYS = showAdvanced ? baseCoreFields : ["unit_id", ...baseCoreFields];
 
     // Determine visible fields based on activeTab
@@ -132,9 +133,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             ];
         }
 
-        // Add default unit preferences to all tabs
-        fields.push("default_purchase_unit", "default_sales_unit");
-        if (!isEditing) fields.push("opening_stock");
+        // Add default unit preferences and opening stock to all tabs
+        fields.push("default_purchase_unit", "default_sales_unit", "opening_stock");
 
         if (!isGSTApplicable) {
             fields = fields.filter(f => f !== 'hsn_sac_code');
@@ -445,6 +445,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         ...full,
                         id: String(full._id),
                         _id: String(full._id),
+                        openingStock: full.openingStock ?? full.quantityOnHand ?? 0,
                         categoryId: full.categoryId?._id || full.categoryId,
                         unitId: full.unitId?._id || full.unitId,
                         secondaryUnitId: full.secondaryUnitId?._id || full.secondaryUnitId || "",
@@ -500,6 +501,18 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             generateItemBarcode();
         }
     }, [isEditing, isLoading, formData.barcode]);
+
+    useEffect(() => {
+        if (shopTaxes.length > 0 && (formData.taxId || (formData.taxPercent !== undefined && formData.taxPercent > 0))) {
+            const matchedTax = shopTaxes.find(t => 
+                (formData.taxId && String(t._id || t.id) === String(formData.taxId)) ||
+                (formData.taxPercent !== undefined && formData.taxPercent !== null && Number(t.percentage) === Number(formData.taxPercent))
+            );
+            if (matchedTax && matchedTax.taxType && !selectedTaxType) {
+                setSelectedTaxType(matchedTax.taxType.toUpperCase());
+            }
+        }
+    }, [formData.taxId, formData.taxPercent, shopTaxes, selectedTaxType]);
     useEffect(() => {
         if (!isEditing && !isLoading && settings) {
             const defaultIsSellable = activeTab === 'raw' 
@@ -594,9 +607,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     }
                 }
 
-                setDynamicAttributes(attrsRes.filter(a => a.isActive !== false));
-                setUnits(unitsRes);
-                setCategories(categoriesRes.filter(c => c.isActive !== false));
+                const unitsData = Array.isArray(unitsRes) ? unitsRes : (unitsRes?.data || []);
+                const categoriesData = Array.isArray(categoriesRes) ? categoriesRes : (categoriesRes?.data || []);
+                setDynamicAttributes(Array.isArray(attrsRes) ? attrsRes.filter(a => a.isActive !== false) : []);
+                setUnits(unitsData);
+                setCategories(categoriesData.filter(c => c.isActive !== false));
 
                 const suppliersData = Array.isArray(suppliersRes) ? suppliersRes : (suppliersRes.data || []);
                 setSuppliers(suppliersData);
@@ -813,6 +828,23 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             }
         }
 
+        // Auto-add current portion if both fields are filled out, or validate if only one field is filled out
+        if (newPortion.name?.trim() && newPortion.price !== "" && newPortion.price !== null && newPortion.price !== undefined) {
+            const portions = [...(formData.portionPricing || [])];
+            if (newPortion.isDefault) {
+                portions.forEach(p => p.isDefault = false);
+            } else if (portions.length === 0) {
+                newPortion.isDefault = true;
+            }
+            formData.portionPricing = [
+                ...portions,
+                { ...newPortion, price: parseFloat(newPortion.price), mrp: parseFloat(newPortion.mrp || 0) }
+            ];
+        } else if (newPortion.name?.trim() || (newPortion.price !== "" && newPortion.price !== null && newPortion.price !== undefined) || (newPortion.mrp !== "" && newPortion.mrp !== null && newPortion.mrp !== undefined)) {
+            toast.error("Please enter both Portion Name and Price to add the variant, or clear the fields.");
+            return;
+        }
+
         const { ingredients: _, ...cleanFormData } = formData;
 
         const currentBranchId = fixedBranchId || activeBranchId || (user?.branchIds && user.branchIds.length > 0 ? user.branchIds[0] : formData.branchId);
@@ -821,6 +853,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         const payload = {
             ...cleanFormData,
+            openingStock: (formData.openingStock !== undefined && formData.openingStock !== null && formData.openingStock !== "") ? parseFloat(formData.openingStock) : undefined,
             shopId: currentShopId,
             branchId: currentBranchId,
             itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
@@ -903,9 +936,13 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     };
 
     const handleReset = () => {
+        const defaultIsSellable = activeTab === 'raw' 
+            ? settings?.ENABLE_STOCK_ITEMS !== false 
+            : (activeTab === 'menu' ? settings?.ENABLE_MANUFACTURED_ITEMS !== false : settings?.ENABLE_TRADE_ITEMS !== false);
+
         setFormData({
             itemType: activeTab === 'menu' ? 'MANUFACTURED' : (activeTab === 'raw' ? 'STOCK' : 'TRADE'),
-            isSellable: true,
+            isSellable: defaultIsSellable,
             status: 'ACTIVE',
             stockApplicable: true,
             conversionFactor: 1,
@@ -926,9 +963,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         setIsCategorySaving(true);
         try {
+            const effectiveShopId = currentShopId || user?.shopId || user?.shop_id;
             const res = await categoryService.createCategory({
-                name: newCategoryName,
-                shopId: user.shop_id,
+                name: newCategoryName.trim(),
+                shopId: effectiveShopId,
                 isActive: true
             });
             const created = res.data || res;
@@ -939,7 +977,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             toast.success("Category created successfully!");
         } catch (error) {
             console.error("Failed to create category:", error);
-            toast.error("Failed to create category");
+            const errMsg = error.response?.data?.message || error.message || "Failed to create category";
+            toast.error(errMsg);
         } finally {
             setIsCategorySaving(false);
         }
@@ -1111,13 +1150,15 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     ]}
                                                     value={selectedTaxType}
                                                     onChange={(val) => {
-                                                        setSelectedTaxType(val);
-                                                        // Reset tax selection when type changes
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            taxId: "",
-                                                            taxPercent: 0
-                                                        }));
+                                                        if (val !== selectedTaxType) {
+                                                            setSelectedTaxType(val);
+                                                            // Reset tax selection when type changes
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                taxId: "",
+                                                                taxPercent: 0
+                                                            }));
+                                                        }
                                                     }}
                                                     placeholder="Select Tax Type..."
                                                     className="w-full"
@@ -1410,7 +1451,6 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 })}
                             </div>
                         )}
-                    </div>
 
                     {/* DYNAMIC ATTRIBUTES SECTION */}
                     {(() => {
@@ -1525,7 +1565,9 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6 items-end">
                             <div className="lg:col-span-2">
-                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Portion Name *</label>
+                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>
+                                    Portion Name {isPortionActive && <span className="text-red-500">*</span>}
+                                </label>
                                 <input
                                     type="text"
                                     value={newPortion.name}
@@ -1535,7 +1577,9 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 />
                             </div>
                             <div>
-                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Price *</label>
+                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>
+                                    Price {isPortionActive && <span className="text-red-500">*</span>}
+                                </label>
                                 <input
                                     type="number"
                                     onWheel={(e) => e.target.blur()}
@@ -1729,6 +1773,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
                 </div>
             </div>
+        </div>
 
             {/* Sticky Footer */}
             <div className={`flex flex-row gap-2 p-3 sm:p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 shrink-0`}>

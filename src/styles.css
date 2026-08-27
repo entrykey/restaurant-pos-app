@@ -67,8 +67,8 @@
 
 
 /* Customize number input spin buttons (arrows) */
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
+input[type="number"]:not(.no-spin)::-webkit-inner-spin-button,
+input[type="number"]:not(.no-spin)::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
   width: 14px;
@@ -83,9 +83,21 @@ input[type="number"]::-webkit-outer-spin-button {
   transition: opacity 0.2s, background-color 0.2s;
 }
 
-input[type="number"]:hover::-webkit-inner-spin-button {
+input[type="number"]:not(.no-spin):hover::-webkit-inner-spin-button {
   opacity: 1;
   background-color: var(--accent-color);
+}
+
+/* Hide spin buttons completely on inputs with .no-spin class */
+input[type="number"].no-spin::-webkit-inner-spin-button,
+input[type="number"].no-spin::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  display: none !important;
+  margin: 0 !important;
+}
+
+input[type="number"].no-spin {
+  -moz-appearance: textfield !important;
 }
 
 

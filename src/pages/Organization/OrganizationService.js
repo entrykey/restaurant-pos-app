@@ -90,7 +90,7 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
       businessName: data.shop.name,
       ownerName: data.shop.ownerName || data.shop.user_id?.name || "",
       ownerEmail: data.shop.ownerEmail || data.shop.user_id?.email || "",
-      ownerContact: data.shop.ownerContact || "",
+      ownerContact: data.shop.ownerContact || data.shop.user_id?.phone || "",
       logoUrl: data.shop.logoUrl || null,
       // Only use values saved on the shop by the owner — no branch/schema fallbacks
       defaultCountry: data.shop.defaultCountryCode ?? null,

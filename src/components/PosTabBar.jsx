@@ -151,7 +151,7 @@ const PosTabBar = ({ view }) => {
         tab.id === activeTabId ? takeawayOrder : (tab.takeawayOrder || {});
 
     const formatTabOrderLabel = (tab, order) => {
-        if (order.orderNumber) return `#${order.orderNumber}`;
+        if (order.orderNumber) return order.orderNumber;
         if (order.orderId) return `#${String(order.orderId).slice(-6)}`;
         return tab.name || `Tab ${tab.id}`;
     };
@@ -381,34 +381,50 @@ const PosTabBar = ({ view }) => {
                         const isActive = tab.id === activeTabId;
                         const activeOrder = isActive ? takeawayOrder : (tab.takeawayOrder || {});
                         const itemCount = (activeOrder.items || []).length || 0;
-                        const rawOrderLabel = activeOrder.orderNumber || activeOrder.orderId;
-                        const orderLabel = rawOrderLabel ? `#${String(rawOrderLabel).slice(-6)}` : null;
+                        const orderLabel = activeOrder.orderNumber 
+                            ? activeOrder.orderNumber
+                            : (activeOrder.orderId ? `#${String(activeOrder.orderId).slice(-6)}` : null);
                         const fallbackName = (isActive ? takeawayCustName : tab.takeawayCustName) || tab.name;
-                        const tabLabel = orderLabel || fallbackName;
+                        const tabLabel = orderLabel || fallbackName || "";
+
+                        const ordMatch = typeof tabLabel === 'string' && tabLabel.match(/^(ORD-?|#)(.+)$/i);
+                        const labelPrefix = ordMatch ? ordMatch[1] : null;
+                        const labelNum = ordMatch ? ordMatch[2] : tabLabel;
+                        const isSingleTab = saleTabs.length === 1;
 
                         return (
                             <div
                                 key={tab.id}
                                 onClick={() => switchTab(tab.id)}
-                                className={`group relative shrink-0 min-w-[100px] md:min-w-[140px] max-w-[180px] h-9 md:h-11 px-3 md:px-5 flex items-center justify-between gap-3 cursor-pointer transition-all duration-300 transform rounded-full
+                                className={`group relative shrink-0 ${isSingleTab ? 'max-w-none' : 'max-w-[140px] md:max-w-[180px]'} h-8 md:h-9 px-2.5 md:px-3.5 flex items-center justify-between gap-2 cursor-pointer transition-all duration-300 transform rounded-full
                                     ${isActive
-                                        ? 'bg-[#5b52f6] text-white shadow-lg z-10'
+                                        ? 'bg-[#5b52f6] text-white shadow-md z-10'
                                         : 'text-slate-200 hover:bg-white/10'
                                     }`}
                             >
-                                <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
                                     {itemCount > 0 ? (
-                                        <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black
+                                        <div className={`shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[9px] md:text-[10px] font-black
                                             ${isActive ? 'bg-white text-[#5b52f6]' : 'bg-slate-400/50 text-white'}`}>
                                             {itemCount}
                                         </div>
                                     ) : (
-                                        <div className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${isActive ? 'bg-white/20' : 'bg-white/10'}`}>
-                                            <User size={12} className={isActive ? 'text-white' : 'text-slate-200'} />
+                                        <div className={`shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center ${isActive ? 'bg-white/20' : 'bg-white/10'}`}>
+                                            <User size={11} className={isActive ? 'text-white' : 'text-slate-200'} />
                                         </div>
                                     )}
-                                    <span className="text-[11px] md:text-[13px] font-black truncate tracking-wide uppercase">
-                                        {tabLabel}
+                                    <span 
+                                        className={`inline-block font-black tracking-wide uppercase ${isSingleTab ? 'whitespace-nowrap' : 'truncate [direction:rtl] [text-align:left]'}`}
+                                        title={tabLabel}
+                                    >
+                                        {labelPrefix ? (
+                                            <>
+                                                <span className="opacity-75 font-semibold text-[9px] md:text-[10px] uppercase">{labelPrefix}</span>
+                                                <span className={`font-black text-[11px] md:text-[12px] tracking-widest ${isActive ? 'text-amber-300' : 'text-white'}`}>{labelNum}</span>
+                                            </>
+                                        ) : (
+                                            <span className="text-[10px] md:text-[11px] font-black">{tabLabel}</span>
+                                        )}
                                     </span>
                                 </div>
 
@@ -420,7 +436,7 @@ const PosTabBar = ({ view }) => {
                                             : 'opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-400 hover:text-red-400'
                                         }`}
                                 >
-                                    <X size={12} strokeWidth={3} />
+                                    <X size={11} strokeWidth={3} />
                                 </button>
                             </div>
                         );

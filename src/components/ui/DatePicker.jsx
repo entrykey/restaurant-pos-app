@@ -78,12 +78,36 @@ const DatePicker = ({
         setIsOpen(false);
     };
 
+const parseToLocalMidnight = (dateVal) => {
+    if (!dateVal) return null;
+    if (typeof dateVal === 'string' && dateVal.includes('-')) {
+        const parts = dateVal.split('T')[0].split('-');
+        if (parts.length === 3) {
+            const [y, m, d] = parts.map(Number);
+            return new Date(y, m - 1, d, 0, 0, 0, 0);
+        }
+    }
+    const d = new Date(dateVal);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+};
+
     const handleToday = () => {
         const today = new Date();
-        const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const day = today.getDate();
+        const todayObj = new Date(year, month, day, 0, 0, 0, 0);
+        const minD = parseToLocalMidnight(minDate);
+        const maxD = parseToLocalMidnight(maxDate);
+
+        if ((minD && todayObj < minD) || (maxD && todayObj > maxD)) {
+            return;
+        }
+
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         onChange(dateStr);
-        setCurrentMonth(today.getMonth());
-        setCurrentYear(today.getFullYear());
+        setCurrentMonth(month);
+        setCurrentYear(year);
         setIsOpen(false);
     };
 
@@ -120,7 +144,6 @@ const DatePicker = ({
 
         // Days of current month
         for (let i = 1; i <= daysInMonth; i++) {
-            const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
             const isSelected = selectedDate &&
                 selectedDate.getDate() === i &&
                 selectedDate.getMonth() === currentMonth &&
@@ -129,10 +152,12 @@ const DatePicker = ({
                 today.getMonth() === currentMonth &&
                 today.getFullYear() === currentYear;
 
-            // Optional min/max constraints check here...
-            const d = new Date(currentYear, currentMonth, i);
-            const isMinDisabled = minDate && d < new Date(minDate);
-            const isMaxDisabled = maxDate && d > new Date(maxDate);
+            // Optional min/max constraints check
+            const d = new Date(currentYear, currentMonth, i, 0, 0, 0, 0);
+            const minD = parseToLocalMidnight(minDate);
+            const maxD = parseToLocalMidnight(maxDate);
+            const isMinDisabled = minD && d < minD;
+            const isMaxDisabled = maxD && d > maxD;
             const isDisabledDay = isMinDisabled || isMaxDisabled;
 
             days.push(
@@ -299,24 +324,33 @@ const DatePicker = ({
                     {pickerMode === "year" && renderYears()}
 
                     {/* Footer shortcuts */}
-                    {pickerMode === "date" && (
-                        <div className={`mt-4 pt-3 border-t ${theme.borderLight} flex justify-between`}>
-                            <button
-                                type="button"
-                                onClick={handleClear}
-                                className={`text-xs font-bold ${theme.textMuted} hover:${theme.textPrimary} transition-colors px-2 py-1`}
-                            >
-                                Clear
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleToday}
-                                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors px-2 py-1"
-                            >
-                                Today
-                            </button>
-                        </div>
-                    )}
+                    {pickerMode === "date" && (() => {
+                        const todayObj = new Date();
+                        const todayMidnight = new Date(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate(), 0, 0, 0, 0);
+                        const minD = parseToLocalMidnight(minDate);
+                        const maxD = parseToLocalMidnight(maxDate);
+                        const isTodayDisabled = (minD && todayMidnight < minD) || (maxD && todayMidnight > maxD);
+
+                        return (
+                            <div className={`mt-4 pt-3 border-t ${theme.borderLight} flex justify-between`}>
+                                <button
+                                    type="button"
+                                    onClick={handleClear}
+                                    className={`text-xs font-bold ${theme.textMuted} hover:${theme.textPrimary} transition-colors px-2 py-1`}
+                                >
+                                    Clear
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isTodayDisabled}
+                                    onClick={handleToday}
+                                    className={`text-xs font-bold transition-colors px-2 py-1 ${isTodayDisabled ? 'text-gray-300 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-800'}`}
+                                >
+                                    Today
+                                </button>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
         </div>

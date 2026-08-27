@@ -132,14 +132,74 @@ const OfferForm = () => {
         }
     };
 
+    const getTodayString = () => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (!offerData.name || !offerData.name.trim()) {
+            alert("Please enter an offer name.");
+            return;
+        }
+
+        if (!offerData.startDate) {
+            alert("Please select a start date.");
+            return;
+        }
+
+        if (!offerData.endDate) {
+            alert("Please select an end date.");
+            return;
+        }
+
+        const todayStr = getTodayString();
+
+        if (offerData.startDate && offerData.endDate && offerData.endDate < offerData.startDate) {
+            alert("End date cannot be earlier than start date.");
+            return;
+        }
+
+        if (offerData.endDate < todayStr) {
+            alert("End date cannot be in the past.");
+            return;
+        }
+
+        if (condition.applyOn === "BILL") {
+            const minBill = parseFloat(condition.minBillAmount) || 0;
+            if (isNaN(minBill) || minBill < 0) {
+                alert("Minimum bill amount cannot be negative.");
+                return;
+            }
+            if (minBill > 0 && minBill < 0.01) {
+                alert("Minimum bill amount must be at least 0.01.");
+                return;
+            }
+        }
+
         setIsSaving(true);
         try {
+            const cleanCondition = {
+                ...condition,
+                minBillAmount: condition.applyOn === "BILL" ? Math.round((parseFloat(condition.minBillAmount) || 0) * 100) / 100 : 0,
+                minQuantity: condition.applyOn === "ITEM" ? Math.max(1, parseInt(condition.minQuantity) || 1) : 1
+            };
+
+            const cleanReward = {
+                ...reward,
+                discountPercent: reward.rewardType === "PERCENT_DISCOUNT" ? Math.round((parseFloat(reward.discountPercent) || 0) * 100) / 100 : 0,
+                discountAmount: (reward.rewardType === "FLAT_DISCOUNT" || reward.rewardType === "SET_PRICE") ? Math.round((parseFloat(reward.discountAmount) || 0) * 100) / 100 : 0
+            };
+
             const payload = {
                 ...offerData,
-                condition,
-                reward
+                condition: cleanCondition,
+                reward: cleanReward
             };
             if (isEdit) {
                 await offerService.updateOffer(id, {
@@ -262,7 +322,14 @@ const OfferForm = () => {
                             <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>Start Date</label>
                             <DatePicker
                                 value={offerData.startDate}
-                                onChange={val => setOfferData({ ...offerData, startDate: val })}
+                                onChange={val => setOfferData(prev => {
+                                    const next = { ...prev, startDate: val };
+                                    if (next.endDate && val && next.endDate < val) {
+                                        next.endDate = val;
+                                    }
+                                    return next;
+                                })}
+                                minDate={!isEdit ? getTodayString() : undefined}
                                 placeholder="dd-mm-yyyy"
                             />
                         </div>
@@ -271,7 +338,8 @@ const OfferForm = () => {
                             <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>End Date</label>
                             <DatePicker
                                 value={offerData.endDate}
-                                onChange={val => setOfferData({ ...offerData, endDate: val })}
+                                onChange={val => setOfferData(prev => ({ ...prev, endDate: val }))}
+                                minDate={offerData.startDate || getTodayString()}
                                 placeholder="dd-mm-yyyy"
                             />
                         </div>
@@ -335,8 +403,27 @@ const OfferForm = () => {
                                 <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>Min Bill Amount</label>
                                 <input
                                     type="number"
-                                    value={condition.minBillAmount}
-                                    onChange={e => setCondition({ ...condition, minBillAmount: parseFloat(e.target.value) })}
+                                    min="0"
+                                    step="0.01"
+                                    value={condition.minBillAmount === "" ? "" : condition.minBillAmount}
+                                    onChange={e => {
+                                        const raw = e.target.value;
+                                        if (raw === "") {
+                                            setCondition({ ...condition, minBillAmount: "" });
+                                        } else {
+                                            setCondition({ ...condition, minBillAmount: parseFloat(raw) });
+                                        }
+                                    }}
+                                    onBlur={e => {
+                                        const val = parseFloat(condition.minBillAmount);
+                                        if (isNaN(val) || val <= 0) {
+                                            setCondition(prev => ({ ...prev, minBillAmount: 0 }));
+                                        } else {
+                                            const rounded = Math.round(val * 100) / 100;
+                                            setCondition(prev => ({ ...prev, minBillAmount: rounded }));
+                                        }
+                                    }}
+                                    placeholder="0.00"
                                     className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                 />
                             </div>
@@ -446,8 +533,22 @@ const OfferForm = () => {
                                         type="number"
                                         max="100"
                                         min="0"
-                                        value={reward.discountPercent}
-                                        onChange={e => setReward({ ...reward, discountPercent: parseFloat(e.target.value) })}
+                                        step="0.01"
+                                        value={reward.discountPercent === "" ? "" : reward.discountPercent}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            setReward({ ...reward, discountPercent: val === "" ? "" : parseFloat(val) });
+                                        }}
+                                        onBlur={e => {
+                                            const val = parseFloat(reward.discountPercent);
+                                            if (isNaN(val) || val <= 0) {
+                                                setReward(prev => ({ ...prev, discountPercent: 0 }));
+                                            } else if (val > 100) {
+                                                setReward(prev => ({ ...prev, discountPercent: 100 }));
+                                            } else {
+                                                setReward(prev => ({ ...prev, discountPercent: Math.round(val * 100) / 100 }));
+                                            }
+                                        }}
                                         className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                     />
                                 </div>
@@ -460,8 +561,20 @@ const OfferForm = () => {
                                 <input
                                     type="number"
                                     min="0"
-                                    value={reward.discountAmount}
-                                    onChange={e => setReward({ ...reward, discountAmount: parseFloat(e.target.value) })}
+                                    step="0.01"
+                                    value={reward.discountAmount === "" ? "" : reward.discountAmount}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        setReward({ ...reward, discountAmount: val === "" ? "" : parseFloat(val) });
+                                    }}
+                                    onBlur={e => {
+                                        const val = parseFloat(reward.discountAmount);
+                                        if (isNaN(val) || val <= 0) {
+                                            setReward(prev => ({ ...prev, discountAmount: 0 }));
+                                        } else {
+                                            setReward(prev => ({ ...prev, discountAmount: Math.round(val * 100) / 100 }));
+                                        }
+                                    }}
                                     className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
                                 />
                             </div>

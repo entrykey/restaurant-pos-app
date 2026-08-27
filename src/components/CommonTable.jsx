@@ -90,12 +90,32 @@ const CommonTable = ({
         setSelectedKeys(new Set());
     }, []);
 
-    // Clear selection when data changes
+    // Keep selection valid when data changes, without resetting on re-renders
+    useEffect(() => {
+        if (!allPagesSelected && selectedKeys.size > 0) {
+            const currentKeySet = new Set((data || []).map((r, i) => r[rowKey] ?? i));
+            setSelectedKeys(prev => {
+                const next = new Set();
+                let changed = false;
+                prev.forEach(key => {
+                    if (currentKeySet.has(key)) {
+                        next.add(key);
+                    } else {
+                        changed = true;
+                    }
+                });
+                if (!changed && next.size === prev.size) return prev;
+                return next;
+            });
+        }
+    }, [data, rowKey, allPagesSelected]);
+
+    // Reset selection when changing page or page size
     useEffect(() => {
         if (!allPagesSelected) {
             setSelectedKeys(new Set());
         }
-    }, [data, allPagesSelected]);
+    }, [currentPage, pageSize]);
 
     const selectedRows = allPagesSelected && allRows
         ? allRows

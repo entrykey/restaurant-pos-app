@@ -6,6 +6,12 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+function getNestedValue(obj, keyPath) {
+    if (!obj || !keyPath) return undefined;
+    if (Object.prototype.hasOwnProperty.call(obj, keyPath)) return obj[keyPath];
+    return keyPath.split('.').reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : undefined), obj);
+}
+
 /**
  * Get plain cell text from a column definition for a given row.
  * Handles two export value conventions:
@@ -13,11 +19,12 @@ import autoTable from 'jspdf-autotable';
  *  2. col.exportValue(row)            — ExportSelectToolbar columns style (whole row)
  */
 function getCellText(col, row) {
+    const rawVal = getNestedValue(row, col.key);
+
     if (typeof col.exportValue === 'function') {
         try {
             // Try with (cellValue, row) first — CommonTable convention
-            const cellValue = row[col.key];
-            const result = col.exportValue(cellValue, row);
+            const result = col.exportValue(rawVal, row);
             if (result !== undefined && result !== null) return String(result);
             // Fall back to (row) only convention
             const result2 = col.exportValue(row);
@@ -32,18 +39,28 @@ function getCellText(col, row) {
             }
         }
     }
-    const raw = row[col.key];
-    if (raw === null || raw === undefined) return '';
-    if (typeof raw === 'object') return '';
-    return String(raw);
+    if (rawVal === null || rawVal === undefined) return '';
+    if (typeof rawVal === 'object') return '';
+    return String(rawVal);
 }
 
-/**
- * Build a 2-D array: [ [header...], [row...], ... ]
- */
 function buildMatrix(columns, rows) {
-    // Skip action/checkbox columns, and columns with no header
-    const exportCols = columns.filter(c => c.header && c.key !== '_actions' && c.key !== 'actions');
+    // Skip action/checkbox columns, columns with no header, and columns marked as non-exportable
+    const exportCols = columns.filter(c => {
+        if (!c || !c.header) return false;
+        if (c.exportable === false) return false;
+
+        const headerLower = String(c.header).trim().toLowerCase();
+        if (headerLower === 'action' || headerLower === 'actions') return false;
+
+        if (c.key) {
+            const keyLower = String(c.key).trim().toLowerCase();
+            if (keyLower === '_actions' || keyLower === 'actions' || keyLower === 'action') return false;
+        }
+
+        return true;
+    });
+
     const headers = exportCols.map(c => c.header);
     const body = rows.map(row => exportCols.map(col => getCellText(col, row)));
     return { headers, body, exportCols };

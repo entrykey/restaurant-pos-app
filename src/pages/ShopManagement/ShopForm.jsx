@@ -4,6 +4,7 @@ import { shopService } from '../../services/api/shops';
 import { businessTypesService } from '../../services/api/businessTypes';
 import { useTheme } from '../../context/ThemeContext';
 import CommonSelect from '../../components/ui/CommonSelect';
+import { toast } from 'react-hot-toast';
 
 const ShopForm = ({ shopToEdit, onBack }) => {
     const { theme } = useTheme();
@@ -137,7 +138,7 @@ const ShopForm = ({ shopToEdit, onBack }) => {
             onBack();
         } catch (error) {
             console.error("Error saving shop:", error);
-            alert(error.response?.data?.message || "Failed to save shop");
+            toast.error(error.response?.data?.message || "Failed to save shop");
         } finally {
             setIsLoading(false);
         }
@@ -249,17 +250,28 @@ const ShopForm = ({ shopToEdit, onBack }) => {
 
                             {!shopToEdit && (
                                 <>
-                                    <div>
-                                        <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Owner Email * (Login ID)</label>
-                                        <input
-                                            type="email"
-                                            name="ownerEmail"
-                                            value={formData.ownerEmail}
-                                            onChange={handleChange}
-                                            required
-                                            className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
-                                        />
-                                    </div>
+                                     <div>
+                                         <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Owner Email * (Login ID)</label>
+                                         <input
+                                             type="email"
+                                             name="ownerEmail"
+                                             value={formData.ownerEmail}
+                                             onChange={(e) => {
+                                                 const inputEl = e.target;
+                                                 const cursorStart = inputEl.selectionStart;
+                                                 const cursorEnd = inputEl.selectionEnd;
+                                                 e.target.value = inputEl.value.toLowerCase();
+                                                 handleChange(e);
+                                                 requestAnimationFrame(() => {
+                                                     if (inputEl && inputEl.setSelectionRange) {
+                                                         inputEl.setSelectionRange(cursorStart, cursorEnd);
+                                                     }
+                                                 });
+                                             }}
+                                             required
+                                             className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
+                                         />
+                                     </div>
                                     <div>
                                         <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Password *</label>
                                         <input

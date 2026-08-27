@@ -119,6 +119,16 @@ const Navbar = ({
     };
 
     const isOwner = currentUser?.isOwner || currentUser?.isSuperAdmin;
+    const hasFullAccess = isOwner || currentUser?.allBranches;
+
+    const showBranchSelector =
+        !currentUser?.isSuperAdmin &&
+        branches &&
+        branches.length > 0 &&
+        (hasFullAccess || branches.length > 1 || (currentUser?.branchIds && currentUser.branchIds.length > 0));
+
+    const selectedBranchObj = branches.find((b) => String(b._id || b.id) === String(activeBranchId));
+    const branchSelectorTitle = selectedBranchObj?.name || branches[0]?.name || "Select Branch";
 
     return (
         <div className={`h-16 ${theme.cardBg} border-b ${theme.borderLight} px-4 md:px-8 flex items-center justify-between shrink-0 w-full`}>
@@ -147,28 +157,22 @@ const Navbar = ({
                     </button>
                 )}
 
-                <div className="flex items-center gap-2 md:ml-6">
-                    <span className={`text-[10px] md:text-sm font-black ${theme.textPrimary} tracking-tight`}>
-                        {currentUser?.role} {currentUser?.phone}
-                    </span>
-                </div>
-
-                {/* Branch Selector - Visible for everyone if they have 1+ branches, 
-                    OR specifically for owners to manage branch context */}
-                {(branches.length > 1 || isOwner) && !currentUser?.roles?.some(r => r.isSystemRole) && !currentUser?.isSuperAdmin && (
+                {/* Branch Selector */}
+                {showBranchSelector && (
                     <div className="relative group">
                         <div className={`flex items-center gap-2 ${theme.inputBg} px-3 py-2 rounded-xl border ${theme.inputBorder} cursor-pointer hover:opacity-80 transition-all`}>
                             <MapPin size={16} className={theme.primaryIconText} />
                             <span className={`text-[10px] md:text-xs font-black ${theme.textPrimary} uppercase tracking-tight truncate max-w-[100px] md:max-w-[150px]`}>
-                                {branches.find(b => String(b._id || b.id) === String(activeBranchId))?.name || "Select Branch"}
+                                {branchSelectorTitle}
                             </span>
                             <ChevronRight size={14} className={`${theme.textMuted} group-hover:rotate-90 transition-transform`} />
                         </div>
                         
                         {/* Dropdown Menu */}
-                        <div className={`absolute top-full left-0 mt-2 w-56 ${theme.surfaceBg} rounded-2xl shadow-2xl border ${theme.borderLight} py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[110] translate-y-2 group-hover:translate-y-0`}>
-                            <div className={`px-4 py-2 border-b ${theme.borderLight} mb-1`}>
+                        <div className={`absolute top-full left-0 mt-2 w-60 ${theme.surfaceBg} rounded-2xl shadow-2xl border ${theme.borderLight} py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[110] translate-y-2 group-hover:translate-y-0`}>
+                            <div className={`px-4 py-2 border-b ${theme.borderLight} mb-1 flex items-center justify-between`}>
                                 <h5 className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>Switch Branch</h5>
+                                {hasFullAccess && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">Full Shop Access</span>}
                             </div>
                             <div className="max-h-60 overflow-y-auto no-scrollbar">
                                 {branches.map(branch => (
@@ -180,7 +184,7 @@ const Navbar = ({
                                                 ? `${theme.primaryIconBg} ${theme.primaryIconText}` 
                                                 : `${theme.textPrimary} ${theme.tableRowHover}`}`}
                                     >
-                                        {branch.name}
+                                        <span>{branch.name}</span>
                                         {String(activeBranchId) === String(branch._id || branch.id) && (
                                             <span className={`w-1.5 h-1.5 ${theme.mode === 'light' ? 'bg-indigo-600' : 'bg-current'} rounded-full`}></span>
                                         )}

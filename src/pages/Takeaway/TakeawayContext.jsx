@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { orderService } from "../../services/api";
 
 const TakeawayContext = createContext();
 
@@ -159,9 +160,39 @@ export const TakeawayProvider = ({ children }) => {
 
     const closeTab = (id, e) => {
         if (e) e.stopPropagation();
+
+        const targetTab = tabs.find(t => t.id === id);
+        const draftOrderId = targetTab?.takeawayOrder?.orderId || (id === activeTabId ? takeawayOrder?.orderId : null);
+
+        if (draftOrderId) {
+            orderService.deleteOrder(draftOrderId).catch(err => console.error("Failed to delete draft order on close tab:", err));
+        }
+
         if (tabs.length === 1) {
-            // Can't close the last tab, just reset it
-            resetTakeaway();
+            // Closing the only open tab: clear current tab completely and replace with a fresh, blank Tab 1
+            isResettingRef.current = true;
+            
+            const freshTabId = 1;
+            const freshTab = createTab(freshTabId, "Tab 1");
+
+            setTakeawayOrder(freshTab.takeawayOrder);
+            setTakeawayCustName("");
+            setTakeawayCustPhone("");
+            setSelectedCustomer(null);
+            setBillDiscount({ type: "flat", value: 0 });
+            setLoyaltyDiscount({ points: 0, amount: 0 });
+            setIsTakeaway(true);
+            setTableId(null);
+
+            setTabs([freshTab]);
+            setActiveTabId(freshTabId);
+
+            localStorage.setItem('pos_active_tabs', JSON.stringify([freshTab]));
+            localStorage.setItem('pos_active_tab_id', freshTabId.toString());
+
+            setTimeout(() => {
+                isResettingRef.current = false;
+            }, 300);
             return;
         }
 
@@ -169,7 +200,8 @@ export const TakeawayProvider = ({ children }) => {
         setTabs(newTabs);
 
         if (activeTabId === id) {
-            switchTab(newTabs[newTabs.length - 1].id);
+            const remainingTab = newTabs[newTabs.length - 1];
+            setActiveTabId(remainingTab.id);
         }
     };
 

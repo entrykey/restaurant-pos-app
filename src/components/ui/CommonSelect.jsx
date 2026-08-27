@@ -17,7 +17,8 @@ const CommonSelect = ({
     extraAction,
     onKeyDown,
     disabled = false,
-    triggerClassName = ""
+    triggerClassName = "",
+    icon: Icon
 }) => {
     const { theme } = useTheme();
     const [isOpen, setIsOpen] = useState(false);
@@ -60,7 +61,7 @@ const CommonSelect = ({
             const rect = triggerRef.current.getBoundingClientRect();
             const spaceBelow = window.innerHeight - rect.bottom;
             const spaceAbove = rect.top;
-            const menuHeight = 350; // Threshold for switching to top placement
+            const menuHeight = 300; // Threshold for switching to top placement
 
             if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
                 setPlacement('top');
@@ -69,9 +70,9 @@ const CommonSelect = ({
             }
 
             setCoords({
-                top: rect.top + window.scrollY,
-                bottom: rect.bottom + window.scrollY,
-                left: rect.left + window.scrollX,
+                top: rect.top,
+                bottom: rect.bottom,
+                left: rect.left,
                 width: rect.width
             });
         }
@@ -123,14 +124,27 @@ const CommonSelect = ({
         }
     };
 
+    const toggleOpen = () => {
+        if (disabled) return;
+        updatePosition();
+        setIsOpen(!isOpen);
+    };
+
+    // Synchronous fallback coordinates for immediate portal rendering on click
+    const rect = triggerRef.current ? triggerRef.current.getBoundingClientRect() : null;
+    const currentWidth = coords.width || (rect ? rect.width : 0);
+    const currentTop = coords.top || (rect ? rect.top : 0);
+    const currentBottom = coords.bottom || (rect ? rect.bottom : 0);
+    const currentLeft = coords.left || (rect ? rect.left : 0);
+
     return (
         <div className={`relative ${className} common-select-container ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`} style={isOpen ? { zIndex: 100 } : {}} ref={dropdownRef}>
             <div
-                onClick={() => !disabled && setIsOpen(!isOpen)}
+                onClick={toggleOpen}
                 onKeyDown={(e) => {
                     if (disabled) return;
                     if (e.key === 'Enter' || e.key === ' ') {
-                        setIsOpen(!isOpen);
+                        toggleOpen();
                         e.preventDefault();
                     }
                     if (onKeyDown) onKeyDown(e);
@@ -143,10 +157,17 @@ const CommonSelect = ({
                 } ${theme.inputBg} ${theme.textPrimary} ${disabled ? 'pointer-events-none' : ''}`}
                 tabIndex={disabled ? -1 : 0}
             >
-                <span className={displayValue ? theme.textPrimary : theme.textSecondary}>
-                    {displayValue || placeholder}
-                </span>
-                <ChevronDown size={18} className={`${theme.textSecondary} transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <div className="flex items-center gap-3 overflow-hidden">
+                    {Icon && (
+                        <span className={`shrink-0 ${isOpen ? 'text-indigo-500' : theme.textMuted}`}>
+                            {React.isValidElement(Icon) ? Icon : <Icon size={18} />}
+                        </span>
+                    )}
+                    <span className={`truncate ${displayValue ? theme.textPrimary : theme.textSecondary}`}>
+                        {displayValue || placeholder}
+                    </span>
+                </div>
+                <ChevronDown size={18} className={`${theme.textSecondary} shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </div>
 
             {required && !value && (
@@ -164,10 +185,10 @@ const CommonSelect = ({
                     ref={menuRef}
                     className={`fixed rounded-2xl shadow-2xl border z-[3000] overflow-hidden divide-y animate-in fade-in ${placement === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'} duration-200 ${theme.surfaceBg} ${theme.borderLight} ${theme.borderLight.replace('border-', 'divide-')}`}
                     style={{ 
-                        top: placement === 'bottom' ? coords.bottom - window.scrollY + 8 : undefined,
-                        bottom: placement === 'top' ? window.innerHeight - (coords.top - window.scrollY) + 8 : undefined,
-                        left: coords.left, 
-                        width: coords.width
+                        top: placement === 'bottom' ? currentBottom + 8 : undefined,
+                        bottom: placement === 'top' ? window.innerHeight - currentTop + 8 : undefined,
+                        left: currentLeft, 
+                        width: currentWidth > 0 ? currentWidth : undefined
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Utensils, Eye, EyeOff } from "lucide-react";
 import ThemeLoader from "../components/ui/ThemeLoader";
+import ConfirmDialog from "../components/ui/ConfirmDialog";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { shopService } from "../services/api";
@@ -37,24 +38,14 @@ export default function Login({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [validationErrors, setValidationErrors] = useState({});
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Check if user is already logged in
   useEffect(() => {
     if (auth.isAuthenticated && auth.user) {
-      // Show confirmation dialog before allowing different user login
-      const currentUserEmail = auth.user.email || auth.user.phone || 'current user';
-      const shouldLogout = window.confirm(
-        `You are already logged in as ${currentUserEmail}. Do you want to logout and login with a different account?`
-      );
-      
-      if (shouldLogout) {
-        auth.logout();
-      } else {
-        // Redirect to dashboard
-        navigate('/dashboard');
-      }
+      setShowLogoutConfirm(true);
     }
-  }, [auth.isAuthenticated, auth.user, auth, navigate]);
+  }, [auth.isAuthenticated, auth.user]);
 
   const validateEmail = (email) => {
     const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
@@ -71,13 +62,13 @@ export default function Login({
     const errors = {};
 
     if (!identifier.trim()) {
-      errors.identifier = "Email or phone is required";
+      errors.identifier = "Please enter your email or phone number";
     } else {
       const isEmail = identifier.includes('@');
       if (isEmail && !validateEmail(identifier)) {
-        errors.identifier = "Invalid email format (use lowercase letters only)";
+        errors.identifier = "Please enter a valid email address";
       } else if (!isEmail && !validatePhone(identifier)) {
-        errors.identifier = "Invalid phone number (10-15 digits required)";
+        errors.identifier = "Please enter a valid phone number";
       }
     }
 
@@ -226,7 +217,10 @@ export default function Login({
                 type="text"
                 value={identifier}
                 onChange={(e) => {
-                  let value = e.target.value;
+                  const inputEl = e.target;
+                  const cursorStart = inputEl.selectionStart;
+                  const cursorEnd = inputEl.selectionEnd;
+                  let value = inputEl.value;
                   
                   // Detect if it's an email (contains @) or phone (starts with digit or +)
                   const hasAtSymbol = value.includes('@');
@@ -264,6 +258,12 @@ export default function Login({
                       setValidationErrors(prev => ({ ...prev, identifier: '' }));
                     }
                   }
+
+                  requestAnimationFrame(() => {
+                    if (inputEl && inputEl.setSelectionRange) {
+                      inputEl.setSelectionRange(cursorStart, cursorEnd);
+                    }
+                  });
                 }}
                 className={`w-full p-3 border rounded-xl outline-none text-sm ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.identifier ? 'border-red-500' : ''}`}
                 placeholder="Enter your email or phone number"
@@ -284,8 +284,34 @@ export default function Login({
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => {
-                    setPassword(e.target.value);
-                    setValidationErrors(prev => ({ ...prev, password: '' }));
+                    const inputEl = e.target;
+                    const cursorStart = inputEl.selectionStart;
+                    const cursorEnd = inputEl.selectionEnd;
+                    const rawVal = inputEl.value;
+
+                    // Filter out disallowed special characters (e.g. {, }, ^, ~, |, <, >, \, /, ", ')
+                    const cleanVal = rawVal.replace(/[^a-zA-Z0-9@#$!%&*_\-\.]/g, '');
+                    const hadInvalidChar = cleanVal !== rawVal;
+
+                    setPassword(cleanVal);
+
+                    if (hadInvalidChar) {
+                      setValidationErrors(prev => ({
+                        ...prev,
+                        password: 'Password contains invalid characters'
+                      }));
+                    } else if (cleanVal && cleanVal.length < 6) {
+                      setValidationErrors(prev => ({ ...prev, password: 'Password must be at least 6 characters' }));
+                    } else {
+                      setValidationErrors(prev => ({ ...prev, password: '' }));
+                    }
+
+                    requestAnimationFrame(() => {
+                      if (inputEl && inputEl.setSelectionRange) {
+                        const pos = hadInvalidChar ? Math.max(0, cursorStart - 1) : cursorStart;
+                        inputEl.setSelectionRange(pos, pos);
+                      }
+                    });
                   }}
                   className={`w-full p-3 border rounded-xl outline-none text-sm pr-12 ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.password ? 'border-red-500' : ''}`}
                   placeholder="Enter your password"
@@ -334,6 +360,23 @@ export default function Login({
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        onClose={() => {
+          setShowLogoutConfirm(false);
+          navigate('/dashboard');
+        }}
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          auth.logout();
+        }}
+        title="Already Logged In"
+        message={`You are already logged in as ${auth.user?.email || auth.user?.phone || 'current user'}. Do you want to logout and sign in with a different account?`}
+        confirmText="Logout & Switch Account"
+        cancelText="Go to Dashboard"
+        type="warning"
+      />
     </div>
   );
 }

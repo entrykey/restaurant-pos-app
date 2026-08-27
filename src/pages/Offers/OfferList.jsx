@@ -133,12 +133,33 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
         {
             header: "Status",
             key: "isActive",
-            render: (val) => (
-                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${val ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
-                    }`}>
-                    {val ? "Active" : "Inactive"}
-                </span>
-            )
+            render: (val, row) => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const endStr = row.endDate ? new Date(row.endDate).toISOString().split('T')[0] : null;
+                const isExpired = endStr && endStr < todayStr;
+
+                if (!val) {
+                    return (
+                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-red-100 text-red-600">
+                            Inactive
+                        </span>
+                    );
+                }
+
+                if (isExpired) {
+                    return (
+                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-700">
+                            Expired
+                        </span>
+                    );
+                }
+
+                return (
+                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-green-100 text-green-600">
+                        Active
+                    </span>
+                );
+            }
         },
         {
             header: "Applied At",

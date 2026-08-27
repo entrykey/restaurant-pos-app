@@ -11,7 +11,7 @@ export const ROUTE_ACCESS = Object.freeze({
   TAKEAWAY: { module: MODULES.POS, action: 'POS.DINING.TAKEAWAY' },
   DIRECT_SALE: { module: MODULES.POS, action: 'pos.direct_sale' },
   WHOLESALE: { module: MODULES.POS, action: 'pos.wholesale' },
-  ONLINE_ORDERS: { module: MODULES.POS, action: 'pos.onlineorder' },
+  ONLINE_ORDERS: { module: 'ONLINE.ORDERS', action: 'MANAGE.ONLINE.ORDERS' },
   KDS: { module: MODULES.KDS },
   RESERVATIONS: { module: MODULES.RESERVATIONS, action: ACTIONS.RESERVATION_VIEWING },
   MYATTENDANCE: { module: MODULES.MYATTENDANCE, action: ACTIONS.ATTENDANCE_MANAGE },
@@ -40,6 +40,9 @@ export const ROUTE_ACCESS = Object.freeze({
   PAY_IN: { module: MODULES.PAY_IN, action: "VIEW PAYIN" },
   PAY_OUT: { module: MODULES.PAY_OUT, action: "VIEW PAYOUT" },
   PURCHASE_RETURN: { module: MODULES.PURCHASE_RETURN, action: "VIEW.PURCHASERETURN" },
+  DELIVERY_SETTINGS: { module: 'settings', action: 'DELIVERY.SETTINGS' },
+  DELIVERY_MANAGEMENT: { module: MODULES.DELIVERY_MANAGEMENT, action: ACTIONS.MANAGE_DELIVERY_REQUESTS },
+  DELIVERY_SETTLEMENT: { module: MODULES.DELIVERY_SETTLEMENT, action: ACTIONS.DELIVERY_COLLECTION },
 });
 
 // Define order in sidebar
@@ -50,6 +53,8 @@ export const ROUTE_KEYS_ORDER = [
   'DIRECT_SALE',
   'WHOLESALE',
   'ONLINE_ORDERS',
+  'DELIVERY_MANAGEMENT',
+  'DELIVERY_SETTLEMENT',
   'RESERVATIONS',
   'KDS',
   'TABLE_MANAGEMENT',
@@ -89,6 +94,8 @@ export const ROUTE_KEY_TO_PATH = Object.freeze({
   DIRECT_SALE: "/takeaway",
   WHOLESALE: "/wholesale",
   ONLINE_ORDERS: "/online-orders",
+  DELIVERY_MANAGEMENT: "/delivery-management",
+  DELIVERY_SETTLEMENT: "/delivery-settlement",
   KDS: "/kds",
   RESERVATIONS: "/reservations",
   INVENTORY: "/inventory",

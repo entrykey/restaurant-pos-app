@@ -107,6 +107,36 @@ api.interceptors.response.use(
             );
         }
 
+        // Clean technical Mongoose / Backend validation strings across all API calls
+        if (error.response?.data?.message && typeof error.response.data.message === 'string') {
+            const rawMsg = error.response.data.message;
+            if (rawMsg.includes("Validation failed:") || rawMsg.includes("Path `")) {
+                const fieldMatch = rawMsg.match(/Path `([^`]+)` is required/i) || rawMsg.match(/`([^`]+)`/i);
+                if (fieldMatch && fieldMatch[1]) {
+                    const rawField = fieldMatch[1];
+                    const fieldLabels = {
+                        name: "Business Name",
+                        businessName: "Business Name",
+                        ownerName: "Owner Name",
+                        ownerEmail: "Owner Email",
+                        ownerPhone: "Phone Number",
+                        phone: "Phone Number",
+                        email: "Email Address",
+                        password: "Password",
+                        code: "Code",
+                        title: "Title"
+                    };
+                    const label = fieldLabels[rawField] || (rawField.charAt(0).toUpperCase() + rawField.slice(1));
+                    const cleanMsg = `${label} is required.`;
+                    error.response.data.message = cleanMsg;
+                    error.message = cleanMsg;
+                } else {
+                    error.response.data.message = "Please fill in all required fields.";
+                    error.message = "Please fill in all required fields.";
+                }
+            }
+        }
+
         return Promise.reject(error);
     }
 );
@@ -1067,6 +1097,15 @@ export const orderService = {
             return response.data;
         } catch (error) {
             console.error("Error updating order status:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteOrder: async (id) => {
+        try {
+            const response = await api.delete(`/orders/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting order:", error);
             throw error.response ? error.response.data : error;
         }
     },

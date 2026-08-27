@@ -293,9 +293,19 @@ const Sidebar = ({
         },
         ONLINE_ORDERS: {
             icon: Globe, label: "Online Orders",
+            badge: pendingOnlineOrdersCount,
             onClick: () => { setView("online-orders"); navigate("/online-orders"); closeMobile(); },
-            isActive: checkActive(view, "online-orders", "ONLINE_ORDERS"),
-            badge: pendingOnlineOrdersCount
+            isActive: checkActive(view, "online-orders", "ONLINE_ORDERS")
+        },
+        DELIVERY_MANAGEMENT: {
+            icon: Truck, label: "Delivery Management",
+            onClick: () => { setView("delivery-management"); navigate("/delivery-management"); closeMobile(); },
+            isActive: checkActive(view, "delivery-management", "DELIVERY_MANAGEMENT") || location.pathname.includes("/delivery-management")
+        },
+        DELIVERY_SETTLEMENT: {
+            icon: Wallet, label: "Delivery Settlement",
+            onClick: () => { setView("delivery-settlement"); navigate("/delivery-settlement"); closeMobile(); },
+            isActive: checkActive(view, "delivery-settlement", "DELIVERY_SETTLEMENT") || location.pathname.includes("/delivery-settlement")
         },
         KDS: {
             icon: MonitorPlay, label: "Kitchen Display (KDS)",

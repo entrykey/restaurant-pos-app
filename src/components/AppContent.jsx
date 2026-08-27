@@ -144,6 +144,8 @@ const AppContent = () => {
         handleAcceptOnlineOrder, handleRejectOnlineOrder, handleCompleteOnlineKOT
     } = useOnlineOrders();
 
+    const [isSubmittingKOT, setIsSubmittingKOT] = useState(false);
+
     useEffect(() => {
         const fetchSettings = async () => {
             if (isAuthenticated && currentShopId) {
@@ -648,8 +650,11 @@ const AppContent = () => {
             return;
         }
 
+        const subMethod = String(organization?.subscriptionMethod || currentUser?.subscription?.subscriptionMethod || '').toLowerCase();
+        const trialStatus = String(organization?.trialRunStatus || currentUser?.subscription?.trialRunStatus || '').toLowerCase();
+
         // Normal mode: lists work without a plan; only block writes (handled via API dialog).
-        if (organization?.subscriptionMethod === 'normal') {
+        if (subMethod === 'normal') {
             setIsSubscriptionModalOpen(false);
             return;
         }
@@ -660,13 +665,20 @@ const AppContent = () => {
 
         const isOwner = currentUser.isOwner || isSuperAdmin;
 
-        if (organization?.subscriptionMethod === 'trial_run') {
+        if (subMethod === 'trial_run') {
+            // If trial run is approved, don't show any alerts
+            if (trialStatus === 'approved' || organization?.isTrialRunApproved || currentUser?.subscription?.isTrialRunApproved) {
+                setIsSubscriptionModalOpen(false);
+                return;
+            }
+            
+            // Only show alert if trial run is NOT approved
             const ownerBody =
-                organization?.trialRunStatus === 'pending'
+                trialStatus === 'pending'
                     ? "Your trial run request is pending super admin approval."
                     : "Trial run access is not approved yet. Request trial run from Organization page.";
             const staffBody =
-                organization?.trialRunStatus === 'pending'
+                trialStatus === 'pending'
                     ? "Shop trial run is pending super admin approval."
                     : "Shop trial run is not approved yet. Contact the owner.";
             sendBrowserNotification("Trial Run Status", {
@@ -790,7 +802,6 @@ const AppContent = () => {
         currentUser?.isOwner &&
         !isSuperAdmin &&
         !isOwnerSelectionPage &&
-        isSubscribed &&
         uiProfileCompletion < 100;
 
 
@@ -1067,6 +1078,8 @@ const AppContent = () => {
                     tableId: null,
                     items: payloadItems,
                     ...buildOrderTotalsFromBill(billDetails),
+                    isDraftSync: !takeawayOrder?.isHistoryEdit,
+                    draftSync: !takeawayOrder?.isHistoryEdit,
                     orderStatus: takeawayOrder?.isHistoryEdit ? "COMPLETED" : "OPEN",
                     createdBy: currentUser?._id,
                     notes: takeawayOrder?.isHistoryEdit
@@ -1451,23 +1464,25 @@ const AppContent = () => {
     };
 
     const initiateAddItem = (menuItem, quantity = 1) => {
-        const hasNewPortions = menuItem.portionPricing && menuItem.portionPricing.length > 0;
-        const hasLegacyVariants = ["Portion", "Volume", "Weight"].includes(menuItem.sellingType);
-        const hasExtras = menuItem.availableExtras && menuItem.availableExtras.length > 0;
+        const hasNewPortions = Array.isArray(menuItem.portionPricing) && menuItem.portionPricing.length > 0;
+        const hasLegacyVariants = Array.isArray(menuItem.variants) && menuItem.variants.length > 0;
+        const isWeightItem = menuItem.sellingType === "Weight";
+        const hasExtras = Array.isArray(menuItem.availableExtras) && menuItem.availableExtras.length > 0;
 
-        if (hasNewPortions || hasLegacyVariants || hasExtras) {
+        if (hasNewPortions || hasLegacyVariants || isWeightItem || hasExtras) {
             setCustomizingItem(menuItem);
             if (hasNewPortions) {
                 const defPortion = menuItem.portionPricing.find(p => p.isDefault) || menuItem.portionPricing[0];
                 setCustomVariant(defPortion);
                 setCustomWeightInput(quantity);
-            } else if (menuItem.sellingType === "Weight") {
+            } else if (hasLegacyVariants) {
+                const defVariant = menuItem.variants.find(v => v.isDefault) || menuItem.variants[0];
+                setCustomVariant(defVariant);
+                setCustomWeightInput(quantity);
+            } else if (isWeightItem) {
                 setCustomWeightInput(quantity);
                 setCustomWeightUnit("kg");
                 setCustomVariant(null);
-            } else if (hasLegacyVariants) {
-                setCustomVariant(menuItem.variants[0]);
-                setCustomWeightInput(quantity);
             } else {
                 setCustomVariant(null);
                 setCustomWeightInput(quantity);
@@ -1576,6 +1591,7 @@ const AppContent = () => {
     };
 
     const handleSendToKOT = async () => {
+        if (isSubmittingKOT) return;
         const nowTs = Date.now();
         const table = !isTakeaway
             ? tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))
@@ -1587,6 +1603,7 @@ const AppContent = () => {
 
         if (orderItems.length === 0) return;
 
+        setIsSubmittingKOT(true);
         try {
             const billDetails = calculateBillDetails(
                 orderItems,
@@ -1735,6 +1752,8 @@ const AppContent = () => {
         } catch (error) {
             console.error("Failed to send KOT / create order:", error);
             toast.error("Failed to send KOT. Please try again.");
+        } finally {
+            setIsSubmittingKOT(false);
         }
     };
 
@@ -2087,6 +2106,7 @@ const AppContent = () => {
                         offers={offers}
                         handlePrintReceipt={handlePrintReceipt}
                         handleSendToKOT={handleSendToKOT}
+                        isSubmittingKOT={isSubmittingKOT}
                         businessTypeData={businessTypeData}
                         setIsPaymentModalOpen={setIsPaymentModalOpen}
                         setBillingStage={setBillingStage}

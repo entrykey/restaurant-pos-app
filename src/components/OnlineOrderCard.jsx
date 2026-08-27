@@ -1,13 +1,15 @@
 import React from 'react';
-import { User, Phone, MapPin, Clock, ExternalLink } from 'lucide-react';
+import { User, Phone, MapPin, Clock, ExternalLink, Check, Eye } from 'lucide-react';
 
 const OnlineOrderCard = ({
     order,
     tab,
     onPreview,
-    onAccept,
-    onReject,
-    onComplete,
+    onAcceptOrder,
+    onRejectOrder,
+    onStartPacking,
+    onMarkPacked,
+    onMarkDelivered,
     formatCurrency
 }) => {
     const getStatusColor = (status) => {
@@ -59,7 +61,7 @@ const OnlineOrderCard = ({
                     </div>
                     <div className="flex items-center gap-3">
                         <MapPin size={16} className="text-gray-400" />
-                        <span className="text-sm font-medium text-gray-500 truncate max-w-[200px]" title={order.address}>
+                        <span className="text-sm font-medium text-gray-500 line-clamp-2" title={order.address}>
                             {order.address}
                         </span>
                     </div>
@@ -87,47 +89,95 @@ const OnlineOrderCard = ({
                 </div>
 
                 {/* Action Buttons */}
-                {tab === 'pending' && (
+                {tab === 'requests' && (
                     <div className="flex gap-2">
                         <button
-                            onClick={() => onPreview(order)}
-                            className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                            onClick={() => onRejectOrder && onRejectOrder(order)}
+                            className="flex-1 py-3 px-3 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1 border border-red-200"
                         >
-                            Preview
+                            Reject
                         </button>
                         <button
-                            onClick={() => onAccept(order)}
-                            className="flex-2 py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 active:scale-95 transition-all"
+                            onClick={() => onAcceptOrder && onAcceptOrder(order)}
+                            className="flex-1 py-3 px-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-1"
                         >
+                            <Check size={16} />
                             Accept
                         </button>
                     </div>
                 )}
 
-                {tab === 'accepted' && (
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between text-sm font-bold bg-indigo-50 p-3 rounded-xl border border-indigo-100">
-                            <span className="text-indigo-400 uppercase text-[10px] tracking-widest">KOT Status</span>
-                            <span className={`uppercase flex items-center gap-2 ${order.kotStatus === 'ready' ? 'text-green-600' : 'text-orange-500'}`}>
-                                <Clock size={12} className={order.kotStatus !== 'ready' ? 'animate-pulse' : ''} />
-                                {order.kotStatus || 'Preparing'}
-                            </span>
-                        </div>
-                        {order.kotStatus === 'ready' && (
-                            <button
-                                onClick={() => onComplete(order.id)}
-                                className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 active:scale-95 transition-all"
-                            >
-                                Mark Out for Delivery
-                            </button>
-                        )}
+                {tab === 'pending' && (
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => onPreview(order)}
+                            className="p-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-all active:scale-95 flex items-center justify-center"
+                            title="Preview Order"
+                        >
+                            <Eye size={20} />
+                        </button>
+                        <button
+                            onClick={() => onStartPacking(order)}
+                            className="flex-1 py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                            Start Packing
+                        </button>
                     </div>
                 )}
 
-                {tab === 'history' && (
+                {tab === 'packing' && (
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between text-sm font-bold bg-orange-50 p-3 rounded-xl border border-orange-100">
+                            <span className="text-orange-400 uppercase text-[10px] tracking-widest">Status</span>
+                            <span className="uppercase flex items-center gap-2 text-orange-600">
+                                <Clock size={12} className="animate-pulse" />
+                                Packing in Progress
+                            </span>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => onPreview(order)}
+                                className="p-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition-all active:scale-95 flex items-center justify-center"
+                                title="Preview Order"
+                            >
+                                <Eye size={20} />
+                            </button>
+                            <button
+                                onClick={() => onMarkPacked(order)}
+                                className="flex-1 py-3 px-4 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Check size={16} />
+                                Mark as Packed
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {tab === 'packed' && (
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between text-sm font-bold bg-green-50 p-3 rounded-xl border border-green-100">
+                            <span className="text-green-400 uppercase text-[10px] tracking-widest">Status</span>
+                            <span className="uppercase flex items-center gap-2 text-green-600">
+                                <Check size={12} />
+                                Packed & Available for Pickup
+                            </span>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => onPreview(order)}
+                                className="w-full py-3 px-4 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Eye size={16} />
+                                View Details
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {tab === 'delivered' && (
                     <div className="flex items-center justify-center p-2 rounded-xl border border-dashed border-gray-200">
-                        <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${getStatusColor(order.status)}`}>
-                            {order.status}
+                        <span className="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest bg-green-100 text-green-600">
+                            Delivered
                         </span>
                     </div>
                 )}

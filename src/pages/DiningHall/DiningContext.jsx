@@ -28,10 +28,12 @@ export const DiningProvider = ({ children }) => {
         null
     ), [activeBranchId, user, branches]);
 
+    const [hasPermissionError, setHasPermissionError] = useState(false);
+
     const fetchDiningData = useCallback(async (isPolling = false) => {
         const branchId = resolveBranchId();
 
-        if (!branchId) {
+        if (!branchId || hasPermissionError) {
             if (!isPolling) {
                 setTables([]);
                 setCategories([]);
@@ -44,15 +46,20 @@ export const DiningProvider = ({ children }) => {
         const isReservationsEnabled = enabledModules?.RESERVATIONS;
         const isKdsEnabled = enabledModules?.KDS;
 
+        // Skip fetching if none of the dining/kds/reservation modules are enabled
+        if (!isDiningEnabled && !isReservationsEnabled && !isKdsEnabled) {
+            if (!isPolling) setLoading(false);
+            return;
+        }
+
         if (!isPolling) setLoading(true);
         try {
             const results = await Promise.allSettled([
-                tableService.getTables({ all: true, branchId }),
-                diningCategoryService.getCategories({ all: true, branchId }),
+                isDiningEnabled ? tableService.getTables({ all: true, branchId }) : Promise.resolve([]),
+                isDiningEnabled ? diningCategoryService.getCategories({ all: true, branchId }) : Promise.resolve({ data: [] }),
                 isReservationsEnabled ? reservationsService.getReservations({
                     branchId,
-                    date: new Date().toISOString().split("T")[0],
-                    status: 'CONFIRMED'
+                    date: new Date().toISOString().split("T")[0]
                 }) : Promise.resolve({ data: [] }),
                 isDiningEnabled
                     ? tableService.getActiveTableOrders({ branchId })
@@ -72,8 +79,21 @@ export const DiningProvider = ({ children }) => {
             const ordersRes = unwrap(results[3], { data: [] });
             const kotsRes = unwrap(results[4], { data: [] });
 
-            if (results.some((r) => r.status === 'rejected')) {
-                console.warn('Some dining hall data failed to load:', results.filter((r) => r.status === 'rejected'));
+            // Check if permission was denied (403 status code)
+            const rejectedResults = results.filter((r) => r.status === 'rejected');
+            if (rejectedResults.length > 0) {
+                const isForbidden = rejectedResults.some(r => {
+                    const status = r.reason?.response?.status || r.reason?.status;
+                    return status === 403;
+                });
+
+                if (isForbidden) {
+                    console.warn('Dining API returned 403 Forbidden. Disabling automatic polling for dining hall.');
+                    setHasPermissionError(true);
+                    if (!isPolling) setLoading(false);
+                    return;
+                }
+                console.warn('Some dining hall data failed to load:', rejectedResults);
             }
 
             const activeOrders = ordersRes?.data || ordersRes || [];
@@ -86,6 +106,25 @@ export const DiningProvider = ({ children }) => {
                     : String(oTableId);
                 if (!ordersByTableId.has(oTableIdStr)) {
                     ordersByTableId.set(oTableIdStr, order);
+                }
+            });
+
+            const rawReservationsList = reservationsRes?.data || reservationsRes || [];
+            const reservationsByTableId = new Map();
+            const nowMs = Date.now();
+            (Array.isArray(rawReservationsList) ? rawReservationsList : []).forEach((res) => {
+                if (res.status === 'CANCELLED' || res.status === 'COMPLETED') return;
+
+                // Automatically vacate table once reserved time + duration has passed
+                const resTime = new Date(res.reservationTime).getTime();
+                const durationMs = (res.durationMinutes || 120) * 60 * 1000;
+                if (!isNaN(resTime) && (resTime + durationMs) <= nowMs) {
+                    return;
+                }
+
+                const rTableId = res.tableId?._id || res.tableId;
+                if (rTableId) {
+                    reservationsByTableId.set(String(rTableId), res);
                 }
             });
 
@@ -105,10 +144,11 @@ export const DiningProvider = ({ children }) => {
                 return !categoryId || activeCategoryIds.has(categoryId);
             });
 
-            // Map backend _id to id for frontend consistency and merge active orders
+            // Map backend _id to id for frontend consistency and merge active orders/reservations
             const mappedTables = displayTables.map(t => {
                 const tableId = String(t._id);
                 const activeOrderForTable = ordersByTableId.get(tableId) || null;
+                const activeReservationForTable = reservationsByTableId.get(tableId) || null;
 
                 let status = (t.status || "available").toLowerCase();
                 let order = null;
@@ -141,8 +181,6 @@ export const DiningProvider = ({ children }) => {
                         price: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
                         sellingPrice: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
                         taxPercent: item.taxPercent ?? 0,
-                        // If the order already has at least one KOT, treat backend quantities as already sent
-                        // so the POS can generate incremental KOTs only for newly added/increased items.
                         sentQuantity: (tableKots.length > 0 ? (item.quantity ?? 0) : (item.sentQuantity ?? 0)),
                     }));
 
@@ -156,44 +194,39 @@ export const DiningProvider = ({ children }) => {
                         items: deduplicatedItems,
                         isSentToKOT: tableKots.length > 0,
                         kotStatus: kotStatus,
-                        // Use startedAt from a PREPARING/READY kot (when KDS worker started it),
-                        // fall back to the earliest KOT's createdAt
                         kotSentAt: (() => {
                             const preparingKot = tableKots.find(k => k.startedAt);
                             return preparingKot ? preparingKot.startedAt : (tableKots.length > 0 ? tableKots[0].createdAt : null);
                         })(),
-                        // Staff info
                         createdBy: activeOrderForTable.createdBy,
                         managedBy: activeOrderForTable.managedBy,
                         servedBy: activeOrderForTable.servedBy,
                         actedBy: activeOrderForTable.actedBy || [],
                         createdAt: activeOrderForTable.createdAt,
                     };
+                } else if (activeReservationForTable) {
+                    status = activeReservationForTable.status === 'SEATED' ? "occupied" : "reserved";
                 }
 
                 return {
                     ...t,
                     id: tableId,
                     name: `Table ${t.tableNumber}`,
-                    status: status.toLowerCase(), // Frontend expects lowercase
+                    status: status.toLowerCase(),
                     order,
-                    activeMerge: t.activeMerge // Pass through the merge info from backend
+                    activeMerge: t.activeMerge
                 };
             });
 
             // Normalize reservations for the DiningHall UI
-            const mappedReservations = (reservationsRes.data || reservationsRes || []).map(r => ({
+            const mappedReservations = (Array.isArray(rawReservationsList) ? rawReservationsList : []).map(r => ({
                 ...r,
                 id: r._id,
-                tableId: r.tableId?._id || r.tableId, // Ensure it's a string ID
-                date: new Date(r.reservationTime).toISOString().split("T")[0], // Add YYYY-MM-DD
+                tableId: r.tableId?._id || r.tableId,
+                date: new Date(r.reservationTime).toISOString().split("T")[0],
                 time: new Date(r.reservationTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }));
 
-            // IMPORTANT:
-            // We poll the backend every ~10s. If a cashier is building a cart locally (not yet saved/sent),
-            // the backend won't know about those draft items. Replacing `tables` outright would wipe the cart
-            // and make the UI total "disappear after some time".
             setTables((prev) => {
                 const prevById = new Map((prev || []).map((t) => [String(t.id || t._id), t]));
 
@@ -218,8 +251,6 @@ export const DiningProvider = ({ children }) => {
                         nextHasBackendOrder &&
                         String(prevOrderId) === String(nextOrderId);
 
-                    // Only keep unsynced local edits on the active table; everyone else uses backend
-                    // IMPORTANT: Also preserve if the local items count is different from backend to prevent flickering
                     const shouldPreserveLocalOrder =
                         hasLocalPending &&
                         String(activeTableId) === key &&
@@ -264,22 +295,34 @@ export const DiningProvider = ({ children }) => {
         } finally {
             if (!isPolling) setLoading(false);
         }
-    }, [resolveBranchId, activeTableId, user, enabledModules]);
+    }, [resolveBranchId, activeTableId, user, enabledModules, hasPermissionError]);
 
     useEffect(() => {
-        if (!user) {
+        if (!user || hasPermissionError) {
+            setLoading(false);
+            return;
+        }
+
+        const isDiningEnabled = enabledModules?.DINING;
+        const isReservationsEnabled = enabledModules?.RESERVATIONS;
+        const isKdsEnabled = enabledModules?.KDS;
+
+        if (!isDiningEnabled && !isReservationsEnabled && !isKdsEnabled) {
             setLoading(false);
             return;
         }
         
         fetchDiningData();
 
+        // Poll every 10 seconds instead of 2.5 seconds to save resources & bandwidth
         const intervalId = setInterval(() => {
-            fetchDiningData(true);
-        }, 2500);
+            if (document.visibilityState === 'visible' && !hasPermissionError) {
+                fetchDiningData(true);
+            }
+        }, 10000);
 
         return () => clearInterval(intervalId);
-    }, [user, fetchDiningData, enabledModules]);
+    }, [user, fetchDiningData, enabledModules, hasPermissionError]);
 
     const getTableDuration = (startTime) => {
         if (!startTime) return null;

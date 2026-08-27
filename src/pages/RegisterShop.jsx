@@ -4,6 +4,7 @@ import ThemeLoader from '../components/ui/ThemeLoader';
 import { shopService } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import CommonSelect from '../components/ui/CommonSelect';
+import { toast } from 'react-hot-toast';
 
 const RegisterShop = ({ onBack, onRegisterSuccess }) => {
     const { theme } = useTheme();
@@ -61,18 +62,18 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
 
         // Email validation
         if (formData.ownerEmail.trim() && !validateEmail(formData.ownerEmail.trim())) {
-            errors.ownerEmail = "Invalid email format (use lowercase letters only)";
+            errors.ownerEmail = "Please enter a valid email address";
         }
 
         // Phone validation
         if (formData.ownerPhone.trim() && !validatePhone(formData.ownerPhone.trim())) {
-            errors.ownerPhone = "Invalid phone number (10-15 digits required)";
+            errors.ownerPhone = "Please enter a valid 10-15 digit phone number";
         }
 
         // Either email or phone required
         if (!formData.ownerEmail.trim() && !formData.ownerPhone.trim()) {
-            errors.ownerEmail = "Either email or phone is required";
-            errors.ownerPhone = "Either email or phone is required";
+            errors.ownerEmail = "Please enter an email address or phone number";
+            errors.ownerPhone = "Please enter an email address or phone number";
         }
 
         // Password validation
@@ -140,7 +141,7 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
             } else if (errorMessage.toLowerCase().includes('phone')) {
                 setValidationErrors({ ownerPhone: errorMessage });
             } else {
-                alert(errorMessage);
+                toast.error(errorMessage);
             }
         } finally {
             setLoading(false);
@@ -241,17 +242,25 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                             type="text"
                             value={formData.ownerEmail}
                             onChange={(e) => {
-                                const value = e.target.value.toLowerCase();
+                                const inputEl = e.target;
+                                const cursorStart = inputEl.selectionStart;
+                                const cursorEnd = inputEl.selectionEnd;
+                                const value = inputEl.value.toLowerCase();
                                 handleInputChange('ownerEmail', value);
                                 // Real-time email validation
                                 if (value && !validateEmail(value)) {
-                                    setValidationErrors(prev => ({ ...prev, ownerEmail: 'Invalid email format (use lowercase letters only)' }));
+                                    setValidationErrors(prev => ({ ...prev, ownerEmail: 'Please enter a valid email address' }));
                                 }
+                                requestAnimationFrame(() => {
+                                  if (inputEl && inputEl.setSelectionRange) {
+                                    inputEl.setSelectionRange(cursorStart, cursorEnd);
+                                  }
+                                });
                             }}
                             onBlur={(e) => {
                                 const value = e.target.value.trim();
                                 if (value && !validateEmail(value)) {
-                                    setValidationErrors(prev => ({ ...prev, ownerEmail: 'Invalid email format (use lowercase letters only)' }));
+                                    setValidationErrors(prev => ({ ...prev, ownerEmail: 'Please enter a valid email address' }));
                                 }
                             }}
                             className={`w-full p-3 border rounded-xl outline-none text-sm ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.ownerEmail ? 'border-red-500' : ''}`}
@@ -274,13 +283,13 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                                 // Real-time phone validation
                                 const cleanPhone = value.replace(/\D/g, '');
                                 if (value && cleanPhone.length > 0 && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
-                                    setValidationErrors(prev => ({ ...prev, ownerPhone: 'Phone must be 10-15 digits' }));
+                                    setValidationErrors(prev => ({ ...prev, ownerPhone: 'Please enter a valid 10-15 digit phone number' }));
                                 }
                             }}
                             onBlur={(e) => {
                                 const value = e.target.value.trim();
                                 if (value && !validatePhone(value)) {
-                                    setValidationErrors(prev => ({ ...prev, ownerPhone: 'Invalid phone number (10-15 digits required)' }));
+                                    setValidationErrors(prev => ({ ...prev, ownerPhone: 'Please enter a valid 10-15 digit phone number' }));
                                 }
                             }}
                             className={`w-full p-3 border rounded-xl outline-none text-sm ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.ownerPhone ? 'border-red-500' : ''}`}
@@ -299,7 +308,35 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                         <input
                             type={showPassword ? "text" : "password"}
                             value={formData.password}
-                            onChange={(e) => handleInputChange('password', e.target.value)}
+                            onChange={(e) => {
+                                const inputEl = e.target;
+                                const cursorStart = inputEl.selectionStart;
+                                const rawVal = inputEl.value;
+
+                                // Filter out disallowed special characters (e.g. {, }, ^, ~, |, <, >, \, /, ", ')
+                                const cleanVal = rawVal.replace(/[^a-zA-Z0-9@#$!%&*_\-\.]/g, '');
+                                const hadInvalidChar = cleanVal !== rawVal;
+
+                                handleInputChange('password', cleanVal);
+
+                                if (hadInvalidChar) {
+                                    setValidationErrors(prev => ({
+                                        ...prev,
+                                        password: 'Password contains invalid characters'
+                                    }));
+                                } else if (cleanVal && cleanVal.length < 6) {
+                                    setValidationErrors(prev => ({ ...prev, password: 'Password must be at least 6 characters' }));
+                                } else {
+                                    setValidationErrors(prev => ({ ...prev, password: '' }));
+                                }
+
+                                requestAnimationFrame(() => {
+                                    if (inputEl && inputEl.setSelectionRange) {
+                                        const pos = hadInvalidChar ? Math.max(0, cursorStart - 1) : cursorStart;
+                                        inputEl.setSelectionRange(pos, pos);
+                                    }
+                                });
+                            }}
                             className={`w-full p-3 border rounded-xl outline-none text-sm pr-12 ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.password ? 'border-red-500' : ''}`}
                             placeholder="Secure Password"
                             autoComplete="new-password"

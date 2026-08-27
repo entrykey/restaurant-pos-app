@@ -33,15 +33,50 @@ const TableDialog = ({ isOpen, onClose, onSuccess, table, categories, shopId, br
 
     const handleChange = (e) => {
         const { name, value } = e.target;
+        if (name === 'capacity') {
+            if (value === '') {
+                setFormData(prev => ({ ...prev, capacity: '' }));
+                return;
+            }
+            const parsed = parseInt(value);
+            if (isNaN(parsed) || parsed < 1) {
+                setFormData(prev => ({ ...prev, capacity: 1 }));
+                return;
+            }
+            if (parsed > 100) {
+                setFormData(prev => ({ ...prev, capacity: 100 }));
+                return;
+            }
+            setFormData(prev => ({ ...prev, capacity: parsed }));
+            return;
+        }
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleBlur = (e) => {
+        const { name, value } = e.target;
+        if (name === 'capacity') {
+            if (!value || parseInt(value) < 1) {
+                setFormData(prev => ({ ...prev, capacity: 1 }));
+            } else if (parseInt(value) > 100) {
+                setFormData(prev => ({ ...prev, capacity: 100 }));
+            }
+        }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (!formData.capacity || parseInt(formData.capacity) < 1 || parseInt(formData.capacity) > 100) {
+            toast.error('Table capacity must be between 1 and 100');
+            return;
+        }
+
         setLoading(true);
 
         const payload = {
             ...formData,
+            capacity: Math.min(100, Math.max(1, parseInt(formData.capacity) || 1)),
             shopId,
             branchId
         };
@@ -108,7 +143,9 @@ const TableDialog = ({ isOpen, onClose, onSuccess, table, categories, shopId, br
                                 name="capacity"
                                 value={formData.capacity}
                                 onChange={handleChange}
+                                onBlur={handleBlur}
                                 min="1"
+                                max="100"
                                 required
                                 className={`w-full px-4 py-2.5 rounded-xl border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} ${theme.inputFocus} outline-none transition-shadow`}
                             />

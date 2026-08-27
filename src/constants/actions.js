@@ -75,6 +75,8 @@ export const OWNER_DASHBOARD = "OWNER.DASHBOARD";
 
 // Reports module
 export const REPORTS_VIEW = "VIEW.REPORTS";
+export const MANAGE_DELIVERY_REQUESTS = "MANAGE.DELIVERY.REQUESTS";
+export const DELIVERY_COLLECTION = "DELIVERY.COLLECTION";
 
 /** Single object for use in components: ACTIONS.ORGANIZATION_VIEW, etc. */
 export const ACTIONS = Object.freeze({
@@ -124,4 +126,6 @@ export const ACTIONS = Object.freeze({
   POS_DINING_JOINTABLES,
   RESERVATION_CREATING,
   ATTENDANCE_MANAGE,
+  MANAGE_DELIVERY_REQUESTS,
+  DELIVERY_COLLECTION,
 });

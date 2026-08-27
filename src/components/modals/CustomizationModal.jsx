@@ -36,50 +36,58 @@ const CustomizationModal = ({
                     {item.portionPricing && item.portionPricing.length > 0 && (
                         <div>
                             <label className={`text-xs font-black ${theme.textMuted} uppercase mb-3 block`}>
-                                Select Portion
+                                Select Portion / Variation
                             </label>
                             <div className="grid grid-cols-2 gap-3">
-                                {item.portionPricing.map((p, i) => (
-                                    <button
-                                        key={i}
-                                        onClick={() => setCustomVariant(p)}
-                                        className={`p-4 rounded-2xl border-2 text-left transition-all ${customVariant?.name === p.name
-                                                ? "border-indigo-600 bg-indigo-50"
-                                                : `${theme.borderLight} hover:border-indigo-200 ${theme.surfaceBg}`
-                                            }`}
-                                    >
-                                        <div className={`font-bold ${theme.textPrimary}`}>{p.name}</div>
-                                        <div className="font-black text-indigo-600">
-                                            {formatCurrency(p.price)}
-                                        </div>
-                                    </button>
-                                ))}
+                                {item.portionPricing.map((p, i) => {
+                                    const isSelected = customVariant?.name === p.name;
+                                    return (
+                                        <button
+                                            key={i}
+                                            type="button"
+                                            onClick={() => setCustomVariant(p)}
+                                            className={`p-4 rounded-2xl border-2 text-left transition-all ${isSelected
+                                                    ? "border-indigo-600 bg-indigo-50/80 shadow-md ring-2 ring-indigo-500/20"
+                                                    : `${theme.borderLight} hover:border-indigo-200 ${theme.surfaceBg}`
+                                                }`}
+                                        >
+                                            <div className={`font-bold ${theme.textPrimary}`}>{p.name}</div>
+                                            <div className="font-black text-indigo-600 mt-1">
+                                                {formatCurrency(p.price)}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
 
                     {/* Variant Selection (Legacy Volume/Portion system) */}
-                    {(item.sellingType === "Portion" || item.sellingType === "Volume") && (!item.portionPricing || item.portionPricing.length === 0) && (
+                    {item.variants && item.variants.length > 0 && (!item.portionPricing || item.portionPricing.length === 0) && (
                         <div>
                             <label className={`text-xs font-black ${theme.textMuted} uppercase mb-3 block`}>
                                 Select Size / Portion
                             </label>
                             <div className="grid grid-cols-2 gap-3">
-                                {item.variants.map((v, i) => (
-                                    <button
-                                        key={i}
-                                        onClick={() => setCustomVariant(v)}
-                                        className={`p-4 rounded-2xl border-2 text-left transition-all ${customVariant?.name === v.name
-                                                ? "border-indigo-600 bg-indigo-50"
-                                                : `${theme.borderLight} hover:border-indigo-200 ${theme.surfaceBg}`
-                                            }`}
-                                    >
-                                        <div className={`font-bold ${theme.textPrimary}`}>{v.name}</div>
-                                        <div className="font-black text-indigo-600">
-                                            {formatCurrency(v.price)}
-                                        </div>
-                                    </button>
-                                ))}
+                                {item.variants.map((v, i) => {
+                                    const isSelected = customVariant?.name === v.name;
+                                    return (
+                                        <button
+                                            key={i}
+                                            type="button"
+                                            onClick={() => setCustomVariant(v)}
+                                            className={`p-4 rounded-2xl border-2 text-left transition-all ${isSelected
+                                                    ? "border-indigo-600 bg-indigo-50/80 shadow-md ring-2 ring-indigo-500/20"
+                                                    : `${theme.borderLight} hover:border-indigo-200 ${theme.surfaceBg}`
+                                                }`}
+                                        >
+                                            <div className={`font-bold ${theme.textPrimary}`}>{v.name}</div>
+                                            <div className="font-black text-indigo-600 mt-1">
+                                                {formatCurrency(v.price)}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -93,7 +101,16 @@ const CustomizationModal = ({
                                 </label>
                                 <div className={`flex ${theme.pageBg} rounded-lg p-1 gap-1`}>
                                     <button
-                                        onClick={() => setCustomWeightUnit("kg")}
+                                        type="button"
+                                        onClick={() => {
+                                            if (customWeightUnit === "g") {
+                                                const currentVal = parseFloat(customWeightInput);
+                                                if (!isNaN(currentVal) && currentVal > 0) {
+                                                    setCustomWeightInput(parseFloat((currentVal / 1000).toFixed(4)));
+                                                }
+                                                setCustomWeightUnit("kg");
+                                            }
+                                        }}
                                         className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${customWeightUnit === "kg"
                                                 ? "bg-white shadow text-indigo-600"
                                                 : theme.textMuted
@@ -102,7 +119,16 @@ const CustomizationModal = ({
                                         KG
                                     </button>
                                     <button
-                                        onClick={() => setCustomWeightUnit("g")}
+                                        type="button"
+                                        onClick={() => {
+                                            if (customWeightUnit === "kg") {
+                                                const currentVal = parseFloat(customWeightInput);
+                                                if (!isNaN(currentVal) && currentVal > 0) {
+                                                    setCustomWeightInput(parseFloat((currentVal * 1000).toFixed(2)));
+                                                }
+                                                setCustomWeightUnit("g");
+                                            }
+                                        }}
                                         className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${customWeightUnit === "g"
                                                 ? "bg-white shadow text-indigo-600"
                                                 : theme.textMuted

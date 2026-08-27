@@ -1,56 +1,219 @@
-import React from 'react';
-import { Globe, Rocket } from 'lucide-react';
-import { useTheme } from "../../context/ThemeContext";
-
-/*
-import { useEffect, useState } from 'react';
-import { Globe, RefreshCw, ShoppingBag, Search, Filter, X, Phone, MapPin, Calendar, Clock, CreditCard, Tag, MessageSquare, Check, Trash2, User } from 'lucide-react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { Globe, RefreshCw, ShoppingBag, X, Phone, MapPin, Calendar, Clock, CreditCard, MessageSquare, Check, Trash2 } from 'lucide-react';
 import OnlineOrderCard from '../../components/OnlineOrderCard';
-import { onlineOrdersService } from './OnlineOrdersService';
-
 import { usePermission } from "../../auth/usePermission";
-import { MODULES } from "../../constants/modules";
+import { useAuth } from "../../context/AuthContext";
+import { useApp } from "../../context/AppContext";
+import { useOnlineOrders } from "./OnlineOrderContext";
+import { api } from "../../services/api";
+import axios from 'axios';
 
-const OnlineOrders = ({
-    onlineOrders,
-    setOnlineOrders,
-    onlineOrderTab,
-    setOnlineOrderTab,
-    pendingOnlineOrdersCount,
-    formatCurrency,
-    handleAcceptOnlineOrder,
-    handleRejectOnlineOrder,
-    handleCompleteOnlineKOT,
-    setPreviewOrder,
-    hasPermissionFor,
-}) => {
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+const OnlineOrders = () => {
+    const [onlineOrders, setOnlineOrders] = useState([]);
+    const [onlineOrderTab, setOnlineOrderTab] = useState('pending');
     const [selectedOrder, setSelectedOrder] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const { can } = usePermission();
+    const { user } = useAuth();
+    const { currentShopId, organization } = useApp();
+    const onlineOrderContext = useOnlineOrders();
 
+    // Dynamically resolve auth token and shopId from Context & Storage
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token') || localStorage.getItem('auth_token');
+
+    const shopId = useMemo(() => {
+        if (currentShopId) return currentShopId;
+        if (organization?._id || organization?.id) return String(organization._id || organization.id);
+        
+        const rawShop = user?.shop_id || user?.shopId || user?.shop;
+        if (rawShop) {
+            return typeof rawShop === 'object' ? String(rawShop._id || rawShop.id) : String(rawShop);
+        }
+
+        try {
+            const savedUser = JSON.parse(localStorage.getItem('user') || '{}');
+            const sId = savedUser?.shopId || savedUser?.shop_id || savedUser?.shop;
+            if (sId) return typeof sId === 'object' ? String(sId._id || sId.id) : String(sId);
+        } catch {}
+
+        return localStorage.getItem('selectedShopId') || null;
+    }, [currentShopId, organization, user]);
+
+    // Format currency
+    const formatCurrency = (amount) => {
+        return `₹${parseFloat(amount || 0).toFixed(2)}`;
+    };
+
+    // Extract context updater reference safely
+    const setContextOnlineOrders = onlineOrderContext?.setOnlineOrders;
+
+    // Fetch online orders from API
+    const fetchOnlineOrders = useCallback(async (showFullLoader = false) => {
+        if (!shopId) {
+            console.error('No shop ID found for online orders');
+            setIsLoading(false);
+            setIsRefreshing(false);
+            return;
+        }
+
+        try {
+            if (showFullLoader) {
+                setIsLoading(true);
+            }
+            setIsRefreshing(true);
+            
+            console.log('Fetching online orders with shopId:', shopId);
+            
+            // Use configured API instance with fallback headers
+            const response = await api.get('/orders/online-orders', {
+                params: { 
+                    shopId,
+                    limit: 100
+                },
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                timeout: 10000
+            }).catch(async (err) => {
+                // Fallback to absolute URL if proxy base is different
+                return await axios.get(`${API_URL}/orders/online-orders`, {
+                    params: { shopId, limit: 100 },
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    timeout: 10000
+                });
+            });
+
+            if (response.data?.success) {
+                const fetchedOrders = response.data.orders || [];
+                setOnlineOrders(fetchedOrders);
+
+                // Update global OnlineOrderContext so sidebar badge updates accurately
+                if (setContextOnlineOrders) {
+                    setContextOnlineOrders(fetchedOrders);
+                }
+                console.log(`Found ${fetchedOrders.length} orders`);
+            }
+        } catch (error) {
+            console.error('Error fetching online orders:', error);
+            
+            if (error.response?.status === 401 || error.response?.status === 403) {
+                console.error('Authentication failed when loading online orders');
+                setIsLoading(false);
+                setIsRefreshing(false);
+                return;
+            }
+        } finally {
+            setIsRefreshing(false);
+            setIsLoading(false);
+        }
+    }, [shopId, token, setContextOnlineOrders]);
+
+    // Initial load and periodic silent background refresh
     useEffect(() => {
-        // Fresh orders fetch logic could go here
-    }, []);
+        if (!shopId) {
+            setIsLoading(false);
+            return;
+        }
+
+        // Show full loader only on initial mount
+        fetchOnlineOrders(true);
+
+        const interval = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                // Silent refresh in background without full-screen loading spinner
+                fetchOnlineOrders(false);
+            }
+        }, 20000); // 20 seconds background refresh interval
+
+        return () => {
+            clearInterval(interval);
+        };
+    }, [shopId, fetchOnlineOrders]);
+
+    // Start packing order
+    const handleStartPacking = async (order) => {
+        try {
+            const response = await axios.post(
+                `${API_URL}/orders/online-orders/${order._id}/start-packing`,
+                {},
+                {
+                    headers: { Authorization: `Bearer ${token}` }
+                }
+            );
+
+            if (response.data.success) {
+                fetchOnlineOrders();
+                alert('Order packing started!');
+            }
+        } catch (error) {
+            console.error('Error starting packing:', error);
+            alert('Failed to start packing. Please try again.');
+        }
+    };
+
+    // Mark order as packed
+    const handleMarkPacked = async (order) => {
+        try {
+            const response = await axios.post(
+                `${API_URL}/orders/online-orders/${order._id}/mark-packed`,
+                {},
+                {
+                    headers: { Authorization: `Bearer ${token}` }
+                }
+            );
+
+            if (response.data.success) {
+                fetchOnlineOrders();
+                alert('Order marked as packed! Stock has been reduced.');
+            }
+        } catch (error) {
+            console.error('Error marking as packed:', error);
+            alert('Failed to mark as packed. Please try again.');
+        }
+    };
+
+    // Mark order as delivered
+    const handleMarkDelivered = async (order) => {
+        try {
+            const response = await axios.post(
+                `${API_URL}/orders/online-orders/${order._id}/mark-delivered`,
+                {},
+                {
+                    headers: { Authorization: `Bearer ${token}` }
+                }
+            );
+
+            if (response.data.success) {
+                fetchOnlineOrders();
+                alert('Order marked as delivered!');
+            }
+        } catch (error) {
+            console.error('Error marking as delivered:', error);
+            alert('Failed to mark as delivered. Please try again.');
+        }
+    };
 
     const handleOpenPreview = (order) => {
         setSelectedOrder(order);
-        if (setPreviewOrder) setPreviewOrder(order);
     };
 
     const handleClosePreview = () => {
         setSelectedOrder(null);
-        if (setPreviewOrder) setPreviewOrder(null);
     };
 
     const filteredOrders = onlineOrders.filter((o) => {
         if (onlineOrderTab === "pending") return o.status === "pending";
-        if (onlineOrderTab === "accepted")
-            return ["accepted", "preparing", "ready"].includes(o.status);
-        return ["rejected", "completed", "cancelled"].includes(o.status);
+        if (onlineOrderTab === "packing") return o.status === "preparing";
+        if (onlineOrderTab === "packed") return o.status === "ready";
+        return ["delivered", "cancelled", "rejected"].includes(o.status);
     });
 
-    // Online Orders permission is stored under POS as "POS.ONLINEORDER"
-    // (route/sidebar gating uses the same: MODULES.POS + "pos.onlineorder")
-    const canView = can(MODULES.POS, "pos.onlineorder");
+    const pendingOnlineOrdersCount = onlineOrders.filter(o => o.status === 'pending').length;
+
+    // Check permission - using ONLINE.ORDERS module
+    const canView = can('ONLINE.ORDERS', 'MANAGE.ONLINE.ORDERS');
+    
     if (!canView) {
         return (
             <div className="h-full flex items-center justify-center bg-gray-50">
@@ -60,6 +223,17 @@ const OnlineOrders = ({
                     </div>
                     <h2 className="text-2xl font-black text-gray-800 mb-2">Access Restricted</h2>
                     <p className="text-gray-500 font-medium">You don't have permission to view online orders. Contact your administrator for access.</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (isLoading) {
+        return (
+            <div className="h-full flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <RefreshCw size={48} className="text-indigo-600 animate-spin mx-auto mb-4" />
+                    <p className="text-gray-600 font-bold">Loading online orders...</p>
                 </div>
             </div>
         );
@@ -84,7 +258,7 @@ const OnlineOrders = ({
 
                 <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                     <div className="bg-white p-1 rounded-2xl shadow-md border flex">
-                        {['pending', 'accepted', 'history'].map((tab) => (
+                        {['pending', 'packing', 'packed', 'delivered'].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setOnlineOrderTab(tab)}
@@ -104,8 +278,12 @@ const OnlineOrders = ({
                         ))}
                     </div>
 
-                    <button className="bg-white p-4 rounded-2xl border shadow-sm text-gray-600 hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-95">
-                        <RefreshCw size={20} />
+                    <button 
+                        onClick={() => fetchOnlineOrders()} 
+                        disabled={isRefreshing}
+                        className="bg-white p-4 rounded-2xl border shadow-sm text-gray-600 hover:text-indigo-600 hover:border-indigo-100 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
                     </button>
                 </div>
             </div>
@@ -119,9 +297,9 @@ const OnlineOrders = ({
                                 order={order}
                                 tab={onlineOrderTab}
                                 onPreview={handleOpenPreview}
-                                onAccept={handleAcceptOnlineOrder}
-                                onReject={handleRejectOnlineOrder}
-                                onComplete={handleCompleteOnlineKOT}
+                                onStartPacking={handleStartPacking}
+                                onMarkPacked={handleMarkPacked}
+                                onMarkDelivered={handleMarkDelivered}
                                 formatCurrency={formatCurrency}
                             />
                         ))}
@@ -281,66 +459,48 @@ const OnlineOrders = ({
                         </div>
 
                         <div className="p-8 bg-gray-50 border-t flex gap-4">
-                            <button
-                                onClick={() => {
-                                    handleRejectOnlineOrder(selectedOrder.id);
-                                    handleClosePreview();
-                                }}
-                                className="flex-1 py-4 bg-white border-2 border-red-100 text-red-500 rounded-2xl font-black hover:bg-red-50 transition-all active:scale-95 flex items-center justify-center gap-2"
-                            >
-                                <Trash2 size={20} /> Reject Order
-                            </button>
-                            <button
-                                onClick={() => {
-                                    handleAcceptOnlineOrder(selectedOrder);
-                                    handleClosePreview();
-                                }}
-                                className="flex-2 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2"
-                            >
-                                <Check size={20} /> Accept & Start Preparing
-                            </button>
+                            {selectedOrder.status === 'pending' && (
+                                <button
+                                    onClick={() => {
+                                        handleStartPacking(selectedOrder);
+                                        handleClosePreview();
+                                    }}
+                                    className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                >
+                                    <Check size={20} /> Start Packing
+                                </button>
+                            )}
+                            {selectedOrder.status === 'preparing' && (
+                                <button
+                                    onClick={() => {
+                                        handleMarkPacked(selectedOrder);
+                                        handleClosePreview();
+                                    }}
+                                    className="flex-1 py-4 bg-green-600 text-white rounded-2xl font-black shadow-xl shadow-green-100 hover:bg-green-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                >
+                                    <Check size={20} /> Mark as Packed
+                                </button>
+                            )}
+                            {selectedOrder.status === 'ready' && (
+                                <button
+                                    onClick={() => {
+                                        handleMarkDelivered(selectedOrder);
+                                        handleClosePreview();
+                                    }}
+                                    className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+                                >
+                                    <Check size={20} /> Mark as Delivered
+                                </button>
+                            )}
+                            {selectedOrder.status === 'delivered' && (
+                                <div className="flex-1 text-center py-4">
+                                    <span className="text-green-600 font-bold">✓ Order Delivered</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
-        </div>
-    );
-};
-*/
-
-const OnlineOrders = () => {
-    const { theme } = useTheme();
-
-    return (
-        <div className={`h-full flex flex-col items-center justify-center p-8 ${theme.pageBg} text-center`}>
-            <div className={`w-32 h-32 ${theme.surfaceBg} rounded-[40px] shadow-2xl flex items-center justify-center mb-8 border-4 ${theme.borderLight} animate-bounce duration-1000`}>
-                <Globe size={64} className="text-indigo-500 animate-pulse" />
-            </div>
-            
-            <div className="max-w-md space-y-4">
-                <div className={`inline-flex items-center gap-2 px-4 py-2 ${theme.surfaceBg} text-indigo-500 border ${theme.borderLight} rounded-full text-xs font-black uppercase tracking-[0.2em] mb-4`}>
-                    <Rocket size={14} /> Feature Coming Soon
-                </div>
-                
-                <h2 className={`text-4xl md:text-5xl font-black leading-tight ${theme.textHeading} tracking-tighter`}>
-                    Online Marketplace Integration
-                </h2>
-                
-                <p className={`text-lg font-bold ${theme.textSecondary} leading-relaxed`}>
-                    We're currently building deep integrations with <span className="text-red-500">Zomato</span>, <span className="text-orange-500">Swiggy</span>, and direct website ordering.
-                </p>
-
-                <div className={`mt-12 p-6 rounded-3xl border border-dashed ${theme.borderLight} ${theme.surfaceBg}`}>
-                    <p className={`text-sm font-black ${theme.textMuted} uppercase tracking-widest mb-4`}>Upcoming Channels</p>
-                    <div className="flex flex-wrap justify-center gap-4">
-                        {['Zomato', 'Swiggy', 'Website', 'WhatsApp'].map(platform => (
-                            <span key={platform} className={`px-4 py-2 ${theme.pageBg} ${theme.textPrimary} rounded-xl text-sm font-black shadow-sm border ${theme.borderLight}`}>
-                                {platform}
-                            </span>
-                        ))}
-                    </div>
-                </div>
-            </div>
         </div>
     );
 };

@@ -52,7 +52,8 @@ import SalesReturnsPage from "../pages/Sales/SalesReturnsPage";
 import PurchaseReturnsPage from "../pages/Purchases/PurchaseReturnsPage";
 import PurchaseReturnPage from "../pages/Purchases/PurchaseReturnPage";
 
-
+const DeliveryManagement = lazy(() => import("../pages/DeliveryManagement/DeliveryManagement"));
+const DeliverySettlement = lazy(() => import("../pages/DeliveryManagement/DeliverySettlement"));
 const Staff = lazy(() => import("../pages/Staff/Staff"));
 const MySalary = lazy(() => import("../pages/Staff/MySalary"));
 
@@ -182,6 +183,7 @@ const AppRoutes = (props) => {
     offers: props.offers,
     handlePrintReceipt,
     handleSendToKOT,
+    isSubmittingKOT: props.isSubmittingKOT,
     setIsPaymentModalOpen,
     setBillingStage,
     initiateAddItem,
@@ -322,6 +324,30 @@ const AppRoutes = (props) => {
           }
         />
 
+
+        {/* Delivery Management Route */}
+        <Route
+          path={`${prefix}/delivery-management`}
+          element={
+            <ProtectedRoute routeKey="DELIVERY_MANAGEMENT">
+              <Suspense fallback={<div className="p-8 text-center font-bold text-gray-500">Loading Delivery Management...</div>}>
+                <DeliveryManagement />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Delivery Settlement Route */}
+        <Route
+          path={`${prefix}/delivery-settlement`}
+          element={
+            <ProtectedRoute routeKey="DELIVERY_SETTLEMENT">
+              <Suspense fallback={<div className="p-8 text-center font-bold text-gray-500">Loading Delivery Settlement...</div>}>
+                <DeliverySettlement />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
 
         {/* Online Orders Route */}
         <Route

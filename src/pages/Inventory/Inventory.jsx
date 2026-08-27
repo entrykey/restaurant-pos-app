@@ -18,6 +18,24 @@ import BulkUploadModal from '../../components/modals/BulkUploadModal';
 import StockAdjustmentModal from '../../components/modals/StockAdjustmentModal';
 import RepackModal from '../../components/modals/RepackModal';
 
+// Define field sets for each mode
+const MENU_FIELD_KEYS = [
+    "barcode", "item_code", "name", "description", "category_id",
+    "unit_id", "selling_price", "tax_id", "hsn_sac_code", "status"
+];
+
+const RAW_FIELD_KEYS = [
+    "barcode", "item_code", "name", "description", "category_id",
+    "unit_id", "purchase_price", "selling_price", "opening_stock",
+    "weight_based", "status"
+];
+
+const TRADE_FIELD_KEYS = [
+    "barcode", "item_code", "name", "description", "category_id",
+    "unit_id", "purchase_price", "selling_price", "opening_stock", "tax_percent",
+    "status"
+];
+
 const Inventory = ({
     menu,
     setMenu,
@@ -227,24 +245,7 @@ const Inventory = ({
             .catch(() => { });
     }, [branchId, refreshTrigger]);
 
-    // Define field sets for each mode
-    const MENU_FIELD_KEYS = [
-        "barcode", "item_code", "name", "description", "category_id",
-        "unit_id", "selling_price", "tax_id", "hsn_sac_code", "status"
-    ];
 
-    // Supplier is per purchase (purchase.model), not per item � same product can have different suppliers per purchase
-    const RAW_FIELD_KEYS = [
-        "barcode", "item_code", "name", "description", "category_id",
-        "unit_id", "purchase_price", "selling_price",
-        "weight_based", "status"
-    ];
-
-    const TRADE_FIELD_KEYS = [
-        "barcode", "item_code", "name", "description", "category_id",
-        "unit_id", "purchase_price", "selling_price", "tax_percent",
-        "status"
-    ];
 
     useEffect(() => {
         if (activeTab === "menu") {
@@ -281,7 +282,6 @@ const Inventory = ({
         if (!aHasStock && bHasStock) return 1;
         return 0;
     });
-    const menuAccess = ROUTE_ACCESS.MENU || { module: "inventory", resource: "menu" };
 
     const canView = activeTab === "menu" ? canViewMenu : (activeTab === "raw" ? canViewItems : canViewTradeItems);
     const canManage = activeTab === "menu" ? canManageMenu : (activeTab === "raw" ? canManageItems : canManageTradeItems);

@@ -17,6 +17,14 @@ import LeaveReviewModal from "../../components/modals/LeaveReviewModal";
 import { leaveService } from "../../services/api";
 import { useApp } from "../../context/AppContext";
 
+const isBranchDisabled = (branch) => {
+    if (!branch) return true;
+    if (branch.status && branch.status !== "ACTIVE") return true;
+    if (branch.isActive === false) return true;
+    if (branch.disabled === true) return true;
+    return false;
+};
+
 const Staff = ({
     setStaffList,
     setRolesList,
@@ -29,6 +37,7 @@ const Staff = ({
     // Employee State
     const [employees, setEmployees] = useState([]);
     const [isEmployeesLoading, setIsEmployeesLoading] = useState(false);
+    const [isSubmittingEmployee, setIsSubmittingEmployee] = useState(false);
 
     // Roles State
     const [roles, setRoles] = useState([]);
@@ -203,7 +212,11 @@ const Staff = ({
                         return branchIds.includes(activeBranchId);
                     });
 
-                    setEmployees(filteredStaff);
+                    const uniqueStaff = filteredStaff.filter((emp, index, self) =>
+                        index === self.findIndex(e => (e._id || e.id) === (emp._id || emp.id))
+                    );
+
+                    setEmployees(uniqueStaff);
                     // Also update global staff list if setter is provided
                     if (setStaffList) {
                         const mappedStaff = filteredStaff.map(emp => ({
@@ -490,7 +503,7 @@ const Staff = ({
     };
 
     const handleCreateRole = async () => {
-        if (!newRoleName.trim()) { alert("Please enter a role name"); return; }
+        if (!newRoleName.trim()) { toast.error("Please enter a role name"); return; }
 
         // Filter selected permissions against available permissions
         const allowedModuleIds = new Set(availablePermissions.map(am => String(am.moduleId)));
@@ -525,10 +538,10 @@ const Staff = ({
             const userId = user?.id || user?._id;
             const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
             setRoles(fetchedRoles);
-            alert("Role created successfully!");
+            toast.success("Role created successfully!");
         } catch (error) {
             console.error("Error creating role:", error);
-            alert("Failed to create role: " + (error.message || "Unknown error"));
+            toast.error("Failed to create role: " + (error.message || "Unknown error"));
         }
     };
 
@@ -576,7 +589,7 @@ const Staff = ({
 
     const handleUpdateRole = async () => {
         if (!editingRole) return;
-        if (!editRoleName.trim()) { alert("Please enter a role name"); return; }
+        if (!editRoleName.trim()) { toast.error("Please enter a role name"); return; }
 
         // Filter selected permissions against available permissions
         const allowedModuleIds = new Set(availablePermissions.map(am => String(am.moduleId)));
@@ -612,10 +625,10 @@ const Staff = ({
             const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
             setRoles(fetchedRoles);
             if (setRolesList) setRolesList(fetchedRoles);
-            alert("Role updated successfully!");
+            toast.success("Role updated successfully!");
         } catch (error) {
             console.error("Error updating role:", error);
-            alert("Failed to update role: " + (error.message || "Unknown error"));
+            toast.error("Failed to update role: " + (error.message || "Unknown error"));
         }
     };
 
@@ -623,7 +636,20 @@ const Staff = ({
     // --- Employee Creation Handlers ---
     const handleEmpDataChange = (field, value) => {
         setNewEmpData(prev => {
-            const updated = { ...prev, [field]: value };
+            let updatedValue = value;
+            if (field === "name") {
+                // Prevent special characters and numbers in name
+                updatedValue = value.replace(/[^a-zA-Z\s.'-]/g, "");
+            } else if (field === "phone") {
+                // Allow only digits and limit to 10 digits
+                updatedValue = value.replace(/\D/g, "").slice(0, 10);
+            } else if (field === "salary") {
+                if (value && value.amount !== undefined) {
+                    const cleanAmount = String(value.amount).replace(/-/g, "");
+                    updatedValue = { ...value, amount: cleanAmount };
+                }
+            }
+            const updated = { ...prev, [field]: updatedValue };
             if (field === "roleId") {
                 const selectedRole = roles.find(r => (r._id || r.id) === value);
                 if (selectedRole) {
@@ -635,24 +661,121 @@ const Staff = ({
     };
 
     const handleUserBranchSelection = (branchId) => {
+        const targetBranch = branches.find(b => (b._id || b.id) === branchId);
+        if (targetBranch && isBranchDisabled(targetBranch)) {
+            toast.error(`Branch "${targetBranch.name}" is disabled. Staff cannot be assigned to a disabled branch.`);
+            return;
+        }
         setUserSelectedBranchIds(prev =>
             prev.includes(branchId) ? prev.filter(id => id !== branchId) : [...prev, branchId]
         );
     };
 
     const handleCreateEmployee = async () => {
-        if (!newEmpData.name || (!newEmpData.email && !newEmpData.phone) || !newEmpData.roleId) {
-            alert("Please fill in required fields (Name, Email/Phone, and Role)");
-            return;
-        }
-        if (!userAllBranches && userSelectedBranchIds.length === 0) {
-            alert("Please select at least one branch or enable 'Full Shop Access'.");
+        if (isSubmittingEmployee) return;
+
+        const trimmedName = (newEmpData.name || "").trim();
+        const trimmedEmail = (newEmpData.email || "").trim();
+        const trimmedPhone = (newEmpData.phone || "").trim();
+
+        if (!trimmedName || (!trimmedEmail && !trimmedPhone) || !newEmpData.roleId) {
+            toast.error("Please fill in required fields (Name, Email/Phone, and Role)");
             return;
         }
 
+        // Check for duplicate employee locally before API call
+        if (trimmedEmail) {
+            const cleanEmailLower = trimmedEmail.toLowerCase();
+            const existingByEmail = employees.find(e => e.userId?.email && e.userId.email.toLowerCase() === cleanEmailLower);
+            if (existingByEmail) {
+                toast.error(`A staff member with email "${trimmedEmail}" already exists in this shop.`);
+                return;
+            }
+        }
+
+        if (trimmedPhone) {
+            const cleanPhoneDigits = trimmedPhone.replace(/\D/g, "");
+            const existingByPhone = employees.find(e => e.userId?.phone && e.userId.phone.replace(/\D/g, "") === cleanPhoneDigits);
+            if (existingByPhone) {
+                toast.error(`A staff member with phone number "${trimmedPhone}" already exists in this shop.`);
+                return;
+            }
+        }
+
+        // 1. Name validation (no special characters or numbers)
+        const nameRegex = /^[a-zA-Z\s.'-]+$/;
+        if (!nameRegex.test(trimmedName)) {
+            toast.error("Name can only contain letters, spaces, dots, hyphens, and apostrophes");
+            return;
+        }
+
+        // 2. Mobile number validation (must be 10 digits if provided)
+        if (trimmedPhone) {
+            const cleanPhone = trimmedPhone.replace(/\D/g, "");
+            if (cleanPhone.length !== 10) {
+                toast.error("Mobile number must be a valid 10-digit number");
+                return;
+            }
+        }
+
+        // 3. Email validation (must be valid format like user@domain.com, not just @mail.com)
+        if (trimmedEmail) {
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (!emailRegex.test(trimmedEmail)) {
+                toast.error("Please enter a valid email address");
+                return;
+            }
+        }
+
+        // 4. Salary amount validation (must not be negative)
+        if (newEmpData.salary?.amount !== undefined && newEmpData.salary?.amount !== "") {
+            if (Number(newEmpData.salary.amount) < 0) {
+                toast.error("Salary amount cannot be negative");
+                return;
+            }
+        }
+
+        // 5. Disabled branch validation
+        if (activeBranchId) {
+            const currentBranchObj = branches.find(b => (b._id || b.id) === activeBranchId);
+            if (currentBranchObj && isBranchDisabled(currentBranchObj)) {
+                toast.error(`Cannot create staff for disabled branch "${currentBranchObj.name}".`);
+                return;
+            }
+        }
+
+        const selectedDisabledBranches = branches.filter(
+            b => userSelectedBranchIds.includes(b._id || b.id) && isBranchDisabled(b)
+        );
+        if (selectedDisabledBranches.length > 0) {
+            toast.error(`Cannot create staff for disabled branch: ${selectedDisabledBranches.map(b => b.name).join(", ")}`);
+            return;
+        }
+
+        if (userAllBranches) {
+            const activeBranches = branches.filter(b => !isBranchDisabled(b));
+            if (activeBranches.length === 0 && branches.length > 0) {
+                toast.error("Cannot create staff when all branches are disabled.");
+                return;
+            }
+        } else {
+            const activeSelectedBranchIds = userSelectedBranchIds.filter(id => {
+                const b = branches.find(br => (br._id || br.id) === id);
+                return b && !isBranchDisabled(b);
+            });
+            if (activeSelectedBranchIds.length === 0) {
+                toast.error("Please select at least one active branch or enable 'Full Shop Access'.");
+                return;
+            }
+        }
+
+        setIsSubmittingEmployee(true);
         const targetShop = shopId;
         const payload = {
             ...newEmpData,
+            name: trimmedName,
+            email: trimmedEmail,
+            phone: trimmedPhone,
             shopId: targetShop,
             branchIds: userSelectedBranchIds,
             allBranches: userAllBranches
@@ -678,16 +801,22 @@ const Staff = ({
             }
 
             setIsCreateEmployeeOpen(false);
-            setNewEmpData({ name: "", email: "", phone: "", password: "", roleId: "", designation: "", reportingTo: "", attendancePolicyId: "", address: { line1: "", city: "", state: "", pincode: "" } });
+            setNewEmpData({ name: "", email: "", phone: "", password: "", roleId: "", designation: "", reportingTo: "", attendancePolicyId: "", salary: { amount: "", period: "monthly" }, address: { line1: "", city: "", state: "", pincode: "" } });
             setUserSelectedBranchIds([]);
             // Refresh employees
             const userId = user?.id || user?._id;
             const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId);
-            setEmployees(data);
-            alert("Employee created successfully!");
+            const uniqueData = (data || []).filter((emp, index, self) =>
+                index === self.findIndex(e => (e._id || e.id) === (emp._id || emp.id))
+            );
+            setEmployees(uniqueData);
+            toast.success("Employee created successfully!");
         } catch (error) {
             console.error("Error creating employee:", error);
-            alert("Failed to create employee: " + (error.message || "Unknown error"));
+            const errMsg = typeof error === "string" ? error : (error.message || error.response?.data?.message || "Unknown error");
+            toast.error("Failed to create employee: " + errMsg);
+        } finally {
+            setIsSubmittingEmployee(false);
         }
     };
 
@@ -736,7 +865,20 @@ const Staff = ({
 
     const handleEditEmpDataChange = (field, value) => {
         setEditEmpData(prev => {
-            const updated = { ...prev, [field]: value };
+            let updatedValue = value;
+            if (field === "name") {
+                // Prevent special characters and numbers in name
+                updatedValue = value.replace(/[^a-zA-Z\s.'-]/g, "");
+            } else if (field === "phone") {
+                // Allow only digits and limit to 10 digits
+                updatedValue = value.replace(/\D/g, "").slice(0, 10);
+            } else if (field === "salary") {
+                if (value && value.amount !== undefined) {
+                    const cleanAmount = String(value.amount).replace(/-/g, "");
+                    updatedValue = { ...value, amount: cleanAmount };
+                }
+            }
+            const updated = { ...prev, [field]: updatedValue };
             if (field === "roleId") {
                 const selectedRole = roles.find(r => (r._id || r.id) === value);
                 if (selectedRole) {
@@ -748,6 +890,11 @@ const Staff = ({
     };
 
     const handleEditUserBranchSelection = (branchId) => {
+        const targetBranch = branches.find(b => (b._id || b.id) === branchId);
+        if (targetBranch && isBranchDisabled(targetBranch)) {
+            toast.error(`Branch "${targetBranch.name}" is disabled. Staff cannot be assigned to a disabled branch.`);
+            return;
+        }
         setEditUserSelectedBranchIds(prev =>
             prev.includes(branchId) ? prev.filter(id => id !== branchId) : [...prev, branchId]
         );
@@ -755,17 +902,109 @@ const Staff = ({
 
     const handleUpdateEmployee = async () => {
         if (!editingEmployee) return;
-        if (!editEmpData.name || (!editEmpData.email && !editEmpData.phone) || !editEmpData.roleId) {
-            alert("Please fill in required fields (Name, Email/Phone, and Role)");
-            return;
-        }
-        if (!editUserAllBranches && editUserSelectedBranchIds.length === 0) {
-            alert("Please select at least one branch or enable 'Full Shop Access'.");
+        if (isSubmittingEmployee) return;
+
+        const trimmedName = (editEmpData.name || "").trim();
+        const trimmedEmail = (editEmpData.email || "").trim();
+        const trimmedPhone = (editEmpData.phone || "").trim();
+
+        if (!trimmedName || (!trimmedEmail && !trimmedPhone) || !editEmpData.roleId) {
+            toast.error("Please fill in required fields (Name, Email/Phone, and Role)");
             return;
         }
 
+        const currentEmpId = editingEmployee._id || editingEmployee.id;
+        if (trimmedEmail) {
+            const cleanEmailLower = trimmedEmail.toLowerCase();
+            const existingByEmail = employees.find(e => (e._id || e.id) !== currentEmpId && e.userId?.email && e.userId.email.toLowerCase() === cleanEmailLower);
+            if (existingByEmail) {
+                toast.error(`Another staff member with email "${trimmedEmail}" already exists.`);
+                return;
+            }
+        }
+
+        if (trimmedPhone) {
+            const cleanPhoneDigits = trimmedPhone.replace(/\D/g, "");
+            const existingByPhone = employees.find(e => (e._id || e.id) !== currentEmpId && e.userId?.phone && e.userId.phone.replace(/\D/g, "") === cleanPhoneDigits);
+            if (existingByPhone) {
+                toast.error(`Another staff member with phone number "${trimmedPhone}" already exists.`);
+                return;
+            }
+        }
+
+        // 1. Name validation (no special characters or numbers)
+        const nameRegex = /^[a-zA-Z\s.'-]+$/;
+        if (!nameRegex.test(trimmedName)) {
+            toast.error("Name can only contain letters, spaces, dots, hyphens, and apostrophes");
+            return;
+        }
+
+        // 2. Mobile number validation (must be 10 digits if provided)
+        if (trimmedPhone) {
+            const cleanPhone = trimmedPhone.replace(/\D/g, "");
+            if (cleanPhone.length !== 10) {
+                toast.error("Mobile number must be a valid 10-digit number");
+                return;
+            }
+        }
+
+        // 3. Email validation (must be valid format if provided)
+        if (trimmedEmail) {
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (!emailRegex.test(trimmedEmail)) {
+                toast.error("Please enter a valid email address");
+                return;
+            }
+        }
+
+        // 4. Salary amount validation (must not be negative)
+        if (editEmpData.salary?.amount !== undefined && editEmpData.salary?.amount !== "") {
+            if (Number(editEmpData.salary.amount) < 0) {
+                toast.error("Salary amount cannot be negative");
+                return;
+            }
+        }
+
+        // 5. Disabled branch validation
+        if (activeBranchId) {
+            const currentBranchObj = branches.find(b => (b._id || b.id) === activeBranchId);
+            if (currentBranchObj && isBranchDisabled(currentBranchObj)) {
+                toast.error(`Cannot update staff because the selected branch "${currentBranchObj.name}" is disabled.`);
+                return;
+            }
+        }
+
+        const editSelectedDisabledBranches = branches.filter(
+            b => editUserSelectedBranchIds.includes(b._id || b.id) && isBranchDisabled(b)
+        );
+        if (editSelectedDisabledBranches.length > 0) {
+            toast.error(`Cannot assign staff to disabled branch(es): ${editSelectedDisabledBranches.map(b => b.name).join(", ")}`);
+            return;
+        }
+
+        if (editUserAllBranches) {
+            const activeBranches = branches.filter(b => !isBranchDisabled(b));
+            if (activeBranches.length === 0 && branches.length > 0) {
+                toast.error("Cannot assign staff when all branches are disabled.");
+                return;
+            }
+        } else {
+            const activeEditSelectedBranchIds = editUserSelectedBranchIds.filter(id => {
+                const b = branches.find(br => (br._id || br.id) === id);
+                return b && !isBranchDisabled(b);
+            });
+            if (activeEditSelectedBranchIds.length === 0) {
+                toast.error("Please select at least one active branch or enable 'Full Shop Access'.");
+                return;
+            }
+        }
+
+        setIsSubmittingEmployee(true);
         const payload = {
             ...editEmpData,
+            name: trimmedName,
+            email: trimmedEmail,
+            phone: trimmedPhone,
             branchIds: editUserSelectedBranchIds,
             allBranches: editUserAllBranches
         };
@@ -807,13 +1046,18 @@ const Staff = ({
             // Refresh employees
             const userId = user?.id || user?._id;
             const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId);
-            setEmployees(data);
-            alert("Employee updated successfully!");
+            const uniqueData = (data || []).filter((emp, index, self) =>
+                index === self.findIndex(e => (e._id || e.id) === (emp._id || emp.id))
+            );
+            setEmployees(uniqueData);
+            toast.success("Employee updated successfully!");
         } catch (error) {
             console.error("Error updating employee:", error);
-            alert("Failed to update employee: " + (error.message || "Unknown error"));
+            const errMsg = typeof error === "string" ? error : (error.message || error.response?.data?.message || "Unknown error");
+            toast.error("Failed to update employee: " + errMsg);
+        } finally {
+            setIsSubmittingEmployee(false);
         }
-
     };
 
 
@@ -853,8 +1097,8 @@ const Staff = ({
                     {activeStaffTab === "staff" ? (
                         <button
                             onClick={() => checkSubscriptionAndOpen(() => {
-                                // Reset reportingTo so owner auto-select always fires fresh
-                                setNewEmpData(prev => ({ ...prev, reportingTo: "" }));
+                                // Reset employee data safely so salary structure is preserved
+                                setNewEmpData({ name: "", email: "", phone: "", password: "", roleId: "", designation: "", reportingTo: "", attendancePolicyId: "", salary: { amount: "", period: "monthly" }, address: { line1: "", city: "", state: "", pincode: "" } });
                                 setIsCreateEmployeeOpen(true);
                             })}
                             className={`${theme.buttonBg} ${theme.buttonText} w-full md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
@@ -983,14 +1227,29 @@ const Staff = ({
                     ) : (
                         <div className="w-full rounded-2xl">
                             <CommonTable
+                            rowKey="_id"
+                            exportFilename="Staff_List"
+                            exportTitle="Staff List"
                             columns={[
-                                ...(hasViewAllStaff ? [{ header: "Shop", key: "shopId.name", className: `font-bold text-xs ${theme.textSecondary}`, render: (_, item) => item.shopId?.name || "N/A" }] : []),
-                                { header: "Emp Code", key: "employeeCode", className: `font-mono text-xs ${theme.textSecondary}` },
+                                ...(hasViewAllStaff ? [{
+                                    header: "Shop",
+                                    key: "shopId.name",
+                                    className: `font-bold text-xs ${theme.textSecondary}`,
+                                    render: (_, item) => item.shopId?.name || "N/A",
+                                    exportValue: (_, item) => item.shopId?.name || "N/A"
+                                }] : []),
+                                {
+                                    header: "Emp Code",
+                                    key: "employeeCode",
+                                    className: `font-mono text-xs ${theme.textSecondary}`,
+                                    exportValue: (val) => val || "N/A"
+                                },
                                 {
                                     header: "Name",
                                     key: "userId.name",
                                     className: `font-bold ${theme.textPrimary}`,
-                                    render: (_, item) => item.userId?.name || "N/A"
+                                    render: (_, item) => item.userId?.name || "N/A",
+                                    exportValue: (_, item) => item.userId?.name || "N/A"
                                 },
 
                                 {
@@ -1000,13 +1259,15 @@ const Staff = ({
                                         <span className={`${theme.buttonBg} ${theme.buttonText} px-3 py-1 rounded-full text-xs font-bold uppercase`}>
                                             {item.mapping?.roleId?.name || item.roleId?.name || "N/A"}
                                         </span>
-                                    )
+                                    ),
+                                    exportValue: (_, item) => item.mapping?.roleId?.name || item.roleId?.name || "N/A"
                                 },
                                 {
                                     header: "Reports To",
                                     key: "reportingTo.name",
                                     className: theme.textSecondary,
-                                    render: (_, item) => item.reportingTo?.name || "None"
+                                    render: (_, item) => item.reportingTo?.name || "None",
+                                    exportValue: (_, item) => item.reportingTo?.name || "None"
                                 },
 
                                 {
@@ -1016,19 +1277,22 @@ const Staff = ({
                                         <span className={`text-xs font-bold ${theme.textSecondary}`}>
                                             {item.mapping?.allBranches ? "FULL SHOP" : `${item.mapping?.branchIds?.length || 0} BRANCHES`}
                                         </span>
-                                    )
+                                    ),
+                                    exportValue: (_, item) => item.mapping?.allBranches ? "FULL SHOP" : `${item.mapping?.branchIds?.length || 0} BRANCHES`
                                 },
                                 {
                                     header: "Phone",
                                     key: "userId.phone",
                                     className: theme.textSecondary,
-                                    render: (_, item) => item.userId?.phone || "N/A"
+                                    render: (_, item) => item.userId?.phone || "N/A",
+                                    exportValue: (_, item) => item.userId?.phone || "N/A"
                                 },
                                 {
                                     header: "Email",
                                     key: "userId.email",
                                     className: `${theme.textSecondary} text-sm`,
-                                    render: (_, item) => item.userId?.email || "N/A"
+                                    render: (_, item) => item.userId?.email || "N/A",
+                                    exportValue: (_, item) => item.userId?.email || "N/A"
                                 },
                                 {
                                     header: "Status",
@@ -1038,6 +1302,7 @@ const Staff = ({
                                             {value}
                                         </span>
                                     ),
+                                    exportValue: (value) => value || "N/A"
                                 },
                                 {
                                     header: "Action",
@@ -1306,7 +1571,7 @@ const Staff = ({
                         <div className="flex flex-col gap-2">
                             <label className={`text-sm font-bold ${theme.textSecondary}`}>Branch</label>
                             <CommonSelect
-                                options={branches}
+                                options={[{ _id: "", name: "All Branches" }, ...(branches || [])]}
                                 value={attendanceBranchId}
                                 onChange={(val) => setAttendanceBranchId(val)}
                                 placeholder="All Branches"
@@ -1395,6 +1660,8 @@ const Staff = ({
                     <div className="mt-8">
                         <div className={`text-sm font-black ${theme.textHeading} mb-3`}>Assignments</div>
                         <CommonTable
+                            exportFilename="Attendance_Assignments"
+                            exportTitle="Attendance Assignments"
                             columns={[
                                 {
                                     header: "Employee",
@@ -1409,11 +1676,38 @@ const Staff = ({
                                             return `${found.userId?.name || "N/A"} (${found.employeeCode || "N/A"})`;
                                         }
                                         return emp || "N/A";
+                                    },
+                                    exportValue: (_, a) => {
+                                        const emp = a.employeeId;
+                                        if (typeof emp === 'object' && emp !== null) {
+                                            return `${emp.userId?.name || "N/A"} (${emp.employeeCode || "N/A"})`;
+                                        }
+                                        const found = employees.find(e => e._id === emp || e.id === emp);
+                                        if (found) {
+                                            return `${found.userId?.name || "N/A"} (${found.employeeCode || "N/A"})`;
+                                        }
+                                        return String(emp || "N/A");
                                     }
                                 },
-                                { header: "Policy", key: "policyId.name", render: (_, a) => a.policyId?.name || "N/A" },
-                                { header: "From", key: "effectiveFrom", className: theme.textSecondary, render: (v) => (v ? String(v).split("T")[0] : "N/A") },
-                                { header: "Priority", key: "priority", className: theme.textSecondary },
+                                {
+                                    header: "Policy",
+                                    key: "policyId.name",
+                                    render: (_, a) => a.policyId?.name || "N/A",
+                                    exportValue: (_, a) => a.policyId?.name || "N/A"
+                                },
+                                {
+                                    header: "From",
+                                    key: "effectiveFrom",
+                                    className: theme.textSecondary,
+                                    render: (v) => (v ? String(v).split("T")[0] : "N/A"),
+                                    exportValue: (v) => (v ? String(v).split("T")[0] : "N/A")
+                                },
+                                {
+                                    header: "Priority",
+                                    key: "priority",
+                                    className: theme.textSecondary,
+                                    exportValue: (v) => (v !== undefined && v !== null ? String(v) : "0")
+                                },
                                 {
                                     header: "Action",
                                     key: "_id",
@@ -1448,7 +1742,7 @@ const Staff = ({
                             <div className="flex flex-col gap-2">
                                 <label className={`text-sm font-bold ${theme.textSecondary}`}>Branch</label>
                                 <CommonSelect
-                                    options={branches}
+                                    options={[{ _id: "", name: "All Branches" }, ...(branches || [])]}
                                     value={attendanceBranchId}
                                     onChange={(val) => setAttendanceBranchId(val)}
                                     placeholder="All Branches"
@@ -1460,7 +1754,10 @@ const Staff = ({
                             <div className="flex flex-col gap-2">
                                 <label className={`text-sm font-bold ${theme.textSecondary}`}>Employee</label>
                                 <CommonSelect
-                                    options={employees.map(e => ({ ...e, displayName: `${e.userId?.name || "Employee"} (${e.employeeCode || e._id})` }))}
+                                    options={[
+                                        { _id: "", displayName: "All Employees" },
+                                        ...(employees || []).map(e => ({ ...e, displayName: `${e.userId?.name || "Employee"} (${e.employeeCode || e._id})` }))
+                                    ]}
                                     value={attendanceEmployeeId}
                                     onChange={(val) => setAttendanceEmployeeId(val)}
                                     placeholder="All Employees"
@@ -1525,8 +1822,10 @@ const Staff = ({
 
                     <div className="mt-6">
                         <CommonTable
+                            exportFilename="Attendance_Logs"
+                            exportTitle="Attendance Logs"
                             columns={[
-                                { header: "Date", key: "attendanceDate", className: `font-mono text-xs ${theme.textSecondary}` },
+                                { header: "Date", key: "attendanceDate", className: `font-mono text-xs ${theme.textSecondary}`, exportValue: (v) => v || "N/A" },
                                 {
                                     header: "Employee",
                                     key: "employeeId",
@@ -1540,6 +1839,17 @@ const Staff = ({
                                             return `${found.userId?.name || "N/A"} (${found.employeeCode || "N/A"})`;
                                         }
                                         return emp || "N/A";
+                                    },
+                                    exportValue: (_, l) => {
+                                        const emp = l.employeeId;
+                                        if (typeof emp === 'object' && emp !== null) {
+                                            return `${emp.userId?.name || "N/A"} (${emp.employeeCode || "N/A"})`;
+                                        }
+                                        const found = employees.find(e => e._id === emp || e.id === emp);
+                                        if (found) {
+                                            return `${found.userId?.name || "N/A"} (${found.employeeCode || "N/A"})`;
+                                        }
+                                        return String(emp || "N/A");
                                     }
                                 },
                                 {
@@ -1553,12 +1863,13 @@ const Staff = ({
                                             }`}>
                                             {val}
                                         </span>
-                                    )
+                                    ),
+                                    exportValue: (val) => val || "N/A"
                                 },
-                                { header: "Work (min)", key: "workMinutes", className: theme.textSecondary },
-                                { header: "Late (min)", key: "lateMinutes", className: theme.textSecondary },
-                                { header: "OT (min)", key: "overtimeMinutes", className: theme.textSecondary },
-                                { header: "Policy", key: "policyId.name", render: (_, l) => l.policyId?.name || "N/A" },
+                                { header: "Work (min)", key: "workMinutes", className: theme.textSecondary, exportValue: (v) => (v !== undefined && v !== null ? String(v) : "0") },
+                                { header: "Late (min)", key: "lateMinutes", className: theme.textSecondary, exportValue: (v) => (v !== undefined && v !== null ? String(v) : "0") },
+                                { header: "OT (min)", key: "overtimeMinutes", className: theme.textSecondary, exportValue: (v) => (v !== undefined && v !== null ? String(v) : "0") },
+                                { header: "Policy", key: "policyId.name", render: (_, l) => l.policyId?.name || "N/A", exportValue: (_, l) => l.policyId?.name || "N/A" },
                                 {
                                     header: "Location",
                                     key: "location",
@@ -1582,9 +1893,18 @@ const Staff = ({
                                                 </div>
                                             )}
                                         </div>
-                                    )
+                                    ),
+                                    exportValue: (_, l) => {
+                                        const parts = [];
+                                        if (l.checkInAddress) parts.push(`PUNCH-IN: ${l.checkInAddress}`);
+                                        if (l.checkOutAddress) parts.push(`PUNCH-OUT: ${l.checkOutAddress}`);
+                                        if (!l.checkInAddress && !l.checkOutAddress && l.checkInGeo?.lat) {
+                                            parts.push(`GPS: ${l.checkInGeo.lat.toFixed(4)}, ${l.checkInGeo.lng.toFixed(4)}`);
+                                        }
+                                        return parts.join(" | ") || "N/A";
+                                    }
                                 },
-                                 {
+                                {
                                     header: "Correction",
                                     key: "correctionRequest",
                                     render: (_, l) => {
@@ -1617,7 +1937,8 @@ const Staff = ({
                                                 </p>
                                             </div>
                                         );
-                                    }
+                                    },
+                                    exportValue: (_, l) => l.correctionRequest?.status ? `${l.correctionRequest.status}: ${l.correctionRequest.reason || ''}` : "N/A"
                                 }
                             ]}
                             data={attendanceLogs}
@@ -1643,6 +1964,8 @@ const Staff = ({
 
                     <div className={`${theme.surfaceBg} rounded-[3rem] shadow-2xl shadow-indigo-500/5 border ${theme.borderLight} overflow-hidden`}>
                         <CommonTable 
+                            exportFilename="Employee_Leaves"
+                            exportTitle="Employee Leaves"
                             columns={[
                                 { 
                                     header: "Employee", 
@@ -1652,7 +1975,8 @@ const Staff = ({
                                             <span className={`font-bold ${theme.textPrimary}`}>{emp?.userId?.name || "N/A"}</span>
                                             <span className={`text-[10px] uppercase font-black text-gray-400`}>{emp?.employeeCode}</span>
                                         </div>
-                                    )
+                                    ),
+                                    exportValue: (emp) => `${emp?.userId?.name || "N/A"} (${emp?.employeeCode || "N/A"})`
                                 },
                                 { 
                                     header: "Duration", 
@@ -1666,7 +1990,8 @@ const Staff = ({
                                                 {l.totalDays} {l.totalDays > 1 ? 'Days' : 'Day'}
                                             </span>
                                         </div>
-                                    )
+                                    ),
+                                    exportValue: (_, l) => `${new Date(l.startDate).toLocaleDateString()} to ${new Date(l.endDate).toLocaleDateString()} (${l.totalDays} ${l.totalDays > 1 ? 'Days' : 'Day'})`
                                 },
                                 { 
                                     header: "Type", 
@@ -1675,7 +2000,8 @@ const Staff = ({
                                         <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-100/50 text-indigo-700`}>
                                             {val}
                                         </span>
-                                    )
+                                    ),
+                                    exportValue: (val) => val || "N/A"
                                 },
                                 { 
                                     header: "Status", 
@@ -1688,7 +2014,8 @@ const Staff = ({
                                         }`}>
                                             {val}
                                         </span>
-                                    )
+                                    ),
+                                    exportValue: (val) => val || "N/A"
                                 },
                                 {
                                     header: "Action",
@@ -1750,7 +2077,7 @@ const Staff = ({
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Branch</label>
                                     <CommonSelect
-                                        options={branches}
+                                        options={[{ _id: "", name: "Shop-wide" }, ...(branches || [])]}
                                         value={policyForm.branchId}
                                         onChange={(val) => setPolicyForm((p) => ({ ...p, branchId: val }))}
                                         placeholder="Shop-wide"
@@ -1891,7 +2218,7 @@ const Staff = ({
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Branch (optional)</label>
                                     <CommonSelect
-                                        options={branches}
+                                        options={[{ _id: "", name: "Any Branch" }, ...(branches || [])]}
                                         value={assignForm.branchId}
                                         onChange={(val) => setAssignForm((p) => ({ ...p, branchId: val }))}
                                         placeholder="Any Branch"
@@ -2221,6 +2548,9 @@ const Staff = ({
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Mobile Number (Either Phone or Email Required)</label>
                                     <input
+                                        type="tel"
+                                        inputMode="numeric"
+                                        maxLength={10}
                                         value={newEmpData.phone}
                                         onChange={(e) => handleEmpDataChange("phone", e.target.value)}
                                         className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
@@ -2230,6 +2560,7 @@ const Staff = ({
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Email Address</label>
                                     <input
+                                        type="email"
                                         value={newEmpData.email}
                                         onChange={(e) => handleEmpDataChange("email", e.target.value)}
                                         className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
@@ -2280,8 +2611,9 @@ const Staff = ({
                                         <div className="flex-1 relative">
                                             <input
                                                 type="number"
-                                                value={newEmpData.salary.amount}
-                                                onChange={(e) => handleEmpDataChange("salary", { ...newEmpData.salary, amount: e.target.value })}
+                                                min="0"
+                                                value={newEmpData.salary?.amount || ""}
+                                                onChange={(e) => handleEmpDataChange("salary", { ...(newEmpData.salary || { amount: "", period: "monthly" }), amount: e.target.value })}
                                                 className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                                 placeholder="Enter amount"
                                             />
@@ -2290,10 +2622,12 @@ const Staff = ({
                                             <CommonSelect
                                                 options={[
                                                     { label: 'Monthly', value: 'monthly' },
-                                                    { label: 'Daily', value: 'daily' }
+                                                    { label: 'Daily', value: 'daily' },
+                                                    { label: 'Weekly', value: 'weekly' },
+                                                    { label: 'Hourly', value: 'hourly' }
                                                 ]}
-                                                value={newEmpData.salary.period}
-                                                onChange={(val) => handleEmpDataChange("salary", { ...newEmpData.salary, period: val })}
+                                                value={newEmpData.salary?.period || "monthly"}
+                                                onChange={(val) => handleEmpDataChange("salary", { ...(newEmpData.salary || { amount: "", period: "monthly" }), period: val })}
                                                 labelKey="label"
                                                 valueKey="value"
                                             />
@@ -2349,17 +2683,24 @@ const Staff = ({
                                     <div className="animate-fadeIn space-y-2">
                                         <label className={`block text-xs font-bold ${theme.textSecondary}`}>Select Accessible Branches</label>
                                         <div className={`border ${theme.inputBorder} rounded-xl p-3 max-h-40 overflow-y-auto space-y-2 ${theme.surfaceBg}`}>
-                                            {branches.length > 0 ? branches.map(branch => (
-                                                <div key={branch._id} className="flex items-center gap-2">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={userSelectedBranchIds.includes(branch._id)}
-                                                        onChange={() => handleUserBranchSelection(branch._id)}
-                                                        className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
-                                                    />
-                                                    <span className={`text-sm ${theme.textPrimary}`}>{branch.name}</span>
-                                                </div>
-                                            )) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
+                                            {branches.length > 0 ? branches.map(branch => {
+                                                const disabled = isBranchDisabled(branch);
+                                                const branchIdVal = branch._id || branch.id;
+                                                return (
+                                                    <div key={branchIdVal} className={`flex items-center gap-2 ${disabled ? 'opacity-60' : ''}`}>
+                                                        <input
+                                                            type="checkbox"
+                                                            disabled={disabled}
+                                                            checked={!disabled && userSelectedBranchIds.includes(branchIdVal)}
+                                                            onChange={() => handleUserBranchSelection(branchIdVal)}
+                                                            className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus} ${disabled ? 'cursor-not-allowed' : ''}`}
+                                                        />
+                                                        <span className={`text-sm ${disabled ? 'text-gray-400 line-through cursor-not-allowed' : theme.textPrimary}`}>
+                                                            {branch.name} {branch.isMainBranch ? '(Main Branch)' : ''} {disabled ? '(Disabled)' : ''}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            }) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
                                         </div>
                                     </div>
                                 )}
@@ -2368,21 +2709,21 @@ const Staff = ({
                             <div>
                                 <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Address</label>
                                 <input
-                                    value={newEmpData.address.line1}
-                                    onChange={(e) => setNewEmpData(prev => ({ ...prev, address: { ...prev.address, line1: e.target.value } }))}
+                                    value={newEmpData.address?.line1 || ""}
+                                    onChange={(e) => setNewEmpData(prev => ({ ...prev, address: { ...(prev.address || {}), line1: e.target.value } }))}
                                     className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                     placeholder="Address Line 1"
                                 />
                                 <div className="grid grid-cols-2 gap-4 mt-2">
                                     <input
-                                        value={newEmpData.address.city}
-                                        onChange={(e) => setNewEmpData(prev => ({ ...prev, address: { ...prev.address, city: e.target.value } }))}
+                                        value={newEmpData.address?.city || ""}
+                                        onChange={(e) => setNewEmpData(prev => ({ ...prev, address: { ...(prev.address || {}), city: e.target.value } }))}
                                         className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="City"
                                     />
                                     <input
-                                        value={newEmpData.address.state}
-                                        onChange={(e) => setNewEmpData(prev => ({ ...prev, address: { ...prev.address, state: e.target.value } }))}
+                                        value={newEmpData.address?.state || ""}
+                                        onChange={(e) => setNewEmpData(prev => ({ ...prev, address: { ...(prev.address || {}), state: e.target.value } }))}
                                         className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="State"
                                     />
@@ -2391,7 +2732,13 @@ const Staff = ({
                         </div>
                         <div className={`p-4 border-t ${theme.borderLight} flex justify-end gap-3 ${theme.inputBg}`}>
                             <button onClick={() => setIsCreateEmployeeOpen(false)} className={`px-4 py-2 rounded-lg font-bold ${theme.textSecondary} hover:${theme.textPrimary} hover:${theme.inputBorder.replace('border-', 'bg-')}`}>Cancel</button>
-                            <button onClick={handleCreateEmployee} className={`px-6 py-2 rounded-lg font-bold ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} shadow`}>Create Employee</button>
+                            <button
+                                disabled={isSubmittingEmployee}
+                                onClick={handleCreateEmployee}
+                                className={`px-6 py-2 rounded-lg font-bold ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} shadow ${isSubmittingEmployee ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                                {isSubmittingEmployee ? "Creating..." : "Create Employee"}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -2421,6 +2768,9 @@ const Staff = ({
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Mobile Number (Either Phone or Email Required)</label>
                                     <input
+                                        type="tel"
+                                        inputMode="numeric"
+                                        maxLength={10}
                                         value={editEmpData.phone}
                                         onChange={(e) => handleEditEmpDataChange("phone", e.target.value)}
                                         className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
@@ -2494,8 +2844,9 @@ const Staff = ({
                                         <div className="flex-1 relative">
                                             <input
                                                 type="number"
-                                                value={editEmpData.salary.amount}
-                                                onChange={(e) => handleEditEmpDataChange("salary", { ...editEmpData.salary, amount: e.target.value })}
+                                                min="0"
+                                                value={editEmpData.salary?.amount || ""}
+                                                onChange={(e) => handleEditEmpDataChange("salary", { ...(editEmpData.salary || { amount: "", period: "monthly" }), amount: e.target.value })}
                                                 className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                                 placeholder="Enter amount"
                                             />
@@ -2504,10 +2855,12 @@ const Staff = ({
                                             <CommonSelect
                                                 options={[
                                                     { label: 'Monthly', value: 'monthly' },
-                                                    { label: 'Daily', value: 'daily' }
+                                                    { label: 'Daily', value: 'daily' },
+                                                    { label: 'Weekly', value: 'weekly' },
+                                                    { label: 'Hourly', value: 'hourly' }
                                                 ]}
-                                                value={editEmpData.salary.period}
-                                                onChange={(val) => handleEditEmpDataChange("salary", { ...editEmpData.salary, period: val })}
+                                                value={editEmpData.salary?.period || "monthly"}
+                                                onChange={(val) => handleEditEmpDataChange("salary", { ...(editEmpData.salary || { amount: "", period: "monthly" }), period: val })}
                                                 labelKey="label"
                                                 valueKey="value"
                                             />
@@ -2553,17 +2906,24 @@ const Staff = ({
                                     <div className="animate-fadeIn space-y-2">
                                         <label className={`block text-xs font-bold ${theme.textSecondary}`}>Select Accessible Branches</label>
                                         <div className={`border ${theme.inputBorder} rounded-xl p-3 max-h-40 overflow-y-auto space-y-2 ${theme.surfaceBg}`}>
-                                            {branches.length > 0 ? branches.map(branch => (
-                                                <div key={branch._id} className="flex items-center gap-2">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={editUserSelectedBranchIds.includes(branch._id)}
-                                                        onChange={() => handleEditUserBranchSelection(branch._id)}
-                                                        className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
-                                                    />
-                                                    <span className={`text-sm ${theme.textPrimary}`}>{branch.name}</span>
-                                                </div>
-                                            )) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
+                                            {branches.length > 0 ? branches.map(branch => {
+                                                const disabled = isBranchDisabled(branch);
+                                                const branchIdVal = branch._id || branch.id;
+                                                return (
+                                                    <div key={branchIdVal} className={`flex items-center gap-2 ${disabled ? 'opacity-60' : ''}`}>
+                                                        <input
+                                                            type="checkbox"
+                                                            disabled={disabled}
+                                                            checked={!disabled && editUserSelectedBranchIds.includes(branchIdVal)}
+                                                            onChange={() => handleEditUserBranchSelection(branchIdVal)}
+                                                            className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus} ${disabled ? 'cursor-not-allowed' : ''}`}
+                                                        />
+                                                        <span className={`text-sm ${disabled ? 'text-gray-400 line-through cursor-not-allowed' : theme.textPrimary}`}>
+                                                            {branch.name} {branch.isMainBranch ? '(Main Branch)' : ''} {disabled ? '(Disabled)' : ''}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            }) : <p className={`text-sm ${theme.textSecondary}`}>No branches found.</p>}
                                         </div>
                                     </div>
                                 )}
@@ -2572,21 +2932,21 @@ const Staff = ({
                             <div>
                                 <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Address</label>
                                 <input
-                                    value={editEmpData.address.line1}
-                                    onChange={(e) => setEditEmpData(prev => ({ ...prev, address: { ...prev.address, line1: e.target.value } }))}
+                                    value={editEmpData.address?.line1 || ""}
+                                    onChange={(e) => setEditEmpData(prev => ({ ...prev, address: { ...(prev.address || {}), line1: e.target.value } }))}
                                     className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                     placeholder="Address Line 1"
                                 />
                                 <div className="grid grid-cols-2 gap-4 mt-2">
                                     <input
-                                        value={editEmpData.address.city}
-                                        onChange={(e) => setEditEmpData(prev => ({ ...prev, address: { ...prev.address, city: e.target.value } }))}
+                                        value={editEmpData.address?.city || ""}
+                                        onChange={(e) => setEditEmpData(prev => ({ ...prev, address: { ...(prev.address || {}), city: e.target.value } }))}
                                         className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="City"
                                     />
                                     <input
-                                        value={editEmpData.address.state}
-                                        onChange={(e) => setEditEmpData(prev => ({ ...prev, address: { ...prev.address, state: e.target.value } }))}
+                                        value={editEmpData.address?.state || ""}
+                                        onChange={(e) => setEditEmpData(prev => ({ ...prev, address: { ...(prev.address || {}), state: e.target.value } }))}
                                         className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
                                         placeholder="State"
                                     />
@@ -2595,7 +2955,13 @@ const Staff = ({
                         </div>
                         <div className={`p-4 border-t ${theme.borderLight} flex justify-end gap-3 ${theme.inputBg}`}>
                             <button onClick={() => { setIsEditEmployeeOpen(false); setEditingEmployee(null); }} className={`px-4 py-2 rounded-lg font-bold ${theme.textSecondary}`}>Cancel</button>
-                            <button onClick={handleUpdateEmployee} className={`px-6 py-2 rounded-lg font-bold ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} shadow`}>Save Changes</button>
+                            <button
+                                disabled={isSubmittingEmployee}
+                                onClick={handleUpdateEmployee}
+                                className={`px-6 py-2 rounded-lg font-bold ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} shadow ${isSubmittingEmployee ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                                {isSubmittingEmployee ? "Saving..." : "Save Changes"}
+                            </button>
                         </div>
                     </div>
                 </div>
