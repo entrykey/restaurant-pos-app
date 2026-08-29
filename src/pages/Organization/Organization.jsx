@@ -30,6 +30,7 @@ import * as organizationService from './OrganizationService';
 import { shopService, api } from "../../services/api";
 import { subscriptionService } from '../../services/api/subscriptions';
 import { toast } from 'react-hot-toast';
+import { compressImageIfNeeded } from '../../utils/imageCompressor';
 
 
 const emptyBranch = (organizationId, defaultUpiId = null) => ({
@@ -578,13 +579,23 @@ const Organization = ({
 
     const handleLogoChange = async (e) => {
         if (!canEditOrg || !organization?.id) return;
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const rawFile = e.target.files?.[0];
+        if (!rawFile) return;
         setLogoUploading(true);
         try {
+            // Auto-compress image if size > 2MB
+            const { file, wasCompressed, originalSizeMB, compressedSizeMB } = await compressImageIfNeeded(rawFile, 2);
+
+            if (wasCompressed) {
+                toast(`File was ${originalSizeMB} MB. Automatically compressed to ${compressedSizeMB} MB.`, {
+                    icon: '⚡',
+                    duration: 4000
+                });
+            }
+
             const formData = new FormData();
             formData.append('logo', file);
-            
+
             const res = await shopService.uploadLogo(organization.id, formData);
             const logoUrl = res.logoUrl || res.data?.logoUrl || res.data?.shop?.logoUrl || res.shop?.logoUrl;
             if (logoUrl) {
@@ -594,7 +605,11 @@ const Organization = ({
         } catch (error) {
             console.error("Failed to upload logo:", error);
             const msg = error.message || error?.response?.data?.message || "Failed to upload logo";
-            toast.error(msg);
+            if (msg.includes("413") || msg.includes("Too Large") || msg.includes("entity")) {
+                toast.error("Image file size is too large for the server. Please select a smaller file.");
+            } else {
+                toast.error(msg);
+            }
         } finally {
             setLogoUploading(false);
         }
