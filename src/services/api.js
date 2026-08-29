@@ -15,6 +15,9 @@ api.interceptors.request.use(
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
+        if (config.data instanceof FormData) {
+            delete config.headers['Content-Type'];
+        }
         return config;
     },
     (error) => Promise.reject(error)
@@ -236,11 +239,7 @@ export const shopService = {
                 fd.append('logo', file);
                 return fd;
             })();
-            const response = await api.post(`/shops/${shopId}/logo`, data, {
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                }
-            });
+            const response = await api.post(`/shops/${shopId}/logo`, data);
             return response.data;
         } catch (error) {
             console.error("Error uploading shop logo:", error);
