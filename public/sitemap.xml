@@ -4,19 +4,19 @@
         xsi:schemaLocation="http://www.sitemap.org/schemas/sitemap/0.9
         http://www.sitemap.org/schemas/sitemap/0.9/sitemap.xsd">
   <url>
-    <loc>https://filepe.com/</loc>
+    <loc>https://filepeapp.com/</loc>
     <lastmod>2026-09-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://filepe.com/login</loc>
+    <loc>https://filepeapp.com/login</loc>
     <lastmod>2026-09-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://filepe.com/register</loc>
+    <loc>https://filepeapp.com/register</loc>
     <lastmod>2026-09-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
