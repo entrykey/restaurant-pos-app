@@ -8,4 +8,4 @@ Disallow: /api/
 Disallow: /dashboard/
 Disallow: /admin/
 
-Sitemap: https://filepe.com/sitemap.xml
+Sitemap: https://filepeapp.com/sitemap.xml
