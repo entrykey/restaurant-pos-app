@@ -1,92 +1,93 @@
 /**
- * Utility to compress image files on the client side before uploading to the server.
- * Automatically scales down large dimensions and adjusts quality if size exceeds target MB.
- *
- * @param {File} file - Original file from input
- * @param {number} maxSizeMB - Target max size in MB (default 2MB)
- * @param {number} maxDimension - Max width or height in px (default 1600px)
- * @returns {Promise<{ file: File, wasCompressed: boolean, originalSizeMB: string, compressedSizeMB: string }>}
+ * Utility functions for client-side image compression and processing.
  */
-export const compressImageIfNeeded = (file, maxSizeMB = 2, maxDimension = 1600) => {
-    return new Promise((resolve) => {
-        if (!file || !file.type.startsWith('image/')) {
-            return resolve({ file, wasCompressed: false });
+
+/**
+ * Compresses an image File using HTML5 Canvas.
+ * @param {File} file - The image file to compress.
+ * @param {Object} options - Compression options.
+ * @param {number} [options.maxWidth=1024] - Maximum width of output image.
+ * @param {number} [options.maxHeight=1024] - Maximum height of output image.
+ * @param {number} [options.quality=0.8] - Quality from 0.0 to 1.0.
+ * @param {string} [options.outputType='image/jpeg'] - Output MIME type.
+ * @returns {Promise<File>} Compressed File object.
+ */
+export const compressImageFile = (file, options = {}) => {
+  const {
+    maxWidth = 1024,
+    maxHeight = 1024,
+    quality = 0.8,
+    outputType = 'image/jpeg',
+  } = options;
+
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) {
+      return resolve(file);
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        let { width, height } = img;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
         }
 
-        const sizeInMB = file.size / (1024 * 1024);
-        const originalSizeFormatted = sizeInMB.toFixed(2);
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
 
-        // If file is already within target size limit, return as is
-        if (sizeInMB <= maxSizeMB) {
-            return resolve({
-                file,
-                wasCompressed: false,
-                originalSizeMB: originalSizeFormatted,
-                compressedSizeMB: originalSizeFormatted
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              return resolve(file);
+            }
+            const compressedFile = new File([blob], file.name, {
+              type: outputType,
+              lastModified: Date.now(),
             });
-        }
-
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (e) => {
-            const img = new Image();
-            img.src = e.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-
-                // Scale down max dimension while preserving aspect ratio
-                if (width > maxDimension || height > maxDimension) {
-                    if (width > height) {
-                        height = Math.round((height * maxDimension) / width);
-                        width = maxDimension;
-                    } else {
-                        width = Math.round((width * maxDimension) / height);
-                        height = maxDimension;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // Iterative compression starting at 85% quality
-                const attemptBlob = (quality) => {
-                    canvas.toBlob(
-                        (blob) => {
-                            if (!blob) {
-                                return resolve({ file, wasCompressed: false });
-                            }
-
-                            const currentSizeMB = blob.size / (1024 * 1024);
-                            if (currentSizeMB <= maxSizeMB || quality <= 0.3) {
-                                const newFileName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
-                                const compressedFile = new File([blob], newFileName, {
-                                    type: 'image/jpeg',
-                                    lastModified: Date.now()
-                                });
-                                resolve({
-                                    file: compressedFile,
-                                    wasCompressed: true,
-                                    originalSizeMB: originalSizeFormatted,
-                                    compressedSizeMB: currentSizeMB.toFixed(2)
-                                });
-                            } else {
-                                attemptBlob(quality - 0.15);
-                            }
-                        },
-                        'image/jpeg',
-                        quality
-                    );
-                };
-
-                attemptBlob(0.85);
-            };
-            img.onerror = () => resolve({ file, wasCompressed: false });
-        };
-        reader.onerror = () => resolve({ file, wasCompressed: false });
-    });
+            resolve(compressedFile);
+          },
+          outputType,
+          quality
+        );
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
 };
+
+/**
+ * Converts a File or Blob to a Base64 data URL string.
+ * @param {File|Blob} file 
+ * @returns {Promise<string>}
+ */
+export const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (error) => reject(error);
+  });
+};
+
+const imageCompressor = {
+  compressImageFile,
+  fileToBase64,
+};
+
+export default imageCompressor;

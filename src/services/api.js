@@ -1695,3 +1695,15 @@ export const saleMarkingService = {
     }
 };
 
+export const contactService = {
+    sendContactInquiry: async (payload) => {
+        try {
+            const response = await api.post('/contact/inquiry', payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error sending contact inquiry:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+

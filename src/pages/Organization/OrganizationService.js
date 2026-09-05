@@ -110,7 +110,7 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
           'Trial Run Not Requested'
         )
         : data.subscription?.status === 'pending_payment' || data.subscription?.payment_status === 'pending'
-          ? 'Waiting for payment confirmation'
+          ? 'Subscription Pending Approval'
         : data.plan
           ? (data.plan.name === 'Trail' ? 'Trial' : data.plan.name)
           : 'No Active Plan',
@@ -121,7 +121,7 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
             : 'Waiting for super admin approval'
         )
         : (data.subscription?.status === 'pending_payment' || data.subscription?.payment_status === 'pending')
-          ? 'Super admin payment confirmation is pending'
+          ? 'Request submitted. Waiting for super admin manual approval.'
         : data.plan
           ? `${data.plan.currency} ${data.plan.pricing?.find(p => p.cycle === 'monthly')?.price ?? data.plan.price ?? 0}/mo`
           : 'Subscribe to use',

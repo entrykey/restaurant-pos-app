@@ -99,7 +99,7 @@ const CommonSelect = ({
     }, [isOpen]);
 
     const handleSelect = (opt) => {
-        if (!opt || disabled) return;
+        if (!opt || disabled || opt.disabled) return;
         const val = typeof opt === 'object' ? opt[valueKey] : opt;
         onChange(val, opt);
         setIsOpen(false);
@@ -217,9 +217,10 @@ const CommonSelect = ({
                                     <button
                                         key={optVal || idx}
                                         type="button"
-                                        onClick={() => handleSelect(opt)}
+                                        disabled={opt.disabled}
+                                        onClick={() => !opt.disabled && handleSelect(opt)}
                                         onMouseEnter={() => setActiveIndex(idx)}
-                                        className={`w-full p-4 text-left flex items-center justify-between group transition-colors ${isActive ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}
+                                        className={`w-full p-4 text-left flex items-center justify-between group transition-colors ${opt.disabled ? 'opacity-50 cursor-not-allowed bg-red-50/40 dark:bg-red-950/20' : isActive ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20'}`}
                                     >
                                         <div className="flex-1">
                                             {renderOption ? (

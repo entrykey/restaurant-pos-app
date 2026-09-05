@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /register
+
+# Disallow sensitive internal app paths from search engine indexing
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /admin/
+
+Sitemap: https://filepe.com/sitemap.xml

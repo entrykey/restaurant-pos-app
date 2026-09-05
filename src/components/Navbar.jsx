@@ -131,7 +131,7 @@ const Navbar = ({
     const branchSelectorTitle = selectedBranchObj?.name || branches[0]?.name || "Select Branch";
 
     return (
-        <div className={`h-16 ${theme.cardBg} border-b ${theme.borderLight} px-4 md:px-8 flex items-center justify-between shrink-0 w-full`}>
+        <div className={`h-16 ${theme.sidebarBg} border-b ${theme.borderLight} px-4 md:px-8 flex items-center justify-between shrink-0 w-full`}>
             <div className="flex items-center gap-4 md:gap-6">
                 {/* Mobile sidebar toggle */}
                 <button
@@ -279,7 +279,7 @@ const Navbar = ({
                                 <button
                                     type="button"
                                     onClick={() => setIsTrialPopoverOpen(false)}
-                                    className={`absolute top-3 right-3 p-1 rounded-lg ${theme.textMuted} hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
+                                    className={`absolute top-3 right-3 p-1 rounded-lg ${theme.textMuted} ${theme.sidebarItemHoverBg} transition-colors`}
                                 >
                                     <X size={14} className="text-gray-400" />
                                 </button>
@@ -323,13 +323,13 @@ const Navbar = ({
                 )}
 
                 {/* Notification Bell */}
-                <div className="relative group p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-all cursor-pointer">
+                <div className={`relative group p-2 rounded-xl ${theme.sidebarItemHoverBg} transition-all cursor-pointer`}>
                     <Bell size={20} className={theme.textSecondary} onClick={() => {
                         requestNotificationPermission();
                         setIsNotificationsOpen(!isNotificationsOpen);
                     }} />
                     {(notifications.filter(n => !n.isRead).length > 0 || showSubscriptionBadge) && (
-                         <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-900 group-hover:scale-110 transition-transform"></span>
+                         <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 group-hover:scale-110 transition-transform"></span>
                     )}
                     
                     {/* Dropdown */}

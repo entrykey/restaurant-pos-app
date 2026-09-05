@@ -55,15 +55,33 @@ const CategorySettings = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        const trimmedName = (formData.name || "").trim();
+        if (!trimmedName) {
+            toast.error("Category name is required.");
+            return;
+        }
+
+        const isDuplicate = categories.some(c => 
+            (c.name || "").trim().toLowerCase() === trimmedName.toLowerCase() && 
+            (!editingCategory || String(c._id) !== String(editingCategory._id))
+        );
+
+        if (isDuplicate) {
+            toast.error(`A category named "${trimmedName}" already exists.`);
+            return;
+        }
+
         setIsLoading(true);
 
         try {
             if (editingCategory) {
-                await categoryService.updateCategory(editingCategory._id, formData);
+                await categoryService.updateCategory(editingCategory._id, { ...formData, name: trimmedName });
                 toast.success("Category updated successfully");
             } else {
                 await categoryService.createCategory({
                     ...formData,
+                    name: trimmedName,
                     shopId: currentShopId
                 });
                 toast.success("Category created successfully");

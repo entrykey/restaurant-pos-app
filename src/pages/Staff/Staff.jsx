@@ -825,11 +825,14 @@ const Staff = ({
         if (!employee) return;
         setEditingEmployee(employee);
         const u = employee.userId || {};
+        const rawRole = employee.mapping?.roleId || employee.roleId;
+        const extractedRoleId = typeof rawRole === 'object' ? (rawRole?._id || rawRole?.id || "") : String(rawRole || "");
+
         setEditEmpData({
             name: u.name || "",
             email: u.email || "",
             phone: u.phone || "",
-            roleId: (employee.mapping?.roleId?._id || employee.mapping?.roleId || employee.roleId?._id || employee.roleId || ""),
+            roleId: extractedRoleId,
             designation: employee.designation || "",
             reportingTo: (employee.reportingTo?._id || employee.reportingTo || ""),
             address: employee.address || { line1: "", city: "", state: "", pincode: "" },
@@ -2257,7 +2260,7 @@ const Staff = ({
                                         setIsAssignPolicyOpen(false);
                                         await refreshAttendanceData();
                                     } catch (err) {
-                                        alert("Failed to assign policy");
+                                        alert(err.response?.data?.message || err.message || "Failed to assign policy");
                                     }
                                 }}
                                 className={`px-6 py-2 rounded-lg font-bold ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} shadow`}

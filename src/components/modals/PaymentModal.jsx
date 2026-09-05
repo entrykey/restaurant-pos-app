@@ -3,7 +3,7 @@ import { X, Tag, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2, Chevr
 import ThemeLoader from "../ui/ThemeLoader";
 import { formatCurrency } from "../../utils/format";
 import { useOrder } from "../../context/OrderContext";
-import { customerService } from "../../services/api";
+import { customerService, orderService } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { useApp } from "../../context/AppContext";
 import { QRCodeSVG } from "qrcode.react";
@@ -18,26 +18,29 @@ const PaymentModal = ({
     tableName,
     orderItems,
     settings,
-    onFinalizePayment,
-    onPrintBill,
-    hasPermission,
-    hasPermissionFor,
-    custName,
-    setCustName,
-    custPhone,
-    setCustPhone,
-    existingCustomerId,
+    billDiscount = { type: "flat", value: 0 },
+    isAutoRoundOff = true,
     exchangeCredit = 0,
     originalOrderId = null,
+    isExchange = false,
+    returnedItems = [],
+    onFinalizePayment,
+    onPrintBill,
+    hasPermission = () => true,
+    hasPermissionFor = () => true,
+    custName = "",
+    setCustName = () => {},
+    custPhone = "",
+    setCustPhone = () => {},
+    existingCustomerId = null,
     loyaltyDiscount = { points: 0, amount: 0 },
-    billDiscount = { type: 'flat', value: 0 }
+    selectedCustomer = null,
+    activeOrderCustomerId = null,
+    activeOrderType = "TAKEAWAY"
 }) => {
-    const { theme } = useTheme();
     const {
         billingStage,
         setBillingStage,
-        // billDiscount removed from here - now using prop
-        isAutoRoundOff,
         couponCode,
         setCouponCode,
         couponStatus,
@@ -45,20 +48,16 @@ const PaymentModal = ({
         calculateItemTotal,
         calculateBillDetails,
         applyCoupon,
-        dismissOffer
+        dismissOffer,
+        resetBillingState,
+        resetExchange
     } = useOrder();
+    const { theme } = useTheme();
     const { activeBranchId, branches, organization } = useApp();
     const activeBranch = branches.find(b => b._id === activeBranchId);
     const resolvedUpiId = activeBranch?.upiId || organization?.defaultUpiId;
     const branchStateCode = activeBranch?.address?.state?.code;
     const [customerStateCode, setCustomerStateCode] = useState(null);
-
-    useEffect(() => {
-        if (isOpen && (existingCustomerId || custPhone)) {
-            // Try to find customer state code if possible
-            // This could be an API call or passed in
-        }
-    }, [isOpen, existingCustomerId, custPhone]);
 
     const [selectedPayments, setSelectedPayments] = useState([]); // Array of { method: {id, label, icon, color}, amount: number, ref: string }
     const [printFormat, setPrintFormat] = useState("thermal"); // thermal | a4
@@ -71,6 +70,7 @@ const PaymentModal = ({
     const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
     const [searchPerformed, setSearchPerformed] = useState(false);
     const [noCustomerFound, setNoCustomerFound] = useState(false);
+    const [customerSearchResult, setCustomerSearchResult] = useState(null); // { found: boolean, customer?: obj, name?: string, phone?: string, creditDue?: number, searchQuery?: string }
 
     useEffect(() => {
         if (isOpen) {
@@ -78,11 +78,80 @@ const PaymentModal = ({
             setLocalCustPhone(custPhone || "");
             setSearchPerformed(false);
             setNoCustomerFound(false);
+            setCustomerSearchResult(null);
             setPrintFormat("thermal");
             setSelectedPayments([]); // Reset on open
             setIsProcessingPayment(false);
         }
     }, [isOpen, custName, custPhone]);
+
+    useEffect(() => {
+        const cleanPhone = (localCustPhone || "").replace(/\D/g, "");
+        const cleanName = (localCustName || "").trim();
+        const searchQuery = cleanPhone.length === 10 ? cleanPhone : (cleanName.length >= 2 ? cleanName : "");
+
+        if (searchQuery) {
+            setIsSearchingCustomer(true);
+            const timer = setTimeout(async () => {
+                try {
+                    const res = await customerService.getCustomers({ search: searchQuery, branchId: activeBranchId });
+                    const list = res?.data || res?.customers || (Array.isArray(res) ? res : []);
+                    
+                    let found = null;
+                    if (cleanPhone.length === 10) {
+                        found = list.find(c => String(c.phone || c.mobile || "").replace(/\D/g, "") === cleanPhone);
+                    }
+                    if (!found && cleanName.length >= 2) {
+                        found = list.find(c => String(c.name || c.customerName || "").toLowerCase().includes(cleanName.toLowerCase()));
+                    }
+
+                    if (found) {
+                        const name = found.name || found.customerName || "";
+                        const phone = found.phone || found.mobile || "";
+                        if (name && !localCustName) setLocalCustName(name);
+                        if (phone && cleanPhone.length !== 10) setLocalCustPhone(String(phone).replace(/\D/g, "").slice(0, 10));
+
+                        let creditDue = 0;
+                        try {
+                            const searchTerm = phone || name;
+                            if (searchTerm) {
+                                const ordersRes = await orderService.getOrders({ search: searchTerm, branchId: activeBranchId });
+                                const ordersList = ordersRes?.orders || ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
+                                const pendingOrders = ordersList.filter(o => o.paymentStatus === 'PARTIAL' || o.paymentStatus === 'PENDING');
+                                creditDue = pendingOrders.reduce((sum, o) => {
+                                    const paid = Number(o.totalPaid || o.paidAmount || 0);
+                                    const total = Number(o.finalTotal || o.totalAmount || o.amount || 0);
+                                    return sum + Math.max(0, total - paid);
+                                }, 0);
+                            }
+                        } catch (oErr) {
+                            console.warn("Could not fetch orders for customer credit due balance:", oErr);
+                        }
+
+                        setCustomerSearchResult({ found: true, customer: found, name, phone, creditDue });
+                        setNoCustomerFound(false);
+                    } else {
+                        setCustomerSearchResult({ found: false, searchQuery });
+                        setNoCustomerFound(true);
+                    }
+                    setSearchPerformed(true);
+                } catch (err) {
+                    console.error("Error searching customer:", err);
+                    setCustomerSearchResult({ found: false, searchQuery });
+                    setNoCustomerFound(true);
+                    setSearchPerformed(true);
+                } finally {
+                    setIsSearchingCustomer(false);
+                }
+            }, 350);
+            return () => clearTimeout(timer);
+        } else {
+            setCustomerSearchResult(null);
+            setSearchPerformed(false);
+            setNoCustomerFound(false);
+            setIsSearchingCustomer(false);
+        }
+    }, [localCustPhone, localCustName, activeBranchId]);
 
     // Deduplicate items: group identical items (same id, variant, extras) into one line with combined quantity
     const deduplicatedItems = React.useMemo(() => {
@@ -534,54 +603,83 @@ const PaymentModal = ({
                                     {selectedPayments.length > 0 && (
                                         <div className="animate-in fade-in slide-in-from-top-4 duration-500">
                                             {remainingBalance > 0 && (
-                                                <div className={`p-8 rounded-[40px] border ${(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ? "bg-orange-50 border-orange-100 dark:bg-orange-900/10 dark:border-orange-900/40" : "bg-red-50 border-red-100 dark:bg-red-900/10 dark:border-red-900/40"}`}>
+                                                <div className={`p-5 md:p-6 rounded-2xl border ${(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ? "bg-orange-50/50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800/40" : "bg-red-50 border-red-100 dark:bg-red-950/20 dark:border-red-800/40"}`}>
                                                     {!(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ? (
-                                                        <p className="text-sm font-black text-red-500 text-center uppercase tracking-widest">
+                                                        <p className="text-sm font-bold text-red-500 text-center uppercase tracking-wider">
                                                             Credit disabled. Total must be paid.
                                                         </p>
                                                     ) : !(billDetails.customerId || existingCustomerId) ? (
-                                                        <div className="space-y-6">
+                                                        <div className="space-y-4">
                                                             <div className="text-center">
-                                                                <h4 className="text-orange-600 font-black text-sm uppercase tracking-widest block mb-1">Partial Payment / Credit</h4>
-                                                                <p className="text-xs font-bold text-orange-900/60 dark:text-orange-400/60">
+                                                                <h4 className="text-orange-600 font-bold text-xs uppercase tracking-wider mb-0.5">Partial Payment / Credit</h4>
+                                                                <p className="text-xs font-semibold text-orange-900/70 dark:text-orange-300/70">
                                                                     Identify customer to record remaining {formatCurrency(remainingBalance)} as credit.
                                                                 </p>
                                                             </div>
-                                                            <div className="grid grid-cols-2 gap-6">
-                                                                <div className="space-y-2">
-                                                                    <label className="text-[10px] uppercase font-black text-orange-400 tracking-widest flex justify-between">
-                                                                        <span>Phone Number *</span>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                                                                <div className="space-y-1">
+                                                                    <label className="text-xs font-bold text-orange-500 flex justify-between items-center">
+                                                                        <span>Phone Number (10 digits) *</span>
                                                                         {isSearchingCustomer && <ThemeLoader size="xs" />}
                                                                     </label>
                                                                     <input
-                                                                        type="text"
+                                                                        type="tel"
+                                                                        inputMode="numeric"
+                                                                        maxLength={10}
                                                                         value={localCustPhone}
-                                                                        onChange={(e) => setLocalCustPhone(e.target.value)}
-                                                                        placeholder="Search number..."
-                                                                        className={`w-full p-4 rounded-3xl border outline-none font-black text-lg ${theme.mode === 'dark' ? 'bg-black/20 border-orange-900/40 text-orange-400' : 'bg-white border-orange-200 text-orange-700'} focus:ring-4 focus:ring-orange-500/20`}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                                                                            setLocalCustPhone(val);
+                                                                        }}
+                                                                        placeholder="10-digit number..."
+                                                                        className={`w-full px-4 py-2.5 rounded-xl border text-sm font-bold outline-none transition-all ${theme.mode === 'dark' ? 'bg-black/30 border-orange-900/40 text-orange-200 focus:border-orange-500' : 'bg-white border-orange-200 text-orange-900 focus:border-orange-500'} focus:ring-2 focus:ring-orange-500/20`}
                                                                     />
                                                                 </div>
-                                                                <div className="space-y-2">
-                                                                    <label className="text-[10px] uppercase font-black text-orange-400 tracking-widest">Full Name *</label>
+                                                                <div className="space-y-1">
+                                                                    <label className="text-xs font-bold text-orange-500 block">Full Name *</label>
                                                                     <input
                                                                         type="text"
                                                                         value={localCustName}
                                                                         onChange={(e) => setLocalCustName(e.target.value)}
                                                                         placeholder="Customer name..."
-                                                                        className={`w-full p-4 rounded-3xl border outline-none font-black text-lg ${theme.mode === 'dark' ? 'bg-black/20 border-orange-900/40 text-orange-400' : 'bg-white border-orange-200 text-orange-700'} focus:ring-4 focus:ring-orange-500/20`}
+                                                                        className={`w-full px-4 py-2.5 rounded-xl border text-sm font-bold outline-none transition-all ${theme.mode === 'dark' ? 'bg-black/30 border-orange-900/40 text-orange-200 focus:border-orange-500' : 'bg-white border-orange-200 text-orange-900 focus:border-orange-500'} focus:ring-2 focus:ring-orange-500/20`}
                                                                     />
                                                                 </div>
                                                             </div>
-                                                            {searchPerformed && noCustomerFound && !isSearchingCustomer && (
-                                                                <div className="text-center py-2 px-4 rounded-full bg-orange-600/10 border border-orange-600/20 text-[10px] text-orange-600 font-black uppercase tracking-widest italic">
-                                                                    Creating new customer record
+                                                             {isSearchingCustomer ? (
+                                                                <div className="text-center py-2 px-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs font-bold text-blue-500 flex items-center justify-center gap-2">
+                                                                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                                                    <span>Searching customer database...</span>
                                                                 </div>
-                                                            )}
+                                                            ) : customerSearchResult?.found ? (
+                                                                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-600 dark:text-emerald-400 space-y-1">
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <span className="flex items-center gap-1.5 font-black text-sm">
+                                                                            ✓ Existing Customer Found: {customerSearchResult.name}
+                                                                        </span>
+                                                                        {customerSearchResult.phone && (
+                                                                            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                                                                                📞 {customerSearchResult.phone}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center justify-between pt-1 border-t border-emerald-500/20">
+                                                                        <span>Outstanding Ledger / Credit Balance:</span>
+                                                                        <span className={customerSearchResult.creditDue > 0 ? "text-amber-600 dark:text-amber-400 font-black text-sm" : "text-emerald-700 dark:text-emerald-300 font-bold"}>
+                                                                            {customerSearchResult.creditDue > 0 ? `${formatCurrency(customerSearchResult.creditDue)} (Due)` : "No Outstanding Credit Due (₹0.00)"}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            ) : customerSearchResult?.found === false ? (
+                                                                <div className="text-center py-2 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center justify-center gap-2">
+                                                                    ⚠ No existing customer found for &quot;{customerSearchResult.searchQuery}&quot;. Entering details will create a new customer record.
+                                                                </div>
+                                                            ) : null}
                                                         </div>
                                                     ) : (
                                                         <div className="text-center">
-                                                            <p className="text-sm font-black text-orange-600 uppercase tracking-[0.2em] mb-1">Credit Linked</p>
-                                                            <p className="text-xs font-bold text-gray-500">
+                                                            <p className="text-xs font-bold text-orange-600 uppercase tracking-wider mb-1">Credit Linked</p>
+                                                            <p className="text-xs text-gray-500">
                                                                 Balance {formatCurrency(remainingBalance)} will be added to ledger.
                                                             </p>
                                                         </div>
@@ -589,14 +687,19 @@ const PaymentModal = ({
                                                 </div>
                                             )}
 
-                                            <div className="pt-8">
+                                            <div className="pt-6">
                                                 <button
                                                     onClick={async () => {
+                                                        const cleanPhone = localCustPhone.replace(/\D/g, "");
                                                         // Validate Customer details on credit/partial payment
                                                         if (remainingBalance > 0) {
-                                                            if (!localCustName.trim() || !localCustPhone.trim()) {
-                                                                if (!billDetails.customerId && !existingCustomerId) {
-                                                                    alert("Customer Name and Phone are required for partial/credit payments.");
+                                                            if (!billDetails.customerId && !existingCustomerId) {
+                                                                if (!localCustName.trim()) {
+                                                                    alert("Customer Full Name is required for partial/credit payments.");
+                                                                    return;
+                                                                }
+                                                                if (cleanPhone.length !== 10) {
+                                                                    alert("Please enter a valid 10-digit mobile phone number.");
                                                                     return;
                                                                 }
                                                             }
@@ -611,7 +714,7 @@ const PaymentModal = ({
                                                         }));
 
                                                         setCustName(localCustName);
-                                                        setCustPhone(localCustPhone);
+                                                        setCustPhone(cleanPhone);
 
                                                         setIsProcessingPayment(true);
                                                         try {
@@ -620,9 +723,11 @@ const PaymentModal = ({
                                                                 billDetails, 
                                                                 totalPaidAmount, 
                                                                 localCustName, 
-                                                                localCustPhone,
+                                                                cleanPhone,
                                                                 paymentsPayload
                                                             );
+                                                            setIsProcessingPayment(false);
+                                                            if (onClose) onClose();
                                                         } catch (error) {
                                                             console.error("Payment failed", error);
                                                             setIsProcessingPayment(false);
@@ -634,15 +739,15 @@ const PaymentModal = ({
                                                         (remainingBalance > 0 && (
                                                             !(settings?.ALLOW_CREDIT === true || String(settings?.ALLOW_CREDIT) === "true") ||
                                                             (!billDetails.customerId && !localCustName?.trim() && !existingCustomerId) ||
-                                                            (!billDetails.customerId && !localCustPhone?.trim() && !existingCustomerId)
+                                                            (!billDetails.customerId && localCustPhone?.replace(/\D/g, "").length !== 10 && !existingCustomerId)
                                                         ))
                                                     }
-                                                    className={`w-full py-4 md:py-5 rounded-[24px] md:rounded-[32px] text-white font-black text-lg md:text-2xl transition-all shadow-2xl flex items-center justify-center gap-2 md:gap-4 group ${isProcessingPayment ? 'opacity-80 cursor-not-allowed' : 'active:scale-95'} ${remainingBalance <= 0 ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20'}`}
+                                                    className={`w-full py-3.5 px-6 rounded-xl text-white font-bold text-base md:text-lg transition-all shadow-lg flex items-center justify-center gap-3 group ${isProcessingPayment ? 'opacity-80 cursor-not-allowed' : 'active:scale-95'} ${remainingBalance <= 0 ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20'}`}
                                                 >
                                                     {isProcessingPayment ? (
-                                                        <Loader2 className="w-6 h-6 md:w-7 md:h-7 animate-spin shrink-0" />
+                                                        <Loader2 className="w-5 h-5 animate-spin shrink-0" />
                                                     ) : (
-                                                        <CheckCircle2 className="w-6 h-6 md:w-7 md:h-7 group-hover:scale-110 transition-transform shrink-0" />
+                                                        <CheckCircle2 className="w-5 h-5 group-hover:scale-110 transition-transform shrink-0" />
                                                     )}
                                                     <span className="truncate">
                                                         {isProcessingPayment ? "Processing..." : (remainingBalance > 0 ? "Finalize Credit Purchase" : "Pay & Close Order")}

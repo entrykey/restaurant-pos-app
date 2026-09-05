@@ -29,6 +29,7 @@ import { settingService, roleService, payrollService } from "../../services/api"
 import CommonSelect from "../../components/ui/CommonSelect";
 import { useApp } from "../../context/AppContext";
 import RolePermissionEditor from "./RolePermissionEditor";
+import { toast } from "react-hot-toast";
 
 const Settings = ({
     settings,
@@ -168,7 +169,39 @@ const Settings = ({
     };
 
     const handleUpdateBackendSetting = (key, value) => {
-        setBackendSettings(prev => prev.map(s => s.key === key ? { ...s, value } : s));
+        setBackendSettings(prev => {
+            const exists = prev.some(s => s.key === key);
+            if (exists) {
+                return prev.map(s => s.key === key ? { ...s, value } : s);
+            } else {
+                return [...prev, { key, value, isNew: true }];
+            }
+        });
+    };
+
+    const handleSaveAllBackendSettings = async (settingsList) => {
+        setIsSavingBackend(true);
+        try {
+            const shopId = currentShopId || currentUser?.shopId || currentUser?.shop_id || currentUser?.shopId;
+            const targetList = settingsList || backendSettings;
+
+            for (const s of targetList) {
+                if (!s || !s.key) continue;
+                await settingService.updateSetting(s.key, {
+                    value: s.value,
+                    shopId: shopId
+                });
+            }
+
+            await fetchBackendSettings();
+
+            toast.success("All sale settings saved successfully!");
+        } catch (error) {
+            console.error("Failed to save settings:", error);
+            toast.error("Failed to save settings");
+        } finally {
+            setIsSavingBackend(false);
+        }
     };
 
     const handleSaveBackendSetting = async (setting) => {
@@ -180,19 +213,17 @@ const Settings = ({
                 shopId: shopId
             });
 
-            // Update original settings to match the saved value so the button hides
             setOriginalSettings(prev => prev.map(s => s.key === setting.key ? updatedSetting : s));
 
-            // Update global settings context so other components (like POS) reflect the change immediately
             setSettings(prev => ({
                 ...prev,
                 [setting.key]: setting.value
             }));
 
-            alert(`Setting ${setting.displayString} updated successfully`);
+            toast.success(`Setting ${setting.displayString || setting.key} updated successfully`);
         } catch (error) {
             console.error("Failed to update setting:", error);
-            alert("Failed to update setting");
+            toast.error("Failed to update setting");
         } finally {
             setIsSavingBackend(false);
         }
@@ -299,15 +330,27 @@ const Settings = ({
         }
 
         switch (type) {
-            case 'boolean':
+            case 'boolean': {
+                const boolVal = Boolean(value);
                 return (
                     <button
-                        onClick={() => handleUpdateBackendSetting(key, !value)}
-                        className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${value ? theme.buttonBg : "bg-gray-300"}`}
+                        type="button"
+                        onClick={() => handleUpdateBackendSetting(key, !boolVal)}
+                        aria-label={`Toggle ${setting.displayString || key}`}
+                        className={`relative w-14 h-8 rounded-full p-1 transition-colors duration-300 ease-in-out cursor-pointer shrink-0 ${
+                            boolVal
+                                ? `${theme.buttonBg || 'bg-indigo-600'}`
+                                : 'bg-gray-300 dark:bg-slate-700/80 border border-gray-400 dark:border-slate-600'
+                        }`}
                     >
-                        <div className={`w-4 h-4 bg-white rounded-full transition-transform ${value ? "translate-x-6" : ""}`} />
+                        <div
+                            className={`w-6 h-6 rounded-full bg-white shadow-md transform transition-transform duration-300 ease-in-out ${
+                                boolVal ? 'translate-x-6' : 'translate-x-0'
+                            }`}
+                        />
                     </button>
                 );
+            }
             case 'number':
                 return (
                     <input
@@ -333,17 +376,30 @@ const Settings = ({
             case "general":
                 return (
                     <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight} space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500`}>
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
                             <h3 className={`text-xl font-bold flex items-center gap-2 ${theme.textHeading}`}>
                                 <Shield className={theme.primaryIconText} /> General System Settings
                             </h3>
-                            <button
-                                onClick={fetchBackendSettings}
-                                disabled={isLoadingBackend}
-                                className={`p-2 rounded-xl ${theme.inputBg} ${theme.textSecondary} hover:${theme.textPrimary} transition-all`}
-                            >
-                                <RefreshCw size={18} className={isLoadingBackend ? "animate-spin" : ""} />
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => handleSaveAllBackendSettings()}
+                                    disabled={isSavingBackend}
+                                    className={`px-6 py-3 ${theme.buttonBg || 'bg-indigo-600'} ${theme.buttonHoverBg || 'hover:bg-indigo-700'} ${theme.buttonText || 'text-white'} rounded-2xl font-black text-sm shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50`}
+                                >
+                                    <Save size={18} />
+                                    {isSavingBackend ? "Saving..." : "Save Settings"}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={fetchBackendSettings}
+                                    disabled={isLoadingBackend}
+                                    className={`p-3 rounded-2xl ${theme.inputBg} ${theme.textSecondary} hover:${theme.textPrimary} border ${theme.inputBorder} transition-all`}
+                                    title="Refresh Settings"
+                                >
+                                    <RefreshCw size={18} className={isLoadingBackend ? "animate-spin" : ""} />
+                                </button>
+                            </div>
                         </div>
 
                         {isLoadingBackend ? (
@@ -358,15 +414,16 @@ const Settings = ({
                                         'BARCODE_PRINT_SETTINGS', 'BILL_PRINT_SETTINGS', 'PURCHASE_INVOICE_SETTINGS'
                                     ];
                                     if (printSettingsKeys.includes(s.key)) return false;
-                                    if (isSuperAdmin) return s.isSystem;
-                                    // For shop owners, show them all settings EXCEPT superadmin-only or settings that belong to other tabs
+
                                     const saleSettingsKeys = [
                                         'SALE_MARKING_TYPE', 'SALE_MARKING_TIME',
                                         'ENABLE_STOCK_ITEMS', 'ENABLE_MANUFACTURED_ITEMS', 'ENABLE_TRADE_ITEMS',
-                                        'ALLOW_CREDIT_PAYMENT', 'RESET_INVOICE_NUMBER_YEARLY'
+                                        'ALLOW_CREDIT', 'ALLOW_CREDIT_PAYMENT', 'PREPAID_AUTO_SERVE_ON_PAYMENT'
                                     ];
-                                    if (['DEFAULT_SHOP_OWNER_ROLE', 'SUBSCRIPTION_METHOD', 'ALLOW_UNSAFE_REGISTRATION'].includes(s.key)) return false;
                                     if (saleSettingsKeys.includes(s.key)) return false;
+                                    if (['DEFAULT_SHOP_OWNER_ROLE', 'SUBSCRIPTION_METHOD', 'ALLOW_UNSAFE_REGISTRATION'].includes(s.key)) return false;
+
+                                    if (isSuperAdmin) return s.isSystem;
                                     
                                     // Filter based on business type features
                                     if (s.key === 'ENABLE_STOCK_ITEMS' && businessTypeData?.features?.sellStockItems === false) return false;
@@ -385,20 +442,8 @@ const Settings = ({
                                             </div>
                                             <p className={`text-xs ${theme.textSecondary} max-w-md`}>{setting.description}</p>
                                         </div>
-                                        <div className="flex items-center gap-3">
-                                            <div className="min-w-[200px]">
-                                                {renderSettingInput(setting)}
-                                            </div>
-                                            {backendSettings.find(s => s.key === setting.key)?.value !== originalSettings.find(s => s.key === setting.key)?.value && (
-                                                <button
-                                                    onClick={() => handleSaveBackendSetting(setting)}
-                                                    disabled={isSavingBackend}
-                                                    className={`p-4 ${theme.buttonBg} ${theme.buttonText} rounded-2xl shadow-lg hover:scale-105 transition-all disabled:opacity-50 animate-in zoom-in-50 duration-200`}
-                                                    title="Save Changes"
-                                                >
-                                                    <Save size={20} />
-                                                </button>
-                                            )}
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            {renderSettingInput(setting)}
                                         </div>
                                     </div>
                                 ))}
@@ -419,6 +464,7 @@ const Settings = ({
                         backendSettings={backendSettings}
                         handleUpdateBackendSetting={handleUpdateBackendSetting}
                         handleSaveBackendSetting={handleSaveBackendSetting}
+                        handleSaveAllBackendSettings={handleSaveAllBackendSettings}
                         isSaving={isSavingBackend}
                     />
                 );

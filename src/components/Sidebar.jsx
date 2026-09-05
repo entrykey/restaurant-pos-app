@@ -482,27 +482,33 @@ const Sidebar = ({
 
             return (
                 <div key={key} className="w-full flex flex-col mb-2">
-                    <div className={`relative flex w-full ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:justify-center'}`}>
+                    <div className={`relative flex w-full ${isExpanded ? 'px-4' : 'px-2 md:px-0 md:justify-center'}`}>
+                        {isAnyChildActive && (
+                            <span className="absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-7 bg-indigo-400 dark:bg-indigo-300 rounded-r-full shadow-[0_0_12px_rgba(129,140,248,0.9)] z-10" />
+                        )}
                         <button
                             onClick={config.isGroup ? toggle : config.onClick}
-                            className={`p-3 md:p-4 transition-all duration-300 ease-out flex items-center w-full ${isExpanded
-                                ? 'gap-4 justify-start rounded-xl md:rounded-2xl'
-                                : 'justify-start gap-4 md:flex-col md:justify-center md:gap-1 rounded-2xl md:rounded-[24px]'
-                                } ${isAnyChildActive ? `${theme.sidebarItemActiveBg} shadow-2xl shadow-indigo-500/30 md:scale-110 ring-2 ring-indigo-400/20` : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-lg`}`}
+                            className={`p-3 md:p-3.5 transition-all duration-300 ease-out flex items-center w-full ${isExpanded
+                                ? 'gap-3.5 justify-start rounded-xl md:rounded-2xl'
+                                : 'justify-center gap-1.5 flex-col rounded-2xl w-16 h-16 md:w-16 md:h-16 mx-auto'
+                                } ${isAnyChildActive
+                                    ? `bg-indigo-600/25 dark:bg-indigo-500/20 text-indigo-300 dark:text-indigo-200 border border-indigo-500/30 shadow-lg shadow-indigo-500/10 font-bold`
+                                    : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-md`
+                                }`}
                         >
-                            <config.icon className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
+                            <config.icon className={`w-6 h-6 shrink-0 transition-transform ${isAnyChildActive ? 'scale-110 drop-shadow-md text-indigo-400 dark:text-indigo-300' : ''}`} />
                             {isExpanded ? (
-                                <div className={`flex-1 flex items-center justify-between overflow-hidden transition-all duration-300 max-w-[150px] opacity-100`}>
+                                <div className="flex-1 flex items-center justify-between overflow-hidden transition-all duration-300 max-w-[150px] opacity-100">
                                     <span className="font-bold text-sm whitespace-nowrap">{config.label}</span>
                                     {config.isGroup && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
                                 </div>
                             ) : (
-                                <span className="font-bold text-sm md:text-[10px] whitespace-nowrap md:mt-1">{config.label}</span>
+                                <span className="font-semibold text-[10px] whitespace-nowrap leading-tight text-center max-w-[56px] truncate">{config.label}</span>
                             )}
                         </button>
                     </div>
                     {isOpen && (
-                        <div className="mt-1 flex flex-col items-stretch space-y-1">
+                        <div className="mt-1.5 flex flex-col items-stretch space-y-1">
                             {config.children.map(childKey => {
                                 const childConfig = MODULE_CONFIG[childKey];
                                 if (!childConfig) return null;
@@ -511,9 +517,12 @@ const Sidebar = ({
                                     <button
                                         key={childKey}
                                         onClick={onClick}
-                                        className={`mx-6 md:mx-10 p-3 rounded-xl transition-all flex items-center gap-3 ${isActive ? `${theme.sidebarItemActiveBg} shadow-sm` : `hover:bg-black/5 dark:hover:bg-white/5`}`}
+                                        className={`relative mx-4 md:mx-6 px-3.5 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-3 ${isActive ? `${theme.sidebarItemActiveBg} shadow-md scale-[1.02]` : `${theme.sidebarItemHoverBg} opacity-80 hover:opacity-100`}`}
                                     >
-                                        <ChildIcon size={16} />
+                                        {isActive && (
+                                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full shadow-sm" />
+                                        )}
+                                        <ChildIcon size={16} className={`shrink-0 ${isActive ? 'drop-shadow-sm' : ''}`} />
                                         <span className="font-bold text-xs">{label}</span>
                                     </button>
                                 );
@@ -526,25 +535,28 @@ const Sidebar = ({
 
         const { icon: Icon, label, onClick, isActive, badge } = config;
         return (
-            <div key={key} className={`relative flex w-full mb-2 ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:justify-center'}`}>
+            <div key={key} className={`relative flex w-full mb-2 ${isExpanded ? 'px-4' : 'px-2 md:px-0 md:justify-center'}`}>
+                {isActive && (
+                    <span className="absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-7 bg-indigo-400 dark:bg-indigo-300 rounded-r-full shadow-[0_0_12px_rgba(129,140,248,0.9)] z-10" />
+                )}
                 <button
                     onClick={onClick}
-                    className={`p-3 md:p-4 transition-all duration-300 ease-out flex items-center w-full ${isExpanded
-                        ? 'gap-4 justify-start rounded-xl md:rounded-2xl'
-                        : 'justify-start gap-4 md:flex-col md:justify-center md:gap-1 rounded-2xl md:rounded-[24px]'
+                    className={`p-3 md:p-3.5 transition-all duration-300 ease-out flex items-center w-full ${isExpanded
+                        ? 'gap-3.5 justify-start rounded-xl md:rounded-2xl'
+                        : 'justify-center gap-1 flex-col rounded-2xl w-16 h-16 md:w-16 md:h-16 mx-auto'
                         } ${isActive
-                            ? `${theme.sidebarItemActiveBg} shadow-2xl shadow-indigo-500/30 md:scale-110 ring-2 ring-indigo-400/20`
-                            : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-lg`
+                            ? `${theme.sidebarItemActiveBg} scale-[1.03] transition-all`
+                            : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-md`
                         }`}
                     title={!isExpanded ? label : undefined}
                 >
-                    <Icon className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
-                    <span className={`font-bold text-sm md:text-[10px] whitespace-nowrap overflow-hidden transition-all duration-300 md:mt-1 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-full'}`}>
+                    <Icon className={`w-6 h-6 shrink-0 transition-transform ${isActive ? 'scale-110 drop-shadow-md text-white' : ''}`} />
+                    <span className={`font-bold transition-all duration-300 ${isExpanded ? 'text-sm whitespace-nowrap overflow-hidden max-w-[150px] opacity-100' : 'text-[10px] whitespace-nowrap leading-tight text-center max-w-[56px] truncate'}`}>
                         {label}
                     </span>
                 </button>
                 {badge > 0 && (
-                    <span className={`absolute ${isExpanded ? 'top-3 right-6' : 'top-2 right-6 md:top-1 md:right-1 md:-translate-x-1 md:-translate-y-1'} w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold shadow-md border-2 ${theme.sidebarBg.replace('bg-', 'border-')}`}>
+                    <span className={`absolute ${isExpanded ? 'top-3 right-6' : 'top-1.5 right-4 md:top-1 md:right-3'} w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold shadow-md border-2 ${theme.sidebarBg.replace('bg-', 'border-')}`}>
                         {badge}
                     </span>
                 )}

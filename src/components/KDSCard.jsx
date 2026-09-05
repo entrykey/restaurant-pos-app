@@ -53,8 +53,10 @@ const KDSCard = ({ order, type = 'table', typeLabel, isAdditional = false, onUpd
                 <div className="min-w-0 flex-1">
                     <h3 className={`text-xl font-black ${theme.textHeading} flex items-center flex-wrap gap-2 min-w-0`}>
                         <span className="truncate">{typeLabel || (type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online')}</span>
-                        {isAdditional && (
-                            <span className="shrink-0 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full uppercase tracking-widest border border-red-200 shadow-sm">Add-on</span>
+                        {(isAdditional || order.isAddon) && (
+                            <span className="shrink-0 text-[10px] bg-red-600 text-white font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest border border-red-500 shadow-md flex items-center gap-1 animate-pulse">
+                                🔥 ADDON KOT {order.addonIndex ? `#${order.addonIndex}` : ''}
+                            </span>
                         )}
                         {isDirectServed && (
                             <span className="shrink-0 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-200 dark:border-emerald-800 shadow-sm flex items-center gap-1.5 font-black">

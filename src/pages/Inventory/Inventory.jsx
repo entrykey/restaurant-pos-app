@@ -11,6 +11,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useText } from '../../context/TextContext';
 import { itemService, inventoryService } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import ProductPage from './ProductPage';
 import Modal from '../../components/ui/Modal';
 import CommonSelect from '../../components/ui/CommonSelect';
@@ -327,6 +328,19 @@ const Inventory = ({
     const toggleSellableStatus = async (item) => {
         const itemId = item._id || item.id;
         const newSellable = item.isSellable === false ? true : false;
+        const itemType = item.itemType || 'STOCK';
+
+        if (newSellable) {
+            if (itemType === 'STOCK' && settings?.ENABLE_STOCK_ITEMS === false) {
+                toast.success("Item enabled for POS sales (overriding disabled Stock Items setting).");
+            } else if (itemType === 'MANUFACTURED' && settings?.ENABLE_MANUFACTURED_ITEMS === false) {
+                toast.success("Item enabled for POS sales (overriding disabled Manufactured Items setting).");
+            } else if (itemType === 'TRADE' && settings?.ENABLE_TRADE_ITEMS === false) {
+                toast.success("Item enabled for POS sales (overriding disabled Trade Items setting).");
+            } else {
+                toast.success("Item enabled for POS sales.");
+            }
+        }
 
         try {
             setLoadingItemId(itemId);
