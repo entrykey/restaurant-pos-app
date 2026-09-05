@@ -332,8 +332,8 @@ const CommonTable = ({
                     {toolbar}
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
-                            <thead className={`${theme.pageBg} sticky top-0 z-10`}>
-                                <tr className={`${theme.textSecondary} text-[11px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
+                            <thead className={`${theme.tableHeaderBg || theme.pageBg} sticky top-0 z-10`}>
+                                <tr className={`${theme.tableHeaderText || theme.textMuted} text-[11px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
                                     {checkboxHeader}
                                     {columns.map((col, i) => (
                                         <th key={i} className={`px-4 py-3 ${col.headerClassName || ''}`} style={col.width ? { width: col.width } : {}}>
@@ -354,7 +354,7 @@ const CommonTable = ({
                                     data.map((row, rowIndex) => (
                                         <React.Fragment key={row[rowKey] || rowIndex}>
                                             <tr onClick={() => onRowClick && onRowClick(row)}
-                                                className={`hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors ${onRowClick ? 'cursor-pointer' : ''} group ${selectedKeys.has(row[rowKey] ?? rowIndex) ? 'bg-indigo-50/40 dark:bg-indigo-900/10' : ''}`}>
+                                                className={`${theme.tableRowHover} transition-colors ${onRowClick ? 'cursor-pointer' : ''} group ${selectedKeys.has(row[rowKey] ?? rowIndex) ? theme.infoBg : ''}`}>
                                                 {checkboxCell(row, rowIndex)}
                                                 {columns.map((col, colIndex) => (
                                                     <td key={colIndex} className={`px-4 py-2.5 ${col.className || ''}`}>
@@ -383,8 +383,8 @@ const CommonTable = ({
             {toolbar}
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
-                    <thead className={`${theme.pageBg} sticky top-0 z-10`}>
-                        <tr className={`${theme.textSecondary} text-[11px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
+                    <thead className={`${theme.tableHeaderBg || theme.pageBg} sticky top-0 z-10`}>
+                        <tr className={`${theme.tableHeaderText || theme.textMuted} text-[11px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
                             {checkboxHeader}
                             {columns.map((col, index) => (
                                 <th key={index} className={`px-4 py-3 ${col.headerClassName || ''}`} style={col.width ? { width: col.width } : {}}>
@@ -405,7 +405,7 @@ const CommonTable = ({
                             data.map((row, rowIndex) => (
                                 <React.Fragment key={row[rowKey] || rowIndex}>
                                     <tr onClick={() => onRowClick && onRowClick(row)}
-                                        className={`hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors ${onRowClick ? 'cursor-pointer' : ''} group ${selectedKeys.has(row[rowKey] ?? rowIndex) ? 'bg-indigo-50/40 dark:bg-indigo-900/10' : ''}`}>
+                                        className={`${theme.tableRowHover} transition-colors ${onRowClick ? 'cursor-pointer' : ''} group ${selectedKeys.has(row[rowKey] ?? rowIndex) ? theme.infoBg : ''}`}>
                                         {checkboxCell(row, rowIndex)}
                                         {columns.map((col, colIndex) => (
                                             <td key={colIndex} className={`px-4 py-2.5 ${col.className || ''}`}>

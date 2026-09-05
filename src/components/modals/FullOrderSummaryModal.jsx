@@ -169,12 +169,17 @@ const FullOrderSummaryModal = ({
                                 {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
                                     <div className="space-y-1">
                                         <div className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Applied Offers</div>
-                                        {billDetails.appliedOffers.map((offer, oIdx) => (
-                                            <div key={oIdx} className="flex justify-between items-center text-sm text-green-600 font-medium bg-green-50 px-3 py-1.5 rounded-xl">
-                                                <span>{offer.name}</span>
-                                                <span>-{formatCurrency(offer.discount)}</span>
-                                            </div>
-                                        ))}
+                                        {billDetails.appliedOffers.map((offer, oIdx) => {
+                                            if (!offer) return null;
+                                            const title = offer.offerName || offer.name || "Special Offer";
+                                            const amt = Number(offer.discountAmount ?? offer.discount ?? 0);
+                                            return (
+                                                <div key={oIdx} className="flex justify-between items-center text-sm text-green-600 font-medium bg-green-50 px-3 py-1.5 rounded-xl">
+                                                    <span>{title}</span>
+                                                    <span>-{formatCurrency(amt)}</span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 

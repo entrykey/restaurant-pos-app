@@ -9,6 +9,7 @@ import Login from "../pages/Login";
 import RegisterShop from "../pages/RegisterShop";
 import ForgotPassword from "../pages/ForgotPassword";
 import LandingPage from "../pages/LandingPage";
+import LandingPage2 from "../pages/LandingPage2";
 import { useApp } from "../context/AppContext";
 import { useOrder } from "../context/OrderContext";
 import { useDining } from "../pages/DiningHall/DiningContext";
@@ -20,6 +21,8 @@ import { formatCurrency } from "../utils/format";
 import { buildTakeawayDraftSignature, buildTableDraftSignature } from "../utils/saleDraftSignature";
 import { printBill, printBillA4, printKot } from "../utils/print";
 import { loadBillPrintSettings, buildBillExtraInfo, printSaleOrder } from "../utils/printSettingsUtils";
+import { isItemTypeAllowedOnSale } from "../utils/cartStockUtils";
+import { syncItemBogoQuantity } from "../utils/posOfferHelpers";
 import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService, loyaltyService } from "../services/api";
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
 import { TextProvider } from "../context/TextContext";
@@ -187,8 +190,8 @@ const AppContent = () => {
                     const items = response.data || [];
                     const activeTaxes = taxesRes.filter(t => t.isActive !== false);
 
-                    // Filter only items that are sellable for the POS menu
-                    const menuData = items.filter(item => item.isSellable !== false);
+                    // Filter only items that are sellable for the POS menu and allowed by Sale Settings
+                    const menuData = items.filter(item => isItemTypeAllowedOnSale(item, settings));
 
                     const rawData = items.filter(item => 
                         (item.itemType === "STOCK" || item.itemType === "SERVICE" || item.itemType === "RAW" || item.itemType === "TRADE") && 
@@ -988,18 +991,43 @@ const AppContent = () => {
             const itemTaxPercent = (item.taxPercent !== undefined && item.taxPercent !== null)
                 ? Number(item.taxPercent)
                 : (settings?.defaultTaxPercent || 0);
+            
+            const basePrice = item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice || 0);
+            const qty = item.quantity || 1;
+            const lineBaseCost = basePrice * qty;
+            const discVal = Number(item.itemDiscount !== undefined && item.itemDiscount !== null && item.itemDiscount !== "" ? item.itemDiscount : 0);
+            const discType = item.itemDiscountType || 'percent';
+
+            let itemDiscAmount = 0;
+            let itemDiscPercent = 0;
+            if (discVal > 0) {
+                if (discType === 'percent') {
+                    itemDiscPercent = discVal;
+                    itemDiscAmount = (lineBaseCost * discVal) / 100;
+                } else {
+                    itemDiscAmount = discVal;
+                    itemDiscPercent = lineBaseCost > 0 ? (discVal / lineBaseCost) * 100 : 0;
+                }
+            }
+
+            const lineTotal = calculateItemTotal(item);
+
             return {
                 itemId: item.id || item._id,
                 itemName: item.name,
-                price: item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice),
-                quantity: item.quantity,
-                totalAmount: calculateItemTotal(item),
+                price: basePrice,
+                quantity: qty,
+                itemDiscount: discVal,
+                itemDiscountType: discType,
+                discountPercent: parseFloat(itemDiscPercent.toFixed(2)),
+                discountAmount: parseFloat(itemDiscAmount.toFixed(4)),
+                totalAmount: lineTotal,
                 variantId: item.selectedVariant ? (item.selectedVariant._id || item.selectedVariant.id) : null,
                 portionName: item.selectedVariant ? item.selectedVariant.name : null,
                 quantityFactor: item.selectedVariant ? (item.selectedVariant.quantityFactor || 1) : 1,
                 notes: item.suggestion,
                 taxPercent: itemTaxPercent,
-                taxAmount: ((calculateItemTotal(item) * itemTaxPercent) / 100),
+                taxAmount: parseFloat(((lineTotal * itemTaxPercent) / 100).toFixed(4)),
                 selectedUnit: item.selectedUnit || "PRIMARY",
                 conversionFactor: item.conversionFactor || 1
             };
@@ -1047,11 +1075,12 @@ const AppContent = () => {
                         return;
                     }
                     if (takeawayOrder?.orderId) {
-                        await orderService.updateStatus(takeawayOrder.orderId, { status: "CANCELLED" });
+                        const draftIdToDelete = takeawayOrder.orderId;
                         setTakeawayOrder((prev) => {
                             if (!prev?.orderId || (prev.items || []).length > 0) return prev;
                             return { ...prev, orderId: null };
                         });
+                        await orderService.deleteOrder(draftIdToDelete).catch(err => console.error("Failed to delete draft order on zero items:", err));
                     }
                     lastDraftSignatureRef.current = signature;
                     return;
@@ -1322,47 +1351,28 @@ const AppContent = () => {
             _id: stableId,
         };
 
-        let finalQuantity = parseFloat(quantity);
+        const basePaidQty = parseFloat(quantity) || 1;
 
-        // --- Advanced Offer Logic (Auto-Add & BOGO) ---
-        // We find all "FREE_ITEM" reward offers triggered by this item
+        // --- Advanced Offer Logic (Cross-item auto-add) ---
         const triggeredOffers = (offers || []).filter(o => 
-            o.isActive && 
+            o.isActive !== false && 
             o.condition?.applyOn === "ITEM" && 
             (o.condition?.itemIds || []).map(String).includes(String(normalizedItem.id || normalizedItem._id)) &&
             o.reward?.rewardType === "FREE_ITEM"
         );
 
         triggeredOffers.forEach(offer => {
-            const buyQty = offer.condition.minQuantity || 1;
-            const freeQty = offer.reward.rewardQuantity || 1;
-            
-            // Check if it's the same item (BOGO style) or a different item (Cross-item)
-            const rewardItemIds = offer.reward.itemIds || (offer.reward.specificItemId ? [offer.reward.specificItemId] : []);
-            const isSameItem = rewardItemIds.length === 0 || rewardItemIds.map(String).includes(String(normalizedItem.id || normalizedItem._id));
-            
-            if (isSameItem) {
-                // For BOGO: If adding 'buyQty' multiples, we can automatically add the 'freeQty' multiples
-                // Example: Buy 1 Get 1. User adds 1 -> we make it 2. User adds 2 -> we make it 4.
-                if (quantity % buyQty === 0) {
-                    const numSets = quantity / buyQty;
-                    const totalFreeToAdd = numSets * freeQty;
-                    finalQuantity = quantity + totalFreeToAdd;
-                    toast.success(`${offer.name} Applied: Added ${totalFreeToAdd} extra free ${normalizedItem.name}`, { 
-                        icon: '🎁',
-                        duration: 3000
-                    });
-                }
-            } else {
-                // Cross-item offer (Buy Pepsi, Get Lays Free)
+            const buyQty = offer.condition?.minQuantity || 1;
+            const freeQty = offer.reward?.rewardQuantity || 1;
+            const rewardItemIds = (offer.reward?.itemIds || (offer.reward?.specificItemId ? [offer.reward.specificItemId] : [])).map(String);
+            const isSameItem = rewardItemIds.length === 0 || rewardItemIds.includes(String(normalizedItem.id || normalizedItem._id));
+
+            if (!isSameItem && basePaidQty >= buyQty) {
                 const freeItemId = rewardItemIds[0];
                 const freeItem = menu.find(m => String(m.id || m._id) === String(freeItemId));
-                
-                if (freeItem && quantity >= buyQty) {
-                    const numSets = Math.floor(quantity / buyQty);
+                if (freeItem) {
+                    const numSets = Math.floor(basePaidQty / buyQty);
                     const totalFreeToAdd = numSets * freeQty;
-
-                    // Add the free items with a small delay to separate the cart additions
                     setTimeout(() => {
                         addToCart(freeItem, totalFreeToAdd, null, []);
                         toast.success(`${offer.name} Applied: ${totalFreeToAdd} ${freeItem.name} added as a gift!`, { 
@@ -1379,17 +1389,14 @@ const AppContent = () => {
             .sort()
             .join("|");
         const variantKey = variant ? variant.name : "std";
-        const groupKey = `${normalizedItem.id}|${variantKey}|${extrasKey}`;
 
         const updateOrderItems = (currentItems) => {
-            // First, find if there's an existing item with the same groupKey
             let existingIndex = -1;
             for (let i = 0; i < currentItems.length; i++) {
                 const item = currentItems[i];
                 const itemId = String(item._id || item.id);
                 const normalizedId = String(normalizedItem.id);
                 
-                // Skip if different item IDs
                 if (itemId !== normalizedId) continue;
                 
                 const iExtraKey = (item.selectedExtras || [])
@@ -1398,35 +1405,51 @@ const AppContent = () => {
                     .join("|");
                 const iVariantKey = item.selectedVariant ? item.selectedVariant.name : "std";
                 
-                // Check if variant and extras match
                 if (iVariantKey === variantKey && iExtraKey === extrasKey) {
                     existingIndex = i;
                     break;
                 }
             }
 
+            const newItems = [...currentItems];
             if (existingIndex >= 0) {
-                // Update existing item quantity
-                const newItems = [...currentItems];
                 const existingItem = newItems[existingIndex];
-                const newQty = existingItem.quantity + finalQuantity;
-                newItems[existingIndex] = {
+                const currentPaidQty = existingItem.paidQuantity !== undefined ? existingItem.paidQuantity : existingItem.quantity;
+                const newPaidQty = currentPaidQty + basePaidQty;
+                
+                const synced = syncItemBogoQuantity({
                     ...existingItem,
-                    quantity: parseFloat(newQty.toFixed(3)),
-                };
-                return newItems;
+                    paidQuantity: parseFloat(newPaidQty.toFixed(3)),
+                }, offers);
+
+                if (synced.freeQuantity > (existingItem.freeQuantity || 0)) {
+                    toast.success(`${synced.bogoOfferName || 'Offer'} Applied: ${synced.freeQuantity} free ${normalizedItem.name} in total`, { 
+                        icon: '🎁',
+                        duration: 3000
+                    });
+                }
+
+                newItems[existingIndex] = synced;
             } else {
-                // Add new item
-                const orderItem = {
+                const initialItem = {
                     ...normalizedItem,
-                    quantity: finalQuantity,
+                    paidQuantity: basePaidQty,
+                    quantity: basePaidQty,
                     selectedVariant: variant,
                     selectedExtras: extras,
                     suggestion: "",
                     enteredUnit: enteredUnit,
                 };
-                return [...currentItems, orderItem];
+                const synced = syncItemBogoQuantity(initialItem, offers);
+                if (synced.freeQuantity > 0) {
+                    toast.success(`${synced.bogoOfferName || 'Offer'} Applied: Added ${synced.freeQuantity} extra free ${normalizedItem.name}`, { 
+                        icon: '🎁',
+                        duration: 3000
+                    });
+                }
+                newItems.push(synced);
             }
+            return newItems;
         };
 
         if (isTakeaway || !activeTableId) {
@@ -1438,7 +1461,7 @@ const AppContent = () => {
             setTakeawayOrder((prev) => ({
                 ...prev,
                 items: updateOrderItems(prev.items),
-                isSentToKOT: false,
+                isSentToKOT: prev.isSentToKOT || false,
             }));
         } else {
             setTables((prev) =>
@@ -1452,7 +1475,7 @@ const AppContent = () => {
                             order: withStaffTracking({
                                 ...currentOrder,
                                 items: updateOrderItems(currentOrder.items),
-                                isSentToKOT: false,
+                                isSentToKOT: currentOrder.isSentToKOT || false,
                                 _localDraftPending: true,
                             }),
                         };
@@ -1516,18 +1539,21 @@ const AppContent = () => {
     const updateItemQuantity = (itemIndex, delta) => {
         const updateList = (items) => {
             const item = items[itemIndex];
-            let newQty = item.quantity + delta;
+            const currentPaidQty = item.paidQuantity !== undefined ? item.paidQuantity : item.quantity;
+            let step = delta;
             if (item.sellingType === "Weight") {
-                newQty = item.quantity + delta * 0.25;
+                step = delta * 0.25;
             }
-            if (newQty <= 0.001) {
+            let newPaidQty = currentPaidQty + step;
+            if (newPaidQty <= 0.001) {
                 return items.filter((_, idx) => idx !== itemIndex);
             }
             const newItems = [...items];
-            newItems[itemIndex] = {
+            const synced = syncItemBogoQuantity({
                 ...item,
-                quantity: parseFloat(newQty.toFixed(3)),
-            };
+                paidQuantity: parseFloat(newPaidQty.toFixed(3)),
+            }, offers);
+            newItems[itemIndex] = synced;
             return newItems;
         };
 
@@ -1535,7 +1561,7 @@ const AppContent = () => {
             setTakeawayOrder((prev) => ({
                 ...prev,
                 items: updateList(prev.items),
-                isSentToKOT: false,
+                isSentToKOT: prev.isSentToKOT || false,
             }));
         } else {
             setTables((prev) =>
@@ -1546,7 +1572,35 @@ const AppContent = () => {
                             ...t,
                             status: newItems.length > 0 ? "occupied" : "available",
                             order: newItems.length > 0
-                                ? withStaffTracking({ ...t.order, items: newItems, isSentToKOT: false, _localDraftPending: true })
+                                ? withStaffTracking({ ...t.order, items: newItems, isSentToKOT: t.order?.isSentToKOT || false, _localDraftPending: true })
+                                : null,
+                        };
+                    }
+                    return t;
+                })
+            );
+        }
+    };
+
+    const removeItemFromCart = (itemIndex) => {
+        const removeList = (items) => items.filter((_, idx) => idx !== itemIndex);
+
+        if (isTakeaway) {
+            setTakeawayOrder((prev) => ({
+                ...prev,
+                items: removeList(prev.items),
+                isSentToKOT: prev.isSentToKOT || false,
+            }));
+        } else {
+            setTables((prev) =>
+                prev.map((t) => {
+                    if ((String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) && t.order) {
+                        const newItems = removeList(t.order.items);
+                        return {
+                            ...t,
+                            status: newItems.length > 0 ? "occupied" : "available",
+                            order: newItems.length > 0
+                                ? withStaffTracking({ ...t.order, items: newItems, isSentToKOT: t.order?.isSentToKOT || false, _localDraftPending: true })
                                 : null,
                         };
                     }
@@ -1572,7 +1626,7 @@ const AppContent = () => {
             setTakeawayOrder((prev) => ({
                 ...prev,
                 items: updateList(prev.items),
-                isSentToKOT: false,
+                isSentToKOT: prev.isSentToKOT || false,
             }));
         } else {
             setTables((prev) =>
@@ -1581,7 +1635,7 @@ const AppContent = () => {
                         const newItems = updateList(t.order.items);
                         return {
                             ...t,
-                            order: withStaffTracking({ ...t.order, items: newItems, isSentToKOT: false, _localDraftPending: true }),
+                            order: withStaffTracking({ ...t.order, items: newItems, isSentToKOT: t.order?.isSentToKOT || false, _localDraftPending: true }),
                         };
                     }
                     return t;
@@ -1909,15 +1963,17 @@ const AppContent = () => {
                     }
                 }
 
-                // Mark all linked KOTs as COMPLETED (direct served — no KDS interaction needed)
-                try {
-                    await api.post('/kitchen/kots/complete-by-order', {
-                        orderId: currentOrderId,
-                        servedBy: currentUser._id
-                    });
-                } catch (kotErr) {
-                    // Non-fatal — KOTs will still be cleaned up by the KDS or next fetch
-                    console.warn('Failed to auto-complete KOTs on checkout:', kotErr.message);
+                // Mark all linked KOTs as COMPLETED only if PREPAID_AUTO_SERVE_ON_PAYMENT setting is enabled
+                if (settings?.PREPAID_AUTO_SERVE_ON_PAYMENT === true) {
+                    try {
+                        await api.post('/kitchen/kots/complete-by-order', {
+                            orderId: currentOrderId,
+                            servedBy: currentUser._id
+                        });
+                    } catch (kotErr) {
+                        // Non-fatal — KOTs will still be cleaned up by the KDS or next fetch
+                        console.warn('Failed to auto-complete KOTs on checkout:', kotErr.message);
+                    }
                 }
             }
 
@@ -2008,6 +2064,7 @@ const AppContent = () => {
         return (
             <Routes>
                 <Route path="/" element={<LandingPage />} />
+                <Route path="/landing2" element={<LandingPage2 />} />
                 <Route path="/login" element={
                     <Login
                         shopName={settings.shopName}
@@ -2112,6 +2169,7 @@ const AppContent = () => {
                         setBillingStage={setBillingStage}
                         initiateAddItem={initiateAddItem}
                         updateItemQuantity={updateItemQuantity}
+                        removeItemFromCart={removeItemFromCart}
                         updateItemUnit={updateItemUnit}
                         openNoteModal={openNoteModal}
                         takeawayCustName={takeawayCustName}
@@ -2252,15 +2310,29 @@ const AppContent = () => {
                 onClose={handleCloseSubscriptionNotice}
                 user={currentUser}
                 isOwner={currentUser?.isOwner}
-                title={organization?.subscriptionMethod === 'trial_run' ? 'Trial run access required' : undefined}
-                message={organization?.subscriptionMethod === 'trial_run'
-                    ? (
-                        organization?.trialRunStatus === 'pending'
-                            ? 'Your trial run request is pending super admin approval. You can continue viewing lists, but write actions stay blocked.'
-                            : 'Trial run is not approved yet. Request trial run access from Organization.'
-                    )
-                    : undefined}
-                showSubscribeButton={organization?.subscriptionMethod !== 'trial_run'}
+                title={
+                    organization?.subscriptionMethod === 'trial_run'
+                        ? 'Trial run access required'
+                        : (organization?.subscriptionStatus === 'pending_payment' || organization?.subscriptionStatus === 'pending')
+                            ? 'Subscription Request Pending Approval'
+                            : undefined
+                }
+                message={
+                    organization?.subscriptionMethod === 'trial_run'
+                        ? (
+                            organization?.trialRunStatus === 'pending'
+                                ? 'Your trial run request is pending super admin approval. You can continue viewing lists, but write actions stay blocked.'
+                                : 'Trial run is not approved yet. Request trial run access from Organization.'
+                        )
+                        : (organization?.subscriptionStatus === 'pending_payment' || organization?.subscriptionStatus === 'pending')
+                            ? 'Your plan subscription request is pending super admin approval. Once accepted by super admin, full access will be enabled.'
+                            : undefined
+                }
+                showSubscribeButton={
+                    organization?.subscriptionMethod !== 'trial_run' &&
+                    organization?.subscriptionStatus !== 'pending_payment' &&
+                    organization?.subscriptionStatus !== 'pending'
+                }
                 elevateForProfile={showProfileCompletionOverlay}
                 onSubscribe={() => {
                     setIsSubscriptionModalOpen(false);

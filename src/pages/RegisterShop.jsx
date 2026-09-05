@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Eye, EyeOff, Building2, Layers, Sun, Moon, ShieldCheck, ArrowRight } from 'lucide-react';
 import ThemeLoader from '../components/ui/ThemeLoader';
 import { shopService } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
@@ -7,12 +8,20 @@ import CommonSelect from '../components/ui/CommonSelect';
 import { toast } from 'react-hot-toast';
 
 const RegisterShop = ({ onBack, onRegisterSuccess }) => {
-    const { theme } = useTheme();
+    const navigate = useNavigate();
+    const { themeName, setTheme } = useTheme();
     const [loading, setLoading] = useState(false);
     const [businessTypes, setBusinessTypes] = useState([]);
     const [availableSubTypes, setAvailableSubTypes] = useState([]);
     const [showPassword, setShowPassword] = useState(false);
     const [validationErrors, setValidationErrors] = useState({});
+
+    const isDark = themeName === 'dark' || themeName === 'ocean';
+    const logoSrc = isDark ? '/assets/FILEPE_WHITE.svg' : '/assets/FILEPE_BLUE.svg';
+
+    const toggleTheme = () => {
+        setTheme(isDark ? 'light' : 'dark');
+    };
 
     const [formData, setFormData] = useState({
         name: '',
@@ -23,6 +32,18 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
         ownerPhone: '',
         password: ''
     });
+
+    useEffect(() => {
+        const fetchTypes = async () => {
+            try {
+                const types = await shopService.getBusinessTypes();
+                setBusinessTypes(types || []);
+            } catch (err) {
+                console.error("Failed to load business types", err);
+            }
+        };
+        fetchTypes();
+    }, []);
 
     const validateEmail = (email) => {
         const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
@@ -38,45 +59,37 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
     const validateForm = () => {
         const errors = {};
 
-        // Shop Name validation
         if (!formData.name.trim()) {
             errors.name = "Shop name is required";
         } else if (formData.name.trim().length < 3) {
             errors.name = "Shop name must be at least 3 characters";
         }
 
-        // Business Type validation
         if (!formData.businessType) {
-            errors.businessType = "Business type is required";
+            errors.businessType = "Business category is required";
         }
 
-        // Subtype validation
         if (!formData.subType) {
-            errors.subType = "Subtype is required";
+            errors.subType = "Sub-category is required";
         }
 
-        // Owner Name validation (optional but if provided must be 3+ chars)
         if (formData.ownerName.trim() && formData.ownerName.trim().length < 3) {
             errors.ownerName = "Owner name must be at least 3 characters";
         }
 
-        // Email validation
         if (formData.ownerEmail.trim() && !validateEmail(formData.ownerEmail.trim())) {
             errors.ownerEmail = "Please enter a valid email address";
         }
 
-        // Phone validation
         if (formData.ownerPhone.trim() && !validatePhone(formData.ownerPhone.trim())) {
             errors.ownerPhone = "Please enter a valid 10-15 digit phone number";
         }
 
-        // Either email or phone required
         if (!formData.ownerEmail.trim() && !formData.ownerPhone.trim()) {
             errors.ownerEmail = "Please enter an email address or phone number";
             errors.ownerPhone = "Please enter an email address or phone number";
         }
 
-        // Password validation
         if (!formData.password) {
             errors.password = "Password is required";
         } else if (formData.password.length < 6) {
@@ -89,7 +102,6 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
 
     const handleInputChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
-        // Clear validation error for this field when user types
         setValidationErrors(prev => ({ ...prev, [field]: '' }));
     };
 
@@ -97,277 +109,288 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
         handleInputChange('businessType', typeId);
         handleInputChange('subType', '');
         setAvailableSubTypes([]);
-        // Clear validation errors
-        setValidationErrors(prev => ({ ...prev, businessType: '', subType: '' }));
 
-        if (!typeId) return;
-
-        try {
-            const subTypes = await shopService.getBusinessSubTypes(typeId);
-            setAvailableSubTypes(subTypes);
-        } catch (error) {
-            console.error('Failed to fetch subtypes:', error);
+        if (typeId) {
+            try {
+                const subTypes = await shopService.getBusinessSubTypes(typeId);
+                setAvailableSubTypes(subTypes || []);
+            } catch (err) {
+                console.error("Failed to load sub types", err);
+            }
         }
     };
 
-    useEffect(() => {
-        const fetchBusinessTypes = async () => {
-            try {
-                const types = await shopService.getBusinessTypes();
-                setBusinessTypes(types);
-            } catch (error) {
-                console.error('Failed to fetch business types:', error);
-            }
-        };
-        fetchBusinessTypes();
-    }, []);
-
-    const handleSubmit = async () => {
-        if (!validateForm()) {
-            return;
-        }
+    const handleSubmit = async (e) => {
+        if (e) e.preventDefault();
+        if (!validateForm()) return;
 
         setLoading(true);
         try {
-            await shopService.createShop(formData);
-            if (onRegisterSuccess) onRegisterSuccess();
-        } catch (error) {
-            // Display user-friendly error message
-            const errorMessage = error.message || error.error || 'Registration failed';
-            
-            // Show specific field errors if available
-            if (errorMessage.toLowerCase().includes('email')) {
-                setValidationErrors({ ownerEmail: errorMessage });
-            } else if (errorMessage.toLowerCase().includes('phone')) {
-                setValidationErrors({ ownerPhone: errorMessage });
-            } else {
-                toast.error(errorMessage);
-            }
+            const data = await shopService.registerShop(formData);
+            toast.success("Shop registered successfully!");
+            if (onRegisterSuccess) onRegisterSuccess(data);
+            else navigate('/login');
+        } catch (err) {
+            console.error("Registration failed", err);
+            toast.error(err.message || "Failed to register shop");
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className={`w-full max-w-2xl rounded-3xl shadow-2xl p-6 mx-auto my-4 transition-all duration-300 ${theme.cardBg} max-h-[95vh] overflow-y-auto`}>
-            <div className={`flex items-center mb-4 sticky top-0 ${theme.cardBg} pb-2 z-10`}>
-                <button 
-                    onClick={onBack} 
-                    className={`p-2 rounded-lg mr-4 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors ${theme.textPrimary}`}
-                >
-                    <ArrowLeft size={20} />
-                </button>
-                <h1 className={`text-2xl font-bold flex-1 ${theme.textHeading}`}>Register Shop</h1>
-            </div>
-
-
-            <div className="space-y-3">
-                <div>
-                    <label className={`block text-sm font-medium mb-1.5 ${theme.textPrimary}`}>Shop Name</label>
-                    <input
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) => {
-                            // Allow only letters, numbers, spaces, period, comma, apostrophe, and hyphen
-                            const value = e.target.value.replace(/[^a-zA-Z0-9\s.,'\-]/g, '');
-                            handleInputChange('name', value);
-                        }}
-                        className={`w-full p-3 border rounded-xl outline-none text-sm ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.name ? 'border-red-500' : ''}`}
-                        placeholder="Ex. Tasty Bites"
-                        autoComplete="off"
-                    />
-                    {validationErrors.name && (
-                        <p className="text-red-500 text-xs mt-1">{validationErrors.name}</p>
-                    )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className={`block text-sm font-medium mb-1.5 ${theme.textPrimary}`}>Business Type</label>
-                        <CommonSelect
-                            options={businessTypes}
-                            value={formData.businessType}
-                            onChange={handleBusinessTypeChange}
-                            placeholder="Select Business Type"
-                            labelKey="displayString"
-                            valueKey="_id"
-                            className={validationErrors.businessType ? 'border-red-500' : ''}
-                        />
-                        {validationErrors.businessType && (
-                            <p className="text-red-500 text-xs mt-1">{validationErrors.businessType}</p>
-                        )}
+        <div className={`min-h-screen w-full flex flex-col items-center justify-center py-6 px-4 overflow-y-auto custom-scrollbar font-sans transition-colors duration-300 ${
+            isDark ? 'bg-[#090A0F] text-slate-100' : 'bg-slate-50 text-slate-900'
+        }`}>
+            {/* Main Form Container */}
+            <div className="w-full max-w-xl mx-auto my-auto">
+                <div className={`w-full p-6 sm:p-8 rounded-3xl shadow-2xl transition-all relative ${
+                    isDark 
+                        ? 'bg-slate-900/95 shadow-indigo-950/40' 
+                        : 'bg-white shadow-2xl'
+                }`}>
+                    {/* Header Bar inside card */}
+                    <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-200 dark:border-slate-800/80">
+                        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => navigate('/')}>
+                            <img src={logoSrc} alt="FILEPE Logo" className="h-8 object-contain" />
+                            <span className="text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-500 border border-indigo-500/20">
+                                Entrykey
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={toggleTheme}
+                                title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                                className={`p-2 rounded-xl transition-all border ${
+                                    isDark 
+                                        ? 'bg-slate-800/60 border-slate-700 text-amber-300 hover:bg-slate-800' 
+                                        : 'bg-slate-100 border-slate-200 text-indigo-600 hover:bg-slate-200'
+                                }`}
+                            >
+                                {isDark ? <Sun size={16} /> : <Moon size={16} />}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onBack ? onBack() : navigate('/login')}
+                                className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all flex items-center gap-1.5 ${
+                                    isDark ? 'bg-slate-800/60 border-slate-700 text-slate-300 hover:text-white' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+                                }`}
+                            >
+                                <ArrowLeft size={14} />
+                                <span>Back to Login</span>
+                            </button>
+                        </div>
                     </div>
 
-                    <div>
-                        <label className={`block text-sm font-medium mb-1.5 ${theme.textPrimary}`}>Subtype</label>
-                        <CommonSelect
-                            options={availableSubTypes}
-                            value={formData.subType}
-                            onChange={(val) => handleInputChange('subType', val)}
-                            placeholder="Select Subtype"
-                            labelKey="displayString"
-                            valueKey="_id"
-                            disabled={!formData.businessType}
-                            className={validationErrors.subType ? 'border-red-500' : ''}
-                        />
-                        {validationErrors.subType && (
-                            <p className="text-red-500 text-xs mt-1">{validationErrors.subType}</p>
-                        )}
+                    {/* Title Header */}
+                    <div className="space-y-1 mb-5">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-500 text-[11px] font-extrabold">
+                            <ShieldCheck size={13} className="text-emerald-500" />
+                            <span>Business Onboarding</span>
+                        </div>
+                        <h2 className={`text-xl sm:text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            Register Your Business
+                        </h2>
+                        <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                            Create your FILEPE shop account in under 2 minutes.
+                        </p>
                     </div>
-                </div>
 
-                <div>
-                    <label className={`block text-sm font-medium mb-1.5 ${theme.textPrimary}`}>Owner Name (Optional)</label>
-                    <input
-                        type="text"
-                        value={formData.ownerName}
-                        onChange={(e) => {
-                            // Allow only letters, spaces, period, comma, apostrophe, and hyphen
-                            const value = e.target.value.replace(/[^a-zA-Z\s.,'\-]/g, '');
-                            handleInputChange('ownerName', value);
-                        }}
-                        className={`w-full p-3 border rounded-xl outline-none text-sm ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.ownerName ? 'border-red-500' : ''}`}
-                        placeholder="Ex. John Doe"
-                        autoComplete="off"
-                    />
-                    {validationErrors.ownerName && (
-                        <p className="text-red-500 text-xs mt-1">{validationErrors.ownerName}</p>
-                    )}
-                </div>
+                    <form onSubmit={handleSubmit} className="space-y-3.5">
+                        {/* Shop Name */}
+                        <div>
+                            <label className={`block text-[11px] font-extrabold uppercase tracking-wider mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                Shop Name *
+                            </label>
+                            <input
+                                type="text"
+                                value={formData.name}
+                                onChange={(e) => {
+                                    const value = e.target.value.replace(/[^a-zA-Z0-9\s.,'\-]/g, '');
+                                    handleInputChange('name', value);
+                                }}
+                                placeholder="Fill your shop name"
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs outline-none transition-all ${
+                                    isDark 
+                                        ? 'bg-slate-800/40 border-slate-700 focus:border-indigo-500 text-white placeholder-slate-500' 
+                                        : 'bg-slate-50 border-slate-300 focus:border-indigo-600 text-slate-900 placeholder-slate-400'
+                                } ${validationErrors.name ? 'border-rose-500' : ''}`}
+                            />
+                            {validationErrors.name && (
+                                <p className="text-rose-500 text-[11px] font-bold mt-1">{validationErrors.name}</p>
+                            )}
+                        </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className={`block text-sm font-medium mb-1.5 ${theme.textPrimary}`}>Email (Optional if Phone provided)</label>
-                        <input
-                            type="text"
-                            value={formData.ownerEmail}
-                            onChange={(e) => {
-                                const inputEl = e.target;
-                                const cursorStart = inputEl.selectionStart;
-                                const cursorEnd = inputEl.selectionEnd;
-                                const value = inputEl.value.toLowerCase();
-                                handleInputChange('ownerEmail', value);
-                                // Real-time email validation
-                                if (value && !validateEmail(value)) {
-                                    setValidationErrors(prev => ({ ...prev, ownerEmail: 'Please enter a valid email address' }));
-                                }
-                                requestAnimationFrame(() => {
-                                  if (inputEl && inputEl.setSelectionRange) {
-                                    inputEl.setSelectionRange(cursorStart, cursorEnd);
-                                  }
-                                });
-                            }}
-                            onBlur={(e) => {
-                                const value = e.target.value.trim();
-                                if (value && !validateEmail(value)) {
-                                    setValidationErrors(prev => ({ ...prev, ownerEmail: 'Please enter a valid email address' }));
-                                }
-                            }}
-                            className={`w-full p-3 border rounded-xl outline-none text-sm ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.ownerEmail ? 'border-red-500' : ''}`}
-                            placeholder="john@example.com"
-                            autoComplete="off"
-                        />
-                        {validationErrors.ownerEmail && (
-                            <p className="text-red-500 text-xs mt-1">{validationErrors.ownerEmail}</p>
-                        )}
-                    </div>
-                    <div>
-                        <label className={`block text-sm font-medium mb-1.5 ${theme.textPrimary}`}>Phone (Either Email or Phone Required)</label>
-                        <input
-                            type="tel"
-                            value={formData.ownerPhone}
-                            onChange={(e) => {
-                                // Only allow digits, spaces, hyphens, parentheses, and plus sign
-                                const value = e.target.value.replace(/[^0-9\s\-\(\)\+]/g, '');
-                                handleInputChange('ownerPhone', value);
-                                // Real-time phone validation
-                                const cleanPhone = value.replace(/\D/g, '');
-                                if (value && cleanPhone.length > 0 && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
-                                    setValidationErrors(prev => ({ ...prev, ownerPhone: 'Please enter a valid 10-15 digit phone number' }));
-                                }
-                            }}
-                            onBlur={(e) => {
-                                const value = e.target.value.trim();
-                                if (value && !validatePhone(value)) {
-                                    setValidationErrors(prev => ({ ...prev, ownerPhone: 'Please enter a valid 10-15 digit phone number' }));
-                                }
-                            }}
-                            className={`w-full p-3 border rounded-xl outline-none text-sm ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.ownerPhone ? 'border-red-500' : ''}`}
-                            placeholder="+91 98765 43210"
-                            autoComplete="off"
-                        />
-                        {validationErrors.ownerPhone && (
-                            <p className="text-red-500 text-xs mt-1">{validationErrors.ownerPhone}</p>
-                        )}
-                    </div>
-                </div>
+                        {/* Business Category & Sub-Category */}
+                        <div className={`grid grid-cols-1 ${formData.businessType ? 'sm:grid-cols-2' : ''} gap-3 transition-all duration-300`}>
+                            <div>
+                                <label className={`block text-[11px] font-extrabold uppercase tracking-wider mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                    Business Category *
+                                </label>
+                                <CommonSelect
+                                    options={businessTypes}
+                                    value={formData.businessType}
+                                    onChange={handleBusinessTypeChange}
+                                    placeholder="Select Business Category..."
+                                    labelKey="displayString"
+                                    valueKey="_id"
+                                    icon={Building2}
+                                    triggerClassName={isDark ? '!bg-slate-800/40 !border-slate-700 !rounded-xl !py-2.5 !px-3.5 !text-xs !font-medium' : '!bg-slate-50 !border-slate-300 !rounded-xl !py-2.5 !px-3.5 !text-xs !font-medium'}
+                                />
+                                {validationErrors.businessType && (
+                                    <p className="text-rose-500 text-[11px] font-bold mt-1">{validationErrors.businessType}</p>
+                                )}
+                            </div>
 
-                <div>
-                    <label className={`block text-sm font-medium mb-1.5 ${theme.textPrimary}`}>Password</label>
-                    <div className="relative">
-                        <input
-                            type={showPassword ? "text" : "password"}
-                            value={formData.password}
-                            onChange={(e) => {
-                                const inputEl = e.target;
-                                const cursorStart = inputEl.selectionStart;
-                                const rawVal = inputEl.value;
+                            {formData.businessType && (
+                                <div className="animate-in fade-in slide-in-from-left-2 duration-300">
+                                    <label className={`block text-[11px] font-extrabold uppercase tracking-wider mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                        Business Sub-Category *
+                                    </label>
+                                    <CommonSelect
+                                        options={availableSubTypes}
+                                        value={formData.subType}
+                                        onChange={(val) => handleInputChange('subType', val)}
+                                        placeholder="Select Business Sub-Category..."
+                                        labelKey="displayString"
+                                        valueKey="_id"
+                                        icon={Layers}
+                                        triggerClassName={isDark ? '!bg-slate-800/40 !border-slate-700 !rounded-xl !py-2.5 !px-3.5 !text-xs !font-medium' : '!bg-slate-50 !border-slate-300 !rounded-xl !py-2.5 !px-3.5 !text-xs !font-medium'}
+                                    />
+                                    {validationErrors.subType && (
+                                        <p className="text-rose-500 text-[11px] font-bold mt-1">{validationErrors.subType}</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
 
-                                // Filter out disallowed special characters (e.g. {, }, ^, ~, |, <, >, \, /, ", ')
-                                const cleanVal = rawVal.replace(/[^a-zA-Z0-9@#$!%&*_\-\.]/g, '');
-                                const hadInvalidChar = cleanVal !== rawVal;
+                        {/* Owner Name */}
+                        <div>
+                            <label className={`block text-[11px] font-extrabold uppercase tracking-wider mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                Owner Name
+                            </label>
+                            <input
+                                type="text"
+                                value={formData.ownerName}
+                                onChange={(e) => {
+                                    const value = e.target.value.replace(/[^a-zA-Z\s.,'\-]/g, '');
+                                    handleInputChange('ownerName', value);
+                                }}
+                                placeholder="Fill your name"
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs outline-none transition-all ${
+                                    isDark 
+                                        ? 'bg-slate-800/40 border-slate-700 focus:border-indigo-500 text-white placeholder-slate-500' 
+                                        : 'bg-slate-50 border-slate-300 focus:border-indigo-600 text-slate-900 placeholder-slate-400'
+                                }`}
+                            />
+                        </div>
 
-                                handleInputChange('password', cleanVal);
+                        {/* Email & Phone */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label className={`block text-[11px] font-extrabold uppercase tracking-wider mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                    Email Address
+                                </label>
+                                <input
+                                    type="email"
+                                    value={formData.ownerEmail}
+                                    onChange={(e) => handleInputChange('ownerEmail', e.target.value.toLowerCase())}
+                                    placeholder="Fill your email address"
+                                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs outline-none transition-all ${
+                                        isDark 
+                                            ? 'bg-slate-800/40 border-slate-700 focus:border-indigo-500 text-white placeholder-slate-500' 
+                                            : 'bg-slate-50 border-slate-300 focus:border-indigo-600 text-slate-900 placeholder-slate-400'
+                                    }`}
+                                />
+                                {validationErrors.ownerEmail && (
+                                    <p className="text-rose-500 text-[11px] font-bold mt-1">{validationErrors.ownerEmail}</p>
+                                )}
+                            </div>
 
-                                if (hadInvalidChar) {
-                                    setValidationErrors(prev => ({
-                                        ...prev,
-                                        password: 'Password contains invalid characters'
-                                    }));
-                                } else if (cleanVal && cleanVal.length < 6) {
-                                    setValidationErrors(prev => ({ ...prev, password: 'Password must be at least 6 characters' }));
-                                } else {
-                                    setValidationErrors(prev => ({ ...prev, password: '' }));
-                                }
+                            <div>
+                                <label className={`block text-[11px] font-extrabold uppercase tracking-wider mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                    Phone Number
+                                </label>
+                                <input
+                                    type="tel"
+                                    value={formData.ownerPhone}
+                                    onChange={(e) => {
+                                        const value = e.target.value.replace(/[^0-9\s\-\(\)\+]/g, '');
+                                        handleInputChange('ownerPhone', value);
+                                    }}
+                                    placeholder="Fill your phone number"
+                                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs outline-none transition-all ${
+                                        isDark 
+                                            ? 'bg-slate-800/40 border-slate-700 focus:border-indigo-500 text-white placeholder-slate-500' 
+                                            : 'bg-slate-50 border-slate-300 focus:border-indigo-600 text-slate-900 placeholder-slate-400'
+                                    }`}
+                                />
+                                {validationErrors.ownerPhone && (
+                                    <p className="text-rose-500 text-[11px] font-bold mt-1">{validationErrors.ownerPhone}</p>
+                                )}
+                            </div>
+                        </div>
 
-                                requestAnimationFrame(() => {
-                                    if (inputEl && inputEl.setSelectionRange) {
-                                        const pos = hadInvalidChar ? Math.max(0, cursorStart - 1) : cursorStart;
-                                        inputEl.setSelectionRange(pos, pos);
-                                    }
-                                });
-                            }}
-                            className={`w-full p-3 border rounded-xl outline-none text-sm pr-12 ${theme.inputBg} ${theme.inputBorder} ${theme.inputFocus} ${theme.inputText} ${validationErrors.password ? 'border-red-500' : ''}`}
-                            placeholder="Secure Password"
-                            autoComplete="new-password"
-                            style={{ WebkitTextSecurity: showPassword ? 'none' : 'disc' }}
-                        />
+                        {/* Password */}
+                        <div>
+                            <label className={`block text-[11px] font-extrabold uppercase tracking-wider mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                                Password *
+                            </label>
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    value={formData.password}
+                                    onChange={(e) => {
+                                        const cleanVal = e.target.value.replace(/[^a-zA-Z0-9@#$!%&*_\-\.]/g, '');
+                                        handleInputChange('password', cleanVal);
+                                    }}
+                                    placeholder="Fill your password"
+                                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs outline-none pr-10 transition-all ${
+                                        isDark 
+                                            ? 'bg-slate-800/40 border-slate-700 focus:border-indigo-500 text-white placeholder-slate-500' 
+                                            : 'bg-slate-50 border-slate-300 focus:border-indigo-600 text-slate-900 placeholder-slate-400'
+                                    }`}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-500 transition-colors"
+                                >
+                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                            {validationErrors.password && (
+                                <p className="text-rose-500 text-[11px] font-bold mt-1">{validationErrors.password}</p>
+                            )}
+                        </div>
+
+                        {/* Submit Button */}
                         <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className={`absolute right-4 top-1/2 -translate-y-1/2 ${theme.textSecondary} hover:opacity-80 transition-opacity`}
-                            tabIndex={-1}
+                            type="submit"
+                            disabled={loading}
+                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-xl shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/50 hover:scale-[1.01] transition-all flex items-center justify-center gap-2 mt-2"
                         >
-                            {showPassword ? <EyeOff size={22} /> : <Eye size={22} />}
+                            {loading ? <ThemeLoader size="sm" /> : (
+                                <>
+                                    <span>Register & Create Shop</span>
+                                    <ArrowRight size={15} />
+                                </>
+                            )}
+                        </button>
+                    </form>
+
+                    {/* Footer link */}
+                    <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800 text-center text-xs font-semibold">
+                        <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Already registered your business? </span>
+                        <button
+                            onClick={() => onBack ? onBack() : navigate('/login')}
+                            className="text-indigo-500 font-extrabold hover:underline ml-1"
+                        >
+                            Sign In Here
                         </button>
                     </div>
-                    {validationErrors.password && (
-                        <p className="text-red-500 text-xs mt-1">{validationErrors.password}</p>
-                    )}
                 </div>
-            </div>
-
-            <div className={`flex justify-end mt-6 pt-4 border-t ${theme.inputBorder}`}>
-                <button
-                    onClick={handleSubmit}
-                    disabled={loading}
-                    className={`px-8 py-3 rounded-xl text-base font-bold shadow-lg flex items-center space-x-2 transition-all ${loading
-                        ? 'opacity-50 cursor-not-allowed'
-                        : `${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} active:scale-95`
-                        }`}
-                >
-                    {loading ? <ThemeLoader size="sm" /> : 'Create Shop'}
-                </button>
             </div>
         </div>
     );

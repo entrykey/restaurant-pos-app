@@ -175,3 +175,22 @@ export const deduplicateCartItems = (cartItems = []) => {
     
     return Array.from(itemMap.values());
 };
+
+/**
+ * Checks whether an item type (STOCK, MANUFACTURED, TRADE) is enabled for sale
+ * in Sale Settings and marked as sellable on the item itself.
+ */
+export const isItemTypeAllowedOnSale = (item, settings = {}) => {
+    if (!item) return false;
+    if (item.isSellable === false || item.showOnSale === false) return false;
+    
+    // Individual item setting overrides global disabled type setting
+    if (item.isSellable === true || item.showOnSale === true || item.isAvailableForSale === true) return true;
+
+    const type = item.itemType || 'STOCK';
+    if (type === 'STOCK' && settings?.ENABLE_STOCK_ITEMS === false) return false;
+    if (type === 'MANUFACTURED' && settings?.ENABLE_MANUFACTURED_ITEMS === false) return false;
+    if (type === 'TRADE' && settings?.ENABLE_TRADE_ITEMS === false) return false;
+    
+    return true;
+};

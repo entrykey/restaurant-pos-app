@@ -234,6 +234,9 @@ export function printKot({
   staffName,
 }) {
   const headerHtml = buildHeaderHtml(header || {});
+  const isAddon = meta?.isAddon || meta?.isAdditional || (meta?.kotTitle && String(meta.kotTitle).includes("ADDON"));
+  const kotTitle = meta?.kotTitle || (isAddon ? "ADDON KOT" : "KOT");
+
   const metaLines = [
     meta?.orderLabel,
     meta?.tableLabel,
@@ -259,7 +262,7 @@ export function printKot({
     <div class="paper">
       ${headerHtml}
       <div class="hr"></div>
-      <div class="center md bold">KOT</div>
+      <div class="center md bold" style="${isAddon ? 'font-size: 16px; font-weight: 900;' : ''}">${escapeHtml(kotTitle)}</div>
       ${metaLines.length ? `<div class="center tiny muted">${metaLines.map(escapeHtml).join(" • ")}</div>` : ""}
       ${staffName ? `<div class="center tiny muted">Billed by: ${escapeHtml(staffName)}</div>` : ""}
       <div class="hr"></div>

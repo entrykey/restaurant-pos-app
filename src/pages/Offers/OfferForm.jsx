@@ -1,18 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
     ChevronLeft,
     Save,
-    Trash2,
-    Plus,
     X,
-    Calendar,
     Tag,
     ShoppingBag,
     Percent,
     CheckCircle2,
     Loader2,
     Info,
-    Building2
+    Building2,
+    AlertTriangle
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -25,11 +23,21 @@ import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import CommonSelect from "../../components/ui/CommonSelect";
 import DatePicker from "../../components/ui/DatePicker";
+import { isItemTypeAllowedOnSale } from "../../utils/cartStockUtils";
+
+const isItemOutOfStock = (item) => {
+    if (!item) return false;
+    if (item.stockSettings?.allowNegativeStock === true || item.allowNegativeStock === true) return false;
+    const isTracked = (item.stockSettings?.stockApplicable === true || item.stockApplicable === true || ['STOCK', 'TRADE', 'MANUFACTURED'].includes(item.itemType));
+    if (!isTracked) return false;
+    const qty = Number.isFinite(item.quantityOnHand) ? Number(item.quantityOnHand) : 0;
+    return qty <= 0;
+};
 
 const OfferForm = () => {
     const { theme } = useTheme();
     const { user } = useAuth();
-    const { activeBranchId, businessTypeData, branches } = useApp();
+    const { activeBranchId, businessTypeData, branches, settings } = useApp();
     const [applyToAllBranches, setApplyToAllBranches] = useState(false);
     const navigate = useNavigate();
     const { id } = useParams();
@@ -68,14 +76,7 @@ const OfferForm = () => {
         discountAmount: 0
     });
 
-    useEffect(() => {
-        fetchMetadata();
-        if (isEdit) {
-            fetchOffer();
-        }
-    }, [id, activeBranchId]);
-
-    const fetchMetadata = async () => {
+    const fetchMetadata = useCallback(async () => {
         try {
             const shopId = user?.shopId || user?.shop_id;
             const branchId = activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null);
@@ -89,23 +90,16 @@ const OfferForm = () => {
             ]);
 
             const allItems = itemsData.data || [];
-            const sellStock = businessTypeData?.features?.sellStockItems ?? true;
-            const sellManufactured = businessTypeData?.features?.sellManufacturedItems ?? true;
-
-            const filteredItems = allItems.filter(item => {
-                if (item.itemType === "STOCK") return sellStock;
-                if (item.itemType === "MANUFACTURED") return sellManufactured;
-                return true; // Keep others (SERVICE, etc.) for now unless specified
-            });
+            const filteredItems = allItems.filter(item => isItemTypeAllowedOnSale(item, settings));
 
             setItems(filteredItems);
             setCategories(catsData || []);
         } catch (error) {
             console.error("Failed to fetch metadata:", error);
         }
-    };
+    }, [user, activeBranchId, settings]);
 
-    const fetchOffer = async () => {
+    const fetchOffer = useCallback(async () => {
         setIsLoading(true);
         try {
             const data = await offerService.getOfferById(id);
@@ -130,7 +124,14 @@ const OfferForm = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [id, navigate]);
+
+    useEffect(() => {
+        fetchMetadata();
+        if (isEdit) {
+            fetchOffer();
+        }
+    }, [fetchMetadata, fetchOffer, isEdit]);
 
     const getTodayString = () => {
         const today = new Date();
@@ -178,6 +179,56 @@ const OfferForm = () => {
             }
             if (minBill > 0 && minBill < 0.01) {
                 alert("Minimum bill amount must be at least 0.01.");
+                return;
+            }
+        }
+
+        if (condition.applyOn === "ITEM") {
+            if (!condition.itemIds || condition.itemIds.length === 0) {
+                alert("Please select at least one item for the offer condition.");
+                return;
+            }
+            for (const itemId of condition.itemIds) {
+                const targetItem = items.find(i => String(i._id || i.id) === String(itemId));
+                if (targetItem && isItemOutOfStock(targetItem)) {
+                    alert(`Cannot save offer: Item "${targetItem.name}" is out of stock (Qty: ${targetItem.quantityOnHand ?? 0}). Please remove out-of-stock items.`);
+                    return;
+                }
+            }
+        }
+
+        if (reward.rewardType === "FREE_ITEM" && reward.rewardSelectionStrategy === "SPECIFIC_ITEM") {
+            if (!reward.specificItemId) {
+                alert("Please select a specific reward item.");
+                return;
+            }
+            const rewardItem = items.find(i => String(i._id || i.id) === String(reward.specificItemId));
+            if (rewardItem && isItemOutOfStock(rewardItem)) {
+                alert(`Cannot save offer: Reward item "${rewardItem.name}" is out of stock (Qty: ${rewardItem.quantityOnHand ?? 0}). Please select an in-stock reward item.`);
+                return;
+            }
+        }
+
+        if (reward.rewardType === "PERCENT_DISCOUNT") {
+            const pct = parseFloat(reward.discountPercent) || 0;
+            if (pct <= 0 || pct > 100) {
+                alert("Discount percentage must be greater than 0% and at most 100%.");
+                return;
+            }
+        }
+
+        if (reward.rewardType === "FLAT_DISCOUNT" || reward.rewardType === "SET_PRICE") {
+            const amt = parseFloat(reward.discountAmount) || 0;
+            if (amt <= 0) {
+                alert("Discount or fixed price amount must be greater than 0.");
+                return;
+            }
+        }
+
+        if (reward.rewardType === "FREE_ITEM") {
+            const freeQty = parseInt(reward.rewardQuantity) || 0;
+            if (freeQty <= 0) {
+                alert("Free item quantity must be greater than 0.");
                 return;
             }
         }
@@ -434,20 +485,45 @@ const OfferForm = () => {
                                 <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>Select Items</label>
                                 <div className="flex flex-wrap gap-2 p-4 border rounded-2xl min-h-[100px] bg-gray-50/50">
                                     {condition.itemIds.map(id => {
-                                        const item = items.find(i => i._id === id);
+                                        const item = items.find(i => String(i._id || i.id) === String(id));
+                                        const outOfStock = isItemOutOfStock(item);
                                         return (
-                                            <div key={id} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-xl font-bold text-xs">
-                                                {item?.name || "Unknown"}
-                                                <X size={14} className="cursor-pointer" onClick={() => setCondition({ ...condition, itemIds: condition.itemIds.filter(iid => iid !== id) })} />
+                                            <div key={id} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-xs border ${
+                                                outOfStock ? 'bg-red-100 text-red-700 border-red-200' : 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                                            }`}>
+                                                <span>{item?.name || "Unknown"}</span>
+                                                {outOfStock ? (
+                                                    <span className="text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded font-black flex items-center gap-1 uppercase">
+                                                        <AlertTriangle size={10} /> Out of Stock
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] opacity-70 font-semibold">(Qty: {item?.quantityOnHand ?? 0})</span>
+                                                )}
+                                                <X size={14} className="cursor-pointer hover:opacity-75" onClick={() => setCondition({ ...condition, itemIds: condition.itemIds.filter(iid => String(iid) !== String(id)) })} />
                                             </div>
                                         );
                                     })}
-                                    <div className="w-40">
+                                    <div className="w-56">
                                         <CommonSelect
                                             placeholder="+ Add Item"
-                                            options={items.filter(i => !condition.itemIds.includes(i._id)).map(i => ({ value: i._id, label: i.name }))}
+                                            options={items.filter(i => !condition.itemIds.includes(i._id)).map(i => {
+                                                const outOfStock = isItemOutOfStock(i);
+                                                return {
+                                                    value: i._id,
+                                                    label: outOfStock 
+                                                        ? `${i.name} (OUT OF STOCK - Qty: ${i.quantityOnHand ?? 0})` 
+                                                        : `${i.name} (Qty: ${i.quantityOnHand ?? 0})`,
+                                                    disabled: outOfStock
+                                                };
+                                            })}
                                             onChange={(val) => {
-                                                if (val && !condition.itemIds.includes(val)) {
+                                                if (!val) return;
+                                                const selected = items.find(i => String(i._id || i.id) === String(val));
+                                                if (selected && isItemOutOfStock(selected)) {
+                                                    alert(`"${selected.name}" is currently out of stock and cannot be added to the offer.`);
+                                                    return;
+                                                }
+                                                if (!condition.itemIds.includes(val)) {
                                                     setCondition({ ...condition, itemIds: [...condition.itemIds, val] });
                                                 }
                                             }}
@@ -612,11 +688,42 @@ const OfferForm = () => {
                                     <div className="col-span-1 md:col-span-2 space-y-2">
                                         <label className={`text-sm font-black uppercase ${theme.textSecondary}`}>Select Reward Item</label>
                                         <CommonSelect
-                                            options={items.map(i => ({ value: i._id, label: i.name }))}
+                                            options={items.map(i => {
+                                                const outOfStock = isItemOutOfStock(i);
+                                                return {
+                                                    value: i._id,
+                                                    label: outOfStock 
+                                                        ? `${i.name} (OUT OF STOCK - Qty: ${i.quantityOnHand ?? 0})` 
+                                                        : `${i.name} (Qty: ${i.quantityOnHand ?? 0})`,
+                                                    disabled: outOfStock
+                                                };
+                                            })}
                                             value={reward.specificItemId}
-                                            onChange={val => setReward({ ...reward, specificItemId: val })}
+                                            onChange={val => {
+                                                const selected = items.find(i => String(i._id || i.id) === String(val));
+                                                if (selected && isItemOutOfStock(selected)) {
+                                                    alert(`"${selected.name}" is currently out of stock and cannot be selected as a reward item.`);
+                                                    return;
+                                                }
+                                                setReward({ ...reward, specificItemId: val });
+                                            }}
                                             className="w-full h-[58px]"
                                         />
+                                        {(() => {
+                                            const rewardItem = items.find(i => String(i._id || i.id) === String(reward.specificItemId));
+                                            if (!rewardItem) return null;
+                                            const outOfStock = isItemOutOfStock(rewardItem);
+                                            return (
+                                                <div className={`mt-2 p-3 rounded-2xl border flex items-center gap-2 text-xs font-bold ${
+                                                    outOfStock ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                }`}>
+                                                    {outOfStock ? <AlertTriangle size={16} className="text-red-500 shrink-0" /> : <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />}
+                                                    <span>
+                                                        {rewardItem.name} — {outOfStock ? `Out of Stock (Qty: ${rewardItem.quantityOnHand ?? 0})` : `In Stock (Available: ${rewardItem.quantityOnHand ?? 0})`}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 )}
                             </>

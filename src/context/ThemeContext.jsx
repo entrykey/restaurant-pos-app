@@ -38,7 +38,7 @@ export const themes = {
         // Sidebar
         sidebarBg: "bg-indigo-900",
         sidebarText: "text-white",
-        sidebarItemActiveBg: "bg-indigo-600",
+        sidebarItemActiveBg: "bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-600/30 border border-indigo-400/30 font-semibold",
         sidebarItemHoverBg: "hover:bg-indigo-800",
         sidebarLogoBg: "bg-white",
         sidebarLogoText: "text-indigo-900",
@@ -71,54 +71,54 @@ export const themes = {
     dark: {
         mode: "dark",
         // General
-        background: "bg-gray-900",
-        cardBg: "bg-gray-800",
-        textPrimary: "text-white",
-        textSecondary: "text-gray-300",
+        background: "bg-[#090A0F]",
+        cardBg: "bg-slate-900",
+        textPrimary: "text-slate-100",
+        textSecondary: "text-slate-300",
         textHeading: "text-white",
-        textMuted: "text-gray-400",
-        borderLight: "border-gray-700",
+        textMuted: "text-slate-400",
+        borderLight: "border-slate-800",
 
         // Layout
-        pageBg: "bg-gray-900",
-        surfaceBg: "bg-gray-800",
+        pageBg: "bg-[#090A0F]",
+        surfaceBg: "bg-slate-900",
 
         // Table (CommonTable)
-        tableHeaderBg: "bg-gray-800/80",
-        tableHeaderText: "text-gray-400",
-        tableRowHover: "hover:bg-gray-700/50",
-        tableBorder: "border-gray-700",
+        tableHeaderBg: "bg-slate-950/80",
+        tableHeaderText: "text-slate-400",
+        tableRowHover: "hover:bg-slate-800/40",
+        tableBorder: "border-slate-800",
 
         // Semantic Sections
-        sectionBg: "bg-gray-800/50",
-        sectionBorder: "border-gray-700",
-        infoBg: "bg-blue-900/20",
-        infoBorder: "border-blue-800/50",
-        infoText: "text-blue-400",
-        warningBg: "bg-orange-900/20",
-        warningBorder: "border-orange-800/50",
-        warningText: "text-orange-400",
-        successBg: "bg-green-900/30",
-        successText: "text-green-400",
+        sectionBg: "bg-slate-900/50",
+        sectionBorder: "border-slate-800",
+        infoBg: "bg-indigo-950/40",
+        infoBorder: "border-indigo-800/40",
+        infoText: "text-indigo-400",
+        warningBg: "bg-amber-950/40",
+        warningBorder: "border-amber-800/40",
+        warningText: "text-amber-400",
+        successBg: "bg-emerald-950/40",
+        successText: "text-emerald-400",
 
         // Sidebar
-        sidebarBg: "bg-gray-900",
-        sidebarText: "text-white",
-        sidebarItemActiveBg: "bg-indigo-600",
-        sidebarItemHoverBg: "hover:bg-gray-800",
-        sidebarLogoBg: "bg-gray-800",
+        sidebarBg: "bg-[#090A0F]",
+        sidebarText: "text-slate-200",
+        sidebarItemActiveBg: "bg-gradient-to-r from-indigo-600 via-indigo-600 to-violet-600 text-white shadow-xl shadow-indigo-500/30 border border-indigo-400/30 font-semibold",
+        sidebarItemHoverBg: "hover:bg-slate-800/60",
+        sidebarLogoBg: "bg-slate-900",
         sidebarLogoText: "text-white",
-        sidebarLogoutText: "text-red-400",
-        sidebarLogoutHoverBg: "hover:bg-red-900/50",
+        sidebarLogoutText: "text-rose-400",
+        sidebarLogoutHoverBg: "hover:bg-rose-900/30",
 
         // Icons & Primary elements
-        primaryIconBg: "bg-gray-700",
+        primaryIconBg: "bg-indigo-500/10",
         primaryIconText: "text-indigo-400",
 
         // Inputs
-        inputBg: "bg-gray-700",
-        inputBorder: "border-gray-600",
-        inputFocus: "focus:ring-indigo-500",
+        inputBg: "bg-slate-800/40",
+        inputBorder: "border-slate-700",
+        inputFocus: "focus:ring-indigo-500 focus:border-indigo-500",
         inputText: "text-white",
 
         // Buttons
@@ -127,8 +127,8 @@ export const themes = {
         buttonText: "text-white",
 
         // Error
-        errorBg: "bg-red-900/50",
-        errorText: "text-red-300",
+        errorBg: "bg-rose-500/10",
+        errorText: "text-rose-400",
 
         // Links
         linkText: "text-indigo-400",
@@ -170,7 +170,7 @@ export const themes = {
         // Sidebar
         sidebarBg: "bg-[#0a192f]",
         sidebarText: "text-slate-300",
-        sidebarItemActiveBg: "bg-[#1d2d50]",
+        sidebarItemActiveBg: "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/30 border border-blue-400/30 font-semibold",
         sidebarItemHoverBg: "hover:bg-[#112240]",
         sidebarLogoBg: "bg-blue-600",
         sidebarLogoText: "text-white",
@@ -219,13 +219,23 @@ export const ThemeProvider = ({ children }) => {
     useEffect(() => {
         localStorage.setItem('app-theme', themeName);
         // Update document class for Tailwind dark mode support
-        if (themeName === 'dark' || themeName === 'ocean') {
+        const isDark = themeName === 'dark' || themeName === 'ocean';
+        if (isDark) {
             document.documentElement.classList.add('dark');
             document.documentElement.style.colorScheme = 'dark';
         } else {
             document.documentElement.classList.remove('dark');
             document.documentElement.style.colorScheme = 'light';
         }
+
+        // Update browser theme-color meta tag
+        let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+        if (!metaThemeColor) {
+            metaThemeColor = document.createElement('meta');
+            metaThemeColor.name = 'theme-color';
+            document.head.appendChild(metaThemeColor);
+        }
+        metaThemeColor.setAttribute('content', isDark ? '#090A0F' : '#4F46E5');
     }, [themeName]);
 
     // Listen for system theme changes in real-time

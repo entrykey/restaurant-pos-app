@@ -86,8 +86,8 @@ const ShopDashboard = () => {
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
-                        <thead>
-                            <tr className={`text-xs font-black ${theme.textMuted} uppercase tracking-widest`}>
+                        <thead className={theme.tableHeaderBg || 'bg-slate-950/80'}>
+                            <tr className={`text-xs font-black ${theme.tableHeaderText || theme.textMuted} uppercase tracking-widest border-b ${theme.borderLight}`}>
                                 <th className="px-8 py-6">Branch Name</th>
                                 <th className="px-8 py-6">Total Sales</th>
                                 <th className="px-8 py-6">Estimated Profit</th>
@@ -97,7 +97,7 @@ const ShopDashboard = () => {
                         </thead>
                         <tbody className={`divide-y ${theme.borderLight}`}>
                             {data?.branchBreakdown?.map((branch, idx) => (
-                                <tr key={idx} className={`hover:${theme.pageBg} transition-colors group`}>
+                                <tr key={idx} className={`${theme.tableRowHover} transition-colors group`}>
                                     <td className="px-8 py-5">
                                         <div className={`font-bold ${theme.textPrimary}`}>{branch.branchName}</div>
                                     </td>

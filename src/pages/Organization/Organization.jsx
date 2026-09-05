@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Building2,
-    Edit3, Trash2, Plus, MapPin, CreditCard, ChevronDown, CheckCircle, Smartphone, Globe, AlertTriangle, ArrowRight, Save, X, Search, LogOut,
-    Sparkles, Check
+    Edit3, Plus, MapPin, CreditCard, AlertTriangle, Save,
+    Sparkles, Check, Clock
 } from "lucide-react";
 import ThemeLoader from "../../components/ui/ThemeLoader";
-import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
@@ -19,17 +19,13 @@ import {
     BRANCH_STATUS,
     DEFAULT_COUNTRIES,
     CURRENCIES,
-    SUBSCRIPTION_PLANS,
-    fetchOrganizationData,
     saveBranch,
-    deleteBranch,
-    fetchLocationByPincode,
-    fetchCurrentLocation,
 } from "./OrganizationService";
 import * as organizationService from './OrganizationService';
 import { shopService, api } from "../../services/api";
 import { subscriptionService } from '../../services/api/subscriptions';
 import { toast } from 'react-hot-toast';
+import { compressImageFile } from "../../utils/imageCompressor";
 
 
 const emptyBranch = (organizationId, defaultUpiId = null) => ({
@@ -216,12 +212,8 @@ const Organization = ({
 
     // Use auth context for logout and user data
     const { user, login } = useAuth();
-    const navigate = useNavigate();
-    const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
     const [highlightSubscriptionSection, setHighlightSubscriptionSection] = useState(false);
-
-    const canSelectOrganization = hasPermissionFor?.(MODULES.ORGANIZATION, "organization", "select") || user?.permissions?.ORGANIZATION?.includes("ORGANIZATION.SELECT");
 
     const [logoUploading, setLogoUploading] = useState(false);
     const mainBranch = useMemo(() => {
@@ -237,7 +229,7 @@ const Organization = ({
     const profileCompletion = profileChecklist.length ? Math.round((completedCount / profileChecklist.length) * 100) : 0;
     const missingProfileKeys = new Set(profileChecklist.filter((item) => !item.value).map((item) => item.key));
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         try {
             if (!user) {
                 console.log("Organization: User not yet loaded, skipping loadData");
@@ -264,9 +256,6 @@ const Organization = ({
                 setPlans(data.plans);
             }
 
-            // Fetch user's shops logic removed, now handled globally in AppContext/Navbar
-
-
             setLoading(false);
             console.log("Organization: Data state updated.");
 
@@ -275,13 +264,48 @@ const Organization = ({
             setError(err.message || "Failed to load data");
             setLoading(false);
         }
+    }, [user, setOrganization, setBranches]);
+
+    const handleLogoChange = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!organization?.id || !canEditOrg) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error("Image file size should be less than 5MB");
+            return;
+        }
+
+        setLogoUploading(true);
+        try {
+            const compressed = await compressImageFile(file, { maxWidth: 800, maxHeight: 800, quality: 0.8 });
+            const formData = new FormData();
+            formData.append("logo", compressed);
+
+            const res = await shopService.uploadLogo(organization.id, formData);
+            if (res?.data?.logoUrl || res?.logoUrl) {
+                const logoUrl = res?.data?.logoUrl || res?.logoUrl;
+                setOrganization((prev) => ({ ...prev, logoUrl }));
+                setOriginalOrg((prev) => ({ ...prev, logoUrl }));
+                toast.success("Logo uploaded successfully.");
+            } else {
+                await loadData();
+                toast.success("Logo updated.");
+            }
+        } catch (err) {
+            console.error("Failed to upload logo:", err);
+            toast.error(err.response?.data?.message || err.message || "Failed to upload logo");
+        } finally {
+            setLogoUploading(false);
+            e.target.value = "";
+        }
     };
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (user?._id || user?.id) {
             loadData();
         }
-    }, [user?._id, user?.id, user?.shopId, user?.shop_id]);
+    }, [user?._id, user?.id, user?.shopId, user?.shop_id, loadData]);
 
     React.useEffect(() => {
         if (organization && originalOrg) {
@@ -422,9 +446,9 @@ const Organization = ({
     const handlePlanChange = (plan) => {
         const isCurrent = organization?.subscriptionPlanId === plan.id;
         const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
-        const actionText = isCurrent ? (isExpired ? "renew" : "subscribe to") : "subscribe to";
+        const actionText = isCurrent ? (isExpired ? "renew request for" : "request subscription to") : "request subscription to";
 
-        confirmToast(`Subscribe to ${plan.name}? We will send a payment confirmation request to super admin.`, async () => {
+        confirmToast(`${actionText.charAt(0).toUpperCase() + actionText.slice(1)} ${plan.name}? Since payment integration is currently inactive, a request will be sent to the Super Admin for manual acceptance.`, async () => {
             setPlanLoading(true);
             try {
                 await subscriptionService.createSubscription({
@@ -433,7 +457,7 @@ const Organization = ({
                     billing_cycle: 'monthly',
                     subscription_intent: 'subscribe',
                 });
-                toast.success("Payment request sent. Subscription will activate after super admin confirmation.");
+                toast.success("Subscription request submitted! Waiting for super admin manual approval.");
                 localStorage.removeItem("subscription_notified");
                 localStorage.removeItem("pos_subscription_modal_dismissed");
                 await loadData();
@@ -443,7 +467,7 @@ const Organization = ({
                 } catch (_) { /* session refresh optional */ }
             } catch (error) {
                 console.error("Failed to change plan:", error);
-                toast.error(error.message || "Failed to change plan");
+                toast.error(error.message || "Failed to submit subscription request");
             } finally {
                 setPlanLoading(false);
             }
@@ -575,30 +599,6 @@ const Organization = ({
             </div>
         );
     }
-
-    const handleLogoChange = async (e) => {
-        if (!canEditOrg || !organization?.id) return;
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setLogoUploading(true);
-        try {
-            const formData = new FormData();
-            formData.append('logo', file);
-            
-            const res = await shopService.uploadLogo(organization.id, formData);
-            const logoUrl = res.logoUrl || res.data?.logoUrl || res.data?.shop?.logoUrl || res.shop?.logoUrl;
-            if (logoUrl) {
-                setOrganization(prev => ({ ...prev, logoUrl }));
-            }
-            toast.success("Shop logo updated successfully.");
-        } catch (error) {
-            console.error("Failed to upload logo:", error);
-            const msg = error.message || error?.response?.data?.message || "Failed to upload logo";
-            toast.error(msg);
-        } finally {
-            setLogoUploading(false);
-        }
-    };
 
     const handleCountryChange = (countryCode) => {
         if (!canEditOrg) return;
@@ -799,7 +799,7 @@ const Organization = ({
                                     value={organization?.ownerContact ?? ""}
                                     onChange={(e) => {
                                         if (!canEditOrg) return;
-                                        const cleanPhone = e.target.value.replace(/[^0-9\s\-\(\)\+]/g, '');
+                                        const cleanPhone = e.target.value.replace(/[^0-9\s\-()+]/g, '');
                                         setOrganization({ ...organization, ownerContact: cleanPhone });
                                     }}
                                     readOnly={!canEditOrg}
@@ -881,11 +881,6 @@ const Organization = ({
                             <h4 className={`text-2xl font-black ${theme.textHeading}`}>{organization?.planName}</h4>
                             <p className={`font-medium ${theme.textSecondary || 'text-gray-500'}`}>{organization?.planPriceLabel}</p>
                         </div>
-                        {/* 
-                           If no active plan, we don't show "Manage Subscription" typically, 
-                           unless we want to let them add payment method etc. 
-                           For now, keeping it simple.
-                        */}
                     </div>
 
                     {isTrialRunMode && trialRunStatus !== 'approved' && (
@@ -926,20 +921,32 @@ const Organization = ({
                         </div>
                     )}
 
+                    {!isTrialRunMode && (organization?.subscriptionStatus === 'pending_payment' || organization?.subscriptionStatus === 'pending') && (
+                        <div className={`p-6 rounded-3xl mb-8 border ${themeName === 'dark' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-amber-50 border-amber-200'}`}>
+                            <div className="flex items-start gap-3">
+                                <Clock className="text-amber-600 shrink-0 mt-0.5" size={22} />
+                                <div>
+                                    <h4 className={`font-black ${theme.textHeading}`}>Subscription Request Pending Super Admin Approval</h4>
+                                    <p className={`text-sm mt-1 ${theme.textSecondary}`}>
+                                        Your request for plan activation has been submitted. Since online payment integration is not active, a super admin must manually accept your request before write permissions and features are activated.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {!isTrialRunMode && plans.length > 0 && (
                         <>
-                            <p className={`font-medium mb-6 ${theme.textSecondary || 'text-gray-500'}`}>Upgrade your plan for more branches and features</p>
+                            <p className={`font-medium mb-6 ${theme.textSecondary || 'text-gray-500'}`}>Choose a plan and request activation from Super Admin</p>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {plans.map((plan) => {
                             const isCurrent = organization?.subscriptionPlanId === plan.id;
                             const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
+                            const isPending = (organization?.subscriptionStatus === 'pending_payment' || organization?.subscriptionStatus === 'pending') && isCurrent;
                             const isTrialPlan = organization?.isTrial;
                             const isTrialLoading = trialLoading === plan.id;
                             const showStartTrial = !organization?.subscriptionPlanId && plan.hasTrial;
-                            
-                            // Let users upgrade/renew if current plan is expired or is just a trial
-                            const canUpgradeNow = !isCurrent || isExpired || isTrialPlan;
 
                             return (
                                 <div
@@ -972,12 +979,19 @@ const Organization = ({
                                         ))}
                                     </ul>
 
-                                    {isCurrent && !isExpired && !isTrialPlan ? (
+                                    {isCurrent && !isExpired && !isTrialPlan && !isPending ? (
                                         <button
                                             disabled
                                             className={`w-full py-2.5 rounded-xl font-bold cursor-default ${themeName === 'dark' ? 'bg-slate-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`}
                                         >
                                             Current plan
+                                        </button>
+                                    ) : isPending ? (
+                                        <button
+                                            disabled
+                                            className="w-full py-2.5 rounded-xl font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 cursor-default"
+                                        >
+                                            Request Pending Approval
                                         </button>
                                     ) : showStartTrial ? (
                                         <button
@@ -993,13 +1007,13 @@ const Organization = ({
                                     ) : (
                                         <button
                                             onClick={() => canEditOrg && handlePlanChange(plan)}
-                                            disabled={!canEditOrg}
+                                            disabled={!canEditOrg || trialLoading === plan.id}
                                             className={`w-full py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${plan.highlighted
                                                 ? `bg-indigo-600 text-white hover:bg-indigo-700 ${themeName === 'dark' ? '' : 'shadow-lg shadow-indigo-200'}`
                                                 : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
                                                 }`}
                                         >
-                                            {isCurrent ? (isExpired ? "Subscribe" : "Subscribe") : "Subscribe"}
+                                            {trialLoading === plan.id ? "Processing…" : (isCurrent ? (isExpired ? "Request Renewal" : "Current Plan") : "Request Subscription")}
                                         </button>
                                     )}
                                 </div>

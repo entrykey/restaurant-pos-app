@@ -10,8 +10,10 @@ import {
     Calendar,
     ArrowRight,
     Loader2,
-    Building2
+    Building2,
+    AlertTriangle
 } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { offerService } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
@@ -29,6 +31,7 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
+    const [deactivateModal, setDeactivateModal] = useState({ isOpen: false, offer: null });
 
     const canManage = hasPermissionFor?.('OFFER_MANAGEMENT', 'OFFER', 'manage') || true;
 
@@ -45,6 +48,7 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
             setOffers(data || []);
         } catch (error) {
             console.error("Failed to fetch offers:", error);
+            toast.error("Failed to fetch offers");
         } finally {
             setIsLoading(false);
         }
@@ -53,20 +57,28 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
     const handleToggleStatus = async (offer) => {
         try {
             await offerService.updateOffer(offer._id, { isActive: !offer.isActive });
+            toast.success(offer.isActive ? "Offer deactivated" : "Offer activated");
             fetchOffers();
         } catch (error) {
             console.error("Failed to update status:", error);
+            toast.error(error.message || "Failed to update offer status");
         }
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Are you sure you want to deactivate this offer?")) {
-            try {
-                await offerService.deleteOffer(id);
-                fetchOffers();
-            } catch (error) {
-                console.error("Failed to delete offer:", error);
-            }
+    const handleDelete = (offer) => {
+        setDeactivateModal({ isOpen: true, offer });
+    };
+
+    const confirmDeactivate = async () => {
+        if (!deactivateModal.offer) return;
+        try {
+            await offerService.deleteOffer(deactivateModal.offer._id);
+            toast.success(`Offer "${deactivateModal.offer.name}" deactivated`);
+            setDeactivateModal({ isOpen: false, offer: null });
+            fetchOffers();
+        } catch (error) {
+            console.error("Failed to delete offer:", error);
+            toast.error(error.message || "Failed to deactivate offer");
         }
     };
 
@@ -191,7 +203,7 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
                         <Power size={16} />
                     </button>
                     <button
-                        onClick={() => handleDelete(row._id)}
+                        onClick={() => handleDelete(row)}
                         className={`p-2 rounded-xl ${theme.inputBg} text-red-500 hover:scale-110 transition-all`}
                         title="Delete"
                     >
@@ -283,6 +295,38 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
                     </div>
                 )}
             </div>
+            {deactivateModal.isOpen && (
+                <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className={`${theme.surfaceBg} rounded-3xl p-6 max-w-md w-full border ${theme.borderLight} shadow-2xl space-y-4`}>
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 rounded-2xl bg-red-100 dark:bg-red-950/60 text-red-600 shrink-0">
+                                <AlertTriangle size={24} />
+                            </div>
+                            <div>
+                                <h3 className={`text-lg font-black ${theme.textHeading}`}>Deactivate Offer</h3>
+                                <p className={`text-xs font-bold ${theme.textSecondary}`}>Are you sure you want to deactivate "{deactivateModal.offer?.name}"?</p>
+                            </div>
+                        </div>
+                        <p className={`text-xs ${theme.textMuted}`}>This offer will be marked inactive and will no longer apply to new cart orders.</p>
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setDeactivateModal({ isOpen: false, offer: null })}
+                                className={`px-4 py-2.5 rounded-xl font-bold text-xs ${theme.inputBg} ${theme.textPrimary} border ${theme.borderLight}`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmDeactivate}
+                                className="px-5 py-2.5 rounded-xl font-bold text-xs bg-red-600 hover:bg-red-700 text-white transition-all shadow-md active:scale-95"
+                            >
+                                Deactivate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

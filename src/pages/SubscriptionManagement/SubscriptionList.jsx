@@ -65,14 +65,26 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
     };
 
     const handleConfirmSubscriptionPayment = async (subscriptionId) => {
-        if (!window.confirm('Confirm payment and activate this subscription now?')) return;
+        if (!window.confirm('Accept and activate this plan subscription request for the shop?')) return;
         try {
             await subscriptionService.confirmSubscriptionPayment(subscriptionId);
             await fetchSubscriptions();
-            alert('Payment confirmed. Subscription is now active.');
+            alert('Subscription request accepted. Plan is now active.');
         } catch (error) {
             console.error('Confirm payment failed:', error);
-            alert(error?.response?.data?.message || 'Failed to confirm payment');
+            alert(error?.response?.data?.message || 'Failed to accept subscription request');
+        }
+    };
+
+    const handleRejectSubscriptionRequest = async (subscriptionId) => {
+        if (!window.confirm('Reject this plan subscription request?')) return;
+        try {
+            await subscriptionService.rejectSubscriptionRequest(subscriptionId);
+            await fetchSubscriptions();
+            alert('Subscription request rejected.');
+        } catch (error) {
+            console.error('Reject subscription request failed:', error);
+            alert(error?.response?.data?.message || 'Failed to reject subscription request');
         }
     };
 
@@ -106,7 +118,7 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
     // Calculate Analytics
     const activeCount = subscriptions.filter(s => s.status === 'active' || s.status === 'paid').length;
     const trialCount = subscriptions.filter(s => s.status === 'trial' || s.is_trial).length;
-    const pendingCount = subscriptions.filter(s => s.payment_status === 'pending').length;
+    const pendingCount = subscriptions.filter(s => s.status === 'pending_payment' || s.payment_status === 'pending').length;
     const cancelledCount = subscriptions.filter(s => s.status === 'cancelled').length;
 
     // Date formatting helper
@@ -171,7 +183,7 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
             key: "status",
             render: (_, sub) => (
                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest ${getStatusStyle(sub.status)}`}>
-                    {sub.status.replace('_', ' ')}
+                    {sub.status === 'pending_payment' ? 'Pending Approval' : sub.status.replace('_', ' ')}
                 </span>
             )
         },
@@ -198,44 +210,59 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
             key: "actions",
             headerClassName: "text-right",
             className: "text-right",
-            render: (_, sub) => (
-                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(sub);
-                        }}
-                        className={`p-2 rounded-xl text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors`}
-                        title="Edit Subscription"
-                    >
-                        <Edit2 size={16} strokeWidth={2.5} />
-                    </button>
-                    {sub.status !== 'cancelled' && (
+            render: (_, sub) => {
+                const isPending = sub.status === 'pending_payment' || sub.status === 'pending' || (sub.status === 'trial' && sub.payment_status === 'pending');
+                return (
+                    <div className="flex justify-end items-center gap-2">
+                        {isPending && (
+                            <>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleConfirmSubscriptionPayment(sub._id);
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                                    title="Accept & Activate Subscription"
+                                >
+                                    Accept
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRejectSubscriptionRequest(sub._id);
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                    title="Reject Subscription Request"
+                                >
+                                    Reject
+                                </button>
+                            </>
+                        )}
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                handleCancel(sub._id);
+                                handleEdit(sub);
                             }}
-                            className={`p-2 rounded-xl text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors`}
-                            title="Cancel Subscription"
+                            className={`p-2 rounded-xl text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors`}
+                            title="Edit Subscription"
                         >
-                            <Trash2 size={16} strokeWidth={2.5} />
+                            <Edit2 size={16} strokeWidth={2.5} />
                         </button>
-                    )}
-                    {(sub.status === 'pending_payment' || (sub.status === 'trial' && sub.payment_status === 'pending')) && (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleConfirmSubscriptionPayment(sub._id);
-                            }}
-                            className={`p-2 rounded-xl text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors`}
-                            title="Confirm Payment"
-                        >
-                            <CheckCircle size={16} strokeWidth={2.5} />
-                        </button>
-                    )}
-                </div>
-            )
+                        {sub.status !== 'cancelled' && !isPending && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCancel(sub._id);
+                                }}
+                                className={`p-2 rounded-xl text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors`}
+                                title="Cancel Subscription"
+                            >
+                                <Trash2 size={16} strokeWidth={2.5} />
+                            </button>
+                        )}
+                    </div>
+                );
+            }
         }
     ];
 

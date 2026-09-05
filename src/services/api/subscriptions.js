@@ -6,6 +6,7 @@ export const subscriptionService = {
     createSubscription: (data) => api.post('/subscriptions', data),
     updateSubscription: (id, data) => api.put(`/subscriptions/${id}`, data),
     cancelSubscription: (id, data) => api.post(`/subscriptions/${id}/cancel`, data),
+    rejectSubscriptionRequest: (id, data = {}) => api.post(`/subscriptions/${id}/reject`, data),
     confirmSubscriptionPayment: (id, data = {}) => api.post(`/subscriptions/${id}/confirm-payment`, data),
     getTrialRunRequests: (status = 'pending') =>
         api.get('/trial-run-requests', { params: status ? { status } : {} }),

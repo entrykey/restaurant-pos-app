@@ -174,7 +174,7 @@ const KDS = ({
                         {tableKOTs.map((k, index) => {
                             const tableIdStr = k.tableId?._id || k.tableId;
                             const orderIdStr = k.orderId?._id || k.orderId;
-                            const isAdditional = tableKOTs.findIndex(t =>
+                            const isAdditional = Boolean(k.isAddon) || tableKOTs.findIndex(t =>
                                 (t.tableId?._id || t.tableId) === tableIdStr &&
                                 (t.orderId?._id || t.orderId) === orderIdStr
                             ) < index;
@@ -197,7 +197,7 @@ const KDS = ({
                         {/* Non-table Orders (Takeaway, Online, Direct Sale, etc.) */}
                         {nonTableKOTs.map((o, index) => {
                             const orderIdStr = o.orderId?._id || o.orderId;
-                            const isAdditional = nonTableKOTs.findIndex(t =>
+                            const isAdditional = Boolean(o.isAddon) || nonTableKOTs.findIndex(t =>
                                 (t.orderId?._id || t.orderId) === orderIdStr
                             ) < index;
                             const { type, label } = getKOTType(o);

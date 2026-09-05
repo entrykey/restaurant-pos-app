@@ -17,6 +17,27 @@ const COUPONS = [
     },
 ];
 
+const isOfferValidToday = (offer) => {
+    if (!offer) return false;
+    if (offer.isActive === false) return false;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    if (offer.startDate) {
+        const startStr = new Date(offer.startDate).toISOString().split('T')[0];
+        if (todayStr < startStr) return false;
+    }
+
+    if (offer.endDate) {
+        const endStr = new Date(offer.endDate).toISOString().split('T')[0];
+        if (todayStr > endStr) return false;
+    }
+
+    return true;
+};
+
+const getItemObjId = (item) => String(item?.itemId || item?._id || item?.id || '');
+
 export const OrderProvider = ({ children }) => {
     // Billing Flow State
     const [billingStage, setBillingStage] = useState("review"); // 'review' | 'payment'
@@ -57,7 +78,21 @@ export const OrderProvider = ({ children }) => {
             (acc, e) => acc + e.price * e.quantity,
             0
         );
-        return parseFloat((itemBaseCost + extrasCost).toFixed(4));
+        const baseCost = itemBaseCost + extrasCost;
+
+        // Apply Item-Level Discount (Percent % or Flat ₹)
+        let itemDiscAmount = 0;
+        const discVal = Number(item.itemDiscount !== undefined && item.itemDiscount !== null && item.itemDiscount !== "" ? item.itemDiscount : 0);
+        if (discVal > 0) {
+            const discType = item.itemDiscountType || 'percent';
+            if (discType === 'percent') {
+                itemDiscAmount = (baseCost * discVal) / 100;
+            } else {
+                itemDiscAmount = discVal;
+            }
+        }
+
+        return parseFloat(Math.max(0, baseCost - itemDiscAmount).toFixed(4));
     }, []);
 
     const fetchActiveOffers = useCallback(async (shopId, branchId) => {
@@ -105,17 +140,44 @@ export const OrderProvider = ({ children }) => {
             0
         ).toFixed(4));
 
-        // ... existing offer logic ...
+        // Track remaining non-discounted line amounts per item to prevent double discounting when stacking offers
+        const itemRemainingAmounts = {};
+        orderItems.forEach(i => {
+            const key = getItemObjId(i);
+            itemRemainingAmounts[key] = (itemRemainingAmounts[key] || 0) + getBaseLineTotal(i);
+        });
+
+        const deductFromRemaining = (items, discountToDeduct) => {
+            const totalRem = items.reduce((acc, i) => acc + (itemRemainingAmounts[getItemObjId(i)] || 0), 0);
+            if (totalRem <= 0 || discountToDeduct <= 0) return;
+            items.forEach(i => {
+                const key = getItemObjId(i);
+                const currentRem = itemRemainingAmounts[key] || 0;
+                const portion = (currentRem / totalRem) * discountToDeduct;
+                itemRemainingAmounts[key] = Math.max(0, currentRem - portion);
+            });
+        };
+
         const appliedOfferItemIds = new Set();
         let offerDiscountTotal = 0;
         const currentAppliedOffers = [];
         const freeItems = []; // Track free items info
 
         if (offers.length > 0) {
-            // Sort by priority (1 is highest)
-            const sortedOffers = [...offers].sort((a, b) => (a.priority || 1) - (b.priority || 1));
+            // Sort by priority (1 is highest). If same priority, place FREE_ITEM offers first so free item value is deducted before % off is computed.
+            const sortedOffers = [...offers].sort((a, b) => {
+                const prioA = a.priority || 1;
+                const prioB = b.priority || 1;
+                if (prioA !== prioB) return prioA - prioB;
+                const isFreeA = a.reward?.rewardType === "FREE_ITEM";
+                const isFreeB = b.reward?.rewardType === "FREE_ITEM";
+                if (isFreeA && !isFreeB) return -1;
+                if (!isFreeA && isFreeB) return 1;
+                return 0;
+            });
             
             sortedOffers.forEach(offer => {
+                if (!isOfferValidToday(offer)) return;
                 const offerId = offer._id || offer.id;
                 if (offerId && dismissedOfferIds.includes(String(offerId))) return;
 
@@ -125,40 +187,105 @@ export const OrderProvider = ({ children }) => {
 
                 let isApplicable = false;
                 let potentialDiscount = 0;
+                let itemsToDeductFrom = [];
 
                 if (condition.applyOn === "ITEM") {
                     const conditionItemIds = (condition.itemIds || []).map(String);
-                    const matchingItems = orderItems.filter(i => conditionItemIds.includes(String(i.id || i._id)));
+                    const matchingItems = orderItems.filter(i => conditionItemIds.includes(getItemObjId(i)));
                     const totalQty = matchingItems.reduce((acc, i) => acc + i.quantity, 0);
 
                     if (totalQty >= (condition.minQuantity || 1)) {
-                        isApplicable = true;
-                        matchingItems.forEach(i => appliedOfferItemIds.add(i.id || i._id));
-                        const itemsAmount = matchingItems.reduce((acc, i) => acc + getBaseLineTotal(i), 0);
+                        const itemsRemainingAmount = matchingItems.reduce((acc, i) => acc + (itemRemainingAmounts[getItemObjId(i)] || 0), 0);
 
                         if (reward.rewardType === "PERCENT_DISCOUNT") {
-                            potentialDiscount = (itemsAmount * reward.discountPercent) / 100;
+                            potentialDiscount = (itemsRemainingAmount * reward.discountPercent) / 100;
+                            if (potentialDiscount > 0) {
+                                isApplicable = true;
+                                matchingItems.forEach(i => appliedOfferItemIds.add(getItemObjId(i)));
+                                itemsToDeductFrom = matchingItems;
+                            }
                         } else if (reward.rewardType === "FLAT_DISCOUNT") {
-                            potentialDiscount = reward.discountAmount;
+                            potentialDiscount = Math.min(reward.discountAmount, itemsRemainingAmount);
+                            if (potentialDiscount > 0) {
+                                isApplicable = true;
+                                matchingItems.forEach(i => appliedOfferItemIds.add(getItemObjId(i)));
+                                itemsToDeductFrom = matchingItems;
+                            }
+                        } else if (reward.rewardType === "SET_PRICE" || offer.offerType === "COMBO_PRICE") {
+                            const minQty = condition.minQuantity || 1;
+                            if (conditionItemIds.length > 1) {
+                                // Multi-item combo: ALL required items MUST be present in the cart
+                                const allItemsPresent = conditionItemIds.every(reqId => {
+                                    const found = orderItems.find(i => getItemObjId(i) === reqId);
+                                    return found && found.quantity >= minQty;
+                                });
+
+                                if (allItemsPresent) {
+                                    const comboSetCounts = conditionItemIds.map(reqId => {
+                                        const found = orderItems.find(i => getItemObjId(i) === reqId);
+                                        return Math.floor((found?.quantity || 0) / minQty);
+                                    });
+                                    const numComboSets = Math.min(...comboSetCounts);
+
+                                    if (numComboSets > 0) {
+                                        let oneSetNormalCost = 0;
+                                        conditionItemIds.forEach(reqId => {
+                                            const found = orderItems.find(i => getItemObjId(i) === reqId);
+                                            if (found) {
+                                                const unitPrice = getBaseLineTotal(found) / found.quantity;
+                                                oneSetNormalCost += unitPrice * minQty;
+                                            }
+                                        });
+
+                                        const targetComboPrice = reward.discountAmount || 0;
+                                        const discountPerSet = Math.max(0, oneSetNormalCost - targetComboPrice);
+                                        potentialDiscount = Math.min(numComboSets * discountPerSet, itemsRemainingAmount);
+
+                                        if (potentialDiscount > 0) {
+                                            isApplicable = true;
+                                            matchingItems.forEach(i => appliedOfferItemIds.add(getItemObjId(i)));
+                                            itemsToDeductFrom = matchingItems;
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Single item set price
+                                if (totalQty >= minQty) {
+                                    potentialDiscount = Math.max(0, itemsRemainingAmount - (reward.discountAmount || 0));
+                                    if (potentialDiscount > 0) {
+                                        isApplicable = true;
+                                        matchingItems.forEach(i => appliedOfferItemIds.add(getItemObjId(i)));
+                                        itemsToDeductFrom = matchingItems;
+                                    }
+                                }
+                            }
                         } else if (reward.rewardType === "FREE_ITEM") {
                             const buyQty = condition.minQuantity || 1;
                             const freeQty = reward.rewardQuantity || 1;
                             const rewardItemIds = (reward.itemIds || (reward.specificItemId ? [reward.specificItemId] : [])).map(String);
-                            const isBogo = rewardItemIds.length === 0 || rewardItemIds.includes(String(condition.itemIds[0]));
-
-                            if (isBogo) {
+                            const isBogo = rewardItemIds.length === 0 ||
+                                rewardItemIds.includes(String(condition.itemIds[0])) ||
+                                reward.rewardSelectionStrategy === "SAME_ITEM" ||
+                                offer.offerType === "BUY_X_GET_Y";
+                             if (isBogo) {
                                 // BOGO Style: Buy 1 Get 1 (needs 2 in cart for 1 free) or Buy 2 Get 1 (needs 3 in cart for 1 free)
                                 const setSize = buyQty + freeQty;
                                 const numSets = Math.floor(totalQty / setSize);
                                 const numFreeItems = numSets * freeQty;
                                 if (numFreeItems > 0) {
-                                    potentialDiscount = (itemsAmount / totalQty) * numFreeItems;
-                                    matchingItems.forEach(i => appliedOfferItemIds.add(i.id || i._id));
-                                    freeItems.push({
-                                        itemId: matchingItems[0].id || matchingItems[0]._id,
-                                        quantity: numFreeItems,
-                                        offerName: offer.name
-                                    });
+                                    const grossItemsAmount = matchingItems.reduce((acc, i) => acc + getBaseLineTotal(i), 0);
+                                    const calculatedDisc = (grossItemsAmount / totalQty) * numFreeItems;
+                                    potentialDiscount = Math.min(calculatedDisc, itemsRemainingAmount);
+                                    if (potentialDiscount > 0) {
+                                        isApplicable = true;
+                                        matchingItems.forEach(i => appliedOfferItemIds.add(getItemObjId(i)));
+                                        freeItems.push({
+                                            itemId: getItemObjId(matchingItems[0]),
+                                            quantity: numFreeItems,
+                                            offerName: offer.name
+                                        });
+                                        itemsToDeductFrom = matchingItems;
+                                    }
                                 }
                             } else {
                                 // Cross-Item: Buy Pepsi Get Lays Free
@@ -166,26 +293,31 @@ export const OrderProvider = ({ children }) => {
                                 const totalFreeAllowed = numTriggered * freeQty;
                                 
                                 if (totalFreeAllowed > 0) {
-                                    // Mark the triggering items
-                                    matchingItems.forEach(i => appliedOfferItemIds.add(i.id || i._id));
-                                    
-                                    // Find and discount the free items in the cart
-                                    const freeItemsInCart = orderItems.filter(i => rewardItemIds.includes(String(i.id || i._id)));
+                                    const freeItemsInCart = orderItems.filter(i => rewardItemIds.includes(getItemObjId(i)));
                                     let remainingToDiscount = totalFreeAllowed;
                                     
                                     freeItemsInCart.forEach(i => {
                                         const discountableQty = Math.min(i.quantity, remainingToDiscount);
                                         if (discountableQty > 0) {
-                                            potentialDiscount += (getBaseLineTotal(i) / i.quantity) * discountableQty;
+                                            const itemRemaining = itemRemainingAmounts[getItemObjId(i)] || 0;
+                                            const calculatedDisc = (getBaseLineTotal(i) / i.quantity) * discountableQty;
+                                            const actualDisc = Math.min(calculatedDisc, itemRemaining);
+                                            
+                                            potentialDiscount += actualDisc;
                                             remainingToDiscount -= discountableQty;
-                                            appliedOfferItemIds.add(i.id || i._id);
+                                            appliedOfferItemIds.add(getItemObjId(i));
+                                            deductFromRemaining([i], actualDisc);
                                             freeItems.push({
-                                                itemId: i.id || i._id,
+                                                itemId: getItemObjId(i),
                                                 quantity: discountableQty,
                                                 offerName: offer.name
                                             });
                                         }
                                     });
+                                    if (potentialDiscount > 0) {
+                                        isApplicable = true;
+                                        matchingItems.forEach(i => appliedOfferItemIds.add(getItemObjId(i)));
+                                    }
                                 }
                             }
                         }
@@ -196,30 +328,40 @@ export const OrderProvider = ({ children }) => {
                     const totalQty = matchingItems.reduce((acc, i) => acc + i.quantity, 0);
 
                     if (totalQty >= (condition.minQuantity || 1)) {
+                        const itemsRemainingAmount = matchingItems.reduce((acc, i) => acc + (itemRemainingAmounts[getItemObjId(i)] || 0), 0);
                         isApplicable = true;
                         matchingItems.forEach(i => appliedOfferItemIds.add(i.id || i._id));
-                        const itemsAmount = matchingItems.reduce((acc, i) => acc + getBaseLineTotal(i), 0);
 
                         if (reward.rewardType === "PERCENT_DISCOUNT") {
-                            potentialDiscount = (itemsAmount * reward.discountPercent) / 100;
+                            potentialDiscount = (itemsRemainingAmount * reward.discountPercent) / 100;
+                            itemsToDeductFrom = matchingItems;
                         } else if (reward.rewardType === "FLAT_DISCOUNT") {
-                            potentialDiscount = reward.discountAmount;
+                            potentialDiscount = Math.min(reward.discountAmount, itemsRemainingAmount);
+                            itemsToDeductFrom = matchingItems;
+                        } else if (reward.rewardType === "SET_PRICE" || offer.offerType === "COMBO_PRICE") {
+                            potentialDiscount = Math.max(0, itemsRemainingAmount - (reward.discountAmount || 0));
+                            itemsToDeductFrom = matchingItems;
                         } else if (reward.rewardType === "FREE_ITEM") {
                             const buyQty = condition.minQuantity || 1;
                             const freeQty = reward.rewardQuantity || 1;
-                            const isBogoStyle = offer.name?.toLowerCase().includes("buy") && offer.name?.toLowerCase().includes("get");
+                            const isBogoStyle = offer.offerType === "BUY_X_GET_Y" ||
+                                reward.rewardSelectionStrategy === "SAME_ITEM" ||
+                                (offer.name?.toLowerCase().includes("buy") && offer.name?.toLowerCase().includes("get"));
 
                             if (isBogoStyle) {
                                 const setSize = buyQty + freeQty;
                                 const numSets = Math.floor(totalQty / setSize);
                                 const numFreeItems = numSets * freeQty;
                                 if (numFreeItems > 0) {
-                                    potentialDiscount = (itemsAmount / totalQty) * numFreeItems;
+                                    const grossItemsAmount = matchingItems.reduce((acc, i) => acc + getBaseLineTotal(i), 0);
+                                    const calculatedDisc = (grossItemsAmount / totalQty) * numFreeItems;
+                                    potentialDiscount = Math.min(calculatedDisc, itemsRemainingAmount);
                                     freeItems.push({
                                         itemId: matchingItems[0].id || matchingItems[0]._id,
                                         quantity: numFreeItems,
                                         offerName: offer.name
                                     });
+                                    itemsToDeductFrom = matchingItems;
                                 }
                             } else {
                                 potentialDiscount = 0; // Default flat fallback
@@ -227,35 +369,44 @@ export const OrderProvider = ({ children }) => {
                         }
                     }
                 } else if (condition.applyOn === "BILL") {
-                    if (subtotal >= (condition.minBillAmount || 0)) {
+                    const remainingBillSubtotal = orderItems.reduce((acc, i) => acc + (itemRemainingAmounts[getItemObjId(i)] || 0), 0);
+                    if (subtotal >= (condition.minBillAmount || 0) && remainingBillSubtotal > 0) {
                         isApplicable = true;
                         if (reward.rewardType === "PERCENT_DISCOUNT") {
-                            potentialDiscount = (subtotal * reward.discountPercent) / 100;
+                            potentialDiscount = (remainingBillSubtotal * reward.discountPercent) / 100;
+                            itemsToDeductFrom = orderItems;
                         } else if (reward.rewardType === "FLAT_DISCOUNT") {
-                            potentialDiscount = reward.discountAmount;
+                            potentialDiscount = Math.min(reward.discountAmount, remainingBillSubtotal);
+                            itemsToDeductFrom = orderItems;
                         }
                     }
                 }
 
                 if (isApplicable && potentialDiscount > 0) {
-                    // Check if this offer provides a better discount than already applied ones if they overlap
-                    // For now, we allow stacking but prioritize by evaluating in priority order
                     offerDiscountTotal += potentialDiscount;
+                    if (itemsToDeductFrom.length > 0) {
+                        deductFromRemaining(itemsToDeductFrom, potentialDiscount);
+                    }
                     currentAppliedOffers.push({
                         offerId,
+                        offerName: offer.name,
                         name: offer.name,
+                        offerType: offer.offerType || reward?.rewardType || "DISCOUNT",
+                        discountAmount: potentialDiscount,
                         discount: potentialDiscount,
-                        priority: offer.priority
+                        freeQuantity: reward?.rewardQuantity || 0,
+                        priority: offer.priority || 1
                     });
                 }
             });
         }
 
         let discountAmount = 0;
+        const netSubtotal = Math.max(0, subtotal - offerDiscountTotal);
         if (discount.type === "flat") {
             discountAmount = discount.value;
         } else {
-            discountAmount = parseFloat(((subtotal * discount.value) / 100).toFixed(4));
+            discountAmount = parseFloat(((netSubtotal * discount.value) / 100).toFixed(4));
         }
 
         const totalDiscount = discountAmount + offerDiscountTotal;
@@ -386,6 +537,11 @@ export const OrderProvider = ({ children }) => {
         setDismissedOfferIds((prev) => [...prev, String(offerId)]);
     };
 
+    const restoreOffer = (offerId) => {
+        if (!offerId) return;
+        setDismissedOfferIds((prev) => prev.filter((id) => id !== String(offerId)));
+    };
+
     const resetBillingState = () => {
         setBillingStage("review");
         setBillDiscount({ type: "flat", value: 0 });
@@ -416,6 +572,7 @@ export const OrderProvider = ({ children }) => {
                 offers,
                 dismissedOfferIds,
                 dismissOffer,
+                restoreOffer,
                 COUPONS,
                 resetBillingState,
                 // Exchange states

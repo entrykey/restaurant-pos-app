@@ -9,6 +9,7 @@ import {
     Utensils,
     Plus,
     Minus,
+    Trash2,
     Edit3,
     LayoutGrid,
     List as ListIcon,
@@ -19,6 +20,7 @@ import {
     ArrowUpDown,
     Flame,
     Gift,
+    Tag as TagIcon
 } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import FoodItemCard from "../../components/FoodItemCard";
@@ -35,6 +37,7 @@ import {
     buildBaseStockMap,
     canAddToCart,
     collectOpenCartItems,
+    isItemTypeAllowedOnSale,
 } from "../../utils/cartStockUtils";
 
 const TakeawayOrder = ({
@@ -53,6 +56,7 @@ const TakeawayOrder = ({
     setBillingStage,
     initiateAddItem,
     updateItemQuantity,
+    removeItemFromCart,
     updateItemUnit,
     openNoteModal,
     takeawayCustName,
@@ -76,7 +80,7 @@ const TakeawayOrder = ({
     const {
         isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
         setOriginalOrderId, setReturnedItems,
-        resetExchange, dismissOffer
+        resetExchange, dismissOffer, restoreOffer
     } = useOrder();
     const {
         selectedCustomer, setSelectedCustomer,
@@ -85,6 +89,8 @@ const TakeawayOrder = ({
         loyaltyDiscount, setLoyaltyDiscount, // Separate loyalty points discount
         setTakeawayOrder,
     } = useTakeaway();
+
+    const [showAvailableOffers, setShowAvailableOffers] = useState(false);
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -221,7 +227,7 @@ const TakeawayOrder = ({
                 },
             };
             const response = await itemService.getItems(payload);
-            const items = (response?.data || []).filter(item => item.isSellable !== false);
+            const items = (response?.data || []).filter(item => isItemTypeAllowedOnSale(item, settings));
             const mapped = items.map((item) => ({
                 ...item,
                 id: item._id || item.id,
@@ -461,7 +467,7 @@ const TakeawayOrder = ({
                 const response = await itemService.getItems(payload);
                 if (cancelled) return;
 
-                const items = (response?.data || []).filter(item => item.isSellable !== false);
+                const items = (response?.data || []).filter(item => isItemTypeAllowedOnSale(item, settings));
 
                 const mapped = items.map((item) => ({
                     ...item,
@@ -496,9 +502,12 @@ const TakeawayOrder = ({
             cancelled = true;
             clearTimeout(handle);
         };
-    }, [orderSearch, currentUser?.shop_id, activeBranchId]);
+    }, [orderSearch, currentUser?.shop_id, activeBranchId, settings]);
 
-    const activeMenu = remoteMenu || localMenu || menu || [];
+    const activeMenu = useMemo(() => {
+        const rawActiveMenu = remoteMenu || localMenu || menu || [];
+        return rawActiveMenu.filter(item => isItemTypeAllowedOnSale(item, settings));
+    }, [remoteMenu, localMenu, menu, settings]);
 
     const currentOrder = useMemo(() => (
         isTakeaway
@@ -617,6 +626,17 @@ const TakeawayOrder = ({
         updateItemQuantity(itemIndex, delta);
     }, [allCartItems, baseStockMap, currentOrder?.items, updateItemQuantity]);
 
+    const handleRemoveItem = useCallback((itemIndex) => {
+        if (removeItemFromCart) {
+            removeItemFromCart(itemIndex);
+        } else {
+            const item = currentOrder?.items?.[itemIndex];
+            if (item) {
+                updateItemQuantity(itemIndex, -item.quantity);
+            }
+        }
+    }, [currentOrder?.items, removeItemFromCart, updateItemQuantity]);
+
     // Global Barcode Listener for POS
     const handleBarcodeSearch = useCallback(async (code) => {
         if (!code) return;
@@ -684,7 +704,7 @@ const TakeawayOrder = ({
             console.error("POS Barcode search failed:", error);
             toast.error(`Search failed for "${code}"`);
         }
-    }, [displayMenu, handleInitiateAddItem, currentUser?.shop_id, activeBranchId]);
+    }, [displayMenu, handleInitiateAddItem, currentUser?.shop_id, currentUser?.shopId, activeBranchId]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -759,6 +779,13 @@ const TakeawayOrder = ({
         discountAmount: actualBillDetails.discountAmount + loyaltyDiscount.amount,
         finalTotal: Math.max(0, actualBillDetails.finalTotal - loyaltyDiscount.amount)
     } : actualBillDetails;
+
+    const appliedOfferIds = (finalBillDetails.appliedOffers || []).map(o => String(o.offerId || o.id));
+    const availableUnappliedOffers = (offers || []).filter(o => {
+        if (o.isActive === false) return false;
+        const oId = String(o._id || o.id);
+        return !appliedOfferIds.includes(oId);
+    });
 
     return (
         <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg}`}>
@@ -1140,7 +1167,7 @@ const TakeawayOrder = ({
 
                     <div
                         className={`${viewMode === "grid"
-                            ? "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-2 md:gap-3"
+                            ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5"
                             : "flex flex-col gap-2 md:gap-3"
                             } pr-1 xl:overflow-y-auto xl:flex-1 xl:min-h-0 custom-scrollbar mt-2 min-h-[320px] xl:min-h-0`}
                     >
@@ -1177,7 +1204,7 @@ const TakeawayOrder = ({
                                 .map((item) => {
                                     const isHot = item._orderCount > 0 && popularityMap[item.id || item._id] > 0;
                                     return (
-                                        <div key={item.id} className="relative">
+                                        <div key={item.id} className="relative h-full flex flex-col">
                                             {isHot && (
                                                 <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-0.5 bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md pointer-events-none">
                                                     <Flame size={9} /> HOT
@@ -1214,15 +1241,15 @@ const TakeawayOrder = ({
                                 <Printer size={20} />
                             </button>
                             {isSentToKOT && (
-                                <span className={`flex items-center gap-1 text-xs font-bold uppercase ${
+                                <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider shadow-sm ${
                                     currentOrder.kotStatus === 'preparing' 
-                                        ? 'text-orange-500 animate-pulse' 
+                                        ? 'bg-amber-500 text-white dark:bg-amber-950/60 dark:text-amber-300 border border-amber-400 animate-pulse' 
                                         : currentOrder.kotStatus === 'served'
-                                        ? 'text-blue-600'
-                                        : 'text-green-600'
+                                        ? 'bg-blue-600 text-white dark:bg-blue-950/60 dark:text-blue-300 border border-blue-400'
+                                        : 'bg-emerald-600 text-white dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-400'
                                 }`}>
-                                    {currentOrder.kotStatus === 'preparing' ? <Utensils size={14} /> : <Check size={14} />}
-                                    {currentOrder.kotStatus === 'preparing' ? "Preparing..." : currentOrder.kotStatus === 'served' ? "Served" : "KOT Ready"}
+                                    <Check size={13} className="shrink-0 stroke-[3]" />
+                                    <span>KOT SENT ({currentOrder.kotStatus === 'preparing' ? "Preparing" : currentOrder.kotStatus === 'served' ? "Served" : "Ready"})</span>
                                 </span>
                             )}
                         </div>
@@ -1284,9 +1311,19 @@ const TakeawayOrder = ({
                                                                 </span>
                                                             </span>
                                                         </div>
-                                                        <span className={`font-bold text-sm ${theme.textPrimary} shrink-0 ml-2`}>
-                                                            {formatCurrency(calculateItemTotal(item))}
-                                                        </span>
+                                                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                                            <span className={`font-bold text-sm ${theme.textPrimary}`}>
+                                                                {formatCurrency(calculateItemTotal(item))}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveItem(item._originalIndex !== undefined ? item._originalIndex : idx)}
+                                                                className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                                                                title="Remove item from cart"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                     {/* Unit Selector for multi-unit items */}
                                                     {(item.unitId && item.secondaryUnitId) && (
@@ -1391,15 +1428,26 @@ const TakeawayOrder = ({
                                                 <input
                                                     type="number"
                                                     min="0"
-                                                    value={item.itemDiscount || ""}
+                                                    value={item.itemDiscount !== undefined && item.itemDiscount !== null ? item.itemDiscount : ""}
                                                     onChange={e => {
-                                                        const v = parseFloat(e.target.value) || 0;
-                                                        initiateAddItem({ ...item, itemDiscount: v }, 0);
+                                                        const raw = e.target.value;
+                                                        const v = raw === "" ? "" : parseFloat(raw);
+                                                        initiateAddItem({ ...item, itemDiscount: v, itemDiscountType: item.itemDiscountType || 'percent' }, 0);
                                                     }}
                                                     placeholder="0"
-                                                    className={`w-16 px-1.5 py-1 text-xs font-black outline-none bg-transparent ${theme.textPrimary}`}
+                                                    className={`w-12 px-1 py-1 text-xs font-black outline-none bg-transparent ${theme.textPrimary}`}
                                                 />
-                                                <span className={`pr-2 text-[9px] font-black ${theme.textMuted}`}>₹</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const nextType = (item.itemDiscountType || 'percent') === 'flat' ? 'percent' : 'flat';
+                                                        initiateAddItem({ ...item, itemDiscountType: nextType }, 0);
+                                                    }}
+                                                    className={`px-1.5 py-0.5 text-[10px] font-black uppercase transition-colors ${theme.buttonBg} hover:opacity-90`}
+                                                    title="Toggle discount type (% or ₹)"
+                                                >
+                                                    {(item.itemDiscountType || 'percent') === 'flat' ? '₹' : '%'}
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -1448,27 +1496,107 @@ const TakeawayOrder = ({
                                         />
                                     </div>
     
-                                    {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
-                                        <div className="space-y-1">
-                                            <div className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Applied Offers</div>
-                                            {billDetails.appliedOffers.map((offer, oIdx) => offer && (
-                                                <div key={offer.offerId || oIdx} className="flex justify-between items-center text-sm text-green-600 font-medium bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-lg gap-2">
-                                                    <span className="truncate">{offer.name}</span>
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                                        <span>-{formatCurrency(offer.discount)}</span>
-                                                        {offer.offerId && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => dismissOffer(offer.offerId)}
-                                                                className="p-1 rounded-md hover:bg-green-100 dark:hover:bg-green-900/40 text-green-700"
-                                                                title="Remove offer"
-                                                            >
-                                                                <X size={14} />
-                                                            </button>
-                                                        )}
+                                    {/* Applied & Available Offers Section */}
+                                    {((billDetails.appliedOffers && billDetails.appliedOffers.length > 0) || availableUnappliedOffers.length > 0) && (
+                                        <div className="space-y-2 pt-1">
+                                            {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                                        <TagIcon size={12} />
+                                                        <span>Applied Offers ({billDetails.appliedOffers.length})</span>
                                                     </div>
+                                                    {billDetails.appliedOffers.map((offer, oIdx) => {
+                                                        if (!offer) return null;
+                                                        const title = offer.offerName || offer.name || "Special Offer";
+                                                        const amt = Number(offer.discountAmount ?? offer.discount ?? 0);
+                                                        const typeLabel = (offer.offerType || "").replace(/_/g, " ");
+
+                                                        return (
+                                                            <div
+                                                                key={offer.offerId || oIdx}
+                                                                className="flex justify-between items-center bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/40 px-3 py-2 rounded-2xl gap-2 shadow-sm transition-all hover:border-emerald-300"
+                                                            >
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <div className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 shrink-0">
+                                                                        <TagIcon size={13} />
+                                                                    </div>
+                                                                    <div className="flex flex-col min-w-0">
+                                                                        <span className="text-xs font-black text-emerald-900 dark:text-emerald-100 truncate tracking-tight">
+                                                                            {title}
+                                                                        </span>
+                                                                        {typeLabel && (
+                                                                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                                                                                {typeLabel}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                    <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                                                                        -{formatCurrency(amt)}
+                                                                    </span>
+                                                                    {offer.offerId && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => dismissOffer(offer.offerId)}
+                                                                            className="p-1 rounded-full hover:bg-emerald-200/60 dark:hover:bg-emerald-800/60 text-emerald-700 dark:text-emerald-300 transition-colors cursor-pointer"
+                                                                            title="Remove offer"
+                                                                        >
+                                                                            <X size={12} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            ))}
+                                            )}
+
+                                            {/* Other Available Offers Drawer */}
+                                            {availableUnappliedOffers.length > 0 && (
+                                                <div className="pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowAvailableOffers(prev => !prev)}
+                                                        className="flex items-center justify-between w-full text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-3 py-1.5 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all cursor-pointer"
+                                                    >
+                                                        <span className="flex items-center gap-1.5">
+                                                            <TagIcon size={12} />
+                                                            <span>Other Available Offers ({availableUnappliedOffers.length})</span>
+                                                        </span>
+                                                        <span className="text-[10px] uppercase font-black">{showAvailableOffers ? "Hide" : "View / Apply"}</span>
+                                                    </button>
+
+                                                    {showAvailableOffers && (
+                                                        <div className="mt-2 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                            {availableUnappliedOffers.map((off) => (
+                                                                <div
+                                                                    key={off._id || off.id}
+                                                                    className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-800 border border-indigo-100 dark:border-slate-700 shadow-sm text-xs"
+                                                                >
+                                                                    <div className="flex flex-col min-w-0 pr-2">
+                                                                        <span className="font-bold text-gray-800 dark:text-gray-200 truncate">{off.name}</span>
+                                                                        <span className="text-[10px] text-gray-500 font-medium truncate">
+                                                                            {off.description || (off.condition?.minBillAmount ? `Min bill ₹${off.condition.minBillAmount}` : "Special Offer")}
+                                                                        </span>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            restoreOffer(off._id || off.id);
+                                                                            toast.success(`Offer "${off.name}" applied!`, { icon: '🏷️' });
+                                                                        }}
+                                                                        className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-wider shrink-0 transition-all shadow-sm cursor-pointer"
+                                                                    >
+                                                                        Apply
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
     
@@ -1529,24 +1657,43 @@ const TakeawayOrder = ({
                         <div className="grid grid-cols-2 gap-2 pt-1">
                             {(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) && (
                                 <button
+                                    type="button"
                                     onClick={handleSendToKOT}
                                     disabled={currentOrder.items.length === 0 || !hasPendingKitchenItems || isSubmittingKOT}
                                     title={
                                         isSubmittingKOT
                                             ? "Sending KOT..."
-                                            : !hasPendingKitchenItems && currentOrder.items.length > 0
-                                            ? "All items in cart have been sent to KOT. Add new items to send additional KOT."
+                                            : isSentToKOT && !hasPendingKitchenItems
+                                            ? "KOT has been sent. Add new items to cart to send an Addon KOT."
+                                            : isSentToKOT
+                                            ? "Send Addon KOT for newly added items"
                                             : "Send KOT to Kitchen"
                                     }
-                                    className="py-2.5 xl:py-4 rounded-lg xl:rounded-xl text-sm font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-1 md:gap-2"
+                                    className={`py-2.5 xl:py-4 rounded-lg xl:rounded-xl text-sm font-black transition-all shadow-md flex justify-center items-center gap-1.5 md:gap-2 cursor-pointer ${
+                                        isSubmittingKOT
+                                            ? "bg-gray-200 dark:bg-slate-800 text-gray-400 cursor-not-allowed"
+                                            : isSentToKOT && hasPendingKitchenItems
+                                            ? "bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/30 animate-pulse"
+                                            : isSentToKOT && !hasPendingKitchenItems
+                                            ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 opacity-90 cursor-not-allowed"
+                                            : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/20"
+                                    } disabled:opacity-75 disabled:cursor-not-allowed`}
                                 >
                                     {isSubmittingKOT ? (
                                         <>
                                             <Loader2 size={16} className="animate-spin" /> Sending...
                                         </>
+                                    ) : isSentToKOT && hasPendingKitchenItems ? (
+                                        <>
+                                            <Flame size={16} className="text-amber-100" /> Send Addon KOT
+                                        </>
+                                    ) : isSentToKOT && !hasPendingKitchenItems ? (
+                                        <>
+                                            <Check size={16} /> KOT Sent
+                                        </>
                                     ) : (
                                         <>
-                                            <Printer size={16} /> KOT
+                                            <Printer size={16} /> Send KOT
                                         </>
                                     )}
                                 </button>

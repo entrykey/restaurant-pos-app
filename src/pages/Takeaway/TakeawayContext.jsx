@@ -64,20 +64,26 @@ export const TakeawayProvider = ({ children }) => {
     const isResettingRef = React.useRef(false);
     const persistTimeoutRef = React.useRef(null);
 
+    const prevActiveTabIdRef = React.useRef(activeTabId);
+
     // Sync: Load active tab data into states when activeTabId changes
     useEffect(() => {
         if (isResettingRef.current) return; // Skip sync during reset
         
-        const targetTab = tabs.find(t => t.id === activeTabId);
-        if (targetTab) {
-            setIsTakeaway(targetTab.isTakeaway);
-            setTakeawayOrder(targetTab.takeawayOrder);
-            setTakeawayCustName(targetTab.takeawayCustName || "");
-            setTakeawayCustPhone(targetTab.takeawayCustPhone || "");
-            setSelectedCustomer(targetTab.selectedCustomer || null);
-            setBillDiscount(targetTab.billDiscount || { type: "flat", value: 0 }); // Load tab-specific discount
-            setLoyaltyDiscount(targetTab.loyaltyDiscount || { points: 0, amount: 0 }); // Load loyalty discount
-            setTableId(targetTab.tableId || null);
+        const isTabSwitch = prevActiveTabIdRef.current !== activeTabId;
+        if (isTabSwitch) {
+            prevActiveTabIdRef.current = activeTabId;
+            const targetTab = tabs.find(t => t.id === activeTabId);
+            if (targetTab) {
+                setIsTakeaway(targetTab.isTakeaway);
+                setTakeawayOrder(targetTab.takeawayOrder);
+                setTakeawayCustName(targetTab.takeawayCustName || "");
+                setTakeawayCustPhone(targetTab.takeawayCustPhone || "");
+                setSelectedCustomer(targetTab.selectedCustomer || null);
+                setBillDiscount(targetTab.billDiscount || { type: "flat", value: 0 }); // Load tab-specific discount
+                setLoyaltyDiscount(targetTab.loyaltyDiscount || { points: 0, amount: 0 }); // Load loyalty discount
+                setTableId(targetTab.tableId || null);
+            }
         }
     }, [activeTabId, tabs]);
 
@@ -88,50 +94,49 @@ export const TakeawayProvider = ({ children }) => {
         const shouldPersistTabs = isTakeaway && !tableId;
 
         if (!shouldPersistTabs) {
-            // Still remember which tab is active, but don't overwrite sale tabs
             localStorage.setItem('pos_active_tab_id', activeTabId.toString());
             return;
         }
 
-        // Clear any pending persistence timeout
         if (persistTimeoutRef.current) {
             clearTimeout(persistTimeoutRef.current);
         }
 
         // Debounce persistence to avoid rapid updates
         persistTimeoutRef.current = setTimeout(() => {
-            const updatedTabs = tabs.map(t => {
-                if (t.id === activeTabId) {
-                    return {
-                        ...t,
-                        isTakeaway,
-                        takeawayOrder,
-                        takeawayCustName,
-                        takeawayCustPhone,
-                        selectedCustomer,
-                        billDiscount, // Save tab-specific discount
-                        loyaltyDiscount, // Save loyalty discount
-                        tableId: null
-                    };
+            setTabs((prevTabs) => {
+                const updatedTabs = prevTabs.map(t => {
+                    if (t.id === activeTabId) {
+                        return {
+                            ...t,
+                            isTakeaway,
+                            takeawayOrder,
+                            takeawayCustName,
+                            takeawayCustPhone,
+                            selectedCustomer,
+                            billDiscount,
+                            loyaltyDiscount,
+                            tableId: null
+                        };
+                    }
+                    return t;
+                });
+                
+                if (JSON.stringify(updatedTabs) !== JSON.stringify(prevTabs)) {
+                    localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
+                    return updatedTabs;
                 }
-                return t;
+                return prevTabs;
             });
-            
-            // Only update if something actually changed to avoid unnecessary renders
-            const isDifferent = JSON.stringify(updatedTabs) !== JSON.stringify(tabs);
-            if (isDifferent) {
-                setTabs(updatedTabs);
-                localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
-            }
             localStorage.setItem('pos_active_tab_id', activeTabId.toString());
-        }, 100); // 100ms debounce
+        }, 100);
 
         return () => {
             if (persistTimeoutRef.current) {
                 clearTimeout(persistTimeoutRef.current);
             }
         };
-    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, billDiscount, loyaltyDiscount, tableId, activeTabId, tabs]);
+    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, billDiscount, loyaltyDiscount, tableId, activeTabId]);
 
     const addTab = () => {
         const nextId = Math.max(...tabs.map(t => t.id), 0) + 1;
@@ -206,6 +211,11 @@ export const TakeawayProvider = ({ children }) => {
     };
 
     const resetTakeaway = () => {
+        const draftOrderId = takeawayOrder?.orderId;
+        if (draftOrderId) {
+            orderService.deleteOrder(draftOrderId).catch(err => console.error("Failed to delete draft order on resetTakeaway:", err));
+        }
+
         // Set flag to prevent sync/persistence loops
         isResettingRef.current = true;
         
@@ -273,6 +283,12 @@ export const TakeawayProvider = ({ children }) => {
     };
 
     const clearAllTabs = () => {
+        tabs.forEach(t => {
+            const draftOrderId = t.takeawayOrder?.orderId;
+            if (draftOrderId) {
+                orderService.deleteOrder(draftOrderId).catch(err => console.error("Failed to delete draft order on clearAllTabs:", err));
+            }
+        });
         const resetTab = createTab(1);
         setTabs([resetTab]);
         setActiveTabId(1);

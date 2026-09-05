@@ -4,7 +4,7 @@ import {
     Check, X, Phone, MapPin, Loader2, ShoppingBag, CreditCard, Banknote, Printer
 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
-import { itemService, shopService, taxService, unitService, orderService, customerService } from "../../services/api";
+import { itemService, taxService, unitService, orderService, customerService } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { useOrder } from "../../context/OrderContext";
@@ -187,18 +187,28 @@ const SalePage = () => {
 
             if (existingIdx >= 0) {
                 const row = items[existingIdx];
-                const newQty = row.quantity + 1;
+                const currentPaid = row.paidQuantity !== undefined ? row.paidQuantity : row.quantity;
+                const newPaid = currentPaid + 1;
+                const withBogo = applyBogoQuantity(newPaid, item._id, offers);
+                if (withBogo > newPaid && withBogo > row.quantity) {
+                    toast.success(`Offer applied: ${withBogo - newPaid} free ${item.name}`, { icon: "🎁", duration: 3000 });
+                }
                 items[existingIdx] = {
                     ...row,
-                    quantity: newQty,
-                    taxAmount: calcLineTax(row.sellingPrice, newQty, row.taxPercent),
+                    paidQuantity: newPaid,
+                    freeQuantity: withBogo - newPaid,
+                    quantity: withBogo,
+                    taxAmount: calcLineTax(row.sellingPrice, withBogo, row.taxPercent),
                 };
             } else {
                 const withBogo = applyBogoQuantity(1, item._id, offers);
                 if (withBogo > 1) {
                     toast.success(`Offer applied: ${withBogo - 1} free ${item.name}`, { icon: "🎁", duration: 3000 });
                 }
-                items.push(buildLineItem(item, withBogo));
+                const lineItem = buildLineItem(item, withBogo);
+                lineItem.paidQuantity = 1;
+                lineItem.freeQuantity = withBogo - 1;
+                items.push(lineItem);
                 items = appendCrossItemFreeAdds(items, item._id, 1, stockItems);
             }
 
@@ -226,7 +236,17 @@ const SalePage = () => {
                     updatedItems[index].unitName = row.primaryUnitName;
                 }
             }
-            updatedItems[index][field] = value;
+            if (field === "quantity") {
+                const newPaid = Number(value) || 1;
+                const row = updatedItems[index];
+                const itemId = row.itemId || row._id || row.id;
+                const withBogo = applyBogoQuantity(newPaid, itemId, offers);
+                row.paidQuantity = newPaid;
+                row.freeQuantity = withBogo - newPaid;
+                row.quantity = withBogo;
+            } else {
+                updatedItems[index][field] = value;
+            }
         }
 
         const needsRecalc =
@@ -246,10 +266,25 @@ const SalePage = () => {
     };
 
     const removeItem = (index) => {
-        setFormData((prev) => ({
-            ...prev,
-            items: prev.items.filter((_, i) => i !== index),
-        }));
+        setFormData((prev) => {
+            const removedItem = prev.items[index];
+            const remainingItems = prev.items.filter((_, i) => i !== index);
+            if (!removedItem) return { ...prev, items: remainingItems };
+
+            const removedItemId = removedItem.itemId || removedItem._id || removedItem.id;
+            const crossAdds = getCrossItemFreeAdds(1, removedItemId, offers, stockItems);
+            const crossFreeIds = crossAdds.map((ca) => String(ca.item._id || ca.item.id));
+
+            const cleanedItems = remainingItems.filter((it) => {
+                const itId = String(it.itemId || it._id || it.id);
+                if (crossFreeIds.includes(itId) && (it.paidQuantity === 0 || it.isAutoAddedFree)) {
+                    return false;
+                }
+                return true;
+            });
+
+            return { ...prev, items: cleanedItems };
+        });
     };
 
     const orderItemsForBill = useMemo(() =>
@@ -273,7 +308,7 @@ const SalePage = () => {
             0,
             false
         ),
-    [orderItemsForBill, formData.discountTotal, calculateBillDetails, offers]);
+    [orderItemsForBill, formData.discountTotal, calculateBillDetails]);
 
     const filteredCustomers = useMemo(() => {
         const q = customerSearch.trim().toLowerCase();
@@ -819,24 +854,29 @@ const SalePage = () => {
                                 {billDetails.appliedOffers?.length > 0 && (
                                     <div className="space-y-1.5">
                                         <p className={`text-[10px] font-black uppercase tracking-widest text-emerald-600`}>Applied Offers</p>
-                                        {billDetails.appliedOffers.map((offer, idx) => (
-                                            <div key={offer.offerId || idx} className="flex justify-between items-center text-sm font-bold text-emerald-600 gap-2">
-                                                <span className="truncate">{offer.name}</span>
-                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                    <span>-{formatCurrency(offer.discount)}</span>
-                                                    {offer.offerId && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => dismissOffer(offer.offerId)}
-                                                            className="p-1 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
-                                                            title="Remove offer"
-                                                        >
-                                                            <X size={14} />
-                                                        </button>
-                                                    )}
+                                        {billDetails.appliedOffers.map((offer, idx) => {
+                                            if (!offer) return null;
+                                            const title = offer.offerName || offer.name || "Special Offer";
+                                            const amt = Number(offer.discountAmount ?? offer.discount ?? 0);
+                                            return (
+                                                <div key={offer.offerId || idx} className="flex justify-between items-center text-sm font-bold text-emerald-600 gap-2">
+                                                    <span className="truncate">{title}</span>
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        <span>-{formatCurrency(amt)}</span>
+                                                        {offer.offerId && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => dismissOffer(offer.offerId)}
+                                                                className="p-1 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
+                                                                title="Remove offer"
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                                 {formData.discountTotal > 0 && (
