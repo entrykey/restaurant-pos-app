@@ -6,6 +6,7 @@ import { shopService } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import CommonSelect from '../components/ui/CommonSelect';
 import { toast } from 'react-hot-toast';
+import { validateEmail, validatePassword, sanitizeEmailInput } from '../utils/validation';
 
 const RegisterShop = ({ onBack, onRegisterSuccess }) => {
     const navigate = useNavigate();
@@ -45,11 +46,6 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
         fetchTypes();
     }, []);
 
-    const validateEmail = (email) => {
-        const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
-        return emailRegex.test(email);
-    };
-
     const validatePhone = (phone) => {
         const phoneRegex = /^[0-9]{10,15}$/;
         const cleanPhone = phone.replace(/\D/g, '');
@@ -78,7 +74,7 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
         }
 
         if (formData.ownerEmail.trim() && !validateEmail(formData.ownerEmail.trim())) {
-            errors.ownerEmail = "Please enter a valid email address";
+            errors.ownerEmail = "Please enter a valid email address (e.g. name@domain.com)";
         }
 
         if (formData.ownerPhone.trim() && !validatePhone(formData.ownerPhone.trim())) {
@@ -92,8 +88,11 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
 
         if (!formData.password) {
             errors.password = "Password is required";
-        } else if (formData.password.length < 6) {
-            errors.password = "Password must be at least 6 characters";
+        } else {
+            const pwdCheck = validatePassword(formData.password);
+            if (!pwdCheck.valid) {
+                errors.password = pwdCheck.message;
+            }
         }
 
         setValidationErrors(errors);
@@ -295,7 +294,7 @@ const RegisterShop = ({ onBack, onRegisterSuccess }) => {
                                 <input
                                     type="email"
                                     value={formData.ownerEmail}
-                                    onChange={(e) => handleInputChange('ownerEmail', e.target.value.toLowerCase())}
+                                    onChange={(e) => handleInputChange('ownerEmail', sanitizeEmailInput(e.target.value))}
                                     placeholder="Fill your email address"
                                     className={`w-full px-3.5 py-2.5 rounded-xl border text-xs outline-none transition-all ${
                                         isDark 

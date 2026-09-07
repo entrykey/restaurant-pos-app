@@ -84,7 +84,6 @@ export const printSaleOrder = async ({
 }) => {
     const mergedSettings = mergeBillPrintSettings(billSettings);
     const printFormat = format || mergedSettings.defaultFormat || 'thermal';
-    const fmtSettings = printFormat === 'a4' ? mergedSettings.a4 : mergedSettings.thermal;
 
     const backendItems = order?.items || [];
     const itemsForPrint = backendItems.map((it) => ({

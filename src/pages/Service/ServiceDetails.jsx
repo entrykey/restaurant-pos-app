@@ -8,8 +8,8 @@ import { formatCurrency } from "../../utils/format";
 // Mock Data
 const MOCK_DATA = {
     id: "SRV-2023-001",
-    customerName: "John Doe",
-    mobile: "9876543210",
+    customerName: "Rahul Sharma",
+    mobile: "9812345678",
     address: "123 Main St, Springfield",
     product: "iPhone 13",
     brand: "Apple",

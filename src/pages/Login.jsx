@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ArrowRight, ShieldCheck, Sun, Moon, ArrowLeft, Mail, Lock, UserCheck } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, ShieldCheck, Sun, Moon, ArrowLeft } from "lucide-react";
 import ThemeLoader from "../components/ui/ThemeLoader";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
 import MiniaturePOSSimulator from "../components/MiniaturePOSSimulator";
@@ -11,6 +11,7 @@ import {
   getDefaultModules,
   getAllModules,
 } from "../config/businessTypes";
+import { validateEmail, sanitizeIdentifierInput } from '../utils/validation';
 
 const getNowLog = (role, identifier) => {
   const now = new Date();
@@ -55,28 +56,27 @@ export default function Login({
     }
   }, [auth.isAuthenticated, auth.user]);
 
-  const validateEmail = (email) => {
-    const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
-    return emailRegex.test(email);
-  };
-
-  const validatePhone = (phone) => {
-    const phoneRegex = /^[0-9]{10,15}$/;
-    const cleanPhone = phone.replace(/\D/g, '');
-    return phoneRegex.test(cleanPhone);
-  };
-
   const validateForm = () => {
     const errors = {};
 
     if (!identifier.trim()) {
-      errors.identifier = "Please enter your email or phone number";
+      errors.identifier = "Please enter your email address or phone number";
     } else {
-      const isEmail = identifier.includes('@');
-      if (isEmail && !validateEmail(identifier)) {
-        errors.identifier = "Please enter a valid email address";
-      } else if (!isEmail && !validatePhone(identifier)) {
-        errors.identifier = "Please enter a valid phone number";
+      const trimmed = identifier.trim();
+      const hasAlphaOrAt = /[a-zA-Z@]/.test(trimmed);
+      const hasDigits = /[0-9]/.test(trimmed);
+
+      if (!hasAlphaOrAt && !hasDigits) {
+        errors.identifier = "Please enter a valid email address or phone number";
+      } else if (hasAlphaOrAt) {
+        if (!validateEmail(trimmed)) {
+          errors.identifier = "Please enter a valid email address (e.g. name@domain.com)";
+        }
+      } else {
+        const cleanDigits = trimmed.replace(/[^0-9]/g, '');
+        if (cleanDigits.length < 10 || cleanDigits.length > 15) {
+          errors.identifier = "Please enter a valid 10-15 digit phone number";
+        }
       }
     }
 
@@ -272,31 +272,9 @@ export default function Login({
                       type="text"
                       value={identifier}
                       onChange={(e) => {
-                        let value = e.target.value;
-                        const hasAtSymbol = value.includes('@');
-                        if (hasAtSymbol) {
-                          value = value.toLowerCase();
-                          setIdentifier(value);
-                          setValidationErrors(prev => ({ ...prev, identifier: '' }));
-                          if (!validateEmail(value)) {
-                            setValidationErrors(prev => ({ ...prev, identifier: 'Invalid email format' }));
-                          }
-                        } else {
-                          const startsLikePhone = /^[\+0-9]/.test(value);
-                          if (startsLikePhone) {
-                            value = value.replace(/[^0-9\s\-\(\)\+]/g, '');
-                            setIdentifier(value);
-                            const cleanPhone = value.replace(/\D/g, '');
-                            if (cleanPhone.length > 0 && (cleanPhone.length < 10 || cleanPhone.length > 15)) {
-                              setValidationErrors(prev => ({ ...prev, identifier: 'Phone must be 10-15 digits' }));
-                            } else {
-                              setValidationErrors(prev => ({ ...prev, identifier: '' }));
-                            }
-                          } else {
-                            setIdentifier(value);
-                            setValidationErrors(prev => ({ ...prev, identifier: '' }));
-                          }
-                        }
+                        const sanitized = sanitizeIdentifierInput(e.target.value);
+                        setIdentifier(sanitized);
+                        setValidationErrors(prev => ({ ...prev, identifier: '' }));
                       }}
                       placeholder="Fill your email address or phone"
                       className={`w-full px-4 py-3.5 rounded-2xl border text-xs sm:text-sm outline-none transition-all ${
@@ -331,7 +309,7 @@ export default function Login({
                       value={password}
                       onChange={(e) => {
                         const rawVal = e.target.value;
-                        const cleanVal = rawVal.replace(/[^a-zA-Z0-9@#$!%&*_\-\.]/g, '');
+                        const cleanVal = rawVal.replace(/[^a-zA-Z0-9@#$!%&*_\-.]/g, '');
                         const hadInvalidChar = cleanVal !== rawVal;
                         setPassword(cleanVal);
                         if (hadInvalidChar) {

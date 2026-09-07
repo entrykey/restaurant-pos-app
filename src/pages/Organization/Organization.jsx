@@ -448,7 +448,7 @@ const Organization = ({
         const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
         const actionText = isCurrent ? (isExpired ? "renew request for" : "request subscription to") : "request subscription to";
 
-        confirmToast(`${actionText.charAt(0).toUpperCase() + actionText.slice(1)} ${plan.name}? Since payment integration is currently inactive, a request will be sent to the Super Admin for manual acceptance.`, async () => {
+        confirmToast(`Request subscription activation for ${plan.name}? A request will be sent to the Super Admin for approval.`, async () => {
             setPlanLoading(true);
             try {
                 await subscriptionService.createSubscription({
@@ -788,7 +788,7 @@ const Organization = ({
                                     value={organization?.ownerEmail ?? ""}
                                     onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerEmail: e.target.value })}
                                     readOnly={!canEditOrg}
-                                    placeholder="owner@example.com"
+                                    placeholder="e.g. owner@business.com"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -803,7 +803,7 @@ const Organization = ({
                                         setOrganization({ ...organization, ownerContact: cleanPhone });
                                     }}
                                     readOnly={!canEditOrg}
-                                    placeholder="+91 98765 43210"
+                                    placeholder="e.g. +91 98765 43210"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -864,8 +864,8 @@ const Organization = ({
                 <div
                     id="organization-subscription-plans"
                     className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border transition-[box-shadow,ring] duration-500 ${theme.borderLight || 'border-slate-100 dark:border-slate-700'} ${highlightSubscriptionSection
-                            ? 'ring-4 ring-indigo-500 ring-offset-4 ring-offset-slate-950/0 dark:ring-offset-slate-900 shadow-2xl shadow-indigo-500/20'
-                            : ''
+                        ? 'ring-4 ring-indigo-500 ring-offset-4 ring-offset-slate-950/0 dark:ring-offset-slate-900 shadow-2xl shadow-indigo-500/20'
+                        : ''
                         }`}
                 >
                     <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} mb-6 flex items-center gap-2`}>
@@ -875,7 +875,7 @@ const Organization = ({
                     <div className={`p-6 rounded-3xl mb-8 flex flex-col md:flex-row justify-between items-center gap-4 border ${themeName === 'dark' ? 'bg-slate-900/50 border-slate-700' : 'bg-indigo-50/80 border-indigo-100/70'}`}>
                         <div>
                             <p className={`text-xs font-black uppercase mb-1 ${theme.primaryIconText}`}>
-                                {isTrialRunMode ? 'Access status' : 'Current Plan'}
+                                {isTrialRunMode ? 'Access status' : (organization?.isTrial ? 'Trial Period (Free Trial)' : 'Current Plan')}
                             </p>
                             <h4 className={`text-2xl font-black ${theme.textHeading}`}>{organization?.planName}</h4>
                             <p className={`font-medium ${theme.textSecondary || 'text-gray-500'}`}>{organization?.planPriceLabel}</p>
@@ -927,7 +927,7 @@ const Organization = ({
                                 <div>
                                     <h4 className={`font-black ${theme.textHeading}`}>Subscription Request Pending Super Admin Approval</h4>
                                     <p className={`text-sm mt-1 ${theme.textSecondary}`}>
-                                        Your request for plan activation has been submitted. Since online payment integration is not active, a super admin must manually accept your request before write permissions and features are activated.
+                                        Your request for plan activation has been submitted. A super admin will review and activate your subscription request shortly.
                                     </p>
                                 </div>
                             </div>
@@ -1012,7 +1012,12 @@ const Organization = ({
                                                         : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
                                                         }`}
                                                 >
-                                                    {trialLoading === plan.id ? "Processing…" : (isCurrent ? (isExpired ? "Request Renewal" : "Current Plan") : "Request Subscription")}
+                                                    {trialLoading === plan.id
+                                                        ? "Processing…"
+                                                        : (isCurrent && !isTrialPlan
+                                                            ? (isExpired ? "Request Renewal" : "Current Plan")
+                                                            : "Request Subscription")
+                                                    }
                                                 </button>
                                             )}
                                         </div>

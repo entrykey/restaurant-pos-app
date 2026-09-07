@@ -4,11 +4,11 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { MODULES } from '../../constants/modules';
-import { branchService, customerService, loyaltyService, api } from '../../services/api';
+import { customerService, loyaltyService, api } from '../../services/api';
 import CommonTable from '../../components/CommonTable';
 import Supplier from '../Suppliers/Supplier';
-import { SupplierService } from '../Suppliers/SupplierService';
 import { toast } from 'react-hot-toast';
+import { validateEmail, sanitizeEmailInput, sanitizeNameInput, sanitizePhoneInput } from '../../utils/validation';
 
 const PARTIES_MODULE = MODULES.PARTIES;
 
@@ -36,6 +36,7 @@ const Parties = ({ hasPermissionFor }) => {
         status: 'ACTIVE',
         discountPercentage: 0
     });
+    const [customerValidationErrors, setCustomerValidationErrors] = useState({});
 
     // Loyalty settings state
     const [loyaltySettings, setLoyaltySettings] = useState(null);
@@ -136,6 +137,7 @@ const Parties = ({ hasPermissionFor }) => {
     };
 
     const openCustomerModal = (customer = null) => {
+        setCustomerValidationErrors({});
         if (customer) {
             setEditingCustomer(customer);
             setCustomerForm({
@@ -154,12 +156,33 @@ const Parties = ({ hasPermissionFor }) => {
         setCustomerModalOpen(true);
     };
 
+    const validateCustomerForm = () => {
+        const errors = {};
+        if (!customerForm.name || !/[a-zA-Z]/.test(customerForm.name) || customerForm.name.trim().length < 2) {
+            errors.name = 'Customer name must contain at least 2 valid letters';
+        }
+        const cleanPhone = (customerForm.phone || '').replace(/[^0-9]/g, '');
+        if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 15) {
+            errors.phone = 'Please enter a valid 10-15 digit phone number';
+        }
+        if (customerForm.email && !validateEmail(customerForm.email)) {
+            errors.email = 'Please enter a valid email address (e.g. name@domain.com)';
+        }
+        setCustomerValidationErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
     const saveCustomer = async (e) => {
         e.preventDefault();
         if (!activeBranchId && !editingCustomer) {
-            alert('Please select a branch first.');
+            toast.error('Please select a branch first.');
             return;
         }
+
+        if (!validateCustomerForm()) {
+            return;
+        }
+
         setCustomerLoading(true);
         try {
             const payload = {
@@ -437,25 +460,61 @@ const Parties = ({ hasPermissionFor }) => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Name *</label>
-                                    <input required className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} value={customerForm.name} onChange={e => setCustomerForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" />
+                                    <input 
+                                        required 
+                                        className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${customerValidationErrors.name ? 'border-rose-500' : theme.borderLight} ${theme.textPrimary}`} 
+                                        value={customerForm.name} 
+                                        onChange={e => {
+                                            setCustomerForm(f => ({ ...f, name: sanitizeNameInput(e.target.value) }));
+                                            if (customerValidationErrors.name) setCustomerValidationErrors(prev => ({ ...prev, name: null }));
+                                        }} 
+                                        placeholder="Enter full name" 
+                                    />
+                                    {customerValidationErrors.name && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{customerValidationErrors.name}</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Phone *</label>
                                     <div className="relative">
                                         <Phone className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
-                                        <input required className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} value={customerForm.phone} onChange={e => setCustomerForm(f => ({ ...f, phone: e.target.value }))} placeholder="+91..." />
+                                        <input 
+                                            required 
+                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${customerValidationErrors.phone ? 'border-rose-500' : theme.borderLight} ${theme.textPrimary}`} 
+                                            value={customerForm.phone} 
+                                            onChange={e => {
+                                                setCustomerForm(f => ({ ...f, phone: sanitizePhoneInput(e.target.value) }));
+                                                if (customerValidationErrors.phone) setCustomerValidationErrors(prev => ({ ...prev, phone: null }));
+                                            }} 
+                                            placeholder="Enter 10-digit mobile number" 
+                                        />
                                     </div>
+                                    {customerValidationErrors.phone && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{customerValidationErrors.phone}</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2 md:col-span-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Email</label>
                                     <div className="relative">
                                         <Mail className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
-                                        <input type="email" className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} value={customerForm.email} onChange={e => setCustomerForm(f => ({ ...f, email: e.target.value }))} placeholder="customer@example.com" />
+                                        <input 
+                                            type="email" 
+                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${customerValidationErrors.email ? 'border-rose-500' : theme.borderLight} ${theme.textPrimary}`} 
+                                            value={customerForm.email} 
+                                            onChange={e => {
+                                                setCustomerForm(f => ({ ...f, email: sanitizeEmailInput(e.target.value) }));
+                                                if (customerValidationErrors.email) setCustomerValidationErrors(prev => ({ ...prev, email: null }));
+                                            }} 
+                                            placeholder="name@domain.com" 
+                                        />
                                     </div>
+                                    {customerValidationErrors.email && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{customerValidationErrors.email}</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Tax number / GSTIN</label>
-                                    <input className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} value={customerForm.taxNumber} onChange={e => setCustomerForm(f => ({ ...f, taxNumber: e.target.value }))} placeholder="Optional" />
+                                    <input className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} value={customerForm.taxNumber} onChange={e => setCustomerForm(f => ({ ...f, taxNumber: e.target.value }))} placeholder="Optional GSTIN / Tax ID" />
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Discount Percentage (%)</label>

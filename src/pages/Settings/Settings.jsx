@@ -264,6 +264,45 @@ const Settings = ({
     const renderSettingInput = (setting) => {
         const { key, value, type, meta } = setting;
 
+        const isBoolean = 
+            type === 'boolean' ||
+            typeof value === 'boolean' ||
+            value === 'true' ||
+            value === 'false' ||
+            (typeof key === 'string' && (
+                key.startsWith('ALLOW_') ||
+                key.startsWith('ENABLE_') ||
+                key.startsWith('RESET_') ||
+                key.startsWith('INCLUDE_') ||
+                key.startsWith('SHOW_') ||
+                key.startsWith('IS_') ||
+                key.startsWith('PREPAID_') ||
+                key.endsWith('_ENABLED') ||
+                key.endsWith('_ALLOW')
+            ));
+
+        if (isBoolean) {
+            const boolVal = value === true || value === 'true' || String(value).toLowerCase() === 'true';
+            return (
+                <button
+                    type="button"
+                    onClick={() => handleUpdateBackendSetting(key, !boolVal)}
+                    aria-label={`Toggle ${setting.displayString || key}`}
+                    className={`relative w-14 h-8 rounded-full p-1 transition-colors duration-300 ease-in-out cursor-pointer shrink-0 ${
+                        boolVal
+                            ? `${theme.buttonBg || 'bg-indigo-600'}`
+                            : 'bg-gray-300 dark:bg-slate-700/80 border border-gray-400 dark:border-slate-600'
+                    }`}
+                >
+                    <div
+                        className={`w-6 h-6 rounded-full bg-white shadow-md transform transition-transform duration-300 ease-in-out ${
+                            boolVal ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                    />
+                </button>
+            );
+        }
+
         if (meta?.inputType === 'select') {
             const options = key === 'DEFAULT_SHOP_OWNER_ROLE' ? systemRoles.map(r => ({ label: r.name, value: r._id })) : (meta.options || []);
             
@@ -329,46 +368,25 @@ const Settings = ({
             );
         }
 
-        switch (type) {
-            case 'boolean': {
-                const boolVal = Boolean(value);
-                return (
-                    <button
-                        type="button"
-                        onClick={() => handleUpdateBackendSetting(key, !boolVal)}
-                        aria-label={`Toggle ${setting.displayString || key}`}
-                        className={`relative w-14 h-8 rounded-full p-1 transition-colors duration-300 ease-in-out cursor-pointer shrink-0 ${
-                            boolVal
-                                ? `${theme.buttonBg || 'bg-indigo-600'}`
-                                : 'bg-gray-300 dark:bg-slate-700/80 border border-gray-400 dark:border-slate-600'
-                        }`}
-                    >
-                        <div
-                            className={`w-6 h-6 rounded-full bg-white shadow-md transform transition-transform duration-300 ease-in-out ${
-                                boolVal ? 'translate-x-6' : 'translate-x-0'
-                            }`}
-                        />
-                    </button>
-                );
-            }
-            case 'number':
-                return (
-                    <input
-                        type="number"
-                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
-                        value={value}
-                        onChange={(e) => handleUpdateBackendSetting(key, parseFloat(e.target.value))}
-                    />
-                );
-            default:
-                return (
-                    <input
-                        className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
-                        value={value}
-                        onChange={(e) => handleUpdateBackendSetting(key, e.target.value)}
-                    />
-                );
+        const isNumber = type === 'number' || typeof value === 'number';
+        if (isNumber) {
+            return (
+                <input
+                    type="number"
+                    className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
+                    value={value ?? ''}
+                    onChange={(e) => handleUpdateBackendSetting(key, parseFloat(e.target.value))}
+                />
+            );
         }
+
+        return (
+            <input
+                className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
+                value={value ?? ''}
+                onChange={(e) => handleUpdateBackendSetting(key, e.target.value)}
+            />
+        );
     };
 
     const renderContent = () => {
@@ -407,54 +425,58 @@ const Settings = ({
                                 <RefreshCw className="animate-spin mx-auto mb-4 text-indigo-500" size={40} />
                                 <p className={`font-bold ${theme.textSecondary}`}>Loading system settings...</p>
                             </div>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-6">
-                                {backendSettings.filter(s => {
-                                    const printSettingsKeys = [
-                                        'BARCODE_PRINT_SETTINGS', 'BILL_PRINT_SETTINGS', 'PURCHASE_INVOICE_SETTINGS'
-                                    ];
-                                    if (printSettingsKeys.includes(s.key)) return false;
+                        ) : (() => {
+                            const filteredGeneralSettings = backendSettings.filter(s => {
+                                const printSettingsKeys = [
+                                    'BARCODE_PRINT_SETTINGS', 'BILL_PRINT_SETTINGS', 'PURCHASE_INVOICE_SETTINGS'
+                                ];
+                                if (printSettingsKeys.includes(s.key)) return false;
 
-                                    const saleSettingsKeys = [
-                                        'SALE_MARKING_TYPE', 'SALE_MARKING_TIME',
-                                        'ENABLE_STOCK_ITEMS', 'ENABLE_MANUFACTURED_ITEMS', 'ENABLE_TRADE_ITEMS',
-                                        'ALLOW_CREDIT', 'ALLOW_CREDIT_PAYMENT', 'PREPAID_AUTO_SERVE_ON_PAYMENT'
-                                    ];
-                                    if (saleSettingsKeys.includes(s.key)) return false;
-                                    if (['DEFAULT_SHOP_OWNER_ROLE', 'SUBSCRIPTION_METHOD', 'ALLOW_UNSAFE_REGISTRATION'].includes(s.key)) return false;
+                                const saleSettingsKeys = [
+                                    'SALE_MARKING_TYPE', 'SALE_MARKING_TIME',
+                                    'ENABLE_STOCK_ITEMS', 'ENABLE_MANUFACTURED_ITEMS', 'ENABLE_TRADE_ITEMS',
+                                    'ALLOW_CREDIT', 'ALLOW_CREDIT_PAYMENT', 'PREPAID_AUTO_SERVE_ON_PAYMENT'
+                                ];
+                                if (saleSettingsKeys.includes(s.key)) return false;
 
-                                    if (isSuperAdmin) return s.isSystem;
-                                    
-                                    // Filter based on business type features
-                                    if (s.key === 'ENABLE_STOCK_ITEMS' && businessTypeData?.features?.sellStockItems === false) return false;
-                                    if (s.key === 'ENABLE_MANUFACTURED_ITEMS' && businessTypeData?.features?.sellManufacturedItems === false) return false;
-                                    if (s.key === 'ENABLE_TRADE_ITEMS' && businessTypeData?.features?.sellTradeItems === false) return false;
+                                // Non-superadmin should not see system settings
+                                if (!isSuperAdmin && s.isSystem) return false;
 
-                                    return true;
-                                }).map((setting) => (
-                                    <div key={setting.key} className={`p-6 ${theme.inputBg} rounded-3xl border ${theme.inputBorder} flex flex-col md:flex-row md:items-center justify-between gap-4`}>
-                                        <div className="space-y-1">
-                                            <div className="flex items-center gap-2">
-                                                <h4 className={`font-black ${theme.textHeading}`}>{setting.displayString}</h4>
-                                                {setting.isSystem && (
-                                                    <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase">System</span>
-                                                )}
+                                // Filter based on business type features
+                                if (s.key === 'ENABLE_STOCK_ITEMS' && businessTypeData?.features?.sellStockItems === false) return false;
+                                if (s.key === 'ENABLE_MANUFACTURED_ITEMS' && businessTypeData?.features?.sellManufacturedItems === false) return false;
+                                if (s.key === 'ENABLE_TRADE_ITEMS' && businessTypeData?.features?.sellTradeItems === false) return false;
+
+                                return true;
+                            });
+
+                            return (
+                                <div className="grid grid-cols-1 gap-6">
+                                    {filteredGeneralSettings.map((setting) => (
+                                        <div key={setting.key} className={`p-6 ${theme.inputBg} rounded-3xl border ${theme.inputBorder} flex flex-col md:flex-row md:items-center justify-between gap-4`}>
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className={`font-black ${theme.textHeading}`}>{setting.displayString}</h4>
+                                                    {setting.isSystem && (
+                                                        <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600 text-[10px] font-black uppercase">System</span>
+                                                    )}
+                                                </div>
+                                                <p className={`text-xs ${theme.textSecondary} max-w-md`}>{setting.description}</p>
                                             </div>
-                                            <p className={`text-xs ${theme.textSecondary} max-w-md`}>{setting.description}</p>
+                                            <div className="flex items-center gap-3 shrink-0">
+                                                {renderSettingInput(setting)}
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-3 shrink-0">
-                                            {renderSettingInput(setting)}
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
 
-                                {backendSettings.length === 0 && (
-                                    <div className="py-10 text-center border-2 border-dashed rounded-3xl border-gray-100 italic text-gray-400 font-bold">
-                                        No general settings found in the system.
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                                    {filteredGeneralSettings.length === 0 && (
+                                        <div className="py-10 text-center border-2 border-dashed rounded-3xl border-gray-100 italic text-gray-400 font-bold">
+                                            No general settings found in the system.
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </div>
                 );
 

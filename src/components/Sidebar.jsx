@@ -245,17 +245,17 @@ const Sidebar = ({
 
     const MODULE_CONFIG = {
         DASHBOARD: {
-            icon: LayoutDashboard, label: "Dashboard",
+            icon: LayoutDashboard, label: "Dashboard", shortLabel: "Dashboard",
             onClick: () => { setView("dashboard"); goDashboard(); },
             isActive: checkActive(view, "dashboard", "owner-dashboard")
         },
         DINING: {
-            icon: Utensils, label: "Dining Hall",
+            icon: Utensils, label: "Dining Hall", shortLabel: "Dining",
             onClick: () => { setView("tables"); setIsTakeaway(false); navigate("/dininghall"); closeMobile(); },
             isActive: checkActive(view, "DINING", "tables") || (checkActive(view, "order") && !isTakeaway)
         },
         TAKEAWAY: {
-            icon: ShoppingBag, label: "Takeaway",
+            icon: ShoppingBag, label: "Takeaway", shortLabel: "Takeaway",
             onClick: () => {
                 setTableId(null);
                 activateSaleTab("TAKEAWAY");
@@ -267,7 +267,7 @@ const Sidebar = ({
             isActive: checkActive(view, "TAKEAWAY", "order") && isTakeaway && takeawayOrder?.orderType === 'TAKEAWAY'
         },
         DIRECT_SALE: {
-            icon: ShoppingCart, label: "Direct Sale",
+            icon: ShoppingCart, label: "Direct Sale", shortLabel: "Direct",
             onClick: () => {
                 setTableId(null);
                 activateSaleTab("DIRECT_SALE");
@@ -279,7 +279,7 @@ const Sidebar = ({
             isActive: checkActive(view, "DIRECT_SALE", "TAKEAWAY", "order") && isTakeaway && takeawayOrder?.orderType === 'DIRECT_SALE'
         },
         WHOLESALE: {
-            icon: Store, label: "Wholesale",
+            icon: Store, label: "Wholesale", shortLabel: "Wholesale",
             onClick: () => {
                 setTableId(null);
                 setView("order");
@@ -292,168 +292,168 @@ const Sidebar = ({
             isActive: checkActive(view, "WHOLESALE", "order") && isTakeaway && takeawayOrder?.orderType === 'WHOLESALE'
         },
         ONLINE_ORDERS: {
-            icon: Globe, label: "Online Orders",
+            icon: Globe, label: "Online Orders", shortLabel: "Online",
             badge: pendingOnlineOrdersCount,
             onClick: () => { setView("online-orders"); navigate("/online-orders"); closeMobile(); },
             isActive: checkActive(view, "online-orders", "ONLINE_ORDERS")
         },
         DELIVERY_MANAGEMENT: {
-            icon: Truck, label: "Delivery Management",
+            icon: Truck, label: "Delivery Management", shortLabel: "Delivery",
             onClick: () => { setView("delivery-management"); navigate("/delivery-management"); closeMobile(); },
             isActive: checkActive(view, "delivery-management", "DELIVERY_MANAGEMENT") || location.pathname.includes("/delivery-management")
         },
         DELIVERY_SETTLEMENT: {
-            icon: Wallet, label: "Delivery Settlement",
+            icon: Wallet, label: "Delivery Settlement", shortLabel: "Settlement",
             onClick: () => { setView("delivery-settlement"); navigate("/delivery-settlement"); closeMobile(); },
             isActive: checkActive(view, "delivery-settlement", "DELIVERY_SETTLEMENT") || location.pathname.includes("/delivery-settlement")
         },
         KDS: {
-            icon: MonitorPlay, label: "Kitchen Display (KDS)",
+            icon: MonitorPlay, label: "Kitchen Display (KDS)", shortLabel: "Kitchen",
             onClick: () => { setView("kds"); navigate("/kds"); closeMobile(); },
             isActive: checkActive(view, "kds", "KDS")
         },
         RESERVATIONS: {
-            icon: CalendarCheck, label: "Reservations",
+            icon: CalendarCheck, label: "Reservations", shortLabel: "Reservations",
             onClick: () => { setView("reservations"); navigate("/reservations"); closeMobile(); },
             isActive: checkActive(view, "reservations", "RESERVATIONS")
         },
         INVENTORY: {
-            icon: Boxes, label: "Stock Items",
+            icon: Boxes, label: "Stock Items", shortLabel: "Stock",
             onClick: () => { setView("inventory"); navigate("/inventory"); closeMobile(); },
             isActive: checkActive(view, "inventory", "INVENTORY")
         },
         SALE_MARKING: {
-            icon: CalendarCheck, label: "Sale Marking",
+            icon: CalendarCheck, label: "Sale Marking", shortLabel: "Marking",
             onClick: () => { setView("sale-marking"); navigate("/sale-marking"); closeMobile(); },
             isActive: checkActive(view, "sale-marking", "SALE_MARKING")
         },
         SALES_HISTORY: {
-            icon: ShoppingBag, label: "Sales Invoice",
+            icon: ShoppingBag, label: "Sales Invoice", shortLabel: "Sales Inv.",
             onClick: () => { setView("sales-history"); navigate("/sales-history"); closeMobile(); },
             isActive: checkActive(view, "sales-history", "SALES_HISTORY")
         },
         SALES_RETURN: {
-            icon: RotateCcw, label: "Sales Returns",
+            icon: RotateCcw, label: "Sales Returns", shortLabel: "Returns",
             onClick: () => { setView("salesreturn"); navigate("/salesreturn"); closeMobile(); },
             isActive: checkActive(view, "salesreturn", "SALES_RETURN") || location.pathname.includes("/salesreturn")
         },
         PAY_IN: {
-            icon: Wallet, label: "Pay In",
+            icon: Wallet, label: "Pay In", shortLabel: "Pay In",
             onClick: () => { setView("pay-in"); navigate("/dashboard/pay-in"); closeMobile(); },
             isActive: checkActive(view, "pay-in", "PAY_IN") || location.pathname.includes("/dashboard/pay-in")
         },
         PAY_OUT: {
-            icon: Truck, label: "Pay Out",
+            icon: Truck, label: "Pay Out", shortLabel: "Pay Out",
             onClick: () => { setView("pay-out"); navigate("/dashboard/pay-out"); closeMobile(); },
             isActive: checkActive(view, "pay-out", "PAY_OUT") || location.pathname.includes("/dashboard/pay-out")
         },
         REPORTS: {
-            icon: TrendingUp, label: "Reports",
+            icon: TrendingUp, label: "Reports", shortLabel: "Reports",
             onClick: () => { setView("reports"); navigate("/reports"); closeMobile(); },
             isActive: checkActive(view, "reports", "REPORTS")
         },
         OFFERS: {
-            icon: Tag, label: "Offers",
+            icon: Tag, label: "Offers", shortLabel: "Offers",
             onClick: () => { setView("offers"); navigate("/offers"); closeMobile(); },
             isActive: checkActive(view, "offers", "OFFERS")
         },
         SETTINGS: {
-            icon: Settings, label: "Settings",
+            icon: Settings, label: "Settings", shortLabel: "Settings",
             onClick: () => { setView("settings"); navigate("/settings"); closeMobile(); },
             isActive: checkActive(view, "settings", "SETTINGS")
         },
         STAFF: {
-            icon: UserCog, label: "Staff",
+            icon: UserCog, label: "Staff", shortLabel: "Staff",
             onClick: () => { setView("staff"); navigate("/staff"); closeMobile(); },
             isActive: checkActive(view, "staff", "STAFF")
         },
         MYATTENDANCE: {
-            icon: CalendarCheck, label: "My Attendance",
+            icon: CalendarCheck, label: "My Attendance", shortLabel: "Attendance",
             onClick: () => { setView("my-attendance"); navigate("/my-attendance"); closeMobile(); },
             isActive: checkActive(view, "my-attendance", "MYATTENDANCE")
         },
         MYLEAVES: {
-            icon: ClipboardList, label: "My Leaves",
+            icon: ClipboardList, label: "My Leaves", shortLabel: "Leaves",
             onClick: () => { setView("my-leaves"); navigate("/my-leaves"); closeMobile(); },
             isActive: checkActive(view, "my-leaves", "MYLEAVES")
         },
         MYSALARY: {
-            icon: Wallet, label: "My Salary",
+            icon: Wallet, label: "My Salary", shortLabel: "Salary",
             onClick: () => { setView("my-salary"); navigate("/my-salary"); closeMobile(); },
             isActive: checkActive(view, "my-salary", "MYSALARY")
         },
         ORGANIZATION: {
-            icon: Building2, label: "Organization",
+            icon: Building2, label: "Organization", shortLabel: "Org",
             onClick: () => { setView("organization"); navigate("/organization"); closeMobile(); },
             isActive: checkActive(view, "organization", "ORGANIZATION")
         },
         SUPPLIERS: {
-            icon: Truck, label: "Suppliers",
+            icon: Truck, label: "Suppliers", shortLabel: "Suppliers",
             onClick: () => { setView("suppliers"); navigate("/suppliers"); closeMobile(); },
             isActive: checkActive(view, "suppliers", "SUPPLIERS")
         },
         PARTIES: {
-            icon: Users, label: "Parties",
+            icon: Users, label: "Parties", shortLabel: "Parties",
             onClick: () => { setView("parties"); navigate("/parties"); closeMobile(); },
             isActive: checkActive(view, "parties", "PARTIES")
         },
         SERVICE: {
-            icon: Wrench, label: "Service & Repairs",
+            icon: Wrench, label: "Service & Repairs", shortLabel: "Service",
             onClick: () => { setView("service"); navigate("/service"); closeMobile(); },
             isActive: checkActive(view, "service", "SERVICE")
         },
         PURCHASES: {
-            icon: ShoppingCart, label: "Purchase Invoice",
+            icon: ShoppingCart, label: "Purchase Invoice", shortLabel: "Pur. Inv.",
             onClick: () => { setView("purchases"); navigate("/purchases"); closeMobile(); },
             isActive: checkActive(view, "purchases", "PURCHASES")
         },
         PURCHASE_RETURN: {
-            icon: RotateCcw, label: "Purchase Returns",
+            icon: RotateCcw, label: "Purchase Returns", shortLabel: "Pur. Return",
             onClick: () => { setView("purchasereturn"); navigate("/purchasereturn"); closeMobile(); },
             isActive: checkActive(view, "purchasereturn", "PURCHASE_RETURN") || location.pathname.includes("/purchasereturn")
         },
         BUSINESS_TYPES: {
-            icon: Briefcase, label: "Business Types",
+            icon: Briefcase, label: "Business Types", shortLabel: "Biz Types",
             onClick: () => { setView("business-types"); navigate("/business-types"); closeMobile(); },
             isActive: checkActive(view, "business-types", "BUSINESS_TYPES")
         },
         SHOP_MANAGEMENT: {
-            icon: Store, label: "Shop Management",
+            icon: Store, label: "Shop Management", shortLabel: "Shops",
             onClick: () => { setView("shop-management"); navigate("/shop-management"); closeMobile(); },
             isActive: checkActive(view, "shop-management", "SHOP_MANAGEMENT")
         },
         PLAN_MANAGEMENT: {
-            icon: Zap, label: "Plan Management",
+            icon: Zap, label: "Plan Management", shortLabel: "Plans",
             onClick: () => { setView("plan-management"); navigate("/plan-management"); closeMobile(); },
             isActive: checkActive(view, "plan-management", "PLAN_MANAGEMENT")
         },
         CLIENT_MANAGEMENT: {
-            icon: UserPlus, label: "Client Management",
+            icon: UserPlus, label: "Client Management", shortLabel: "Clients",
             onClick: () => { setView("client-management"); navigate("/client-management"); closeMobile(); },
             isActive: checkActive(view, "client-management", "CLIENT_MANAGEMENT")
         },
         SUBSCRIPTION_MANAGEMENT: {
-            icon: CreditCard, label: "Subscriptions",
+            icon: CreditCard, label: "Subscriptions", shortLabel: "Subscriptions",
             onClick: () => { setView("subscription-management"); navigate("/subscription-management"); closeMobile(); },
             isActive: checkActive(view, "subscription-management", "SUBSCRIPTION_MANAGEMENT")
         },
         TABLE_MANAGEMENT: {
-            icon: Grid3X3, label: "Table Management",
+            icon: Grid3X3, label: "Table Management", shortLabel: "Tables",
             onClick: () => { setView("table-management"); navigate("/table-management"); closeMobile(); },
             isActive: checkActive(view, "table-management", "TABLE_MANAGEMENT")
         },
         SELF_SERVICE: {
-            icon: Briefcase, label: "Self Service",
+            icon: Briefcase, label: "Self Service", shortLabel: "Self Serv.",
             isGroup: true,
             children: ['MYATTENDANCE', 'MYLEAVES', 'MYSALARY'].filter(k => canAccessRoute(can, canModule, k))
         },
         SALES: {
-            icon: Coins, label: "Sales",
+            icon: Coins, label: "Sales", shortLabel: "Sales",
             isGroup: true,
             children: ['SALE_MARKING', 'SALES_HISTORY', 'SALES_RETURN', 'PAY_IN'].filter(k => canAccessRoute(can, canModule, k))
         },
         PURCHASES_GROUP: {
-            icon: ShoppingCart, label: "Purchases",
+            icon: ShoppingCart, label: "Purchases", shortLabel: "Purchases",
             isGroup: true,
             children: ['PURCHASES', 'PURCHASE_RETURN', 'PAY_OUT'].filter(k => canAccessRoute(can, canModule, k))
         }
@@ -488,22 +488,23 @@ const Sidebar = ({
                         )}
                         <button
                             onClick={config.isGroup ? toggle : config.onClick}
-                            className={`p-3 md:p-3.5 transition-all duration-300 ease-out flex items-center w-full ${isExpanded
-                                ? 'gap-3.5 justify-start rounded-xl md:rounded-2xl'
-                                : 'justify-center gap-1.5 flex-col rounded-2xl w-16 h-16 md:w-16 md:h-16 mx-auto'
+                            className={`transition-all duration-300 ease-out flex items-center w-full ${isExpanded
+                                ? 'p-3 md:p-3.5 gap-3.5 justify-start rounded-xl md:rounded-2xl'
+                                : 'py-2 px-1 justify-center gap-0.5 flex-col rounded-2xl w-16 h-16 md:w-16 md:h-16 mx-auto'
                                 } ${isAnyChildActive
                                     ? `bg-indigo-600/25 dark:bg-indigo-500/20 text-indigo-300 dark:text-indigo-200 border border-indigo-500/30 shadow-lg shadow-indigo-500/10 font-bold`
                                     : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-md`
                                 }`}
+                            title={!isExpanded ? config.label : undefined}
                         >
-                            <config.icon className={`w-6 h-6 shrink-0 transition-transform ${isAnyChildActive ? 'scale-110 drop-shadow-md text-indigo-400 dark:text-indigo-300' : ''}`} />
+                            <config.icon className={`shrink-0 transition-transform ${isExpanded ? 'w-6 h-6' : 'w-5.5 h-5.5'} ${isAnyChildActive ? 'scale-110 drop-shadow-md text-indigo-400 dark:text-indigo-300' : ''}`} />
                             {isExpanded ? (
-                                <div className="flex-1 flex items-center justify-between overflow-hidden transition-all duration-300 max-w-[150px] opacity-100">
-                                    <span className="font-bold text-sm whitespace-nowrap">{config.label}</span>
-                                    {config.isGroup && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
+                                <div className="flex-1 flex items-center justify-between overflow-hidden transition-all duration-300 min-w-0 opacity-100">
+                                    <span className="font-bold text-sm whitespace-nowrap truncate">{config.label}</span>
+                                    {config.isGroup && (isOpen ? <ChevronDown size={14} className="shrink-0 ml-1" /> : <ChevronRight size={14} className="shrink-0 ml-1" />)}
                                 </div>
                             ) : (
-                                <span className="font-semibold text-[10px] whitespace-nowrap leading-tight text-center max-w-[56px] truncate">{config.label}</span>
+                                <span className="font-bold text-[9.5px] leading-[11px] tracking-tight text-center max-w-[58px] truncate px-0.5">{config.shortLabel || config.label}</span>
                             )}
                         </button>
                     </div>
@@ -533,7 +534,7 @@ const Sidebar = ({
             );
         }
 
-        const { icon: Icon, label, onClick, isActive, badge } = config;
+        const { icon: Icon, label, shortLabel, onClick, isActive, badge } = config;
         return (
             <div key={key} className={`relative flex w-full mb-2 ${isExpanded ? 'px-4' : 'px-2 md:px-0 md:justify-center'}`}>
                 {isActive && (
@@ -541,18 +542,18 @@ const Sidebar = ({
                 )}
                 <button
                     onClick={onClick}
-                    className={`p-3 md:p-3.5 transition-all duration-300 ease-out flex items-center w-full ${isExpanded
-                        ? 'gap-3.5 justify-start rounded-xl md:rounded-2xl'
-                        : 'justify-center gap-1 flex-col rounded-2xl w-16 h-16 md:w-16 md:h-16 mx-auto'
+                    className={`transition-all duration-300 ease-out flex items-center w-full ${isExpanded
+                        ? 'p-3 md:p-3.5 gap-3.5 justify-start rounded-xl md:rounded-2xl'
+                        : 'py-2 px-1 justify-center gap-0.5 flex-col rounded-2xl w-16 h-16 md:w-16 md:h-16 mx-auto'
                         } ${isActive
                             ? `${theme.sidebarItemActiveBg} scale-[1.03] transition-all`
                             : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-md`
                         }`}
                     title={!isExpanded ? label : undefined}
                 >
-                    <Icon className={`w-6 h-6 shrink-0 transition-transform ${isActive ? 'scale-110 drop-shadow-md text-white' : ''}`} />
-                    <span className={`font-bold transition-all duration-300 ${isExpanded ? 'text-sm whitespace-nowrap overflow-hidden max-w-[150px] opacity-100' : 'text-[10px] whitespace-nowrap leading-tight text-center max-w-[56px] truncate'}`}>
-                        {label}
+                    <Icon className={`shrink-0 transition-transform ${isExpanded ? 'w-6 h-6' : 'w-5.5 h-5.5'} ${isActive ? 'scale-110 drop-shadow-md text-white' : ''}`} />
+                    <span className={`font-bold transition-all duration-300 ${isExpanded ? 'text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0 opacity-100' : 'text-[9.5px] leading-[11px] tracking-tight text-center max-w-[58px] truncate px-0.5'}`}>
+                        {isExpanded ? label : (shortLabel || label)}
                     </span>
                 </button>
                 {badge > 0 && (

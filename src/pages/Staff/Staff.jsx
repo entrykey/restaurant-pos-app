@@ -16,6 +16,7 @@ import AttendanceCorrectionModal from "../../components/modals/AttendanceCorrect
 import LeaveReviewModal from "../../components/modals/LeaveReviewModal";
 import { leaveService } from "../../services/api";
 import { useApp } from "../../context/AppContext";
+import { validateEmail, sanitizeEmailInput } from "../../utils/validation";
 
 const isBranchDisabled = (branch) => {
     if (!branch) return true;
@@ -135,6 +136,7 @@ const Staff = ({
 
     // Create Employee Dialog State
     const [isCreateEmployeeOpen, setIsCreateEmployeeOpen] = useState(false);
+    const [createValidationErrors, setCreateValidationErrors] = useState({});
     const [newEmpData, setNewEmpData] = useState({
         name: "",
         email: "",
@@ -152,6 +154,7 @@ const Staff = ({
 
     // Edit Employee Dialog State
     const [isEditEmployeeOpen, setIsEditEmployeeOpen] = useState(false);
+    const [editValidationErrors, setEditValidationErrors] = useState({});
     const [editingEmployee, setEditingEmployee] = useState(null);
     const [editEmpData, setEditEmpData] = useState({
         name: "",
@@ -635,13 +638,16 @@ const Staff = ({
 
     // --- Employee Creation Handlers ---
     const handleEmpDataChange = (field, value) => {
+        setCreateValidationErrors(prev => ({
+            ...prev,
+            [field]: "",
+            ...(field === "phone" || field === "email" ? { phone: "", email: "" } : {})
+        }));
         setNewEmpData(prev => {
             let updatedValue = value;
             if (field === "name") {
-                // Prevent special characters and numbers in name
                 updatedValue = value.replace(/[^a-zA-Z\s.'-]/g, "");
             } else if (field === "phone") {
-                // Allow only digits and limit to 10 digits
                 updatedValue = value.replace(/\D/g, "").slice(0, 10);
             } else if (field === "salary") {
                 if (value && value.amount !== undefined) {
@@ -671,24 +677,74 @@ const Staff = ({
         );
     };
 
+    const validateCreateEmployeeForm = () => {
+        const errors = {};
+        const trimmedName = (newEmpData.name || "").trim();
+        const trimmedEmail = (newEmpData.email || "").trim();
+        const trimmedPhone = (newEmpData.phone || "").trim();
+        const nameRegex = /^[a-zA-Z\s.'-]+$/;
+
+        if (!trimmedName) {
+            errors.name = "Full name is required";
+        } else if (trimmedName.length < 2 || !/[a-zA-Z]/.test(trimmedName) || !nameRegex.test(trimmedName)) {
+            errors.name = "Full name must be at least 2 valid letters";
+        }
+
+        if (!trimmedPhone && !trimmedEmail) {
+            errors.phone = "Either mobile number or email address is required";
+            errors.email = "Either mobile number or email address is required";
+        }
+
+        if (trimmedPhone) {
+            const cleanPhone = trimmedPhone.replace(/\D/g, "");
+            if (cleanPhone.length !== 10) {
+                errors.phone = "Please enter a valid 10-digit mobile number";
+            }
+        }
+
+        if (trimmedEmail) {
+            if (!validateEmail(trimmedEmail)) {
+                errors.email = "Please enter a valid email address (e.g. name@domain.com)";
+            }
+        }
+
+        if (!newEmpData.roleId) {
+            errors.roleId = "Please select a role";
+        }
+
+        if (newEmpData.salary?.amount !== undefined && newEmpData.salary?.amount !== "") {
+            const salaryStr = String(newEmpData.salary.amount).trim();
+            const salaryNum = Number(salaryStr);
+            if (salaryStr !== "" && (isNaN(salaryNum) || salaryNum < 0 || /[^0-9.]/.test(salaryStr))) {
+                errors.salary = "Please enter a valid non-negative salary amount";
+            }
+        }
+
+        if (newEmpData.password && newEmpData.password.length < 6) {
+            errors.password = "Password must be at least 6 characters";
+        }
+
+        setCreateValidationErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
     const handleCreateEmployee = async () => {
         if (isSubmittingEmployee) return;
+
+        if (!validateCreateEmployeeForm()) {
+            return;
+        }
 
         const trimmedName = (newEmpData.name || "").trim();
         const trimmedEmail = (newEmpData.email || "").trim();
         const trimmedPhone = (newEmpData.phone || "").trim();
-
-        if (!trimmedName || (!trimmedEmail && !trimmedPhone) || !newEmpData.roleId) {
-            toast.error("Please fill in required fields (Name, Email/Phone, and Role)");
-            return;
-        }
 
         // Check for duplicate employee locally before API call
         if (trimmedEmail) {
             const cleanEmailLower = trimmedEmail.toLowerCase();
             const existingByEmail = employees.find(e => e.userId?.email && e.userId.email.toLowerCase() === cleanEmailLower);
             if (existingByEmail) {
-                toast.error(`A staff member with email "${trimmedEmail}" already exists in this shop.`);
+                setCreateValidationErrors(prev => ({ ...prev, email: `A staff member with email "${trimmedEmail}" already exists` }));
                 return;
             }
         }
@@ -697,40 +753,7 @@ const Staff = ({
             const cleanPhoneDigits = trimmedPhone.replace(/\D/g, "");
             const existingByPhone = employees.find(e => e.userId?.phone && e.userId.phone.replace(/\D/g, "") === cleanPhoneDigits);
             if (existingByPhone) {
-                toast.error(`A staff member with phone number "${trimmedPhone}" already exists in this shop.`);
-                return;
-            }
-        }
-
-        // 1. Name validation (no special characters or numbers)
-        const nameRegex = /^[a-zA-Z\s.'-]+$/;
-        if (!nameRegex.test(trimmedName)) {
-            toast.error("Name can only contain letters, spaces, dots, hyphens, and apostrophes");
-            return;
-        }
-
-        // 2. Mobile number validation (must be 10 digits if provided)
-        if (trimmedPhone) {
-            const cleanPhone = trimmedPhone.replace(/\D/g, "");
-            if (cleanPhone.length !== 10) {
-                toast.error("Mobile number must be a valid 10-digit number");
-                return;
-            }
-        }
-
-        // 3. Email validation (must be valid format like user@domain.com, not just @mail.com)
-        if (trimmedEmail) {
-            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-            if (!emailRegex.test(trimmedEmail)) {
-                toast.error("Please enter a valid email address");
-                return;
-            }
-        }
-
-        // 4. Salary amount validation (must not be negative)
-        if (newEmpData.salary?.amount !== undefined && newEmpData.salary?.amount !== "") {
-            if (Number(newEmpData.salary.amount) < 0) {
-                toast.error("Salary amount cannot be negative");
+                setCreateValidationErrors(prev => ({ ...prev, phone: `A staff member with phone number "${trimmedPhone}" already exists` }));
                 return;
             }
         }
@@ -823,6 +846,7 @@ const Staff = ({
     // --- Employee Edit Handlers ---
     const openEditEmployee = (employee) => {
         if (!employee) return;
+        setEditValidationErrors({});
         setEditingEmployee(employee);
         const u = employee.userId || {};
         const rawRole = employee.mapping?.roleId || employee.roleId;
@@ -867,6 +891,9 @@ const Staff = ({
     };
 
     const handleEditEmpDataChange = (field, value) => {
+        if (editValidationErrors[field]) {
+            setEditValidationErrors(prev => ({ ...prev, [field]: null }));
+        }
         setEditEmpData(prev => {
             let updatedValue = value;
             if (field === "name") {
@@ -903,18 +930,64 @@ const Staff = ({
         );
     };
 
+    const validateEditEmployeeForm = () => {
+        const errors = {};
+        const trimmedName = (editEmpData.name || "").trim();
+        const trimmedEmail = (editEmpData.email || "").trim();
+        const trimmedPhone = (editEmpData.phone || "").trim();
+        const nameRegex = /^[a-zA-Z\s.'-]+$/;
+
+        if (!trimmedName) {
+            errors.name = "Full name is required";
+        } else if (trimmedName.length < 2 || !/[a-zA-Z]/.test(trimmedName) || !nameRegex.test(trimmedName)) {
+            errors.name = "Full name must be at least 2 valid letters";
+        }
+
+        if (!trimmedPhone && !trimmedEmail) {
+            errors.phone = "Either mobile number or email address is required";
+            errors.email = "Either mobile number or email address is required";
+        }
+
+        if (trimmedPhone) {
+            const cleanPhone = trimmedPhone.replace(/\D/g, "");
+            if (cleanPhone.length !== 10) {
+                errors.phone = "Please enter a valid 10-digit mobile number";
+            }
+        }
+
+        if (trimmedEmail) {
+            if (!validateEmail(trimmedEmail)) {
+                errors.email = "Please enter a valid email address (e.g. name@domain.com)";
+            }
+        }
+
+        if (!editEmpData.roleId) {
+            errors.roleId = "Please select a role";
+        }
+
+        if (editEmpData.salary?.amount !== undefined && editEmpData.salary?.amount !== "") {
+            const salaryStr = String(editEmpData.salary.amount).trim();
+            const salaryNum = Number(salaryStr);
+            if (salaryStr !== "" && (isNaN(salaryNum) || salaryNum < 0 || /[^0-9.]/.test(salaryStr))) {
+                errors.salary = "Please enter a valid non-negative salary amount";
+            }
+        }
+
+        setEditValidationErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
     const handleUpdateEmployee = async () => {
         if (!editingEmployee) return;
         if (isSubmittingEmployee) return;
 
+        if (!validateEditEmployeeForm()) {
+            return;
+        }
+
         const trimmedName = (editEmpData.name || "").trim();
         const trimmedEmail = (editEmpData.email || "").trim();
         const trimmedPhone = (editEmpData.phone || "").trim();
-
-        if (!trimmedName || (!trimmedEmail && !trimmedPhone) || !editEmpData.roleId) {
-            toast.error("Please fill in required fields (Name, Email/Phone, and Role)");
-            return;
-        }
 
         const currentEmpId = editingEmployee._id || editingEmployee.id;
         if (trimmedEmail) {
@@ -935,10 +1008,10 @@ const Staff = ({
             }
         }
 
-        // 1. Name validation (no special characters or numbers)
+        // 1. Name validation (must be at least 2 characters, contain letters)
         const nameRegex = /^[a-zA-Z\s.'-]+$/;
-        if (!nameRegex.test(trimmedName)) {
-            toast.error("Name can only contain letters, spaces, dots, hyphens, and apostrophes");
+        if (!trimmedName || trimmedName.length < 2 || !/[a-zA-Z]/.test(trimmedName) || !nameRegex.test(trimmedName)) {
+            toast.error("Name must be at least 2 characters long and contain letters (e.g. Rahul Sharma)");
             return;
         }
 
@@ -953,17 +1026,18 @@ const Staff = ({
 
         // 3. Email validation (must be valid format if provided)
         if (trimmedEmail) {
-            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-            if (!emailRegex.test(trimmedEmail)) {
-                toast.error("Please enter a valid email address");
+            if (!validateEmail(trimmedEmail)) {
+                toast.error("Please enter a valid email address (e.g. user@domain.com)");
                 return;
             }
         }
 
-        // 4. Salary amount validation (must not be negative)
+        // 4. Salary amount validation (must be valid non-negative number, no symbols)
         if (editEmpData.salary?.amount !== undefined && editEmpData.salary?.amount !== "") {
-            if (Number(editEmpData.salary.amount) < 0) {
-                toast.error("Salary amount cannot be negative");
+            const salaryStr = String(editEmpData.salary.amount).trim();
+            const salaryNum = Number(salaryStr);
+            if (salaryStr !== "" && (isNaN(salaryNum) || salaryNum < 0 || /[^0-9.]/.test(salaryStr))) {
+                toast.error("Please enter a valid non-negative numeric salary amount (e.g. 15000)");
                 return;
             }
         }
@@ -2543,10 +2617,15 @@ const Staff = ({
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Full Name *</label>
                                     <input
                                         value={newEmpData.name}
-                                        onChange={(e) => handleEmpDataChange("name", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                        placeholder="John Doe"
+                                        onChange={(e) => handleEmpDataChange("name", e.target.value.replace(/[^a-zA-Z\s.'-]/g, ''))}
+                                        className={`w-full p-3 border ${theme.inputBg} ${theme.inputText} rounded-xl outline-none transition-all ${
+                                            createValidationErrors.name ? 'border-rose-500 focus:border-rose-500' : `${theme.inputBorder} ${theme.inputFocus}`
+                                        }`}
+                                        placeholder="Enter full name"
                                     />
+                                    {createValidationErrors.name && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{createValidationErrors.name}</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Mobile Number (Either Phone or Email Required)</label>
@@ -2555,39 +2634,54 @@ const Staff = ({
                                         inputMode="numeric"
                                         maxLength={10}
                                         value={newEmpData.phone}
-                                        onChange={(e) => handleEmpDataChange("phone", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                        placeholder="9876543210"
+                                        onChange={(e) => handleEmpDataChange("phone", e.target.value.replace(/[^0-9]/g, ''))}
+                                        className={`w-full p-3 border ${theme.inputBg} ${theme.inputText} rounded-xl outline-none transition-all ${
+                                            createValidationErrors.phone ? 'border-rose-500 focus:border-rose-500' : `${theme.inputBorder} ${theme.inputFocus}`
+                                        }`}
+                                        placeholder="Enter 10-digit mobile number"
                                     />
+                                    {createValidationErrors.phone && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{createValidationErrors.phone}</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Email Address</label>
                                     <input
                                         type="email"
                                         value={newEmpData.email}
-                                        onChange={(e) => handleEmpDataChange("email", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                        placeholder="john@example.com"
+                                        onChange={(e) => handleEmpDataChange("email", sanitizeEmailInput(e.target.value))}
+                                        className={`w-full p-3 border ${theme.inputBg} ${theme.inputText} rounded-xl outline-none transition-all ${
+                                            createValidationErrors.email ? 'border-rose-500 focus:border-rose-500' : `${theme.inputBorder} ${theme.inputFocus}`
+                                        }`}
+                                        placeholder="name@domain.com"
                                     />
+                                    {createValidationErrors.email && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{createValidationErrors.email}</p>
+                                    )}
                                 </div>
 
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Role *</label>
-                                    <CommonSelect
-                                        options={[...roles, { _id: "CREATE_NEW", name: "+ Create New Role" }]}
-                                        value={newEmpData.roleId}
-                                        onChange={(val) => {
-                                            if (val === "CREATE_NEW") {
-                                                setIsCreateRoleOpen(true);
-                                            } else {
-                                                handleEmpDataChange("roleId", val);
-                                            }
-                                        }}
-                                        placeholder="Select Role"
-                                        labelKey="name"
-                                        valueKey="_id"
-                                        required={true}
-                                    />
+                                    <div className={createValidationErrors.roleId ? 'rounded-xl border border-rose-500' : ''}>
+                                        <CommonSelect
+                                            options={[...roles, { _id: "CREATE_NEW", name: "+ Create New Role" }]}
+                                            value={newEmpData.roleId}
+                                            onChange={(val) => {
+                                                if (val === "CREATE_NEW") {
+                                                    setIsCreateRoleOpen(true);
+                                                } else {
+                                                    handleEmpDataChange("roleId", val);
+                                                }
+                                            }}
+                                            placeholder="Select Role"
+                                            labelKey="name"
+                                            valueKey="_id"
+                                            required={true}
+                                        />
+                                    </div>
+                                    {createValidationErrors.roleId && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{createValidationErrors.roleId}</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Reporting To</label>
@@ -2613,12 +2707,19 @@ const Staff = ({
                                     <div className="flex gap-2">
                                         <div className="flex-1 relative">
                                             <input
-                                                type="number"
-                                                min="0"
+                                                type="text"
+                                                inputMode="decimal"
                                                 value={newEmpData.salary?.amount || ""}
-                                                onChange={(e) => handleEmpDataChange("salary", { ...(newEmpData.salary || { amount: "", period: "monthly" }), amount: e.target.value })}
-                                                className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                                placeholder="Enter amount"
+                                                onChange={(e) => {
+                                                    let val = e.target.value.replace(/[^0-9.]/g, '');
+                                                    const parts = val.split('.');
+                                                    if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                                                    handleEmpDataChange("salary", { ...(newEmpData.salary || { amount: "", period: "monthly" }), amount: val });
+                                                }}
+                                                className={`w-full p-3 border ${theme.inputBg} ${theme.inputText} rounded-xl outline-none transition-all ${
+                                                    createValidationErrors.salary ? 'border-rose-500 focus:border-rose-500' : `${theme.inputBorder} ${theme.inputFocus}`
+                                                }`}
+                                                placeholder="Enter salary amount"
                                             />
                                         </div>
                                         <div className="w-1/3">
@@ -2636,6 +2737,9 @@ const Staff = ({
                                             />
                                         </div>
                                     </div>
+                                    {createValidationErrors.salary && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{createValidationErrors.salary}</p>
+                                    )}
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Attendance Policy</label>
@@ -2654,9 +2758,14 @@ const Staff = ({
                                         type="password"
                                         value={newEmpData.password}
                                         onChange={(e) => handleEmpDataChange("password", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                        placeholder="Default: 123456"
+                                        className={`w-full p-3 border ${theme.inputBg} ${theme.inputText} rounded-xl outline-none transition-all ${
+                                            createValidationErrors.password ? 'border-rose-500 focus:border-rose-500' : `${theme.inputBorder} ${theme.inputFocus}`
+                                        }`}
+                                        placeholder="Enter password (min 6 characters)"
                                     />
+                                    {createValidationErrors.password && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{createValidationErrors.password}</p>
+                                    )}
                                 </div>
                             </div>
 
@@ -2763,10 +2872,13 @@ const Staff = ({
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Full Name *</label>
                                     <input
                                         value={editEmpData.name}
-                                        onChange={(e) => handleEditEmpDataChange("name", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                        placeholder="Full Name"
+                                        onChange={(e) => handleEditEmpDataChange("name", e.target.value.replace(/[^a-zA-Z\s.'-]/g, ''))}
+                                        className={`w-full p-3 border ${editValidationErrors.name ? '!border-rose-500' : theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
+                                        placeholder="Enter full name"
                                     />
+                                    {editValidationErrors.name && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{editValidationErrors.name}</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Mobile Number (Either Phone or Email Required)</label>
@@ -2775,18 +2887,25 @@ const Staff = ({
                                         inputMode="numeric"
                                         maxLength={10}
                                         value={editEmpData.phone}
-                                        onChange={(e) => handleEditEmpDataChange("phone", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                        placeholder="Phone"
+                                        onChange={(e) => handleEditEmpDataChange("phone", e.target.value.replace(/[^0-9]/g, ''))}
+                                        className={`w-full p-3 border ${editValidationErrors.phone ? '!border-rose-500' : theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
+                                        placeholder="Enter 10-digit mobile number"
                                     />
+                                    {editValidationErrors.phone && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{editValidationErrors.phone}</p>
+                                    )}
                                 </div>
                                 <div className="opacity-70 pointer-events-none">
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Email Address (Read Only)</label>
                                     <input
                                         value={editEmpData.email}
                                         readOnly
-                                        className={`w-full p-3 border ${theme.inputBorder} bg-gray-100 dark:bg-gray-800 ${theme.inputText} rounded-xl outline-none cursor-not-allowed`}
+                                        className={`w-full p-3 border ${editValidationErrors.email ? '!border-rose-500' : theme.inputBorder} bg-gray-100 dark:bg-gray-800 ${theme.inputText} rounded-xl outline-none cursor-not-allowed`}
+                                        placeholder="name@domain.com"
                                     />
+                                    {editValidationErrors.email && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{editValidationErrors.email}</p>
+                                    )}
                                 </div>
 
                                 <div>
@@ -2806,6 +2925,9 @@ const Staff = ({
                                         valueKey="_id"
                                         required={true}
                                     />
+                                    {editValidationErrors.roleId && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{editValidationErrors.roleId}</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Reporting To</label>
@@ -2846,12 +2968,17 @@ const Staff = ({
                                     <div className="flex gap-2">
                                         <div className="flex-1 relative">
                                             <input
-                                                type="number"
-                                                min="0"
+                                                type="text"
+                                                inputMode="decimal"
                                                 value={editEmpData.salary?.amount || ""}
-                                                onChange={(e) => handleEditEmpDataChange("salary", { ...(editEmpData.salary || { amount: "", period: "monthly" }), amount: e.target.value })}
-                                                className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                                placeholder="Enter amount"
+                                                onChange={(e) => {
+                                                    let val = e.target.value.replace(/[^0-9.]/g, '');
+                                                    const parts = val.split('.');
+                                                    if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                                                    handleEditEmpDataChange("salary", { ...(editEmpData.salary || { amount: "", period: "monthly" }), amount: val });
+                                                }}
+                                                className={`w-full p-3 border ${editValidationErrors.salary ? '!border-rose-500' : theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
+                                                placeholder="Enter salary amount"
                                             />
                                         </div>
                                         <div className="w-1/3">
@@ -2869,6 +2996,9 @@ const Staff = ({
                                             />
                                         </div>
                                     </div>
+                                    {editValidationErrors.salary && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{editValidationErrors.salary}</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Attendance Policy</label>
