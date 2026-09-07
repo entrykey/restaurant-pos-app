@@ -4,6 +4,7 @@ import { ArrowLeft, Mail, Lock, Key, Sun, Moon, ShieldCheck, ArrowRight, Eye, Ey
 import ThemeLoader from "../components/ui/ThemeLoader";
 import { useTheme } from "../context/ThemeContext";
 import { api } from "../services/api";
+import { validateEmail, validatePassword, sanitizeEmailInput } from "../utils/validation";
 
 export default function ForgotPassword() {
   const { themeName, setTheme } = useTheme();
@@ -25,11 +26,6 @@ export default function ForgotPassword() {
 
   const toggleTheme = () => {
     setTheme(isDark ? 'light' : 'dark');
-  };
-
-  const validateEmail = (email) => {
-    const emailRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
-    return emailRegex.test(email);
   };
 
   const handleSendOTP = async (e) => {
@@ -98,8 +94,9 @@ export default function ForgotPassword() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      setError("Password must be at least 6 characters");
+    const pwdCheck = validatePassword(newPassword);
+    if (!pwdCheck.valid) {
+      setError(pwdCheck.message);
       return;
     }
 
@@ -242,7 +239,7 @@ export default function ForgotPassword() {
                     const inputEl = e.target;
                     const cursorStart = inputEl.selectionStart;
                     const cursorEnd = inputEl.selectionEnd;
-                    const value = inputEl.value.toLowerCase();
+                    const value = sanitizeEmailInput(inputEl.value);
                     setEmail(value);
                     requestAnimationFrame(() => {
                       if (inputEl && inputEl.setSelectionRange) {

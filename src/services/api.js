@@ -169,6 +169,15 @@ export const shopService = {
         }
     },
 
+    registerShop: async (payload) => {
+        try {
+            const response = await api.post('/shops', payload);
+            return response.data;
+        } catch (error) {
+            throw error.response ? error.response.data : error;
+        }
+    },
+
     updateShop: async (id, payload) => {
         try {
             const response = await api.put(`/shops/${id}`, payload);

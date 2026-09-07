@@ -3,9 +3,10 @@ import { Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin } from
 import CommonTable from '../../components/CommonTable';
 import { SupplierService } from './SupplierService';
 import { ROUTE_ACCESS } from '../../config/permissionStructure';
-import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useApp } from '../../context/AppContext';
+import { toast } from 'react-hot-toast';
+import { validateEmail, sanitizeEmailInput, sanitizeNameInput, sanitizePhoneInput } from '../../utils/validation';
 
 const PAGE_LIMIT = 10;
 
@@ -18,6 +19,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const [totalCount, setTotalCount] = useState(0);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState(null);
+    const [validationErrors, setValidationErrors] = useState({});
     const { theme } = useTheme();
     const { currentShopId } = useApp();
 
@@ -79,6 +81,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     };
 
     const handleOpenModal = (supplier = null) => {
+        setValidationErrors({});
         if (supplier) {
             setEditingSupplier(supplier);
             setFormData(supplier);
@@ -97,8 +100,29 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         setIsModalOpen(true);
     };
 
+    const validateSupplierForm = () => {
+        const errors = {};
+        if (!formData.name || !/[a-zA-Z]/.test(formData.name) || formData.name.trim().length < 2) {
+            errors.name = "Supplier name must contain at least 2 valid letters";
+        }
+        const cleanPhone = (formData.phone || '').replace(/[^0-9]/g, '');
+        if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 15) {
+            errors.phone = "Please enter a valid 10-15 digit phone number";
+        }
+        if (formData.email && !validateEmail(formData.email)) {
+            errors.email = "Please enter a valid email address (e.g. name@domain.com)";
+        }
+        setValidationErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
     const handleSave = async (e) => {
         e.preventDefault();
+
+        if (!validateSupplierForm()) {
+            return;
+        }
+
         setLoading(true);
         try {
             if (editingSupplier) {
@@ -332,12 +356,19 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Supplier Name *</label>
                                     <input
-                                        required
-                                        className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="Company Name"
+                                        onChange={e => {
+                                            setFormData({ ...formData, name: sanitizeNameInput(e.target.value) });
+                                            setValidationErrors(prev => ({ ...prev, name: '' }));
+                                        }}
+                                        className={`w-full p-4 border rounded-2xl outline-none transition-all font-bold ${theme.inputBg} ${theme.textPrimary} ${
+                                            validationErrors.name ? 'border-rose-500 focus:border-rose-500' : `${theme.borderLight} focus:border-indigo-500`
+                                        }`}
+                                        placeholder="Enter supplier name"
                                     />
+                                    {validationErrors.name && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{validationErrors.name}</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Tax ID / GSTIN</label>
@@ -353,8 +384,8 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                                     <input
                                         className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={formData.contactPerson}
-                                        onChange={e => setFormData({ ...formData, contactPerson: e.target.value })}
-                                        placeholder="Full Name (Optional)"
+                                        onChange={e => setFormData({ ...formData, contactPerson: sanitizeNameInput(e.target.value) })}
+                                        placeholder="Enter contact person name (Optional)"
                                     />
                                 </div>
                                 {/* Status removed as requested - handled in table toggle */}
@@ -363,13 +394,20 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                                     <div className="relative">
                                         <Phone className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                                         <input
-                                            required
-                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none transition-all font-bold ${theme.inputBg} ${theme.textPrimary} ${
+                                                validationErrors.phone ? 'border-rose-500 focus:border-rose-500' : `${theme.borderLight} focus:border-indigo-500`
+                                            }`}
                                             value={formData.phone}
-                                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                            placeholder="+91..."
+                                            onChange={e => {
+                                                setFormData({ ...formData, phone: sanitizePhoneInput(e.target.value) });
+                                                setValidationErrors(prev => ({ ...prev, phone: '' }));
+                                            }}
+                                            placeholder="Enter 10-digit mobile number"
                                         />
                                     </div>
+                                    {validationErrors.phone && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{validationErrors.phone}</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Email Address</label>
@@ -377,12 +415,20 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                                         <Mail className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                                         <input
                                             type="email"
-                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none transition-all font-bold ${theme.inputBg} ${theme.textPrimary} ${
+                                                validationErrors.email ? 'border-rose-500 focus:border-rose-500' : `${theme.borderLight} focus:border-indigo-500`
+                                            }`}
                                             value={formData.email}
-                                            onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                            placeholder="supplier@example.com"
+                                            onChange={e => {
+                                                setFormData({ ...formData, email: sanitizeEmailInput(e.target.value) });
+                                                setValidationErrors(prev => ({ ...prev, email: '' }));
+                                            }}
+                                            placeholder="name@domain.com"
                                         />
                                     </div>
+                                    {validationErrors.email && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{validationErrors.email}</p>
+                                    )}
                                 </div>
                             </div>
 

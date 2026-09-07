@@ -7,8 +7,8 @@ import { useTheme } from "../../context/ThemeContext";
 const MOCK_SERVICES = [
     {
         id: "SRV-2023-001",
-        customerName: "John Doe",
-        mobile: "9876543210",
+        customerName: "Rahul Sharma",
+        mobile: "9812345678",
         product: "iPhone 13",
         status: "Received",
         date: "2023-10-25T10:00:00",

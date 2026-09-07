@@ -5,6 +5,7 @@ import { businessTypesService } from '../../services/api/businessTypes';
 import { useTheme } from '../../context/ThemeContext';
 import CommonSelect from '../../components/ui/CommonSelect';
 import { toast } from 'react-hot-toast';
+import { validateEmail, validatePassword, sanitizeEmailInput } from '../../utils/validation';
 
 const ShopForm = ({ shopToEdit, onBack }) => {
     const { theme } = useTheme();
@@ -133,6 +134,19 @@ const ShopForm = ({ shopToEdit, onBack }) => {
                 };
                 await shopService.updateShop(shopToEdit._id, updatePayload);
             } else {
+                if (formData.ownerEmail && !validateEmail(formData.ownerEmail)) {
+                    toast.error("Please enter a valid email address (e.g. name@domain.com)");
+                    setIsLoading(false);
+                    return;
+                }
+                if (formData.password) {
+                    const pwdCheck = validatePassword(formData.password);
+                    if (!pwdCheck.valid) {
+                        toast.error(pwdCheck.message);
+                        setIsLoading(false);
+                        return;
+                    }
+                }
                 await shopService.createShop(formData);
             }
             onBack();
@@ -260,7 +274,7 @@ const ShopForm = ({ shopToEdit, onBack }) => {
                                                  const inputEl = e.target;
                                                  const cursorStart = inputEl.selectionStart;
                                                  const cursorEnd = inputEl.selectionEnd;
-                                                 e.target.value = inputEl.value.toLowerCase();
+                                                 e.target.value = sanitizeEmailInput(inputEl.value);
                                                  handleChange(e);
                                                  requestAnimationFrame(() => {
                                                      if (inputEl && inputEl.setSelectionRange) {

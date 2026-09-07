@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera, Coins, Layers, Scan } from "lucide-react";
+import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera, Layers } from "lucide-react";
 import { useNavigate, useParams, useLocation, Link } from "react-router-dom";
 import { PurchaseService } from "../../services/PurchaseService";
 import { SupplierService } from "../Suppliers/SupplierService";
@@ -15,6 +15,7 @@ import InvoiceScannerModal from "../../components/modals/InvoiceScannerModal";
 import { findBestStockMatch, normalizeScannedProductName } from "../../utils/invoiceItemMatch";
 import { toast } from "react-hot-toast";
 import { loadPurchaseInvoiceSettings } from "../../utils/printSettingsUtils";
+import { validateEmail, sanitizeEmailInput, sanitizeNameInput, sanitizePhoneInput } from "../../utils/validation";
 import {
     TAX_SYSTEMS,
     BRANCH_STATUS,
@@ -81,6 +82,7 @@ const PurchasePage = () => {
     const [supplierSearch, setSupplierSearch] = useState("");
     const [showSupplierResults, setShowSupplierResults] = useState(false);
     const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+    const [supplierValidationErrors, setSupplierValidationErrors] = useState({});
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [savingSupplier, setSavingSupplier] = useState(false);
     const [supplierFormData, setSupplierFormData] = useState({
@@ -1064,6 +1066,22 @@ const PurchasePage = () => {
         setIsSupplierModalOpen(true);
     };
 
+    const validateSupplierFormData = () => {
+        const errors = {};
+        if (!supplierFormData.name || !/[a-zA-Z]/.test(supplierFormData.name) || supplierFormData.name.trim().length < 2) {
+            errors.name = "Supplier name must contain at least 2 valid letters";
+        }
+        const cleanPhone = (supplierFormData.phone || '').replace(/[^0-9]/g, '');
+        if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 15) {
+            errors.phone = "Please enter a valid 10-15 digit phone number";
+        }
+        if (supplierFormData.email && !validateEmail(supplierFormData.email)) {
+            errors.email = "Please enter a valid email address (e.g. name@domain.com)";
+        }
+        setSupplierValidationErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
     const handleSaveSupplier = async (e) => {
         e.preventDefault();
         const shopId = user?.shopId || user?.shop_id || currentShopId;
@@ -1071,6 +1089,11 @@ const PurchasePage = () => {
             toast.error("Shop session is not fully loaded. Please refresh.");
             return;
         }
+
+        if (!validateSupplierFormData()) {
+            return;
+        }
+
         setSavingSupplier(true);
         try {
             const created = await SupplierService.addSupplier({
@@ -2906,11 +2929,18 @@ const PurchasePage = () => {
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Supplier Name *</label>
                                     <input
                                         required
-                                        className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                        className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${supplierValidationErrors.name ? 'border-rose-500' : theme.borderLight} ${theme.textPrimary}`}
                                         value={supplierFormData.name}
-                                        onChange={e => setSupplierFormData({ ...supplierFormData, name: e.target.value, contactPerson: supplierFormData.contactPerson || e.target.value })}
-                                        placeholder="Company Name"
+                                        onChange={e => {
+                                            const nameVal = sanitizeNameInput(e.target.value);
+                                            setSupplierFormData({ ...supplierFormData, name: nameVal, contactPerson: supplierFormData.contactPerson || nameVal });
+                                            if (supplierValidationErrors.name) setSupplierValidationErrors(prev => ({ ...prev, name: null }));
+                                        }}
+                                        placeholder="Enter supplier name"
                                     />
+                                    {supplierValidationErrors.name && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{supplierValidationErrors.name}</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Tax ID / GSTIN</label>
@@ -2918,7 +2948,7 @@ const PurchasePage = () => {
                                         className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={supplierFormData.taxId}
                                         onChange={e => setSupplierFormData({ ...supplierFormData, taxId: e.target.value })}
-                                        placeholder="Optional"
+                                        placeholder="Optional GSTIN / Tax ID"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -2926,8 +2956,8 @@ const PurchasePage = () => {
                                     <input
                                         className={`w-full p-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
                                         value={supplierFormData.contactPerson}
-                                        onChange={e => setSupplierFormData({ ...supplierFormData, contactPerson: e.target.value })}
-                                        placeholder="Full Name"
+                                        onChange={e => setSupplierFormData({ ...supplierFormData, contactPerson: sanitizeNameInput(e.target.value) })}
+                                        placeholder="Enter contact person name (Optional)"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -2936,12 +2966,18 @@ const PurchasePage = () => {
                                         <Phone className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                                         <input
                                             required
-                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${supplierValidationErrors.phone ? 'border-rose-500' : theme.borderLight} ${theme.textPrimary}`}
                                             value={supplierFormData.phone}
-                                            onChange={e => setSupplierFormData({ ...supplierFormData, phone: e.target.value })}
-                                            placeholder="+91..."
+                                            onChange={e => {
+                                                setSupplierFormData({ ...supplierFormData, phone: sanitizePhoneInput(e.target.value) });
+                                                if (supplierValidationErrors.phone) setSupplierValidationErrors(prev => ({ ...prev, phone: null }));
+                                            }}
+                                            placeholder="Enter 10-digit mobile number"
                                         />
                                     </div>
+                                    {supplierValidationErrors.phone && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{supplierValidationErrors.phone}</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Email Address</label>
@@ -2949,12 +2985,18 @@ const PurchasePage = () => {
                                         <Mail className={`absolute left-4 top-4 ${theme.textSecondary}`} size={20} />
                                         <input
                                             type="email"
-                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`}
+                                            className={`w-full pl-12 pr-4 py-4 border rounded-2xl outline-none focus:border-indigo-500 transition-all font-bold ${theme.inputBg} ${supplierValidationErrors.email ? 'border-rose-500' : theme.borderLight} ${theme.textPrimary}`}
                                             value={supplierFormData.email}
-                                            onChange={e => setSupplierFormData({ ...supplierFormData, email: e.target.value })}
-                                            placeholder="supplier@example.com"
+                                            onChange={e => {
+                                                setSupplierFormData({ ...supplierFormData, email: sanitizeEmailInput(e.target.value) });
+                                                if (supplierValidationErrors.email) setSupplierValidationErrors(prev => ({ ...prev, email: null }));
+                                            }}
+                                            placeholder="name@domain.com"
                                         />
                                     </div>
+                                    {supplierValidationErrors.email && (
+                                        <p className="text-rose-500 text-xs font-bold mt-1.5">{supplierValidationErrors.email}</p>
+                                    )}
                                 </div>
                             </div>
 
