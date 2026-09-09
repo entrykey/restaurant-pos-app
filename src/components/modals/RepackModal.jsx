@@ -8,6 +8,7 @@ import { inventoryService, itemService, unitService, categoryService, api } from
 import toast from 'react-hot-toast';
 import CommonSelect from '../ui/CommonSelect';
 import BarcodePrintDialog from './BarcodePrintDialog';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const RepackModal = ({ isOpen, onClose, sourceItem, sourceStock = 0, onRepackComplete }) => {
     const { theme } = useTheme();
@@ -245,7 +246,7 @@ const RepackModal = ({ isOpen, onClose, sourceItem, sourceStock = 0, onRepackCom
                 onClose();
             }
         } catch (error) {
-            toast.error(error.message || "Failed to repack item");
+            toast.error(getErrorMessage(error, "Failed to repack item"));
         } finally {
             setIsSubmitting(false);
         }

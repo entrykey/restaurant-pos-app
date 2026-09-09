@@ -6,6 +6,7 @@ import { useTheme } from '../../context/ThemeContext';
 import CommonSelect from '../../components/ui/CommonSelect';
 import { toast } from 'react-hot-toast';
 import { validateEmail, validatePassword, sanitizeEmailInput } from '../../utils/validation';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const ShopForm = ({ shopToEdit, onBack }) => {
     const { theme } = useTheme();
@@ -152,7 +153,7 @@ const ShopForm = ({ shopToEdit, onBack }) => {
             onBack();
         } catch (error) {
             console.error("Error saving shop:", error);
-            toast.error(error.response?.data?.message || "Failed to save shop");
+            toast.error(getErrorMessage(error, "Failed to save shop"));
         } finally {
             setIsLoading(false);
         }

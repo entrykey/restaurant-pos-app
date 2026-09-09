@@ -225,13 +225,15 @@ const SalePage = () => {
                 const row = updatedItems[index];
                 const oldUnit = row.selectedUnit;
                 if (value === "SECONDARY" && oldUnit !== "SECONDARY") {
+                    const factor = Number(row.conversionFactor) || 1;
                     updatedItems[index].sellingPrice = parseFloat(
-                        (row.sellingPrice * row.conversionFactor).toFixed(4)
+                        (row.sellingPrice / factor).toFixed(4)
                     );
                     updatedItems[index].unitName = row.secondaryUnitName;
                 } else if (value === "PRIMARY" && oldUnit !== "PRIMARY") {
+                    const factor = Number(row.conversionFactor) || 1;
                     updatedItems[index].sellingPrice = parseFloat(
-                        (row.sellingPrice / row.conversionFactor).toFixed(4)
+                        (row.sellingPrice * factor).toFixed(4)
                     );
                     updatedItems[index].unitName = row.primaryUnitName;
                 }

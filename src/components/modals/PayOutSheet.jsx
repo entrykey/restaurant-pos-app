@@ -2,10 +2,12 @@ import React, { useState, useEffect } from "react";
 import { 
     X, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2 
 } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { formatCurrency } from "../../utils/format";
 import { PurchaseService } from "../../services/PurchaseService";
 import { useTheme } from "../../context/ThemeContext";
 import { useApp } from "../../context/AppContext";
+import { getErrorMessage } from "../../utils/errorUtils";
 
 const PayOutSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
     const { theme } = useTheme();
@@ -18,21 +20,37 @@ const PayOutSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
     // Reset state when opening/closing or changing purchase
     useEffect(() => {
         if (isOpen && purchase) {
-            setAmount(String(purchase.balanceAmount));
             setSelectedMethod(null);
-            setIsSubmitting(false);
+            setAmount(purchase.balanceDue ? purchase.balanceDue.toString() : "");
         }
     }, [isOpen, purchase]);
 
     if (!isOpen || !purchase) return null;
 
-    const balanceAmount = purchase.balanceAmount;
+    const balanceAmount = purchase.balanceDue ?? purchase.balanceAmount ?? (purchase.grandTotal - (purchase.totalPaid || 0));
 
-    const handleSubmit = async () => {
-        if (!selectedMethod) return alert("Please select a payment method.");
+    const handleMethodSelect = (method) => {
+        setSelectedMethod(method);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        if (!selectedMethod) {
+            toast.error("Please select a payment method.");
+            return;
+        }
+
         const payAmount = Number(amount);
-        if (payAmount <= 0) return alert("Please enter a valid amount greater than 0.");
-        if (payAmount > balanceAmount) return alert(`Amount cannot exceed the balance amount of ${formatCurrency(balanceAmount)}`);
+        if (isNaN(payAmount) || payAmount <= 0) {
+            toast.error("Please enter a valid payment amount greater than zero.");
+            return;
+        }
+
+        if (payAmount > purchase.balanceDue) {
+            toast.error(`Payment amount cannot exceed the balance due of ${formatCurrency(purchase.balanceDue)}.`);
+            return;
+        }
 
         setIsSubmitting(true);
         try {
@@ -47,7 +65,7 @@ const PayOutSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
             onClose(); // Close the sheet
         } catch (error) {
             console.error("Failed to add payment:", error);
-            alert(error.response?.data?.message || error.message || "Failed to process payment. Please try again.");
+            toast.error(getErrorMessage(error, "Failed to process payment. Please try again."));
         } finally {
             setIsSubmitting(false);
         }

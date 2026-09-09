@@ -106,3 +106,17 @@ button {
   box-shadow: none !important;
 }
 
+/* Fully disable page zooming, pinch-to-zoom, and double-tap zoom across all devices */
+html, body {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+
+/* Prevent double-tap zoom or gesture scaling on interactive controls and inputs */
+button, input, select, textarea, a, label, [role="tab"], [role="button"] {
+  touch-action: manipulation;
+}
+

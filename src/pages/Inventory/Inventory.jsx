@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen, ShoppingBag } from 'lucide-react';
+import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen, ShoppingBag, AlertTriangle } from 'lucide-react';
 import ThemeLoader from '../../components/ui/ThemeLoader';
 import { BUSINESS_FEATURES } from '../../config/businessTypes';
 import CommonTable from '../../components/CommonTable';
@@ -10,7 +10,7 @@ import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useText } from '../../context/TextContext';
 import { itemService, inventoryService } from '../../services/api';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import ProductPage from './ProductPage';
 import Modal from '../../components/ui/Modal';
@@ -67,13 +67,29 @@ const Inventory = ({
     const canViewMenu = hasPermissionFor?.("inventory", "menu", "view");
     const canManageMenu = (hasPermissionFor?.("inventory", "menu", "edit") || hasPermissionFor?.("inventory", "menu", "create"));
 
-    // Default to the first allowed tab
+    const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // Default to preferred or first allowed tab
     const [activeTab, setActiveTab] = useState(() => {
+        const fromState = location.state?.activeTab;
+        const fromUrl = searchParams.get('tab');
+        const preferred = fromState || fromUrl;
+
+        if (preferred === "menu" && canViewMenu) return "menu";
+        if (preferred === "raw" && canViewItems) return "raw";
+        if (preferred === "trade" && canViewTradeItems) return "trade";
+
         if (canViewMenu) return "menu";
         if (canViewItems) return "raw";
         if (canViewTradeItems) return "trade";
         return "menu"; // Fallback
     });
+
+    const handleTabChange = (tabKey) => {
+        setActiveTab(tabKey);
+        setSearchParams({ tab: tabKey }, { replace: true });
+    };
 
     const [inventorySearch, setInventorySearch] = useState("");
     const [loadingItemId, setLoadingItemId] = useState(null); // while fetching item by id for edit
@@ -88,7 +104,7 @@ const Inventory = ({
     const [pageSize, setPageSize] = useState(10);
     const [loadingItems, setLoadingItems] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
-    const [stockMap, setStockMap] = useState({}); // itemId -> quantityOnHand
+
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [editingProductId, setEditingProductId] = useState(null);
     const [usedCategories, setUsedCategories] = useState([]);
@@ -127,15 +143,17 @@ const Inventory = ({
     const [historyData, setHistoryData] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
-    // Reset page to 1 on tab or search change
+    // Reset page, category, and local items on tab change
     useEffect(() => {
+        setLocalItems([]);
         setCurrentPage(1);
-    }, [activeTab, inventorySearch]);
-
-    // Reset category filter only when switching tabs
-    useEffect(() => {
         setSelectedCategory("ALL");
     }, [activeTab]);
+
+    // Reset page on search change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [inventorySearch]);
 
     // Ensure activeTab is valid if features change
     useEffect(() => {
@@ -225,26 +243,7 @@ const Inventory = ({
         setCurrentPage(1);
     };
 
-    // Fetch stock levels whenever branchId or items change
-    useEffect(() => {
-        if (!branchId) return;
-        inventoryService.getInventory({ branchId })
-            .then(data => {
-                const records = Array.isArray(data) ? data : (data.data || []);
-                const map = {};
-                records.forEach(r => {
-                    const id = r.itemId?._id || r.itemId;
-                    if (id) {
-                        map[id] = {
-                            qty: r.quantityOnHand ?? 0,
-                            damaged: r.damagedQuantity ?? 0
-                        };
-                    }
-                });
-                setStockMap(map);
-            })
-            .catch(() => { });
-    }, [branchId, refreshTrigger]);
+
 
 
 
@@ -268,13 +267,13 @@ const Inventory = ({
         return () => window.removeEventListener('inventoryFieldsUpdated', handleUpdates);
     }, []);
 
+    const targetItemType = activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE");
+    const tabFilteredItems = localItems.filter(item => (item.itemType || 'STOCK').toUpperCase() === targetItemType);
+
     // Sort items so out of stock items are pushed to the end
-    const filteredData = [...localItems].sort((a, b) => {
-        const stockA = stockMap[a._id || a.id] ?? null;
-        const qtyA = stockA && typeof stockA === 'object' ? stockA.qty : (stockA ?? a.quantityOnHand ?? 0);
-        
-        const stockB = stockMap[b._id || b.id] ?? null;
-        const qtyB = stockB && typeof stockB === 'object' ? stockB.qty : (stockB ?? b.quantityOnHand ?? 0);
+    const filteredData = [...tabFilteredItems].sort((a, b) => {
+        const qtyA = a.quantityOnHand ?? 0;
+        const qtyB = b.quantityOnHand ?? 0;
 
         const aHasStock = qtyA > 0;
         const bHasStock = qtyB > 0;
@@ -291,19 +290,7 @@ const Inventory = ({
     const itemsHeading = t('INVENTORY', 'items_heading', 'Stock Items');
     const tradeHeading = t('INVENTORY', 'trade_items_heading', 'Trade Items');
 
-    if (!canView) {
-        return (
-            <div className={`h-full flex items-center justify-center ${theme.pageBg}`}>
-                <div className={`text-center p-12 rounded-[40px] shadow-xl border max-w-md ${theme.surfaceBg} ${theme.borderLight}`}>
-                    <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <Package size={40} />
-                    </div>
-                    <h2 className={`text-2xl font-black mb-2 ${theme.textHeading}`}>Access Restricted</h2>
-                    <p className={`font-medium ${theme.textMuted}`}>You don&apos;t have permission to view Inventory.</p>
-                </div>
-            </div>
-        );
-    }
+
 
     const handleOpenAddModal = () => {
         setEditingProductId(null);
@@ -366,6 +353,13 @@ const Inventory = ({
     const handleProductModalClose = (savedItem, keepOpen = false) => {
         if (savedItem) {
             setRefreshTrigger(prev => prev + 1);
+            if (savedItem.itemType === 'MANUFACTURED' && canViewMenu) {
+                handleTabChange('menu');
+            } else if (savedItem.itemType === 'STOCK' && canViewItems) {
+                handleTabChange('raw');
+            } else if (savedItem.itemType === 'TRADE' && canViewTradeItems) {
+                handleTabChange('trade');
+            }
         }
         
         if (!keepOpen) {
@@ -403,7 +397,7 @@ const Inventory = ({
                     <div className={`text-xs font-bold ${theme.textSecondary}`}>Code: {item.itemCode || item.id}</div>
                     {item.secondaryUnitId && item.conversionFactor > 1 && (
                         <div className="mt-1 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 text-[10px] font-black w-fit">
-                            1 {item.secondaryUnitId.name || item.secondaryUnitId.code} = {item.conversionFactor} {item.unitId?.name || item.unitId?.code}
+                            1 {item.unitId?.name || item.unitId?.code} = {item.conversionFactor} {item.secondaryUnitId.name || item.secondaryUnitId.code}
                         </div>
                     )}
                     {item.ingredients && item.ingredients.length > 0 && (
@@ -434,15 +428,14 @@ const Inventory = ({
             headerClassName: "text-center",
             className: "text-center",
             render: (id, item) => {
-                const stock = stockMap[id] ?? stockMap[item._id] ?? null;
-                const qty = stock && typeof stock === 'object' ? stock.qty : (stock ?? item.quantityOnHand ?? null);
-                const damaged = stock && typeof stock === 'object' ? stock.damaged : 0;
+                const qty = item.quantityOnHand ?? null;
+                const damaged = item.damagedQuantity ?? 0;
 
                 const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
                 const low = qty !== null && qty <= min && min > 0;
                 
                 if (qty === null && damaged === 0) {
-                    return <span className="text-[11px] text-gray-300 font-bold">�</span>;
+                    return <span className="text-[11px] text-gray-300 font-bold">-</span>;
                 }
 
                 const handleStockClick = (e) => {
@@ -463,7 +456,7 @@ const Inventory = ({
                                 ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
                                 : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
                                 }`}>
-                                {low && <span title="Low stock">??</span>}
+                                {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
                                 {qty}
                                 <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
                             </div>
@@ -492,6 +485,14 @@ const Inventory = ({
             headerClassName: "text-center",
             className: "text-center",
             exportValue: (_, item) => {
+                const portions = (Array.isArray(item.portionPricing) && item.portionPricing.length > 0)
+                    ? item.portionPricing
+                    : (Array.isArray(item.pricing?.portionPricing) && item.pricing.portionPricing.length > 0)
+                        ? item.pricing.portionPricing
+                        : null;
+                if (portions && portions.length > 0) {
+                    return portions.map(p => `${p.name || 'Variant'}: ${p.price || 0}`).join(' | ');
+                }
                 const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
                 const mrp = item.pricing?.mrp ?? item.mrp;
                 const pp = item.pricing?.purchasePrice ?? item.purchasePrice;
@@ -499,12 +500,38 @@ const Inventory = ({
                 if (sp) parts.push(`Sale: ${sp}`);
                 if (mrp) parts.push(`MRP: ${mrp}`);
                 if (pp) parts.push(`Purchase: ${pp}`);
-                return parts.join(' | ') || '�';
+                return parts.join(' | ') || '-';
             },
             render: (_, item) => {
+                const portions = (Array.isArray(item.portionPricing) && item.portionPricing.length > 0)
+                    ? item.portionPricing
+                    : (Array.isArray(item.pricing?.portionPricing) && item.pricing.portionPricing.length > 0)
+                        ? item.pricing.portionPricing
+                        : null;
+                if (portions && portions.length > 0) {
+                    return (
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[220px]">
+                                {portions.map((p, idx) => (
+                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 text-[11px] font-black border border-indigo-100 dark:border-indigo-800 shadow-sm">
+                                        <span className="opacity-60 font-bold">{p.name || `Var ${idx + 1}`}:</span>
+                                        <span>{formatCurrency(p.price || 0)}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                }
+
                 const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
                 const mrp = item.pricing?.mrp ?? item.mrp;
                 const pp = item.pricing?.purchasePrice ?? item.purchasePrice;
+                const hasAnyPrice = (sp != null && sp !== 0) || (mrp != null && mrp !== 0) || (pp != null && pp !== 0);
+
+                if (!hasAnyPrice) {
+                    return <span className={`text-xs opacity-40 ${theme.textSecondary}`}>-</span>;
+                }
+
                 return (
                     <div className="flex flex-col items-center gap-0.5">
                         {sp != null && sp !== 0 && (
@@ -524,9 +551,6 @@ const Inventory = ({
                                 <span className={`text-[9px] font-black uppercase tracking-wider opacity-50 ${theme.textSecondary}`}>Purchase</span>
                                 <span className={`font-bold text-xs opacity-70 ${theme.textHeading}`}>{formatCurrency(pp)}</span>
                             </div>
-                        )}
-                        {!sp && !mrp && !pp && (
-                            <span className={`text-xs opacity-40 ${theme.textSecondary}`}>�</span>
                         )}
                     </div>
                 );
@@ -605,7 +629,7 @@ const Inventory = ({
                     <div className={`text-xs font-bold ${theme.textSecondary}`}>Code: {item.itemCode || item.id}</div>
                     {item.secondaryUnitId && item.conversionFactor > 1 && (
                         <div className="mt-1 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black w-fit">
-                            1 {item.secondaryUnitId.name || item.secondaryUnitId.code} = {item.conversionFactor} {item.unitId?.name || item.unitId?.code}
+                            1 {item.unitId?.name || item.unitId?.code} = {item.conversionFactor} {item.secondaryUnitId.name || item.secondaryUnitId.code}
                         </div>
                     )}
                 </>
@@ -627,15 +651,14 @@ const Inventory = ({
             headerClassName: "text-center",
             className: "text-center",
             render: (id, item) => {
-                const stock = stockMap[id] ?? stockMap[item._id] ?? null;
-                const qty = stock && typeof stock === 'object' ? stock.qty : (stock ?? item.quantityOnHand ?? null);
-                const damaged = stock && typeof stock === 'object' ? stock.damaged : 0;
+                const qty = item.quantityOnHand ?? null;
+                const damaged = item.damagedQuantity ?? 0;
 
                 const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
                 const low = qty !== null && qty <= min && min > 0;
                 
                 if (qty === null && damaged === 0) {
-                    return <span className="text-[11px] text-gray-300 font-bold">�</span>;
+                    return <span className="text-[11px] text-gray-300 font-bold">-</span>;
                 }
 
                 const handleStockClick = (e) => {
@@ -656,7 +679,7 @@ const Inventory = ({
                                 ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
                                 : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
                                 }`}>
-                                {low && <span title="Low stock">??</span>}
+                                {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
                                 {qty}
                                 <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
                             </div>
@@ -685,6 +708,14 @@ const Inventory = ({
             headerClassName: "text-right",
             className: "text-right",
             exportValue: (_, item) => {
+                const portions = (Array.isArray(item.portionPricing) && item.portionPricing.length > 0)
+                    ? item.portionPricing
+                    : (Array.isArray(item.pricing?.portionPricing) && item.pricing.portionPricing.length > 0)
+                        ? item.pricing.portionPricing
+                        : null;
+                if (portions && portions.length > 0) {
+                    return portions.map(p => `${p.name || 'Variant'}: ${p.price || 0}`).join(' | ');
+                }
                 const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
                 const mrp = item.pricing?.mrp ?? item.mrp;
                 const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
@@ -693,13 +724,39 @@ const Inventory = ({
                 if (pp) parts.push(`Purchase: ${pp}${unit ? ' /' + unit : ''}`);
                 if (mrp) parts.push(`MRP: ${mrp}`);
                 if (sp) parts.push(`Sale: ${sp}`);
-                return parts.join(' | ') || '�';
+                return parts.join(' | ') || '-';
             },
             render: (_, item) => {
+                const portions = (Array.isArray(item.portionPricing) && item.portionPricing.length > 0)
+                    ? item.portionPricing
+                    : (Array.isArray(item.pricing?.portionPricing) && item.pricing.portionPricing.length > 0)
+                        ? item.pricing.portionPricing
+                        : null;
+                if (portions && portions.length > 0) {
+                    return (
+                        <div className="flex flex-col items-end gap-1">
+                            <div className="flex flex-wrap items-center justify-end gap-1.5 max-w-[220px]">
+                                {portions.map((p, idx) => (
+                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-orange-50 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 text-[11px] font-black border border-orange-100 dark:border-orange-800 shadow-sm">
+                                        <span className="opacity-60 font-bold">{p.name || `Var ${idx + 1}`}:</span>
+                                        <span>{formatCurrency(p.price || 0)}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                }
+
                 const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
                 const mrp = item.pricing?.mrp ?? item.mrp;
                 const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
                 const unit = item.unitId?.name || "";
+                const hasAnyPrice = (pp != null && pp !== 0) || (mrp != null && mrp !== 0) || (sp != null && sp !== 0);
+
+                if (!hasAnyPrice) {
+                    return <span className={`text-xs opacity-40 ${theme.textSecondary}`}>-</span>;
+                }
+
                 return (
                     <div className="flex flex-col items-end gap-0.5">
                         {pp != null && pp !== 0 && (
@@ -728,9 +785,6 @@ const Inventory = ({
                                     {unit && <span className="text-[10px] ml-1 opacity-40 font-black uppercase tracking-tighter">/ {unit}</span>}
                                 </span>
                             </div>
-                        )}
-                        {!pp && !mrp && !sp && (
-                            <span className={`text-xs opacity-40 ${theme.textSecondary}`}>�</span>
                         )}
                     </div>
                 );
@@ -798,37 +852,38 @@ const Inventory = ({
         }
     ];
 
-    const currentColumns = activeTab === "menu" ? menuColumns : rawColumns;
+    const baseColumns = activeTab === "menu" ? menuColumns : rawColumns;
 
-    currentColumns.push({
-        header: "Actions",
-        key: "actions",
-        headerClassName: "text-right",
-        className: "text-right",
-        render: (_, item) => (
-            <div className="flex justify-end gap-3">
-                <button
-                    onClick={(e) => { e.stopPropagation(); handleViewHistory(item); }}
-                    className={`p-3 ${theme.inputBg} text-amber-500 hover:bg-amber-500 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95`}
-                    title="View Transaction History"
-                >
-                    <History size={18} />
-                </button>
-                {canManage && activeTab === "raw" && (
+    const currentColumns = useMemo(() => [
+        ...baseColumns,
+        {
+            header: "Actions",
+            key: "actions",
+            headerClassName: "text-right",
+            className: "text-right",
+            render: (_, item) => (
+                <div className="flex justify-end gap-3">
                     <button
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
-                            setSelectedRepackItem(item);
-                            setIsRepackModalOpen(true);
-                        }}
-                        className={`p-3 ${theme.inputBg} text-blue-500 hover:bg-blue-500 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95`}
-                        title="Repack Item"
+                        onClick={(e) => { e.stopPropagation(); handleViewHistory(item); }}
+                        className={`p-3 ${theme.inputBg} text-amber-500 hover:bg-amber-500 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95`}
+                        title="View Transaction History"
                     >
-                        <PackageOpen size={18} />
+                        <History size={18} />
                     </button>
-                )}
-                {canManage && (
-                    <>
+                    {canManage && activeTab === "raw" && (
+                        <button
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                setSelectedRepackItem(item);
+                                setIsRepackModalOpen(true);
+                            }}
+                            className={`p-3 ${theme.inputBg} text-blue-500 hover:bg-blue-500 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95`}
+                            title="Repack Item"
+                        >
+                            <PackageOpen size={18} />
+                        </button>
+                    )}
+                    {canManage && (
                         <button
                             onClick={(e) => { e.stopPropagation(); handleEditItem(item); }}
                             disabled={loadingItemId === (item._id || item.id)}
@@ -840,24 +895,22 @@ const Inventory = ({
                                 <Edit3 size={18} />
                             )}
                         </button>
-                    </>
-                )}
-            </div>
-        )
-    });
+                    )}
+                </div>
+            )
+        }
+    ], [baseColumns, canManage, activeTab, loadingItemId, theme]);
 
     // -- Mobile card renderer --------------------------------------------------
-    // Truncates name to 7 chars + "�", stacks: name/code ? category ? stock/price ? actions
     const mobileCardRender = (item) => {
         const id = item._id || item.id;
         const rawName = item.name || "";
-        const shortName = rawName.length > 7 ? rawName.slice(0, 7) + "�" : rawName;
+        const shortName = rawName.length > 7 ? rawName.slice(0, 7) + "..." : rawName;
         const code = item.itemCode || id;
         const categoryName = item.categoryId?.name || "Other";
 
-        const stock = stockMap[id] ?? null;
-        const qty = stock && typeof stock === 'object' ? stock.qty : (stock ?? item.quantityOnHand ?? null);
-        const damaged = stock && typeof stock === 'object' ? stock.damaged : 0;
+        const qty = item.quantityOnHand ?? null;
+        const damaged = item.damagedQuantity ?? 0;
         const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
         const low = qty !== null && qty <= min && min > 0;
 
@@ -869,6 +922,12 @@ const Inventory = ({
         const categoryBg = activeTab === "menu"
             ? "bg-indigo-50 text-indigo-700"
             : (activeTab === "raw" ? "bg-orange-50 text-orange-700" : "bg-emerald-50 text-emerald-700");
+
+        const portions = (Array.isArray(item.portionPricing) && item.portionPricing.length > 0)
+            ? item.portionPricing
+            : (Array.isArray(item.pricing?.portionPricing) && item.pricing.portionPricing.length > 0)
+                ? item.pricing.portionPricing
+                : null;
 
         return (
             <div className={`p-3 ${theme.surfaceBg}`}>
@@ -901,7 +960,7 @@ const Inventory = ({
                                         : "bg-emerald-50 text-emerald-700 border-emerald-200"
                                     }`}
                                 >
-                                    {low && <span>??</span>}
+                                    {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
                                     {qty}
                                     <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
                                 </button>
@@ -939,9 +998,18 @@ const Inventory = ({
                             </span>
                         )}
 
-                        {/* Price � right-aligned below stock */}
+                        {/* Price */}
                         <div className={`text-sm font-black text-right ${theme.textHeading}`}>
-                            {activeTab === "raw" ? (() => {
+                            {portions && portions.length > 0 ? (
+                                <div className="flex flex-wrap items-center justify-end gap-1 max-w-[180px]">
+                                    {portions.map((p, idx) => (
+                                        <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 text-[10px] font-black border border-indigo-100 dark:border-indigo-800">
+                                            <span className="opacity-60">{p.name || `V${idx + 1}`}:</span>
+                                            <span>{formatCurrency(p.price || 0)}</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : activeTab === "raw" ? (() => {
                                 const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
                                 const mrp = item.pricing?.mrp ?? item.mrp;
                                 const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
@@ -955,7 +1023,7 @@ const Inventory = ({
                                         </div>
                                         {pp && mrp ? <div className="text-[10px] opacity-40 font-bold">MRP {formatCurrency(mrp)}</div> : null}
                                     </div>
-                                ) : <span className="opacity-40">�</span>;
+                                ) : <span className="opacity-40">-</span>;
                             })() : (() => {
                                 const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
                                 const mrp = item.pricing?.mrp ?? item.mrp;
@@ -970,13 +1038,13 @@ const Inventory = ({
                                         </div>
                                         {sp && mrp ? <div className="text-[10px] opacity-40 font-bold">MRP {formatCurrency(mrp)}</div> : null}
                                     </div>
-                                ) : <span className="opacity-40">�</span>;
+                                ) : <span className="opacity-40">-</span>;
                             })()}
                         </div>
                     </div>
                 </div>
 
-                {/* Row 2: Actions � icon + label so no tooltip needed on mobile */}
+                {/* Row 2: Actions */}
                 <div className="flex items-center gap-2 flex-wrap">
                     {/* Show on Sale toggle */}
                     <button
@@ -1063,6 +1131,20 @@ const Inventory = ({
         );
     };
 
+    if (!canView) {
+        return (
+            <div className={`h-full flex items-center justify-center ${theme.pageBg}`}>
+                <div className={`text-center p-12 rounded-[40px] shadow-xl border max-w-md ${theme.surfaceBg} ${theme.borderLight}`}>
+                    <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Package size={40} />
+                    </div>
+                    <h2 className={`text-2xl font-black mb-2 ${theme.textHeading}`}>Access Restricted</h2>
+                    <p className={`font-medium ${theme.textMuted}`}>You don&apos;t have permission to view Inventory.</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className={`flex flex-col min-h-full overflow-x-hidden ${theme.pageBg}`}>
             {/* Header section */}
@@ -1128,7 +1210,7 @@ const Inventory = ({
                 <div className={`flex flex-row flex-wrap gap-1 p-1.5 rounded-2xl shadow-sm w-full lg:w-fit ${theme.surfaceBg}`}>
                     {canViewMenu && (
                         <button
-                            onClick={() => setActiveTab("menu")}
+                            onClick={() => handleTabChange("menu")}
                             className={`flex-1 lg:flex-none px-3 md:px-5 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${activeTab === "menu"
                                 ? `${theme.primaryIconBg} ${theme.primaryIconText}`
                                 : `${theme.textSecondary} hover:opacity-80`
@@ -1139,7 +1221,7 @@ const Inventory = ({
                     )}
                     {canViewItems && (
                         <button
-                            onClick={() => setActiveTab("raw")}
+                            onClick={() => handleTabChange("raw")}
                             className={`flex-1 lg:flex-none px-3 md:px-5 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${activeTab === "raw"
                                 ? "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300"
                                 : `${theme.textSecondary} hover:opacity-80`
@@ -1150,7 +1232,7 @@ const Inventory = ({
                     )}
                     {canViewTradeItems && (
                         <button
-                            onClick={() => setActiveTab("trade")}
+                            onClick={() => handleTabChange("trade")}
                             className={`flex-1 lg:flex-none px-3 md:px-5 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${activeTab === "trade"
                                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
                                 : `${theme.textSecondary} hover:opacity-80`
@@ -1340,13 +1422,13 @@ const Inventory = ({
                                                         <div className="text-center">
                                                             <div className={`text-[10px] font-black uppercase tracking-wider ${theme.tableHeaderText} mb-1`}>Qty In</div>
                                                             <div className={`text-sm font-black ${theme.successText}`}>
-                                                                {movement.quantityIn > 0 ? `+${movement.quantityIn}` : "�"}
+                                                                {movement.quantityIn > 0 ? `+${movement.quantityIn}` : "-"}
                                                             </div>
                                                         </div>
                                                         <div className="text-center">
                                                             <div className={`text-[10px] font-black uppercase tracking-wider ${theme.tableHeaderText} mb-1`}>Qty Out</div>
                                                             <div className="text-sm font-black text-red-500">
-                                                                {movement.quantityOut > 0 ? `-${movement.quantityOut}` : "�"}
+                                                                {movement.quantityOut > 0 ? `-${movement.quantityOut}` : "-"}
                                                             </div>
                                                         </div>
                                                         <div className="text-center">
@@ -1427,7 +1509,7 @@ const Inventory = ({
                     setSelectedRepackItem(null);
                 }}
                 sourceItem={selectedRepackItem}
-                sourceStock={selectedRepackItem ? (stockMap[selectedRepackItem._id || selectedRepackItem.id]?.qty ?? selectedRepackItem.quantityOnHand ?? 0) : 0}
+                sourceStock={selectedRepackItem ? (selectedRepackItem.quantityOnHand ?? 0) : 0}
                 onRepackComplete={() => {
                     // Refresh data
                     setRefreshTrigger(prev => prev + 1);

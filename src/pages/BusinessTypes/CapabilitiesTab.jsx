@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Save, AlertCircle, Settings2, X, CheckSquare, Square, Package, ShoppingCart, Box, Utensils, Coffee, Users, Monitor, LayoutDashboard } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { useTheme } from "../../context/ThemeContext";
 import { businessTypesService } from "../../services/api/businessTypes";
 import { MODULE_TEXT_KEYS } from "../../config/moduleTextKeys";
 import CommonSelect from '../../components/ui/CommonSelect';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const AVAILABLE_ICONS = [
     { name: 'Default', icon: LayoutDashboard },
@@ -152,10 +154,10 @@ const CapabilitiesTab = () => {
                     setCapabilityId(res.data[0]._id);
                 }
             }
-            alert("Capabilities saved successfully!");
+            toast.success("Capabilities saved successfully!");
         } catch (error) {
             console.error("Save failed", error);
-            alert("Failed to save capabilities");
+            toast.error(getErrorMessage(error, "Failed to save capabilities"));
         } finally {
             setIsSaving(false);
         }

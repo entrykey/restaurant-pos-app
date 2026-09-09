@@ -446,7 +446,7 @@ const LandingPage = () => {
                             onClick={() => navigate('/login')}
                             className="px-6 py-2.5 bg-indigo-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 hover:shadow-indigo-600/50 hover:scale-105 transition-all flex items-center gap-2"
                         >
-                            <span>Become a Partner</span>
+                            <span>Start Free Trial</span>
                             <ArrowRight size={16} />
                         </button>
                     </div>

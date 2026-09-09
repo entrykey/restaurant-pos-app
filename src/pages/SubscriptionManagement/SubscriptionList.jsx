@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'react-hot-toast';
 import { useTheme } from '../../context/ThemeContext';
 import { subscriptionService } from '../../services/api/subscriptions';
 import { Search, Edit2, Wallet, AlertCircle, CheckCircle, Clock, Trash2, Sparkles } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
     const { theme } = useTheme();
@@ -25,6 +27,7 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
             setSubscriptions(res.data || []);
         } catch (error) {
             console.error("Failed to fetch subscriptions:", error);
+            toast.error(getErrorMessage(error, 'Failed to fetch subscriptions'));
         } finally {
             setIsLoading(false);
         }
@@ -47,9 +50,10 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
         try {
             await subscriptionService.approveTrialRunRequest(requestId);
             await fetchTrialRunRequests();
+            toast.success('Trial run request approved successfully!');
         } catch (error) {
             console.error('Approve trial run failed:', error);
-            alert(error?.response?.data?.message || 'Failed to approve trial run request');
+            toast.error(getErrorMessage(error, 'Failed to approve trial run request'));
         }
     };
 
@@ -58,9 +62,10 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
         try {
             await subscriptionService.rejectTrialRunRequest(requestId);
             await fetchTrialRunRequests();
+            toast.success('Trial run request rejected.');
         } catch (error) {
             console.error('Reject trial run failed:', error);
-            alert(error?.response?.data?.message || 'Failed to reject trial run request');
+            toast.error(getErrorMessage(error, 'Failed to reject trial run request'));
         }
     };
 
@@ -69,10 +74,10 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
         try {
             await subscriptionService.confirmSubscriptionPayment(subscriptionId);
             await fetchSubscriptions();
-            alert('Subscription request accepted. Plan is now active.');
+            toast.success('Subscription request accepted. Plan is now active.');
         } catch (error) {
             console.error('Confirm payment failed:', error);
-            alert(error?.response?.data?.message || 'Failed to accept subscription request');
+            toast.error(getErrorMessage(error, 'Failed to accept subscription request'));
         }
     };
 
@@ -81,10 +86,10 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
         try {
             await subscriptionService.rejectSubscriptionRequest(subscriptionId);
             await fetchSubscriptions();
-            alert('Subscription request rejected.');
+            toast.success('Subscription request rejected.');
         } catch (error) {
             console.error('Reject subscription request failed:', error);
-            alert(error?.response?.data?.message || 'Failed to reject subscription request');
+            toast.error(getErrorMessage(error, 'Failed to reject subscription request'));
         }
     };
 

@@ -38,6 +38,7 @@ export const loadPurchaseInvoiceSettings = async (shopId, branchId) => {
 
 export const buildBillExtraInfo = (branch, organization) => ({
     gstNumber: branch?.taxProfile?.registrationNumber || branch?.taxConfig?.gstin || '',
+    taxSystem: branch?.taxProfile?.taxSystem || branch?.taxConfig?.taxSystem || organization?.defaultTaxSystem || 'GST',
     fssai: branch?.fssai || '',
     upiId: branch?.upiId || organization?.defaultUpiId || '',
     payeeName: organization?.businessName || organization?.name || branch?.name || 'Shop',

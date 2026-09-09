@@ -127,6 +127,9 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("pos_branchId");
     localStorage.removeItem("pos_organizationId");
     localStorage.removeItem("pos_shopId");
+    localStorage.removeItem("pos_active_tabs");
+    localStorage.removeItem("pos_active_tab_id");
+    localStorage.removeItem("pos_active_tabs_shop");
   };
 
   const addAuthLog = (log) => {

@@ -199,10 +199,14 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);
+        // Preserve date filters when switching tabs
+        const preserved = {};
+        if (searchParams.get('startDate')) preserved.startDate = searchParams.get('startDate');
+        if (searchParams.get('endDate')) preserved.endDate = searchParams.get('endDate');
         if (tab === 'returns') {
-            setSearchParams({ tab: 'returns' });
+            setSearchParams({ ...preserved, tab: 'returns' });
         } else {
-            setSearchParams({});
+            setSearchParams(preserved);
         }
     };
 
@@ -223,12 +227,20 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
     const [totalItems, setTotalItems] = useState(0);
     const [pageSize, setPageSize] = useState(10);
 
-    // Filters
+    // Filters — pre-populated from URL query params (e.g. navigating from dashboard)
     const [showFilter, setShowFilter] = useState(false);
     const [sortBy, setSortBy] = useState('createdAt');
     const [sortOrder, setSortOrder] = useState('desc');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const [startDate, setStartDate] = useState(() => searchParams.get('startDate') || '');
+    const [endDate, setEndDate] = useState(() => searchParams.get('endDate') || '');
+
+    // When URL params change (e.g. user navigates back with different dates), sync state
+    useEffect(() => {
+        const urlStart = searchParams.get('startDate') || '';
+        const urlEnd = searchParams.get('endDate') || '';
+        setStartDate(prev => prev !== urlStart ? urlStart : prev);
+        setEndDate(prev => prev !== urlEnd ? urlEnd : prev);
+    }, [searchParams]);
 
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [isReturnSheetOpen, setIsReturnSheetOpen] = useState(false);
@@ -265,7 +277,8 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 const response = await orderService.getOrders({
                     shopId: resolvedShopId,
                     search: searchQuery || undefined,
-                    orderStatus: 'COMPLETED',
+                    // Show all non-cancelled orders (COMPLETED, OPEN, PARTIAL payment, etc.)
+                    orderStatus: 'COMPLETED,OPEN,PROCESSING',
                     page: currentPage,
                     limit: pageSize,
                     sortBy,
@@ -341,21 +354,24 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
 
     // Compute summary totals from loaded sales (current page)
     const summary = useMemo(() => {
-        if (!sales.length) return { totalSale: 0, totalProfit: 0, count: totalItems };
+        if (!sales.length) return { totalSale: 0, totalProfit: 0, count: totalItems, hasPurchaseData: false };
         let totalSale = 0;
         let totalCost = 0;
+        let hasPurchaseData = false;
         sales.forEach(order => {
             totalSale += order.grandTotal || 0;
             if (order.items?.length) {
                 order.items.forEach(item => {
-                    const pp = item.itemId?.pricing?.purchasePrice || 0;
-                    totalCost += pp * (item.quantity || 1);
+                    const pp = item.itemId?.pricing?.purchasePrice;
+                    if (pp !== undefined && pp !== null) {
+                        hasPurchaseData = true;
+                        totalCost += pp * (item.quantity || 1);
+                    }
                 });
-            } else {
-                totalCost += (order.subtotal || 0) - (order.discountTotal || 0);
             }
         });
-        return { totalSale, totalProfit: totalSale - totalCost, count: totalItems };
+        // If no purchase price data available, fall back to 0 cost (just show gross)
+        return { totalSale, totalProfit: totalSale - totalCost, count: totalItems, hasPurchaseData };
     }, [sales, totalItems]);
 
     return (
@@ -367,8 +383,22 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                         {activeTab === 'returns' ? 'Sales Returns' : 'Sales Invoice'}
                     </h1>
                     <p className={`${theme.textMuted} mt-1 font-medium`}>
-                        {activeTab === 'returns' ? 'Manage your shop\'s processed returns and exchanges' : 'Manage your shop\'s sales invoices and processed returns'}
+                        {activeTab === 'returns' ? "Manage your shop's processed returns and exchanges" : "Manage your shop's sales invoices and processed returns"}
                     </p>
+                    {/* Date filter banner — shown when navigated from dashboard */}
+                    {(startDate || endDate) && (
+                        <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 text-[11px] font-black uppercase tracking-widest">
+                            <Calendar size={12} />
+                            {startDate === endDate ? `Showing: ${startDate}` : `${startDate || '—'} → ${endDate || '—'}`}
+                            <button
+                                onClick={() => { setStartDate(''); setEndDate(''); setSearchParams({}); }}
+                                className="ml-1 hover:text-red-500 transition-colors"
+                                title="Clear date filter"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
@@ -511,20 +541,31 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
 
                     {/* Total Profit */}
                     <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
-                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${summary.totalProfit >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
-                            {summary.totalProfit >= 0
-                                ? <TrendingUp size={20} className="text-emerald-500" />
-                                : <TrendingDown size={20} className="text-red-500" />
+                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${summary.hasPurchaseData ? (summary.totalProfit >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10') : 'bg-amber-500/10'}`}>
+                            {summary.hasPurchaseData
+                                ? (summary.totalProfit >= 0
+                                    ? <TrendingUp size={20} className="text-emerald-500" />
+                                    : <TrendingDown size={20} className="text-red-500" />)
+                                : <TrendingUp size={20} className="text-amber-500" />
                             }
                         </div>
                         <div className="min-w-0">
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Total Profit</p>
-                            <p className={`text-xl font-black ${summary.totalProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                {fmt(Math.abs(summary.totalProfit))}
-                            </p>
-                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>
-                                {summary.totalSale > 0 ? `${((summary.totalProfit / summary.totalSale) * 100).toFixed(1)}% margin` : '—'}
-                            </p>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Est. Profit</p>
+                            {summary.hasPurchaseData ? (
+                                <>
+                                    <p className={`text-xl font-black ${summary.totalProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        {fmt(Math.abs(summary.totalProfit))}
+                                    </p>
+                                    <p className={`text-[11px] font-bold ${theme.textMuted}`}>
+                                        {summary.totalSale > 0 ? `${((summary.totalProfit / summary.totalSale) * 100).toFixed(1)}% margin` : '—'}
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <p className={`text-sm font-black ${theme.textPrimary}`}>{fmt(summary.totalSale)}</p>
+                                    <p className={`text-[11px] font-bold text-amber-500`}>See Dashboard for profit</p>
+                                </>
+                            )}
                         </div>
                     </div>
 

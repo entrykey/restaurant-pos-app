@@ -191,7 +191,8 @@ function buildHeaderHtml({ logoUrl, shopName, branchName, contact, addressLines,
       parts.push(`<div class="sm bold">${escapeHtml(contact)}</div>`);
     }
     if (key === 'gstNumber' && settings.includeGstNumber && extraInfo?.gstNumber) {
-      parts.push(`<div class="tiny muted">GSTIN: ${escapeHtml(extraInfo.gstNumber)}</div>`);
+      const taxLabel = extraInfo.taxSystem === 'VAT' ? 'TRN/VAT' : (extraInfo.taxSystem === 'SALES_TAX' ? 'TAX ID' : 'GSTIN');
+      parts.push(`<div class="tiny muted">${taxLabel}: ${escapeHtml(extraInfo.gstNumber)}</div>`);
     }
     if (key === 'fssai' && settings.includeFssai && extraInfo?.fssai) {
       parts.push(`<div class="tiny muted">FSSAI: ${escapeHtml(extraInfo.fssai)}</div>`);
@@ -201,6 +202,7 @@ function buildHeaderHtml({ logoUrl, shopName, branchName, contact, addressLines,
   // Fallback when no elementsOrder
   if (!settings.elementsOrder) {
     const addr = (addressLines || []).filter(Boolean).map(escapeHtml).join("<br/>");
+    const taxLabel = extraInfo?.taxSystem === 'VAT' ? 'TRN/VAT' : (extraInfo?.taxSystem === 'SALES_TAX' ? 'TAX ID' : 'GSTIN');
     return `
     <div class="center">
       ${settings.includeLogo !== false && logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />` : ""}
@@ -208,7 +210,7 @@ function buildHeaderHtml({ logoUrl, shopName, branchName, contact, addressLines,
       ${settings.includeBranchName !== false && branchName ? `<div class="md bold">${escapeHtml(branchName)}</div>` : ""}
       ${settings.includeContact !== false && contact ? `<div class="sm bold">${escapeHtml(contact)}</div>` : ""}
       ${settings.includeAddress !== false && addr ? `<div class="tiny muted">${addr}</div>` : ""}
-      ${settings.includeGstNumber && extraInfo?.gstNumber ? `<div class="tiny muted">GSTIN: ${escapeHtml(extraInfo.gstNumber)}</div>` : ""}
+      ${settings.includeGstNumber && extraInfo?.gstNumber ? `<div class="tiny muted">${taxLabel}: ${escapeHtml(extraInfo.gstNumber)}</div>` : ""}
       ${settings.includeFssai && extraInfo?.fssai ? `<div class="tiny muted">FSSAI: ${escapeHtml(extraInfo.fssai)}</div>` : ""}
     </div>
   `;
