@@ -2,15 +2,16 @@ import React, { useState, useEffect } from "react";
 import { 
     X, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2 
 } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { formatCurrency } from "../../utils/format";
 import { orderService } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { useApp } from "../../context/AppContext";
+import { getErrorMessage } from "../../utils/errorUtils";
 
 const PayInSheet = ({ isOpen, onClose, order, onSuccess }) => {
     const { theme } = useTheme();
     const { formatCurrency, organization } = useApp();
-    const currency = organization?.defaultCurrency || 'USD';
     const [payments, setPayments] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -29,7 +30,10 @@ const PayInSheet = ({ isOpen, onClose, order, onSuccess }) => {
     if (!isOpen || !order) return null;
 
     const addPaymentRow = () => {
-        if (remaining <= 0) return;
+        if (remaining <= 0) {
+            toast.error("Balance amount is already fully allocated.");
+            return;
+        }
         setPayments([...payments, { id: Date.now(), method: 'CASH', amount: String(remaining) }]);
     };
 
@@ -43,8 +47,18 @@ const PayInSheet = ({ isOpen, onClose, order, onSuccess }) => {
     };
 
     const handleSubmit = async () => {
-        if (totalPaying <= 0) return alert("Please enter a valid amount.");
-        if (totalPaying > balanceAmount + 0.01) return alert(`Total exceeds balance of ${formatCurrency(balanceAmount)}`);
+        if (payments.length === 0) {
+            toast.error("Please add at least one payment method.");
+            return;
+        }
+        if (totalPaying <= 0) {
+            toast.error("Please enter a valid payment amount greater than 0.");
+            return;
+        }
+        if (totalPaying > balanceAmount + 0.01) {
+            toast.error(`Payment amount cannot exceed balance amount of ${formatCurrency(balanceAmount)}.`);
+            return;
+        }
 
         setIsSubmitting(true);
         try {
@@ -63,7 +77,7 @@ const PayInSheet = ({ isOpen, onClose, order, onSuccess }) => {
             onClose();
         } catch (error) {
             console.error("Failed to add payment:", error);
-            alert(error.message || "Failed to process payment.");
+            toast.error(getErrorMessage(error, "Failed to process payment."));
         } finally {
             setIsSubmitting(false);
         }

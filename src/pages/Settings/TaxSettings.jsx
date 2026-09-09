@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Edit2, Trash2, Percent } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Edit2, Trash2, Percent, AlertTriangle, Building2, ChevronRight, ArrowRight } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
 import CommonSelect from "../../components/ui/CommonSelect";
 import { taxService } from "../../services/api";
@@ -9,6 +10,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 
 const TaxSettings = () => {
+    const navigate = useNavigate();
     const { theme } = useTheme();
     const { user } = useAuth();
     const { activeBranchId, branches, organization, currentShopId } = useApp();
@@ -46,13 +48,25 @@ const TaxSettings = () => {
         }
     };
 
+    const currentBranch = branches?.find(b => String(b._id || b.id) === String(activeBranchId));
+    const branchCountry = currentBranch?.address?.country || organization?.defaultCountry;
+    const countryVal = typeof branchCountry === 'object' ? (branchCountry?.code || branchCountry?.name) : branchCountry;
+    const branchTaxSystem = currentBranch?.taxProfile?.taxSystem || currentBranch?.taxConfig?.taxSystem || organization?.defaultTaxSystem;
+    const isTaxProfileComplete = Boolean(branchTaxSystem && countryVal);
+
     const handleOpenDialog = (tax = null) => {
+        if (!isTaxProfileComplete && !tax) {
+            toast.error("Please complete your organization profile and select your country tax profile first.");
+            navigate('/organization');
+            return;
+        }
+
         if (tax) {
             setEditingTax(tax);
             setFormData({
                 name: tax.name,
                 percentage: tax.percentage,
-                taxSystem: tax.taxSystem || "GST",
+                taxSystem: tax.taxSystem || branchTaxSystem || "GST",
                 taxType: tax.taxType || "EXCLUSIVE",
                 isActive: tax.isActive ?? true,
                 components: {
@@ -62,9 +76,7 @@ const TaxSettings = () => {
                 }
             });
         } else {
-            // Try to find the current branch's tax system
-            const currentBranch = branches.find(b => b._id === activeBranchId);
-            const defaultTaxSystem = currentBranch?.taxProfile?.taxSystem || "GST";
+            const defaultTaxSystem = branchTaxSystem || "GST";
 
             setEditingTax(null);
             setFormData({
@@ -179,6 +191,33 @@ const TaxSettings = () => {
 
     return (
         <div className="space-y-6">
+            {!isTaxProfileComplete && (
+                <div className="p-5 rounded-3xl border border-amber-500/30 bg-amber-500/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3.5">
+                        <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 mt-0.5 shrink-0">
+                            <AlertTriangle size={22} />
+                        </div>
+                        <div>
+                            <h4 className={`text-base font-black ${theme.textHeading}`}>
+                                Complete profile to configure taxes
+                            </h4>
+                            <p className={`text-xs ${theme.textMuted} mt-0.5 max-w-xl`}>
+                                Country tax profile is not configured yet. Complete your profile in Organization settings to select your country and tax system (GST, VAT, or Sales Tax) before creating tax rates.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/organization')}
+                        className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-amber-500 text-slate-950 hover:bg-amber-400 transition-all flex items-center gap-2 whitespace-nowrap shadow-sm hover:shadow active:scale-95 cursor-pointer shrink-0"
+                    >
+                        <Building2 size={16} />
+                        <span>Complete Profile</span>
+                        <ChevronRight size={16} />
+                    </button>
+                </div>
+            )}
+
             <div className={`flex justify-between items-center ${theme.surfaceBg} p-6 rounded-[24px] shadow-sm border ${theme.borderLight}`}>
                 <div>
                     <h3 className={`text-xl font-bold flex items-center gap-2 ${theme.textHeading}`}>
@@ -206,6 +245,22 @@ const TaxSettings = () => {
                                 {editingTax ? "Edit Tax" : "Create Tax"}
                             </h2>
                         </div>
+
+                        {!isTaxProfileComplete && (
+                            <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-3 mb-4">
+                                <div className="flex items-center gap-2 text-xs text-amber-500 font-bold">
+                                    <AlertTriangle size={16} className="shrink-0" />
+                                    <span>Country tax profile not set.</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsDialogOpen(false); navigate('/organization'); }}
+                                    className="text-xs font-black text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer shrink-0"
+                                >
+                                    Complete Profile &rarr;
+                                </button>
+                            </div>
+                        )}
 
                         <form onSubmit={handleSubmit} className="space-y-6 mt-4">
                             <div className="space-y-4">
@@ -328,7 +383,14 @@ const TaxSettings = () => {
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Tax Profile</label>
+                                        <div className="flex items-center justify-between">
+                                            <label className={`text-xs font-black ${theme.textSecondary} uppercase`}>Tax Profile</label>
+                                            {branchTaxSystem && (
+                                                <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded">
+                                                    {branchTaxSystem}
+                                                </span>
+                                            )}
+                                        </div>
                                         <CommonSelect
                                             options={[
                                                 { label: "GST", value: "GST" },
@@ -353,7 +415,7 @@ const TaxSettings = () => {
                                                     setFormData({ ...formData, taxSystem: val });
                                                 }
                                             }}
-                                            disabled={!user?.isSuperAdmin}
+                                            disabled={!user?.isSuperAdmin && Boolean(branchTaxSystem)}
                                             placeholder="Select Tax Profile"
                                             className="w-full text-sm font-bold"
                                         />

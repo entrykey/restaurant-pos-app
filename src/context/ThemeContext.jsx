@@ -8,20 +8,20 @@ export const themes = {
         background: "bg-indigo-900",
         cardBg: "bg-white",
         textPrimary: "text-gray-900",
-        textSecondary: "text-gray-400",
-        textHeading: "text-black",
+        textSecondary: "text-gray-500",
+        textHeading: "text-gray-900",
         textMuted: "text-gray-500",
-        borderLight: "border-gray-100",
+        borderLight: "border-gray-200",
 
         // Layout
-        pageBg: "bg-gray-50/30",
+        pageBg: "bg-gray-50",
         surfaceBg: "bg-white",
 
         // Table (CommonTable)
-        tableHeaderBg: "bg-gray-50/50",
-        tableHeaderText: "text-gray-400",
-        tableRowHover: "hover:bg-indigo-50/20",
-        tableBorder: "border-gray-100",
+        tableHeaderBg: "bg-gray-100",
+        tableHeaderText: "text-gray-600",
+        tableRowHover: "hover:bg-indigo-50/30",
+        tableBorder: "border-gray-200",
 
         // Semantic Sections
         sectionBg: "bg-gray-50/50",

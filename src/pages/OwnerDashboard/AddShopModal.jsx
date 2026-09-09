@@ -151,14 +151,9 @@ const AddShopModal = ({ onClose, onSuccess }) => {
                 ownerName: user?.name || 'Owner',
                 ownerEmail: user?.email || '',
                 ownerPhone: user?.phone || '',
-                // Password won't be required backwardly if the backend checks if the user exists by email 
-                // However, the backend expects a password if the user doesn't exist. 
-                // Since user is logged in, their email exists in the DB, so shop.controller.js line 25: 
-                // `let user = await User.findOne({ email: ownerEmail });` will reliably fetch the existing user
-                // bypassing the new user creation flow entirely.
             };
 
-            await shopService.createShop(payload);
+            await shopService.createShopForOwner(payload);
             if (onSuccess) onSuccess();
         } catch (error) {
             alert(error.message || 'Registration failed');

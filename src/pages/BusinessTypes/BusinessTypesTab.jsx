@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Check, X, ShieldAlert } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { useTheme } from "../../context/ThemeContext";
 import { businessTypesService } from "../../services/api/businessTypes";
+import { getErrorMessage } from "../../utils/errorUtils";
 
 const BusinessTypesTab = () => {
     const { theme } = useTheme();
@@ -10,29 +12,22 @@ const BusinessTypesTab = () => {
     const [isEditing, setIsEditing] = useState(null);
     const [formData, setFormData] = useState({ displayString: '', features: {} });
 
-    // Initial default features per backend
+    // Global Item & Inventory classification flags (module capabilities are managed under the Capabilities tab)
     const defaultFeatures = {
-        inventory: true,
-        purchase: true,
-        sales: true,
-        dining: false,
-        production: false,
-        reservation: false,
-        serialTracking: false,
-        serviceManagement: false,
         sellStockItems: true,
         sellManufacturedItems: true,
-        sellTradeItems: true
+        sellTradeItems: true,
+        serialTracking: false,
     };
 
     const fetchBusinessTypes = async () => {
-        setIsLoading(true);
         try {
+            setIsLoading(true);
             const res = await businessTypesService.getBusinessTypes();
             setBusinessTypes(res.data || []);
         } catch (error) {
-            console.error("Failed to fetch business types", error);
-            alert("Error loading business types");
+            console.error("Failed to load business types", error);
+            toast.error(getErrorMessage(error, "Failed to load business types"));
         } finally {
             setIsLoading(false);
         }
@@ -54,7 +49,8 @@ const BusinessTypesTab = () => {
 
     const handleSave = async () => {
         if (!formData.displayString.trim()) {
-            return alert("Name is required");
+            toast.error("Name is required");
+            return;
         }
 
         try {
@@ -69,11 +65,12 @@ const BusinessTypesTab = () => {
                     features: formData.features
                 });
             }
+            toast.success("Business type saved successfully!");
             setIsEditing(null);
             fetchBusinessTypes();
         } catch (error) {
             console.error("Save failed", error);
-            alert(error.response?.data?.message || "Failed to save");
+            toast.error(getErrorMessage(error, "Failed to save"));
         }
     };
 
@@ -81,10 +78,11 @@ const BusinessTypesTab = () => {
         if (!window.confirm("Are you sure? This may break existing businesses linked to this type!")) return;
         try {
             await businessTypesService.deleteBusinessType(id);
+            toast.success("Business type deleted successfully!");
             fetchBusinessTypes();
         } catch (error) {
             console.error("Delete failed", error);
-            alert("Failed to delete");
+            toast.error(getErrorMessage(error, "Failed to delete"));
         }
     };
 
@@ -142,15 +140,17 @@ const BusinessTypesTab = () => {
                             <label className={`block text-xs font-black uppercase tracking-wider mb-2 ${theme.textMuted}`}>Global Features</label>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 {Object.keys(defaultFeatures).map(key => (
-                                    <label key={key}
+                                    <button
+                                        type="button"
+                                        key={key}
                                         onClick={() => handleFeatureChange(key)}
-                                        className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderLight} ${theme.inputBg} cursor-pointer hover:border-indigo-300 transition-colors`}
+                                        className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderLight} ${theme.inputBg} cursor-pointer hover:border-indigo-300 transition-colors text-left`}
                                     >
                                         <div className={`w-5 h-5 rounded flex items-center justify-center border-2 ${formData.features[key] ? 'bg-indigo-600 border-indigo-600 text-white' : `${theme.inputBorder} ${theme.inputBg}`}`}>
                                             {formData.features[key] && <Check size={14} strokeWidth={3} />}
                                         </div>
                                         <span className={`text-sm font-bold capitalize ${theme.textPrimary}`}>{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                                    </label>
+                                    </button>
                                 ))}
                             </div>
                         </div>

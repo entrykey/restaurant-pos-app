@@ -258,12 +258,15 @@ const Reports = ({
                 .forEach((sale) => {
                     if (sale.items) {
                         sale.items.forEach((item) => {
-                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "â€”");
+                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
                             if (!itemStats[itemName])
                                 itemStats[itemName] = { qty: 0, revenue: 0, profit: 0 };
                             itemStats[itemName].qty += (item.quantity || 0);
-                            itemStats[itemName].revenue += (item.price || 0) * (item.quantity || 0);
-                            itemStats[itemName].profit += ((item.price || 0) - (item.purchasePrice || 0)) * (item.quantity || 0);
+                            // Use totalAmount (after discount) as actual revenue
+                            const lineRevenue = item.totalAmount || ((item.price || 0) * (item.quantity || 0));
+                            const lineCost = (item.purchasePrice || 0) * (item.quantity || 0);
+                            itemStats[itemName].revenue += lineRevenue;
+                            itemStats[itemName].profit += lineRevenue - lineCost;
                         });
                     }
                 });
@@ -860,12 +863,14 @@ const Reports = ({
                                         .forEach((sale) => {
                                             if (sale.items) {
                                                 sale.items.forEach((item) => {
-                                                    const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "â€”");
+                                                    const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
                                                     if (!itemStats[itemName])
                                                         itemStats[itemName] = { qty: 0, revenue: 0, profit: 0 };
                                                     itemStats[itemName].qty += (item.quantity || 0);
-                                                    itemStats[itemName].revenue += (item.price || 0) * (item.quantity || 0);
-                                                    itemStats[itemName].profit += ((item.price || 0) - (item.purchasePrice || 0)) * (item.quantity || 0);
+                                                    const lineRevenue = item.totalAmount || ((item.price || 0) * (item.quantity || 0));
+                                                    const lineCost = (item.purchasePrice || 0) * (item.quantity || 0);
+                                                    itemStats[itemName].revenue += lineRevenue;
+                                                    itemStats[itemName].profit += lineRevenue - lineCost;
                                                 });
                                             }
                                         });

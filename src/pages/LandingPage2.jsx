@@ -67,14 +67,14 @@ const LandingPage2 = () => {
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[800px] bg-gradient-to-b from-indigo-600/10 to-transparent blur-[120px] rounded-full pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-fuchsia-600/5 blur-[150px] rounded-full pointer-events-none" />
 
-            {/* Become a Partner Button (Initial state, top right) */}
+            {/* Start Free Trial Button (Initial state, top right) */}
             <div className={`fixed top-8 right-8 z-[110] transition-all duration-500 
                 ${scrolled > 100 ? 'opacity-0 scale-90 pointer-events-none' : 'opacity-100 scale-100'}`}>
                 <button 
                     onClick={() => navigate('/login')}
                     className="px-6 py-3 bg-white text-black font-black text-sm rounded-full shadow-2xl hover:scale-105 transition-transform flex items-center gap-2"
                 >
-                    Become a Partner
+                    Start Free Trial
                     <ArrowRight size={16} />
                 </button>
             </div>
@@ -99,7 +99,7 @@ const LandingPage2 = () => {
                             onClick={() => navigate('/login')}
                             className="px-5 py-2 bg-indigo-600 text-white font-bold text-xs rounded-full hover:bg-indigo-700 transition-colors flex items-center gap-2"
                         >
-                            Become a Partner
+                            Start Free Trial
                             <ArrowRight size={14} />
                         </button>
                     </div>

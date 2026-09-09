@@ -610,17 +610,19 @@ const AppContent = () => {
             const msg = String(message);
             const lowerMsg = msg.toLowerCase();
 
-            // Simple heuristic to distinguish success from error
-            const isSuccess = 
-                lowerMsg.includes('success') || 
-                lowerMsg.includes('successfully') || 
-                lowerMsg.includes('done') || 
-                lowerMsg.includes('saved');
+            // Heuristic to distinguish success from error alerts
+            const negativeTerms = [
+                'fail', 'failed', 'failure', 'error', 'unable', 'cannot', 'could not',
+                'invalid', 'forbidden', 'denied', 'unauthorized', 'wrong', 'required',
+                'missing', 'blocked', 'not approved', 'not valid', 'not found', 'rejected'
+            ];
 
-            if (isSuccess) {
-                toast.success(msg);
-            } else {
+            const isError = negativeTerms.some(term => lowerMsg.includes(term));
+
+            if (isError) {
                 toast.error(msg);
+            } else {
+                toast.success(msg);
             }
             
             // Log for debugging
@@ -646,10 +648,22 @@ const AppContent = () => {
             currentUser.role === "superadmin" ||
             currentUser.role?.name === "superadmin";
 
+        if (isSuperAdmin) {
+            setIsSubscriptionModalOpen(false);
+            setSubscriptionRequiredMessage(null);
+            return;
+        }
+
         const isSubscribed = computeUserHasActiveSubscription(currentUser, organization);
 
-        if (isSubscribed || isSuperAdmin) {
+        if (isSubscribed) {
             setIsSubscriptionModalOpen(false);
+            setSubscriptionRequiredMessage(null);
+            return;
+        }
+
+        // Prevent premature popup flash on login while org data is being fetched
+        if ((!organization?.id && !organization?._id) && currentUser?.subscription?.active) {
             return;
         }
 
@@ -666,7 +680,7 @@ const AppContent = () => {
             localStorage.getItem(POS_SUBSCRIPTION_MODAL_DISMISSED_KEY) === "1";
         if (dismissedSubscriptionModal) return;
 
-        const isOwner = currentUser.isOwner || isSuperAdmin;
+        const isOwner = currentUser.isOwner;
 
         if (subMethod === 'trial_run') {
             // If trial run is approved, don't show any alerts
@@ -717,6 +731,13 @@ const AppContent = () => {
 
     useEffect(() => {
         const onSubscriptionRequired = (event) => {
+            const isSuperAdmin =
+                currentUser?.isSuperAdmin ||
+                currentUser?.role === "superadmin" ||
+                currentUser?.role?.name === "superadmin";
+
+            if (isSuperAdmin) return;
+
             setSubscriptionRequiredMessage(
                 event?.detail?.message ||
                     "You haven't subscribed. Please subscribe to a plan to perform this action."
@@ -724,7 +745,7 @@ const AppContent = () => {
         };
         window.addEventListener('pos-subscription-required', onSubscriptionRequired);
         return () => window.removeEventListener('pos-subscription-required', onSubscriptionRequired);
-    }, []);
+    }, [currentUser]);
 
     const hasPermission = (permissionKey) => {
         return checkPermission(currentUser, permissionKey);
@@ -1486,15 +1507,23 @@ const AppContent = () => {
         }
     };
 
-    const initiateAddItem = (menuItem, quantity = 1) => {
+    const initiateAddItem = (menuItem, quantity = 1, preselectedVariant = null) => {
         const hasNewPortions = Array.isArray(menuItem.portionPricing) && menuItem.portionPricing.length > 0;
         const hasLegacyVariants = Array.isArray(menuItem.variants) && menuItem.variants.length > 0;
         const isWeightItem = menuItem.sellingType === "Weight";
         const hasExtras = Array.isArray(menuItem.availableExtras) && menuItem.availableExtras.length > 0;
 
+        if (preselectedVariant && !hasExtras && !isWeightItem) {
+            addToCart(menuItem, quantity, preselectedVariant, []);
+            return;
+        }
+
         if (hasNewPortions || hasLegacyVariants || isWeightItem || hasExtras) {
             setCustomizingItem(menuItem);
-            if (hasNewPortions) {
+            if (preselectedVariant) {
+                setCustomVariant(preselectedVariant);
+                setCustomWeightInput(quantity);
+            } else if (hasNewPortions) {
                 const defPortion = menuItem.portionPricing.find(p => p.isDefault) || menuItem.portionPricing[0];
                 setCustomVariant(defPortion);
                 setCustomWeightInput(quantity);
@@ -1989,9 +2018,9 @@ const AppContent = () => {
             if (isTakeaway) {
                 // Close the completed tab if more than one exists, otherwise just reset it
                 if (tabs && tabs.filter(t => !t.tableId).length > 1) {
-                    closeTab(activeTabId);
+                    closeTab(activeTabId, null, true);
                 } else {
-                    resetTakeaway();
+                    resetTakeaway(true);
                 }
             } else {
                 setTables((prev) =>
@@ -2019,8 +2048,6 @@ const AppContent = () => {
                 setView("tables");
                 setActiveTableId(null);
             } else {
-                // After successful payment in takeaway mode, reset the order
-                resetTakeaway();
                 setView("order");
             }
             
@@ -2340,7 +2367,7 @@ const AppContent = () => {
                 }}
             />
             <SubscriptionNoticeModal
-                isOpen={!!subscriptionRequiredMessage}
+                isOpen={!isSuperAdmin && !isSubscribed && !!subscriptionRequiredMessage}
                 onClose={() => setSubscriptionRequiredMessage(null)}
                 user={currentUser}
                 isOwner={currentUser?.isOwner}

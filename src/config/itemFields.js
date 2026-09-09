@@ -10,21 +10,21 @@ export const ALL_FIELDS = {
     category_id: { key: "categoryId", label: "Category", type: "select", section: "Common" }, // Will be populated dynamically
     brand_id: { key: "brandId", label: "Brand", type: "select", section: "Common" }, // Will be populated dynamically
     supplier_id: { key: "supplierId", label: "Supplier", type: "select", section: "Common" }, // Will be populated dynamically
-    unit_id: { key: "unitId", label: "Unit", type: "select", required: true, section: "Units" }, // Will be populated dynamically
-    secondary_unit_id: { key: "secondaryUnitId", label: "Secondary Unit", type: "select", section: "Units" },
-    conversion_factor: { key: "conversionFactor", label: "Conversion Factor", type: "number", section: "Units" },
+    unit_id: { key: "unitId", label: "Primary Unit (Main / Bigger Unit)", type: "select", required: true, section: "Units", placeholder: "Select Primary (Main/Bigger) Unit (e.g. Rolls, Box, Bag)..." },
+    secondary_unit_id: { key: "secondaryUnitId", label: "Secondary Unit (Sub / Smaller Unit)", type: "select", section: "Units", placeholder: "Select Secondary (Sub/Smaller) Unit (e.g. Meters, Pieces, Grams)..." },
+    conversion_factor: { key: "conversionFactor", label: "Conversion Factor", type: "number", section: "Units", placeholder: "e.g. 64 (How many Secondary units in 1 Primary unit)" },
     default_purchase_unit: { 
         key: "defaultPurchaseUnit", 
         label: "Default Purchase Unit", 
         type: "select", 
-        options: [{ label: "Primary", value: "PRIMARY" }, { label: "Secondary", value: "SECONDARY" }], 
+        options: [{ label: "Primary Unit", value: "PRIMARY" }, { label: "Secondary Unit", value: "SECONDARY" }], 
         section: "Units" 
     },
     default_sales_unit: { 
         key: "defaultSalesUnit", 
         label: "Default Sales Unit", 
         type: "select", 
-        options: [{ label: "Primary", value: "PRIMARY" }, { label: "Secondary", value: "SECONDARY" }], 
+        options: [{ label: "Primary Unit", value: "PRIMARY" }, { label: "Secondary Unit", value: "SECONDARY" }], 
         section: "Units" 
     },
 

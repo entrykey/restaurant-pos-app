@@ -70,7 +70,7 @@ export const OrderProvider = ({ children }) => {
         const itemBaseCost = (() => {
             let p = basePrice;
             if (item.selectedUnit === "SECONDARY" && item.conversionFactor > 0) {
-                p = basePrice * item.conversionFactor;
+                p = basePrice / item.conversionFactor;
             }
             return p * item.quantity;
         })();

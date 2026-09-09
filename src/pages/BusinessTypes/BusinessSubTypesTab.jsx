@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, ShieldAlert, ShoppingBasket, UtensilsCrossed } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { useTheme } from "../../context/ThemeContext";
 import { businessTypesService } from "../../services/api/businessTypes";
 import CommonSelect from '../../components/ui/CommonSelect';
+import { getErrorMessage } from "../../utils/errorUtils";
 
 const BusinessSubTypesTab = () => {
     const { theme } = useTheme();
@@ -18,17 +20,17 @@ const BusinessSubTypesTab = () => {
     });
 
     const fetchData = async () => {
-        setIsLoading(true);
         try {
-            const [subRes, parentRes] = await Promise.all([
+            setIsLoading(true);
+            const [stRes, ptRes] = await Promise.all([
                 businessTypesService.getBusinessSubTypes(),
-                businessTypesService.getBusinessTypes()
+                businessTypesService.getBusinessTypes(),
             ]);
-            setSubTypes(subRes.data || []);
-            setParentTypes(parentRes.data || []);
+            setSubTypes(stRes.data || stRes || []);
+            setParentTypes(ptRes.data || ptRes || []);
         } catch (error) {
-            console.error("Failed to fetch subtypes", error);
-            alert("Error loading subtypes");
+            console.error("Failed to load business subtypes", error);
+            toast.error(getErrorMessage(error, "Failed to load business subtypes"));
         } finally {
             setIsLoading(false);
         }
@@ -39,12 +41,17 @@ const BusinessSubTypesTab = () => {
     }, []);
 
     const handleSave = async () => {
-        if (!formData.displayString.trim() || !formData.businessTypeId) {
-            return alert("Name and Parent Type are required");
+        if (!formData.displayString.trim()) {
+            toast.error("Name is required");
+            return;
+        }
+        if (!formData.businessTypeId) {
+            toast.error("Parent business type is required");
+            return;
         }
 
         if (!formData.mobileAppFoodSales && !formData.mobileAppNormalSales) {
-            return alert("Select at least one mobile app sales mode");
+            return toast.error("Select at least one mobile app sales mode");
         }
 
         try {
@@ -63,11 +70,12 @@ const BusinessSubTypesTab = () => {
                     mobileAppNormalSales: formData.mobileAppNormalSales,
                 });
             }
+            toast.success("Business subtype saved successfully!");
             setIsEditing(null);
             fetchData();
         } catch (error) {
             console.error("Save failed", error);
-            alert(error.response?.data?.message || "Failed to save");
+            toast.error(getErrorMessage(error, "Failed to save"));
         }
     };
 
@@ -75,10 +83,11 @@ const BusinessSubTypesTab = () => {
         if (!window.confirm("Are you sure? This may break businesses using this subtype.")) return;
         try {
             await businessTypesService.deleteBusinessSubType(id);
+            toast.success("Business subtype deleted successfully!");
             fetchData();
         } catch (error) {
             console.error("Delete failed", error);
-            alert("Failed to delete");
+            toast.error(getErrorMessage(error, "Failed to delete"));
         }
     };
 

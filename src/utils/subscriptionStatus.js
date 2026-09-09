@@ -5,6 +5,7 @@
 export const LIVE_SUBSCRIPTION_STATUSES = ["active", "trial", "grace", "base", "free", "paid"];
 
 export function computeUserHasActiveSubscription(user, organization) {
+    if (user?.isSuperAdmin || user?.role === 'superadmin' || user?.role?.name === 'superadmin') return true;
     if (organization?.canWrite === true) return true;
     
     const trialStatus = String(organization?.trialRunStatus || user?.subscription?.trialRunStatus || "").toLowerCase();

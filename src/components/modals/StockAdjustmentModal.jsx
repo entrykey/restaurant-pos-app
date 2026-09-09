@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Minus, Equal, Calculator, FileText, Calendar, Coins } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import ThemeLoader from '../ui/ThemeLoader';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -7,6 +8,7 @@ import { inventoryService } from '../../services/api';
 import { shopExpenseService } from '../../services/api/shopExpenses';
 import { useApp } from '../../context/AppContext';
 import DatePicker from '../ui/DatePicker';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuccess, formatCurrency: propFormatCurrency }) => {
     const { theme } = useTheme();
@@ -59,7 +61,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
         e.preventDefault();
         const numQty = Number(quantity);
         if (quantity === '' || isNaN(quantity) || (adjustmentType !== 'SET' && numQty <= 0) || (adjustmentType === 'SET' && numQty < 0)) {
-            alert("Please enter a valid quantity");
+            toast.error("Please enter a valid quantity");
             return;
         }
 
@@ -99,7 +101,7 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
             onClose();
         } catch (error) {
             console.error("Adjustment failed:", error);
-            alert(error.response?.data?.message || "Failed to adjust stock");
+            toast.error(getErrorMessage(error, "Failed to adjust stock"));
         } finally {
             setIsSubmitting(false);
         }

@@ -55,6 +55,11 @@ const CustomizationModal = ({
                                             <div className="font-black text-indigo-600 mt-1">
                                                 {formatCurrency(p.price)}
                                             </div>
+                                            {item.inventoryMode === 'separate' && (
+                                                <div className={`text-[10px] font-bold mt-1 ${theme.textMuted}`}>
+                                                    Stock: {Number(p.quantityOnHand ?? p.openingStock) || 0}
+                                                </div>
+                                            )}
                                         </button>
                                     );
                                 })}

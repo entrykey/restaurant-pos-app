@@ -676,12 +676,14 @@ const PurchasePage = () => {
                 const row = updatedItems[index];
                 const oldUnit = row.selectedUnit;
                 if (value === 'SECONDARY' && oldUnit !== 'SECONDARY') {
-                    // Changing from Primary to Secondary: multiply price
-                    updatedItems[index].purchasePrice = parseFloat((row.purchasePrice * row.conversionFactor).toFixed(4));
+                    // Changing from Primary (e.g. Roll) to Secondary (e.g. Meter): divide price
+                    const factor = Number(row.conversionFactor) || 1;
+                    updatedItems[index].purchasePrice = parseFloat((row.purchasePrice / factor).toFixed(4));
                     updatedItems[index].unitName = row.secondaryUnitName;
                 } else if (value === 'PRIMARY' && oldUnit !== 'PRIMARY') {
-                    // Changing from Secondary to Primary: divide price
-                    updatedItems[index].purchasePrice = parseFloat((row.purchasePrice / row.conversionFactor).toFixed(4));
+                    // Changing from Secondary (e.g. Meter) to Primary (e.g. Roll): multiply price
+                    const factor = Number(row.conversionFactor) || 1;
+                    updatedItems[index].purchasePrice = parseFloat((row.purchasePrice * factor).toFixed(4));
                     updatedItems[index].unitName = row.primaryUnitName;
                 }
             }
@@ -1809,7 +1811,7 @@ const PurchasePage = () => {
                                                 <div className={`text-[10px] font-bold uppercase ${theme.textSecondary}`}>{item.itemCode}</div>
                                                 {item.secondaryUnitId && item.conversionFactor > 1 && (
                                                     <div className="text-[9px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">
-                                                        1 {item.secondaryUnitId.name || item.secondaryUnitId.code} = {item.conversionFactor} {item.unitId?.name || item.unitId?.code}
+                                                        1 {item.unitId?.name || item.unitId?.code} = {item.conversionFactor} {item.secondaryUnitId.name || item.secondaryUnitId.code}
                                                     </div>
                                                 )}
                                             </div>
@@ -1912,7 +1914,7 @@ const PurchasePage = () => {
                                                     </div>
                                                     {it.selectedUnit === 'SECONDARY' && it.conversionFactor > 1 && (
                                                         <div className={`text-[8px] font-black text-indigo-500/70 text-center uppercase tracking-wider flex items-center justify-center gap-1 bg-indigo-50/50 dark:bg-indigo-900/20 py-1 rounded-lg`}>
-                                                            <Layers size={8} /> 1 {it.secondaryUnitName} = {it.conversionFactor} {it.unitName}
+                                                            <Layers size={8} /> 1 {it.primaryUnitName || "Primary"} = {it.conversionFactor} {it.secondaryUnitName || "Secondary"}
                                                         </div>
                                                     )}
                                                 </div>

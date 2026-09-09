@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Upload, Download, FileText, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import ThemeLoader from '../ui/ThemeLoader';
 import { useTheme } from '../../context/ThemeContext';
@@ -7,6 +7,46 @@ import Modal from '../ui/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { toast } from 'react-hot-toast';
+// Helper to turn raw database errors into user-friendly messages for non-technical clients
+const formatFriendlyErrorMessage = (rawMsg) => {
+    if (!rawMsg || typeof rawMsg !== 'string') return "An error occurred during processing.";
+
+    let msg = rawMsg.trim();
+
+    // Handle Mongo E11000 and duplicate key errors
+    if (msg.includes('E11000') || msg.toLowerCase().includes('duplicate')) {
+        const itemCodeMatch = msg.match(/itemCode:\s*"([^"]+)"/i) || msg.match(/itemCode:\s*([^\s,{}]+)/i);
+        if (itemCodeMatch && itemCodeMatch[1]) {
+            const cleanCode = itemCodeMatch[1].replace(/["']/g, '');
+            return `Item with code "${cleanCode}" already exists.`;
+        }
+
+        const barcodeMatch = msg.match(/barcode:\s*"([^"]+)"/i) || msg.match(/barcode:\s*([^\s,{}]+)/i);
+        if (barcodeMatch && barcodeMatch[1]) {
+            const cleanBarcode = barcodeMatch[1].replace(/["']/g, '');
+            return `Item with barcode "${cleanBarcode}" already exists.`;
+        }
+
+        const nameMatch = msg.match(/name:\s*"([^"]+)"/i) || msg.match(/name:\s*([^\s,{}]+)/i);
+        if (nameMatch && nameMatch[1]) {
+            const cleanName = nameMatch[1].replace(/["']/g, '');
+            return `Item named "${cleanName}" already exists.`;
+        }
+
+        return "This item already exists in the system.";
+    }
+
+    if (msg.includes('Cast to ObjectId failed')) {
+        return "Invalid ID format provided.";
+    }
+
+    // Strip technical Mongo IDs or internal database terms
+    return msg.replace(/ObjectId\("[^"]+"\)/g, '')
+              .replace(/ObjectId\('[^']+'\)/g, '')
+              .replace(/branchId:\s*/gi, '')
+              .replace(/shopId:\s*/gi, '')
+              .trim();
+};
 
 const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
     const { theme } = useTheme();
@@ -16,13 +56,29 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
     const [uploading, setUploading] = useState(false);
     const [result, setResult] = useState(null);
 
+    useEffect(() => {
+        if (!isOpen) {
+            setFile(null);
+            setResult(null);
+            setUploading(false);
+            const fileInput = document.getElementById('bulk-csv-input');
+            if (fileInput) fileInput.value = '';
+        }
+    }, [isOpen]);
+
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0];
-        if (selectedFile && (selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv'))) {
+        if (!selectedFile) return;
+        const fileName = selectedFile.name.toLowerCase();
+        const fileType = selectedFile.type || '';
+        const isCsv = fileName.endsWith('.csv') || fileType === 'text/csv';
+        const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileType.includes('excel') || fileType.includes('spreadsheetml');
+        
+        if (isCsv || isExcel) {
             setFile(selectedFile);
             setResult(null);
         } else {
-            toast.error("Please select a valid CSV file");
+            toast.error("Please select a valid CSV or Excel (.xlsx, .xls) file");
             e.target.value = null;
         }
     };
@@ -36,7 +92,7 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
             "Imported via bulk upload",
             activeTab === 'menu' ? "Main Course" : "Raw Materials",
             "Pieces",
-            "100",
+            activeTab === 'menu' ? "0" : "100",
             "150",
             "150",
             "5",
@@ -63,17 +119,42 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
         setResult(null);
 
         try {
+            const rawShopId = user?.shop_id || user?.shopId || user?.shop?._id || (typeof user?.shop === 'string' ? user.shop : null) || localStorage.getItem('pos_shopId');
+            const rawBranchId = activeBranchId || user?.branchId || user?.branch_id || (user?.branchIds?.length ? user.branchIds[0] : null) || localStorage.getItem('pos_branchId');
+
+            const shopId = (rawShopId && rawShopId !== 'undefined' && rawShopId !== 'null') ? String(rawShopId) : null;
+            const branchId = (rawBranchId && rawBranchId !== 'undefined' && rawBranchId !== 'null') ? String(rawBranchId) : null;
+
+            if (!shopId) {
+                toast.error("Shop ID is missing. Please re-select your shop or log in again.");
+                setUploading(false);
+                return;
+            }
+
+            if (!branchId) {
+                toast.error("Branch ID is missing. Please select an active branch.");
+                setUploading(false);
+                return;
+            }
+
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('shopId', user.shop_id);
-            formData.append('branchId', activeBranchId || (user.branchIds?.length ? user.branchIds[0] : null));
+            formData.append('shopId', shopId);
+            formData.append('branchId', branchId);
             formData.append('itemType', activeTab === 'menu' ? 'MANUFACTURED' : (activeTab === 'raw' ? 'STOCK' : 'TRADE'));
 
             const res = await itemService.bulkUploadItems(formData);
             setResult(res);
-            toast.success("Bulk upload completed!");
+
             if (res.successCount > 0) {
+                toast.success(`Bulk upload complete! ${res.successCount} items imported successfully.`);
+                // Reset file selection after successful upload
+                setFile(null);
+                const fileInput = document.getElementById('bulk-csv-input');
+                if (fileInput) fileInput.value = '';
                 onSuccess();
+            } else {
+                toast.error(res.message || "No items were imported.");
             }
         } catch (err) {
             console.error(err);
@@ -91,7 +172,8 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
                     <div className="text-sm">
                         <p className="font-bold mb-1">Before you upload:</p>
                         <ul className="list-disc list-inside space-y-1 opacity-90">
-                            <li>Download the sample CSV file to ensure correct formatting.</li>
+                            <li>Supports both <strong>Excel (.xlsx, .xls)</strong> and <strong>CSV (.csv)</strong> files.</li>
+                            <li>Download the sample file to ensure correct formatting.</li>
                             <li>Items will be automatically tagged as <strong>{activeTab === 'menu' ? 'MANUFACTURED' : (activeTab === 'raw' ? 'STOCK' : 'TRADE')}</strong> items.</li>
                             <li><strong>Unit</strong> name must exist in the system (e.g., Pieces, Kg, Ltr).</li>
                             <li>Categories will be auto-created if they do not exist.</li>
@@ -106,7 +188,7 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
                     <input 
                         id="bulk-csv-input"
                         type="file" 
-                        accept=".csv"
+                        accept=".csv, .xlsx, .xls"
                         className="hidden"
                         onChange={handleFileChange}
                     />
@@ -115,12 +197,34 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
                         <Upload size={32} />
                     </div>
                     
-                    <p className={`text-lg font-black mb-1 ${theme.textPrimary}`}>
-                        {file ? file.name : "Click to select CSV file"}
-                    </p>
-                    <p className={`text-sm ${theme.textMuted}`}>
-                        Maximum file size: 5MB
-                    </p>
+                    {file ? (
+                        <div className="flex flex-col items-center">
+                            <p className={`text-lg font-black mb-2 ${theme.textPrimary}`}>
+                                {file.name}
+                            </p>
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFile(null);
+                                    const fileInput = document.getElementById('bulk-csv-input');
+                                    if (fileInput) fileInput.value = '';
+                                }}
+                                className="flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-600 bg-red-50 dark:bg-red-500/10 px-3 py-1.5 rounded-lg transition-all"
+                            >
+                                <X size={14} /> Remove selected file
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            <p className={`text-lg font-black mb-1 ${theme.textPrimary}`}>
+                                Click to select Excel (.xlsx, .xls) or CSV file
+                            </p>
+                            <p className={`text-sm ${theme.textMuted}`}>
+                                Maximum file size: 10MB
+                            </p>
+                        </>
+                    )}
                 </div>
 
                 <div className="flex flex-col gap-4">
@@ -131,7 +235,7 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
                             </div>
                             <div>
                                 <p className={`font-bold text-sm ${theme.textPrimary}`}>Sample File</p>
-                                <p className={`text-[11px] ${theme.textMuted}`}>CSV Template with example data</p>
+                                <p className={`text-[11px] ${theme.textMuted}`}>Template with example data</p>
                             </div>
                         </div>
                         <button 
@@ -150,7 +254,7 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, activeTab }) => {
                             </div>
                             {result.errors && result.errors.length > 0 && (
                                 <ul className="text-xs space-y-1 list-disc list-inside opacity-90">
-                                    {result.errors.map((err, i) => <li key={i}>{err}</li>)}
+                                    {result.errors.map((err, i) => <li key={i}>{formatFriendlyErrorMessage(err)}</li>)}
                                 </ul>
                             )}
                         </div>

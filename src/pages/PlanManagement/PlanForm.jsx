@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Save, Briefcase, Settings, List, Coins, Layers, CheckSquare, Square } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { planService } from '../../services/api/plans';
 import { businessTypesService } from '../../services/api/businessTypes';
 import { shopService } from '../../services/api/shops';
 import { useTheme } from '../../context/ThemeContext';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const PlanForm = ({ planToEdit, onBack }) => {
     const { theme } = useTheme();
@@ -216,7 +218,7 @@ const PlanForm = ({ planToEdit, onBack }) => {
             onBack();
         } catch (error) {
             console.error("Error saving plan:", error);
-            alert(error.response?.data?.message || "Failed to save plan");
+            toast.error(getErrorMessage(error, "Failed to save plan"));
         } finally {
             setIsLoading(false);
         }

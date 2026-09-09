@@ -92,6 +92,9 @@ api.interceptors.response.use(
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('refreshToken');
                 localStorage.removeItem('restaurant_pos_auth_v1');
+                localStorage.removeItem('pos_active_tabs');
+                localStorage.removeItem('pos_active_tab_id');
+                localStorage.removeItem('pos_active_tabs_shop');
                 return Promise.reject(_error);
             } finally {
                 isRefreshing = false;
@@ -166,6 +169,15 @@ export const shopService = {
     createShop: async (payload) => {
         try {
             const response = await api.post('/shops', payload);
+            return response.data;
+        } catch (error) {
+            throw error.response ? error.response.data : error;
+        }
+    },
+
+    createShopForOwner: async (payload) => {
+        try {
+            const response = await api.post('/shops/for-owner', payload);
             return response.data;
         } catch (error) {
             throw error.response ? error.response.data : error;

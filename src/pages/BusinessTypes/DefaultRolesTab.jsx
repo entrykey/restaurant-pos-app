@@ -6,6 +6,7 @@ import CommonSelect from '../../components/ui/CommonSelect';
 import CommonDialog from '../../components/modals/CommonDialog';
 import Modal from '../../components/ui/Modal';
 import toast from 'react-hot-toast';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const emptyForm = () => ({
     name: '',
@@ -189,7 +190,7 @@ const DefaultRolesTab = () => {
             setEditorOpen(false);
             loadRoles();
         } catch (err) {
-            toast.error(err?.response?.data?.message || err?.message || 'Save failed');
+            toast.error(getErrorMessage(err, 'Save failed'));
         } finally {
             setIsSaving(false);
         }
@@ -203,7 +204,7 @@ const DefaultRolesTab = () => {
             setDeleteTarget(null);
             loadRoles();
         } catch (err) {
-            toast.error(err?.response?.data?.message || 'Delete failed');
+            toast.error(getErrorMessage(err, 'Delete failed'));
         }
     };
 

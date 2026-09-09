@@ -604,12 +604,12 @@ const TakeawayOrder = ({
         [activeMenu, allCartItems, baseStockMap],
     );
 
-    const handleInitiateAddItem = useCallback((menuItem, quantity = 1) => {
-        if (!canAddToCart(menuItem, allCartItems, baseStockMap, quantity)) {
+    const handleInitiateAddItem = useCallback((menuItem, quantity = 1, preselectedVariant = null) => {
+        if (!canAddToCart(menuItem, allCartItems, baseStockMap, quantity, preselectedVariant)) {
             toast.error(`Insufficient stock for ${menuItem.name}`);
             return;
         }
-        initiateAddItem(menuItem, quantity);
+        initiateAddItem(menuItem, quantity, preselectedVariant);
     }, [allCartItems, baseStockMap, initiateAddItem]);
 
     const handleUpdateItemQuantity = useCallback((itemIndex, delta) => {
@@ -617,7 +617,7 @@ const TakeawayOrder = ({
             const item = currentOrder?.items?.[itemIndex];
             if (item) {
                 const addQty = item.sellingType === "Weight" ? delta * 0.25 : delta;
-                if (!canAddToCart(item, allCartItems, baseStockMap, addQty)) {
+                if (!canAddToCart(item, allCartItems, baseStockMap, addQty, item.selectedVariant)) {
                     toast.error(`Insufficient stock for ${item.name}`);
                     return;
                 }
@@ -642,16 +642,27 @@ const TakeawayOrder = ({
         if (!code) return;
         
         const cleanCode = String(code).trim().toLowerCase();
-        
-        // 1. Search in local active menu first
-        const found = displayMenu.find(it => 
-            (it.itemCode && String(it.itemCode).toLowerCase() === cleanCode) || 
-            (it.barcode && String(it.barcode).toLowerCase() === cleanCode)
-        );
+        let matchedVariant = null;
+
+        const found = displayMenu.find(it => {
+            if ((it.itemCode && String(it.itemCode).toLowerCase() === cleanCode) ||
+                (it.barcode && String(it.barcode).toLowerCase() === cleanCode)) {
+                return true;
+            }
+            const variant = (it.portionPricing || []).find(
+                (p) => p.barcode && String(p.barcode).toLowerCase() === cleanCode
+            );
+            if (variant) {
+                matchedVariant = variant;
+                return true;
+            }
+            return false;
+        });
 
         if (found) {
-            handleInitiateAddItem(found);
-            toast.success(`Added ${found.name} to cart`, {
+            handleInitiateAddItem(found, 1, matchedVariant);
+            const label = matchedVariant ? `${found.name} (${matchedVariant.name})` : found.name;
+            toast.success(`Added ${label} to cart`, {
                 icon: '🛒',
                 duration: 2000,
                 style: {
@@ -675,7 +686,8 @@ const TakeawayOrder = ({
                     branchId: activeBranchId || undefined,
                     $or: [
                         { itemCode: code },
-                        { barcode: code }
+                        { barcode: code },
+                        { "portionPricing.barcode": code }
                     ]
                 }
             });
@@ -684,6 +696,9 @@ const TakeawayOrder = ({
             const foundRemote = itemsArray[0];
 
             if (foundRemote) {
+                const matchedRemoteVariant = (foundRemote.portionPricing || []).find(
+                    (p) => p.barcode && String(p.barcode).toLowerCase() === cleanCode
+                );
                 // Normalize for POS
                 const normalizedItem = {
                     ...foundRemote,
@@ -695,8 +710,9 @@ const TakeawayOrder = ({
                     itemType: foundRemote.itemType,
                     stockSettings: foundRemote.stockSettings,
                 };
-                handleInitiateAddItem(normalizedItem);
-                toast.success(`Added ${normalizedItem.name} to cart`, { icon: '🛒' });
+                handleInitiateAddItem(normalizedItem, 1, matchedRemoteVariant);
+                const label = matchedRemoteVariant ? `${normalizedItem.name} (${matchedRemoteVariant.name})` : normalizedItem.name;
+                toast.success(`Added ${label} to cart`, { icon: '🛒' });
             } else {
                 toast.error(`Code "${code}" not found`);
             }
@@ -1343,7 +1359,7 @@ const TakeawayOrder = ({
                                                                 </button>
                                                             </div>
                                                             <span className={`text-[9px] ${theme.textMuted}`}>
-                                                                {item.selectedUnit === "SECONDARY" ? `1 ${item.secondaryUnitName} = ${item.conversionFactor} ${item.unitName}` : ""}
+                                                                {item.selectedUnit === "SECONDARY" ? `1 ${item.unitName || 'Pri'} = ${item.conversionFactor} ${item.secondaryUnitName || 'Sec'}` : ""}
                                                             </span>
                                                         </div>
                                                     )}

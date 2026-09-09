@@ -15,6 +15,13 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
 
     const isOutOfStock = useMemo(() => {
         if (!isStockTracked(item) || allowsNegativeStock(item)) return false;
+        if (item.inventoryMode === 'separate' && Array.isArray(item.portionPricing) && item.portionPricing.length > 0) {
+            const total = item.portionPricing.reduce(
+                (sum, p) => sum + (Number(p.quantityOnHand ?? p.openingStock) || 0),
+                0
+            );
+            return total <= 0;
+        }
         const available = Number.isFinite(item?.quantityOnHand) ? item.quantityOnHand : getAvailableStock(item);
         if (available === Infinity) return false;
         return available <= 0;
@@ -115,7 +122,7 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
                         </div>
                         {item.secondaryUnitId && item.conversionFactor > 1 && (
                             <div className="mt-0.5 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 text-[8px] font-black w-fit uppercase tracking-tighter">
-                                1 {item.secondaryUnitName || 'Sec'} = {item.conversionFactor} {item.unitName || 'Pri'}
+                                1 {item.unitName || 'Pri'} = {item.conversionFactor} {item.secondaryUnitName || 'Sec'}
                             </div>
                         )}
                     </div>

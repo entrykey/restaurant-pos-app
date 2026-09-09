@@ -1,9 +1,48 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { orderService } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 
 const TakeawayContext = createContext();
 
 export const useTakeaway = () => useContext(TakeawayContext);
+
+const CART_TABS_KEY = "pos_active_tabs";
+const CART_TAB_ID_KEY = "pos_active_tab_id";
+const CART_SCOPE_KEY = "pos_active_tabs_shop";
+const AUTH_STORAGE_KEY = "restaurant_pos_auth_v1";
+
+const getShopScopeFromUser = (user) => {
+    if (!user) return "";
+    return `${user._id || user.id || ""}:${user.shop_id || user.shopId || ""}`;
+};
+
+const getStoredAuthShopScope = () => {
+    try {
+        const saved = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || "null");
+        return getShopScopeFromUser(saved?.user);
+    } catch {
+        return "";
+    }
+};
+
+const loadPersistedSaleTabs = () => {
+    const currentScope = getStoredAuthShopScope();
+    const savedScope = localStorage.getItem(CART_SCOPE_KEY) || "";
+    if (!currentScope || savedScope !== currentScope) {
+        return [createTab(1)];
+    }
+
+    const saved = localStorage.getItem(CART_TABS_KEY);
+    if (!saved) return [createTab(1)];
+
+    try {
+        const parsed = JSON.parse(saved);
+        const saleTabs = parsed.filter((t) => !t.tableId);
+        return saleTabs.length > 0 ? saleTabs : [createTab(1)];
+    } catch {
+        return [createTab(1)];
+    }
+};
 
 const INITIAL_TAB_DATA = {
     takeawayOrder: {
@@ -29,24 +68,17 @@ const createTab = (id, name, tableId = null) => ({
 });
 
 export const TakeawayProvider = ({ children }) => {
+    const { user } = useAuth();
+    const shopScopeKey = getShopScopeFromUser(user);
+
     // Multi-tab state with persistence — only stores sale tabs (no table orders)
-    const [tabs, setTabs] = useState(() => {
-        const saved = localStorage.getItem('pos_active_tabs');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                // Filter out any stale table tabs that may have been saved previously
-                const saleTabs = parsed.filter(t => !t.tableId);
-                return saleTabs.length > 0 ? saleTabs : [createTab(1)];
-            } catch (e) {
-                return [createTab(1)];
-            }
-        }
-        return [createTab(1)];
-    });
+    const [tabs, setTabs] = useState(() => loadPersistedSaleTabs());
     
     const [activeTabId, setActiveTabId] = useState(() => {
-        const saved = localStorage.getItem('pos_active_tab_id');
+        const currentScope = getStoredAuthShopScope();
+        const savedScope = localStorage.getItem(CART_SCOPE_KEY) || "";
+        if (!currentScope || savedScope !== currentScope) return 1;
+        const saved = localStorage.getItem(CART_TAB_ID_KEY);
         return saved ? Number(saved) : 1;
     });
 
@@ -65,6 +97,49 @@ export const TakeawayProvider = ({ children }) => {
     const persistTimeoutRef = React.useRef(null);
 
     const prevActiveTabIdRef = React.useRef(activeTabId);
+    const prevShopScopeRef = React.useRef(shopScopeKey);
+
+    const applyBlankSaleCart = () => {
+        if (persistTimeoutRef.current) {
+            clearTimeout(persistTimeoutRef.current);
+            persistTimeoutRef.current = null;
+        }
+
+        isResettingRef.current = true;
+        const freshTab = createTab(1, "Tab 1");
+
+        setTakeawayOrder(freshTab.takeawayOrder);
+        setTakeawayCustName("");
+        setTakeawayCustPhone("");
+        setSelectedCustomer(null);
+        setBillDiscount({ type: "flat", value: 0 });
+        setLoyaltyDiscount({ points: 0, amount: 0 });
+        setIsTakeaway(false);
+        setTableId(null);
+        setTabs([freshTab]);
+        setActiveTabId(1);
+        prevActiveTabIdRef.current = 1;
+
+        localStorage.setItem(CART_TABS_KEY, JSON.stringify([freshTab]));
+        localStorage.setItem(CART_TAB_ID_KEY, "1");
+        if (shopScopeKey) {
+            localStorage.setItem(CART_SCOPE_KEY, shopScopeKey);
+        } else {
+            localStorage.removeItem(CART_SCOPE_KEY);
+        }
+
+        setTimeout(() => {
+            isResettingRef.current = false;
+        }, 300);
+    };
+
+    // Drop persisted cart when logging out or switching shops so items never leak across shops
+    useEffect(() => {
+        if (prevShopScopeRef.current === shopScopeKey) return;
+        prevShopScopeRef.current = shopScopeKey;
+        applyBlankSaleCart();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [shopScopeKey]);
 
     // Sync: Load active tab data into states when activeTabId changes
     useEffect(() => {
@@ -94,7 +169,7 @@ export const TakeawayProvider = ({ children }) => {
         const shouldPersistTabs = isTakeaway && !tableId;
 
         if (!shouldPersistTabs) {
-            localStorage.setItem('pos_active_tab_id', activeTabId.toString());
+            localStorage.setItem(CART_TAB_ID_KEY, activeTabId.toString());
             return;
         }
 
@@ -123,12 +198,14 @@ export const TakeawayProvider = ({ children }) => {
                 });
                 
                 if (JSON.stringify(updatedTabs) !== JSON.stringify(prevTabs)) {
-                    localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
+                    localStorage.setItem(CART_TABS_KEY, JSON.stringify(updatedTabs));
+                    if (shopScopeKey) localStorage.setItem(CART_SCOPE_KEY, shopScopeKey);
                     return updatedTabs;
                 }
                 return prevTabs;
             });
-            localStorage.setItem('pos_active_tab_id', activeTabId.toString());
+            localStorage.setItem(CART_TAB_ID_KEY, activeTabId.toString());
+            if (shopScopeKey) localStorage.setItem(CART_SCOPE_KEY, shopScopeKey);
         }, 100);
 
         return () => {
@@ -136,7 +213,7 @@ export const TakeawayProvider = ({ children }) => {
                 clearTimeout(persistTimeoutRef.current);
             }
         };
-    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, billDiscount, loyaltyDiscount, tableId, activeTabId]);
+    }, [isTakeaway, takeawayOrder, takeawayCustName, takeawayCustPhone, selectedCustomer, billDiscount, loyaltyDiscount, tableId, activeTabId, shopScopeKey]);
 
     const addTab = () => {
         const nextId = Math.max(...tabs.map(t => t.id), 0) + 1;
@@ -163,13 +240,13 @@ export const TakeawayProvider = ({ children }) => {
         setActiveTabId(id);
     };
 
-    const closeTab = (id, e) => {
+    const closeTab = (id, e, skipDelete = false) => {
         if (e) e.stopPropagation();
 
         const targetTab = tabs.find(t => t.id === id);
         const draftOrderId = targetTab?.takeawayOrder?.orderId || (id === activeTabId ? takeawayOrder?.orderId : null);
 
-        if (draftOrderId) {
+        if (draftOrderId && !skipDelete) {
             orderService.deleteOrder(draftOrderId).catch(err => console.error("Failed to delete draft order on close tab:", err));
         }
 
@@ -192,8 +269,9 @@ export const TakeawayProvider = ({ children }) => {
             setTabs([freshTab]);
             setActiveTabId(freshTabId);
 
-            localStorage.setItem('pos_active_tabs', JSON.stringify([freshTab]));
-            localStorage.setItem('pos_active_tab_id', freshTabId.toString());
+            localStorage.setItem(CART_TABS_KEY, JSON.stringify([freshTab]));
+            localStorage.setItem(CART_TAB_ID_KEY, freshTabId.toString());
+            if (shopScopeKey) localStorage.setItem(CART_SCOPE_KEY, shopScopeKey);
 
             setTimeout(() => {
                 isResettingRef.current = false;
@@ -210,9 +288,9 @@ export const TakeawayProvider = ({ children }) => {
         }
     };
 
-    const resetTakeaway = () => {
+    const resetTakeaway = (skipDelete = true) => {
         const draftOrderId = takeawayOrder?.orderId;
-        if (draftOrderId) {
+        if (draftOrderId && !skipDelete) {
             orderService.deleteOrder(draftOrderId).catch(err => console.error("Failed to delete draft order on resetTakeaway:", err));
         }
 
@@ -273,7 +351,8 @@ export const TakeawayProvider = ({ children }) => {
                 }
                 return t;
             });
-            localStorage.setItem('pos_active_tabs', JSON.stringify(updatedTabs));
+            localStorage.setItem(CART_TABS_KEY, JSON.stringify(updatedTabs));
+            if (shopScopeKey) localStorage.setItem(CART_SCOPE_KEY, shopScopeKey);
         }, 0);
         
         // Reset flag after a delay to allow state updates to settle

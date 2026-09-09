@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { ALL_FIELDS } from '../../config/itemFields';
-import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft, ClipboardList, ChevronDown, Package, FilePlus, Barcode, Scan, Printer, Tag, Layers } from 'lucide-react';
+import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft, ClipboardList, ChevronDown, Package, FilePlus, Barcode, Scan, Printer, Tag, Layers, Settings, Building2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { api, attributeService, unitService, shopService, categoryService, itemService, branchService, taxService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
@@ -13,6 +13,7 @@ import DatePicker from '../../components/ui/DatePicker';
 import CommonSelect from '../../components/ui/CommonSelect';
 import Modal from '../../components/ui/Modal';
 import BarcodePrintDialog from '../../components/modals/BarcodePrintDialog';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialog, onClose, fixedBranchId, prefillData, activeTabOverride, id: propId, sourcePage: propSourcePage, returnState: propReturnState, returnUrl: propReturnUrl, canViewMenu, canViewItems, canViewTradeItems }) => {
     const { user } = useAuth();
@@ -40,6 +41,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     const [errors, setErrors] = useState({});
     const [isGSTApplicable, setIsGSTApplicable] = useState(true);
     const [branchTaxSystem, setBranchTaxSystem] = useState('');
+    const [currentBranchData, setCurrentBranchData] = useState(null);
 
     // Dynamic Attributes & Units
     const [dynamicAttributes, setDynamicAttributes] = useState([]);
@@ -101,8 +103,18 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         quantityFactor: 1,
         price: "",
         mrp: "",
+        openingStock: "",
+        barcode: "",
+        ingredients: [],
         isDefault: false
     });
+    const [hasVariants, setHasVariants] = useState(Boolean(location.state?.formData?.portionPricing?.length));
+    const [showMaterialUsage, setShowMaterialUsage] = useState(false);
+    const [variantBomDraft, setVariantBomDraft] = useState({});
+
+    const inventoryMode = formData.inventoryMode || "shared";
+    const isSeparateStock = hasVariants && inventoryMode === "separate";
+    const isSharedPortions = hasVariants && inventoryMode !== "separate";
 
     const isPortionActive = Boolean(newPortion.name?.trim() || newPortion.price !== "" || newPortion.mrp !== "");
 
@@ -135,6 +147,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         // Add default unit preferences and opening stock to all tabs
         fields.push("default_purchase_unit", "default_sales_unit", "opening_stock");
+
+        const inventoryMode = formData.inventoryMode || "shared";
+        if (hasVariants && inventoryMode === "separate") {
+            fields = fields.filter(f => f !== "opening_stock");
+        }
 
         if (!isGSTApplicable) {
             fields = fields.filter(f => f !== 'hsn_sac_code');
@@ -466,9 +483,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         taxPercent: full.taxPercent ?? 0,
                         taxId: full.taxId || "",
                         isSellable: full.isSellable ?? true,
-                        portionPricing: full.portionPricing || []
+                        portionPricing: full.portionPricing || [],
+                        inventoryMode: full.inventoryMode || "shared"
                     };
                     setFormData(flat);
+                    setHasVariants((full.portionPricing || []).length > 0);
                     setItemAttributes(normalizedAttributes);
                     setIngredients((full.ingredients || []).map(ing => ({
                         ...ing,
@@ -582,25 +601,28 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     taxService.getTaxes({ branchId: branchIdToUse || activeBranchId })
                 ];
 
-                const results = await Promise.all(promises);
-                const attrsRes = results[0];
-                const unitsRes = results[1];
-                const categoriesRes = results[2];
-                const suppliersRes = results[3];
-                const taxesRes = results[4];
+                const results = await Promise.allSettled(promises);
+                const attrsRes = results[0].status === 'fulfilled' ? results[0].value : [];
+                const unitsRes = results[1].status === 'fulfilled' ? results[1].value : [];
+                const categoriesRes = results[2].status === 'fulfilled' ? results[2].value : [];
+                const suppliersRes = results[3].status === 'fulfilled' ? results[3].value : [];
+                const taxesRes = results[4].status === 'fulfilled' ? results[4].value : [];
 
                 if (branchIdToUse && currentShopId) {
                     try {
                         const branchesData = await branchService.getBranchesByShopId(currentShopId);
                         const currBranch = branchesData.find(b => String(b._id) === String(branchIdToUse));
-                        if (currBranch && currBranch.taxProfile && currBranch.taxProfile.taxSystem) {
-                            const system = currBranch.taxProfile.taxSystem;
-                            setIsGSTApplicable(system === 'GST');
-                            setBranchTaxSystem(system);
-                            setFormData(prev => ({
-                                ...prev,
-                                taxId: prev.taxId || system
-                            }));
+                        if (currBranch) {
+                            setCurrentBranchData(currBranch);
+                            if (currBranch.taxProfile && currBranch.taxProfile.taxSystem) {
+                                const system = currBranch.taxProfile.taxSystem;
+                                setIsGSTApplicable(system === 'GST');
+                                setBranchTaxSystem(system);
+                                setFormData(prev => ({
+                                    ...prev,
+                                    taxId: prev.taxId || system
+                                }));
+                            }
                         }
                     } catch (err) {
                         console.error("Failed to load branch tax rules:", err);
@@ -612,6 +634,13 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 setDynamicAttributes(Array.isArray(attrsRes) ? attrsRes.filter(a => a.isActive !== false) : []);
                 setUnits(unitsData);
                 setCategories(categoriesData.filter(c => c.isActive !== false));
+                if (!isEditing && unitsData.length > 0) {
+                    const defaultUnit = unitsData.find(u => u.isDefault || u.name === 'Pcs' || u.name === 'Pieces') || unitsData[0];
+                    if (defaultUnit) {
+                        const dId = defaultUnit._id || defaultUnit.id;
+                        setFormData(prev => ({ ...prev, unitId: prev.unitId || dId }));
+                    }
+                }
 
                 const suppliersData = Array.isArray(suppliersRes) ? suppliersRes : (suppliersRes.data || []);
                 setSuppliers(suppliersData);
@@ -623,13 +652,14 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         };
 
         const fetchStockItems = async () => {
-            if (showRecipe && currentShopId) {
+            if ((showRecipe || hasVariants || isSeparateStock) && currentShopId) {
                 try {
+                    const effectiveBranchId = activeBranchId || user?.branchId || user?.branch_id || (user?.branchIds && user.branchIds.length > 0 ? (typeof user.branchIds[0] === 'object' ? user.branchIds[0]._id : user.branchIds[0]) : undefined);
                     const response = await itemService.getItems({
                         limit: 1000,
                         filters: {
                             shopId: currentShopId,
-                            branchId: activeBranchId || undefined,
+                            branchId: effectiveBranchId,
                             itemType: "STOCK"
                         }
                     });
@@ -642,13 +672,50 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
         fetchAttributesAndUnits();
         fetchStockItems();
-    }, [currentShopId, activeBranchId, showRecipe]);
+    }, [currentShopId, activeBranchId, showRecipe, hasVariants, isSeparateStock]);
 
 
     // Recipe / Ingredients State
     const [selectedRawItem, setSelectedRawItem] = useState("");
     const [ingredientQty, setIngredientQty] = useState("");
     const [ingredientUnitId, setIngredientUnitId] = useState("");
+
+    const getAvailableUnitsForItem = (itemId, stockItemsList = [], allUnits = []) => {
+        if (!itemId) return [];
+        const item = (stockItemsList || []).find(i => String(i._id || i.id) === String(itemId));
+        if (!item) return [];
+
+        const unitOptions = [];
+
+        // Primary Unit
+        const pUnitId = item.unitId?._id || item.unitId;
+        if (pUnitId) {
+            const pName = item.unitId?.name || (allUnits || []).find(u => String(u._id || u.id) === String(pUnitId))?.name || 'Primary Unit';
+            unitOptions.push({
+                label: `${pName} (Primary)`,
+                value: String(pUnitId),
+                selectedUnit: 'PRIMARY',
+                unitName: pName,
+                conversionFactor: 1
+            });
+        }
+
+        // Secondary Unit (ONLY if secondaryUnitId exists on selected item)
+        const sUnitId = item.secondaryUnitId?._id || item.secondaryUnitId;
+        if (sUnitId && String(sUnitId) !== String(pUnitId)) {
+            const sName = item.secondaryUnitId?.name || (allUnits || []).find(u => String(u._id || u.id) === String(sUnitId))?.name || 'Secondary Unit';
+            const factor = Number(item.conversionFactor) || 1;
+            unitOptions.push({
+                label: `${sName} (Secondary - 1 Pri = ${factor} ${sName})`,
+                value: String(sUnitId),
+                selectedUnit: 'SECONDARY',
+                unitName: sName,
+                conversionFactor: factor
+            });
+        }
+
+        return unitOptions;
+    };
 
     const groupedFields = visibleFields.reduce((acc, fieldKey) => {
         const fieldDef = ALL_FIELDS[fieldKey];
@@ -725,12 +792,15 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     const handleAddIngredient = () => {
         if (!selectedRawItem || !ingredientQty || !ingredientUnitId) return;
 
-        const rawItem = stockItems.find(i => i._id === selectedRawItem || i.id === selectedRawItem);
+        const rawItem = stockItems.find(i => String(i._id || i.id) === String(selectedRawItem));
         if (!rawItem) return;
 
-        const selectedUnitObj = units.find(u => u._id === ingredientUnitId || u.id === ingredientUnitId);
-        const unitName = selectedUnitObj ? selectedUnitObj.name : 'Unknown';
+        const availUnits = getAvailableUnitsForItem(selectedRawItem, stockItems, units);
+        const selectedUnitObj = availUnits.find(u => String(u.value) === String(ingredientUnitId));
 
+        const selectedUnitType = selectedUnitObj ? selectedUnitObj.selectedUnit : 'PRIMARY';
+        const conversionFactor = selectedUnitObj ? selectedUnitObj.conversionFactor : (rawItem?.conversionFactor || 1);
+        const unitName = selectedUnitObj ? selectedUnitObj.unitName : '';
         const itemId = rawItem._id || rawItem.id;
 
         const newIngredient = {
@@ -740,6 +810,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             quantity: parseFloat(ingredientQty),
             unitId: ingredientUnitId,
             unitName: unitName,
+            selectedUnit: selectedUnitType,
+            conversionFactor: conversionFactor
         };
 
         setIngredients([...ingredients, newIngredient]);
@@ -752,25 +824,37 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         setIngredients(ingredients.filter((_, i) => i !== index));
     };
 
+    const generateVariantBarcodeCode = () => {
+        const timestamp = Date.now().toString().slice(-7);
+        const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        return `VAR${timestamp}${random}`;
+    };
+
     const handleAddPortion = () => {
-        if (!newPortion.name || !newPortion.price) {
-            toast.error("Portion name and price are required");
+        if (!newPortion.name || newPortion.price === "" || newPortion.price === null || newPortion.price === undefined) {
+            toast.error("Variant name and price are required");
             return;
         }
 
         const portions = [...(formData.portionPricing || [])];
         
-        // If this is set as default, unset other defaults
         if (newPortion.isDefault) {
             portions.forEach(p => p.isDefault = false);
         } else if (portions.length === 0) {
-            // First portion is default by default if not specified
             newPortion.isDefault = true;
         }
 
         setFormData(prev => ({
             ...prev,
-            portionPricing: [...portions, { ...newPortion, price: parseFloat(newPortion.price), mrp: parseFloat(newPortion.mrp || 0) }]
+            portionPricing: [...portions, {
+                ...newPortion,
+                price: parseFloat(newPortion.price),
+                mrp: parseFloat(newPortion.mrp || 0),
+                quantityFactor: parseFloat(newPortion.quantityFactor || 1),
+                openingStock: parseFloat(newPortion.openingStock || 0),
+                barcode: (newPortion.barcode || '').trim(),
+                ingredients: newPortion.ingredients || []
+            }]
         }));
 
         setNewPortion({
@@ -779,8 +863,62 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             quantityFactor: 1,
             price: "",
             mrp: "",
+            openingStock: "",
+            barcode: "",
+            ingredients: [],
             isDefault: false
         });
+    };
+
+    const handleUpdatePortion = (index, field, value) => {
+        setFormData(prev => ({
+            ...prev,
+            portionPricing: (prev.portionPricing || []).map((p, i) => i === index ? { ...p, [field]: value } : p)
+        }));
+    };
+
+    const handleGenerateAllVariantBarcodes = () => {
+        const portions = formData.portionPricing || [];
+        if (portions.length === 0) {
+            toast.error("Add variants first");
+            return;
+        }
+        setFormData(prev => ({
+            ...prev,
+            portionPricing: (prev.portionPricing || []).map((p) => ({
+                ...p,
+                barcode: p.barcode || generateVariantBarcodeCode()
+            }))
+        }));
+        toast.success("Variant barcodes generated");
+    };
+
+    const handleAddVariantIngredient = (index) => {
+        const draft = variantBomDraft[index] || {};
+        if (!draft.itemId || !draft.quantity || !draft.unitId) {
+            toast.error("Select a stock item, quantity, and unit");
+            return;
+        }
+        const rawItem = stockItems.find(i => String(i._id || i.id) === String(draft.itemId));
+        const availUnits = getAvailableUnitsForItem(draft.itemId, stockItems, units);
+        const selectedUnitObj = availUnits.find(u => String(u.value) === String(draft.unitId));
+
+        const selectedUnitType = selectedUnitObj ? selectedUnitObj.selectedUnit : 'PRIMARY';
+        const conversionFactor = selectedUnitObj ? selectedUnitObj.conversionFactor : (rawItem?.conversionFactor || 1);
+        const unitName = selectedUnitObj ? selectedUnitObj.unitName : '';
+
+        const nextIng = {
+            rawItemId: draft.itemId,
+            itemId: draft.itemId,
+            name: rawItem?.name || 'Item',
+            quantity: parseFloat(draft.quantity),
+            unitId: draft.unitId,
+            unitName: unitName,
+            selectedUnit: selectedUnitType,
+            conversionFactor: conversionFactor
+        };
+        handleUpdatePortion(index, 'ingredients', [...(formData.portionPricing?.[index]?.ingredients || []), nextIng]);
+        setVariantBomDraft(prev => ({ ...prev, [index]: { itemId: '', quantity: '', unitId: '' } }));
     };
 
     const handleRemovePortion = (index) => {
@@ -790,6 +928,12 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         }));
     };
 
+    const toIdString = (val) => {
+        if (!val) return null;
+        if (typeof val === 'object') return val._id || val.id || null;
+        return String(val);
+    };
+
     const validate = () => {
         const newErrors = {};
         visibleFields.forEach(fieldKey => {
@@ -797,12 +941,20 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             if (!field) return;
 
             const value = formData[field.key];
-            if (field.required && (value === undefined || value === "" || value === null)) {
-                newErrors[fieldKey] = `${field.label} is required`;
+            if (field.required) {
+                const idVal = typeof value === 'object' && value !== null ? (value._id || value.id) : value;
+                if (idVal === undefined || idVal === "" || idVal === null) {
+                    newErrors[fieldKey] = `${field.label} is required`;
+                }
             }
         });
         setErrors(newErrors);
-        return Object.keys(newErrors).length === 0;
+        if (Object.keys(newErrors).length > 0) {
+            const firstError = Object.values(newErrors)[0];
+            toast.error(firstError);
+            return false;
+        }
+        return true;
     };
 
     const handleSubmit = async () => {
@@ -811,10 +963,14 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         let finalIngredients = [...ingredients];
         // Auto-add current ingredient if fields are filled but "Plus" wasn't clicked
         if (selectedRawItem && ingredientQty && ingredientUnitId) {
-            const rawItem = stockItems.find(i => i._id === selectedRawItem || i.id === selectedRawItem);
+            const rawItem = stockItems.find(i => String(i._id || i.id) === String(selectedRawItem));
             if (rawItem) {
-                const selectedUnitObj = units.find(u => u._id === ingredientUnitId || u.id === ingredientUnitId);
-                const unitName = selectedUnitObj ? selectedUnitObj.name : 'Unknown';
+                const availUnits = getAvailableUnitsForItem(selectedRawItem, stockItems, units);
+                const selectedUnitObj = availUnits.find(u => String(u.value) === String(ingredientUnitId));
+
+                const selectedUnitType = selectedUnitObj ? selectedUnitObj.selectedUnit : 'PRIMARY';
+                const conversionFactor = selectedUnitObj ? selectedUnitObj.conversionFactor : (rawItem?.conversionFactor || 1);
+                const unitName = selectedUnitObj ? selectedUnitObj.unitName : '';
                 const itemId = rawItem._id || rawItem.id;
 
                 finalIngredients.push({
@@ -824,6 +980,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     quantity: parseFloat(ingredientQty),
                     unitId: ingredientUnitId,
                     unitName: unitName,
+                    selectedUnit: selectedUnitType,
+                    conversionFactor: conversionFactor
                 });
             }
         }
@@ -838,24 +996,68 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             }
             formData.portionPricing = [
                 ...portions,
-                { ...newPortion, price: parseFloat(newPortion.price), mrp: parseFloat(newPortion.mrp || 0) }
+                {
+                    ...newPortion,
+                    price: parseFloat(newPortion.price),
+                    mrp: parseFloat(newPortion.mrp || 0),
+                    quantityFactor: parseFloat(newPortion.quantityFactor || 1),
+                    openingStock: parseFloat(newPortion.openingStock || 0),
+                    barcode: (newPortion.barcode || '').trim(),
+                    ingredients: newPortion.ingredients || []
+                }
             ];
         } else if (newPortion.name?.trim() || (newPortion.price !== "" && newPortion.price !== null && newPortion.price !== undefined) || (newPortion.mrp !== "" && newPortion.mrp !== null && newPortion.mrp !== undefined)) {
-            toast.error("Please enter both Portion Name and Price to add the variant, or clear the fields.");
+            toast.error("Please enter both variant name and price, or clear the fields.");
             return;
         }
 
         const { ingredients: _, ...cleanFormData } = formData;
 
-        const currentBranchId = fixedBranchId || activeBranchId || (user?.branchIds && user.branchIds.length > 0 ? user.branchIds[0] : formData.branchId);
-
+        const userBranch = user?.branchId || user?.branch_id || (user?.branchIds && user.branchIds.length > 0 ? (typeof user.branchIds[0] === 'object' ? user.branchIds[0]._id : user.branchIds[0]) : null);
+        const currentBranchId = fixedBranchId || activeBranchId || userBranch || formData.branchId || (branches && branches.length > 0 ? (branches[0]._id || branches[0].id) : null);
         const minStock = parseFloat(formData.minStockAlert) || 0;
+
+        const sanitizedIngredients = (isSeparateStock ? [] : finalIngredients).map(ing => ({
+            ...ing,
+            rawItemId: toIdString(ing.rawItemId || ing.itemId),
+            itemId: toIdString(ing.itemId || ing.rawItemId),
+            unitId: toIdString(ing.unitId)
+        }));
+
+        const sanitizedPortionPricing = (hasVariants ? (formData.portionPricing || []) : []).map((p) => ({
+            ...p,
+            price: parseFloat(p.price) || 0,
+            mrp: parseFloat(p.mrp) || 0,
+            quantityFactor: parseFloat(p.quantityFactor) || 1,
+            openingStock: parseFloat(p.openingStock) || 0,
+            barcode: (p.barcode || '').trim(),
+            ingredients: (p.ingredients || []).map(ing => ({
+                ...ing,
+                rawItemId: toIdString(ing.rawItemId || ing.itemId),
+                itemId: toIdString(ing.itemId || ing.rawItemId),
+                unitId: toIdString(ing.unitId)
+            }))
+        }));
+
+        let resolvedUnitId = toIdString(formData.unitId);
+        if (!resolvedUnitId && units && units.length > 0) {
+            const defaultUnit = units.find(u => u.isDefault || u.name === 'Pcs' || u.name === 'Pieces') || units[0];
+            if (defaultUnit) {
+                resolvedUnitId = toIdString(defaultUnit._id || defaultUnit.id);
+            }
+        }
 
         const payload = {
             ...cleanFormData,
+            unitId: resolvedUnitId,
+            secondaryUnitId: toIdString(formData.secondaryUnitId),
+            categoryId: toIdString(formData.categoryId),
+            brandId: toIdString(formData.brandId),
+            supplierId: toIdString(formData.supplierId),
+            taxId: toIdString(formData.taxId),
             openingStock: (formData.openingStock !== undefined && formData.openingStock !== null && formData.openingStock !== "") ? parseFloat(formData.openingStock) : undefined,
-            shopId: currentShopId,
-            branchId: currentBranchId,
+            shopId: toIdString(currentShopId),
+            branchId: toIdString(currentBranchId),
             itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
             pricing: {
                 purchasePrice: parseFloat(formData.purchasePrice || 0),
@@ -875,10 +1077,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             weightBased: formData.weightBased ?? false,
             isSellable: formData.isSellable ?? true,
             status: formData.status || "ACTIVE",
-            ingredients: finalIngredients,
+            ingredients: sanitizedIngredients,
             attributes: itemAttributes,
-            portionPricing: formData.portionPricing || [],
-            secondaryUnitId: formData.secondaryUnitId || null,
+            inventoryMode: hasVariants ? (formData.inventoryMode || "shared") : "shared",
+            portionPricing: sanitizedPortionPricing,
             conversionFactor: parseFloat(formData.conversionFactor) || 1,
             defaultPurchaseUnit: formData.defaultPurchaseUnit || "PRIMARY",
             defaultSalesUnit: formData.defaultSalesUnit || "PRIMARY"
@@ -902,7 +1104,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 } else {
                     setMenu(prev => [newItem, ...prev]);
                 }
-                } else if ((activeTab === "raw" || activeTab === "trade") && setInventoryItems && inventoryItems) {
+            } else if ((activeTab === "raw" || activeTab === "trade") && setInventoryItems && inventoryItems) {
                 if (isEditing) {
                     setInventoryItems(prev => prev.map((m) => (m.id === id ? newItem : m)));
                 } else {
@@ -911,13 +1113,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             }
 
             if (asDialog && onClose) {
-                if (!isEditing) {
-                    // Notify parent to refresh, but stay open for next item
-                    onClose(newItem, true); 
-                    handleReset();
-                } else {
-                    onClose(newItem);
-                }
+                onClose(newItem);
             } else if (sourcePage === 'purchase' || returnUrl) {
                 // Return to source page with the new product and original state
                 navigate(returnUrl || '/purchases/new', { 
@@ -927,11 +1123,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     } 
                 });
             } else {
-                navigate('/inventory');
+                navigate('/inventory', { state: { activeTab: currentTab } });
             }
         } catch (error) {
             console.error("Failed to save product:", error);
-            toast.error("Failed to save product. Please check console for details.");
+            toast.error(getErrorMessage(error, "Failed to save product."));
         }
     };
 
@@ -953,6 +1149,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         });
         setIngredients([]);
         setItemAttributes({});
+        setHasVariants(false);
+        setShowMaterialUsage(false);
         setErrors({});
         // Barcode will be regenerated by useEffect since formData.barcode is now missing
     };
@@ -1052,7 +1250,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-gray-100 dark:border-gray-800 gap-3">
+                <div className={`flex flex-col sm:flex-row sm:justify-between sm:items-center ${theme.borderLight} gap-3`}>
                     <div>
                         <h3 className={`text-lg sm:text-2xl font-black ${theme.textHeading}`}>{title}</h3>
                         <p className={`text-xs mt-1 ${theme.textMuted}`}>
@@ -1067,7 +1265,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 <button
                                     onClick={() => setCurrentTab('menu')}
                                     className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'menu' 
-                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20' 
+                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
                                         : `${theme.textMuted} hover:opacity-70`}`}
                                 >
                                     <Layers size={13} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured')}
@@ -1077,7 +1275,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 <button
                                     onClick={() => setCurrentTab('raw')}
                                     className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'raw' 
-                                        ? 'bg-orange-500 text-white shadow-lg shadow-orange-200 dark:shadow-orange-900/20' 
+                                        ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
                                         : `${theme.textMuted} hover:opacity-70`}`}
                                 >
                                     <Plus size={13} /> Stock
@@ -1087,7 +1285,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                 <button
                                     onClick={() => setCurrentTab('trade')}
                                     className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'trade' 
-                                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20' 
+                                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' 
                                         : `${theme.textMuted} hover:opacity-70`}`}
                                 >
                                     <Package size={13} /> Trade
@@ -1136,13 +1334,57 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
                                 // Special rendering for tax_percent - show tax type selector first
                                 if (fieldKey === 'tax_percent') {
+                                    const effectiveBranch = currentBranchData || branches?.find(b => String(b._id || b.id) === String(activeBranchId || fixedBranchId));
+                                    const branchCountry = effectiveBranch?.address?.country || organization?.defaultCountry;
+                                    const countryVal = typeof branchCountry === 'object' ? (branchCountry?.code || branchCountry?.name) : branchCountry;
+                                    const effectiveTaxSystem = branchTaxSystem || effectiveBranch?.taxProfile?.taxSystem || effectiveBranch?.taxConfig?.taxSystem || organization?.defaultTaxSystem;
+                                    const isTaxProfileComplete = Boolean(effectiveTaxSystem && countryVal);
+
+                                    if (!isTaxProfileComplete) {
+                                        return (
+                                            <div key={fieldKey} className="col-span-1 md:col-span-2 lg:col-span-2 p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 mt-0.5 shrink-0">
+                                                        <Building2 size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <h5 className={`text-sm font-black ${theme.textHeading}`}>
+                                                            Complete profile to add tax data
+                                                        </h5>
+                                                        <p className={`text-xs ${theme.textMuted} mt-0.5`}>
+                                                            Country tax profile is not configured yet. Complete your profile in Organization settings to select your country and tax system before assigning taxes to items.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (asDialog && onClose) onClose();
+                                                        navigate('/organization');
+                                                    }}
+                                                    className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-amber-500 text-slate-950 hover:bg-amber-400 transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm hover:shadow active:scale-95 cursor-pointer shrink-0"
+                                                >
+                                                    <span>Complete Profile</span>
+                                                    <ArrowRight size={14} />
+                                                </button>
+                                            </div>
+                                        );
+                                    }
+
                                     return (
                                         <React.Fragment key={fieldKey}>
                                             {/* Tax Type Selector */}
                                             <div>
-                                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
-                                                    Tax Type <span className="text-red-500">*</span>
-                                                </label>
+                                                <div className="flex items-center justify-between mb-2 ml-1">
+                                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest block`}>
+                                                        Tax Type <span className="text-red-500">*</span>
+                                                    </label>
+                                                    {effectiveTaxSystem && (
+                                                        <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md">
+                                                            {effectiveTaxSystem} {countryVal ? `(${countryVal})` : ''}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <CommonSelect
                                                     options={[
                                                         { label: "Inclusive", value: "INCLUSIVE" },
@@ -1202,13 +1444,13 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     <button
                                                         type="button"
                                                         onClick={() => setIsCategoryModalOpen(true)}
-                                                        className={`w-full p-4 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between group transition-colors border-t ${theme.borderLight}`}
+                                                        className={`w-full p-4 text-left ${theme.mode === 'dark' ? 'hover:bg-indigo-900/20' : 'hover:bg-indigo-50'} flex items-center justify-between group transition-colors border-t ${theme.borderLight}`}
                                                     >
                                                         <div className="flex items-center gap-3">
-                                                            <div className="bg-indigo-100 dark:bg-indigo-900/40 p-2 rounded-xl text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                            <div className={`${theme.mode === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-100 text-indigo-600'} p-2 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-colors`}>
                                                                 <Plus size={18} />
                                                             </div>
-                                                            <div className="font-black text-indigo-600 dark:text-indigo-400">Add New Category</div>
+                                                            <div className={`font-black ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>Add New Category</div>
                                                         </div>
                                                         <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
                                                     </button>
@@ -1229,7 +1471,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     <button
                                                         type="button"
                                                         onClick={() => handleBarcodeScan(false)}
-                                                        className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-xl transition-all"
+                                                        className={`p-2 text-indigo-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-indigo-900/40' : 'hover:bg-indigo-50'}`}
                                                         title="Scan with Scanner"
                                                     >
                                                         <Scan size={18} />
@@ -1237,7 +1479,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     <button
                                                         type="button"
                                                         onClick={generateItemBarcode}
-                                                        className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 rounded-xl transition-all"
+                                                        className={`p-2 text-emerald-600 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-emerald-900/40' : 'hover:bg-emerald-50'}`}
                                                         title="Generate Internal Barcode"
                                                     >
                                                         <Barcode size={18} />
@@ -1245,7 +1487,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     <button
                                                         type="button"
                                                         onClick={handlePrintBarcode}
-                                                        className="p-2 text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/40 rounded-xl transition-all"
+                                                        className={`p-2 text-orange-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-orange-900/40' : 'hover:bg-orange-50'}`}
                                                         title="Print Barcode"
                                                     >
                                                         <Printer size={18} />
@@ -1260,7 +1502,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                 <button
                                                     type="button"
                                                     onClick={(e) => { e.preventDefault(); handleChange(fieldKey, !formData[field.key]); }}
-                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${formData[field.key] ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-slate-700'}`}
+                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${formData[field.key] ? 'bg-indigo-600' : (theme.mode === 'dark' ? 'bg-slate-700' : 'bg-gray-300')}`}
                                                 >
                                                     <span
                                                         className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData[field.key] ? 'translate-x-6' : 'translate-x-1'}`}
@@ -1338,6 +1580,13 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                         options = categories.map(c => ({ label: c.name, value: c._id }));
                                                     } else if (field.originalKey === 'unit_id' || field.originalKey === 'secondary_unit_id') {
                                                         options = units.map(u => ({ label: u.name, value: u._id }));
+                                                    } else if (field.originalKey === 'default_purchase_unit' || field.originalKey === 'default_sales_unit') {
+                                                        const priUnit = units.find(u => u._id === formData.unitId)?.name;
+                                                        const secUnit = units.find(u => u._id === formData.secondaryUnitId)?.name;
+                                                        options = [
+                                                            { label: priUnit ? `Primary Unit (${priUnit})` : "Primary Unit (Main / Bigger)", value: "PRIMARY" },
+                                                            { label: secUnit ? `Secondary Unit (${secUnit})` : "Secondary Unit (Sub / Smaller)", value: "SECONDARY" }
+                                                        ];
                                                     } else if (field.originalKey === 'tax_id') {
                                                         options = shopTaxes.map(t => {
                                                             const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
@@ -1345,6 +1594,19 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                         });
                                                     } else if (field.originalKey === 'item_type') {
                                                         options = field.options || ["STOCK", "SERVICE", "MANUFACTURED"];
+                                                    }
+
+                                                    if (hasVariants && isSeparateStock && field.originalKey === 'opening_stock') {
+                                                        return (
+                                                            <div key={field.originalKey} className={`flex flex-col justify-center p-4 rounded-2xl border-2 border-dashed ${theme.borderLight} ${theme.sectionBg}`}>
+                                                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-1 block`}>
+                                                                    {field.label}
+                                                                </label>
+                                                                <p className={`text-xs font-bold ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                                                                    Managed per variant in the Variants section below.
+                                                                </p>
+                                                            </div>
+                                                        );
                                                     }
 
                                                     return (
@@ -1361,90 +1623,94 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                                     placeholder={`Select ${field.label}...`}
                                                                     className="w-full"
                                                                 />
-                                                        ) : field.originalKey === 'barcode' ? (
-                                                            <div className="relative group">
-                                                                <input
-                                                                    id="field-input-barcode-adv"
-                                                                    type="text"
-                                                                    value={formData[field.key] !== undefined ? formData[field.key] : ""}
+                                                            ) : field.originalKey === 'barcode' ? (
+                                                                <div className="relative group">
+                                                                    <input
+                                                                        id="field-input-barcode-adv"
+                                                                        type="text"
+                                                                        value={formData[field.key] !== undefined ? formData[field.key] : ""}
+                                                                        onChange={(e) => handleChange(field.originalKey, e.target.value)}
+                                                                        onFocus={(e) => e.target.select()}
+                                                                        className={`w-full p-4 pr-24 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                                                                        placeholder="Scan or enter barcode..."
+                                                                    />
+                                                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                const inp = document.getElementById('field-input-barcode-adv');
+                                                                                if (inp) { inp.focus(); toast("Scanner ready."); }
+                                                                            }}
+                                                                            className={`p-2 text-indigo-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-indigo-900/40' : 'hover:bg-indigo-50'}`}
+                                                                            title="Scan with Scanner"
+                                                                        >
+                                                                            <Scan size={18} />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={generateItemBarcode}
+                                                                            className={`p-2 text-emerald-600 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-emerald-900/40' : 'hover:bg-emerald-50'}`}
+                                                                            title="Generate Internal Barcode"
+                                                                        >
+                                                                            <Barcode size={18} />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={handlePrintBarcode}
+                                                                            className={`p-2 text-orange-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-orange-900/40' : 'hover:bg-orange-50'}`}
+                                                                            title="Print Barcode"
+                                                                        >
+                                                                            <Printer size={18} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : field.type === 'textarea' ? (
+                                                                <textarea
+                                                                    value={formData[field.key] || ""}
                                                                     onChange={(e) => handleChange(field.originalKey, e.target.value)}
-                                                                    onFocus={(e) => e.target.select()}
-                                                                    className={`w-full p-4 pr-24 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                                    placeholder="Scan or enter barcode..."
+                                                                    rows={3}
+                                                                    className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
                                                                 />
-                                                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                                            ) : field.type === 'boolean' ? (
+                                                                <div className={`w-full p-4 border-2 rounded-2xl flex items-center justify-between transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : theme.inputBorder} ${theme.inputBg}`}>
+                                                                    <span className={`text-sm font-bold ${formData[field.key] ? 'text-indigo-600' : theme.textSecondary}`}>
+                                                                        {formData[field.key] ? 'Yes' : 'No'}
+                                                                    </span>
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => {
-                                                                            const inp = document.getElementById('field-input-barcode-adv');
-                                                                            if (inp) { inp.focus(); toast("Scanner ready."); }
-                                                                        }}
-                                                                        className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-xl transition-all"
-                                                                        title="Scan with Scanner"
+                                                                        onClick={(e) => { e.preventDefault(); handleChange(field.originalKey, !formData[field.key]); }}
+                                                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${formData[field.key] ? 'bg-indigo-600' : (theme.mode === 'dark' ? 'bg-slate-700' : 'bg-gray-300')}`}
                                                                     >
-                                                                        <Scan size={18} />
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={generateItemBarcode}
-                                                                        className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 rounded-xl transition-all"
-                                                                        title="Generate Internal Barcode"
-                                                                    >
-                                                                        <Barcode size={18} />
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={handlePrintBarcode}
-                                                                        className="p-2 text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/40 rounded-xl transition-all"
-                                                                        title="Print Barcode"
-                                                                    >
-                                                                        <Printer size={18} />
+                                                                        <span
+                                                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData[field.key] ? 'translate-x-6' : 'translate-x-1'}`}
+                                                                        />
                                                                     </button>
                                                                 </div>
-                                                            </div>
-                                                        ) : field.type === 'textarea' ? (
-                                                            <textarea
-                                                                value={formData[field.key] || ""}
-                                                                onChange={(e) => handleChange(field.originalKey, e.target.value)}
-                                                                rows={3}
-                                                                className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                            />
-                                                        ) : field.type === 'boolean' ? (
-                                                            <div className={`w-full p-4 border-2 rounded-2xl flex items-center justify-between transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : theme.inputBorder} ${theme.inputBg}`}>
-                                                                <span className={`text-sm font-bold ${formData[field.key] ? 'text-indigo-600' : theme.textSecondary}`}>
-                                                                    {formData[field.key] ? 'Yes' : 'No'}
-                                                                </span>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => { e.preventDefault(); handleChange(field.originalKey, !formData[field.key]); }}
-                                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${formData[field.key] ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-slate-700'}`}
-                                                                >
-                                                                    <span
-                                                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData[field.key] ? 'translate-x-6' : 'translate-x-1'}`}
+                                                            ) : (
+                                                                <div>
+                                                                    <input
+                                                                        type={field.type}
+                                                                        onWheel={(e) => field.type === 'number' ? e.target.blur() : null}
+                                                                        value={formData[field.key] !== undefined ? formData[field.key] : ""}
+                                                                        onChange={(e) => handleChange(field.originalKey, e.target.value)}
+                                                                        placeholder={field.placeholder || `Enter ${field.label}...`}
+                                                                        className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
                                                                     />
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <input
-                                                                type={field.type}
-                                                                onWheel={(e) => field.type === 'number' ? e.target.blur() : null}
-                                                                value={formData[field.key] !== undefined ? formData[field.key] : ""}
-                                                                onChange={(e) => handleChange(field.originalKey, e.target.value)}
-                                                                className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                                placeholder={field.placeholder || field.label}
-                                                            />
-                                                        )}
-                                                        {field.originalKey === 'conversion_factor' && formData.secondaryUnitId && formData.unitId && formData.conversionFactor > 1 && (
-                                                            <div className="mt-2 text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-100 flex items-center gap-1.5 w-fit animate-in fade-in slide-in-from-top-1 duration-300">
-                                                                1 {units.find(u => u._id === formData.secondaryUnitId)?.name || 'Secondary'} = {formData.conversionFactor} {units.find(u => u._id === formData.unitId)?.name || 'Primary'}
-                                                            </div>
-                                                        )}
-                                                        {errors[field.originalKey] && (
-                                                            <p className="text-red-500 text-xs font-bold mt-1 ml-1">{errors[field.originalKey]}</p>
-                                                        )}
-                                                            </div>
-                                                        );
-                                                    })}
+                                                                    {field.originalKey === 'conversion_factor' && formData.conversionFactor && formData.unitId && formData.secondaryUnitId && (
+                                                                        <div className={`mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold w-fit ${
+                                                                            theme.mode === 'dark' ? 'bg-indigo-900/40 text-indigo-300 border border-indigo-700/50' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                                                        }`}>
+                                                                            <span>📦 1 {units.find(u => u._id === formData.unitId)?.name || 'Primary'} = {formData.conversionFactor} {units.find(u => u._id === formData.secondaryUnitId)?.name || 'Secondary'}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {errors[field.originalKey] && (
+                                                                <p className="text-red-500 text-xs mt-1 font-bold">{errors[field.originalKey]}</p>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     );
@@ -1512,7 +1778,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     <button
                                                         type="button"
                                                         onClick={(e) => { e.preventDefault(); handleAttributeChange(attr.code, 'value', !itemAttributes[attr.code]?.value); }}
-                                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${itemAttributes[attr.code]?.value ? 'bg-blue-600' : 'bg-gray-300 dark:bg-slate-700'}`}
+                                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${itemAttributes[attr.code]?.value ? 'bg-blue-600' : (theme.mode === 'dark' ? 'bg-slate-700' : 'bg-gray-300')}`}
                                                     >
                                                         <span
                                                             className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${itemAttributes[attr.code]?.value ? 'translate-x-6' : 'translate-x-1'}`}
@@ -1554,128 +1820,421 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         );
                     })()}
 
-                    {/* PORTION PRICING SECTION */}
+                    {/* VARIANTS */}
                     <div>
                         <div className="flex items-center gap-4 mb-2">
                             <Tag className="text-indigo-500" size={24} />
-                            <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Portion / Variant Pricing</h4>
+                            <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Variants</h4>
                             <div className={`flex-1 h-px ${theme.borderLight}`}></div>
                         </div>
-                        <p className={`text-sm ${theme.textMuted} mb-8`}>Add variations like Full, Half, or Regular/Large with specific pricing and stock deduction factors.</p>
+                        <label className={`flex items-center gap-3 mb-6 cursor-pointer ${theme.textPrimary}`}>
+                            <input
+                                type="checkbox"
+                                checked={hasVariants}
+                                onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setHasVariants(checked);
+                                    if (!checked) {
+                                        setFormData(prev => ({ ...prev, portionPricing: [], inventoryMode: "shared" }));
+                                    } else {
+                                        setFormData(prev => ({ ...prev, inventoryMode: prev.inventoryMode || "separate" }));
+                                    }
+                                }}
+                                className="accent-indigo-600 w-5 h-5 rounded"
+                            />
+                            <span className="font-bold text-base">Yes, this product has variants</span>
+                        </label>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6 items-end">
-                            <div className="lg:col-span-2">
-                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>
-                                    Portion Name {isPortionActive && <span className="text-red-500">*</span>}
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newPortion.name}
-                                    onChange={(e) => setNewPortion({ ...newPortion, name: e.target.value })}
-                                    placeholder="e.g. Full, Half, Large"
-                                    className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-400`}
-                                />
-                            </div>
-                            <div>
-                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>
-                                    Price {isPortionActive && <span className="text-red-500">*</span>}
-                                </label>
-                                <input
-                                    type="number"
-                                    onWheel={(e) => e.target.blur()}
-                                    value={newPortion.price}
-                                    onChange={(e) => setNewPortion({ ...newPortion, price: e.target.value })}
-                                    placeholder="0.00"
-                                    className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-400`}
-                                />
-                            </div>
-                            <div>
-                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>MRP</label>
-                                <input
-                                    type="number"
-                                    onWheel={(e) => e.target.blur()}
-                                    value={newPortion.mrp}
-                                    onChange={(e) => setNewPortion({ ...newPortion, mrp: e.target.value })}
-                                    placeholder="0.00"
-                                    className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-400`}
-                                />
-                            </div>
-                            <div>
-                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Qty Factor</label>
-                                <input
-                                    type="number"
-                                    onWheel={(e) => e.target.blur()}
-                                    value={newPortion.quantityFactor}
-                                    onChange={(e) => setNewPortion({ ...newPortion, quantityFactor: parseFloat(e.target.value || 1) })}
-                                    placeholder="1.0"
-                                    className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-400`}
-                                    title="Stock deduction multiplier (e.g. 0.5 for Half)"
-                                />
-                            </div>
-                            <button
-                                onClick={(e) => { e.preventDefault(); handleAddPortion(); }}
-                                className="p-4 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200/20 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center"
-                            >
-                                <Plus size={24} />
-                            </button>
-                        </div>
-
-                        {formData.portionPricing?.length > 0 && (
-                            <div className={`${theme.surfaceBg} rounded-2xl border ${theme.tableBorder} overflow-hidden mt-4`}>
-                                <table className="w-full text-left">
-                                    <thead className={`${theme.tableHeaderBg} text-[10px] uppercase ${theme.tableHeaderText}`}>
-                                        <tr>
-                                            <th className="p-4 font-black">Portion Name</th>
-                                            <th className="p-4 font-black">Stock Factor</th>
-                                            <th className="p-4 font-black">Price</th>
-                                            <th className="p-4 font-black">MRP</th>
-                                            <th className="p-4 font-black text-center">Default</th>
-                                            <th className="p-4 font-black text-right">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className={`text-sm font-bold ${theme.textPrimary}`}>
-                                        {formData.portionPricing.map((portion, idx) => (
-                                            <tr key={idx} className={`border-t ${theme.tableBorder}`}>
-                                                <td className="p-4">{portion.name}</td>
-                                                <td className="p-4">
-                                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${theme.mode === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
-                                                        x{portion.quantityFactor}
+                        {hasVariants && (
+                            <div className="space-y-6">
+                                <div>
+                                    <p className={`text-xs font-black ${theme.textSecondary} uppercase tracking-widest mb-3`}>
+                                        How are variants managed?
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, inventoryMode: "separate" }))}
+                                            className={`p-4 rounded-2xl border-2 text-left transition-all ${
+                                                isSeparateStock
+                                                    ? (theme.mode === 'dark' 
+                                                        ? 'border-indigo-500 bg-indigo-950/40 ring-2 ring-indigo-500/20 shadow-sm' 
+                                                        : 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/10 shadow-sm')
+                                                    : `${theme.borderLight} ${theme.surfaceBg} hover:border-indigo-300`
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="text-xl">📦</span>
+                                                    <span className={`font-black text-base md:text-lg ${theme.textHeading}`}>
+                                                        Each variant has its own stock
                                                     </span>
-                                                </td>
-                                                <td className="p-4">{formatCurrency(portion.price)}</td>
-                                                <td className="p-4 text-gray-400">{formatCurrency(portion.mrp || 0)}</td>
-                                                <td className="p-4 text-center">
-                                                    <input 
-                                                        type="radio" 
-                                                        checked={portion.isDefault} 
-                                                        onChange={() => {
-                                                            const updated = formData.portionPricing.map((p, i) => ({
-                                                                ...p,
-                                                                isDefault: i === idx
-                                                            }));
-                                                            setFormData(prev => ({ ...prev, portionPricing: updated }));
-                                                        }}
-                                                        className="accent-indigo-600 w-4 h-4"
+                                                </div>
+                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSeparateStock ? "border-indigo-600 bg-indigo-600" : (theme.mode === 'dark' ? "border-slate-700" : "border-gray-300")}`}>
+                                                    {isSeparateStock && <div className="w-2 h-2 rounded-full bg-white" />}
+                                                </div>
+                                            </div>
+                                            <p className={`text-xs md:text-sm font-semibold mt-1.5 ml-8 ${isSeparateStock ? (theme.mode === 'dark' ? 'text-indigo-300' : 'text-indigo-600') : theme.textMuted}`}>
+                                                Example: Shirt S, M, L — independent stock, optional barcode &amp; material usage per variant
+                                            </p>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, inventoryMode: "shared" }))}
+                                            className={`p-4 rounded-2xl border-2 text-left transition-all ${
+                                                isSharedPortions
+                                                    ? (theme.mode === 'dark' 
+                                                        ? 'border-indigo-500 bg-indigo-950/40 ring-2 ring-indigo-500/20 shadow-sm' 
+                                                        : 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/10 shadow-sm')
+                                                    : `${theme.borderLight} ${theme.surfaceBg} hover:border-indigo-300`
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="text-xl">🍗</span>
+                                                    <span className={`font-black text-base md:text-lg ${theme.textHeading}`}>
+                                                        Variants are portions of the same stock
+                                                    </span>
+                                                </div>
+                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSharedPortions ? "border-indigo-600 bg-indigo-600" : (theme.mode === 'dark' ? "border-slate-700" : "border-gray-300")}`}>
+                                                    {isSharedPortions && <div className="w-2 h-2 rounded-full bg-white" />}
+                                                </div>
+                                            </div>
+                                            <p className={`text-xs md:text-sm font-semibold mt-1.5 ml-8 ${isSharedPortions ? (theme.mode === 'dark' ? 'text-indigo-300' : 'text-indigo-600') : theme.textMuted}`}>
+                                                Example: Alfaham Full / Half / Quarter — one shared stock pool with portion factors
+                                            </p>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 items-end ${isSeparateStock ? 'lg:grid-cols-7' : 'lg:grid-cols-6'}`}>
+                                    <div className="lg:col-span-2">
+                                        <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>
+                                            Variant {isPortionActive && <span className="text-red-500">*</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={newPortion.name}
+                                            onChange={(e) => setNewPortion({ ...newPortion, name: e.target.value })}
+                                            placeholder={isSeparateStock ? "e.g. S, M, L" : "e.g. Full, Half, Quarter"}
+                                            className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500`}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>
+                                            Price {isPortionActive && <span className="text-red-500">*</span>}
+                                        </label>
+                                        <input
+                                            type="number"
+                                            onWheel={(e) => e.target.blur()}
+                                            value={newPortion.price}
+                                            onChange={(e) => setNewPortion({ ...newPortion, price: e.target.value })}
+                                            placeholder="0.00"
+                                            className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500`}
+                                        />
+                                    </div>
+                                    {isSeparateStock ? (
+                                        <>
+                                            <div>
+                                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Opening Stock</label>
+                                                <input
+                                                    type="number"
+                                                    onWheel={(e) => e.target.blur()}
+                                                    value={newPortion.openingStock}
+                                                    onChange={(e) => setNewPortion({ ...newPortion, openingStock: e.target.value })}
+                                                    placeholder="0"
+                                                    className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500`}
+                                                />
+                                            </div>
+                                            <div className="lg:col-span-2">
+                                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Barcode (Optional)</label>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={newPortion.barcode}
+                                                        onChange={(e) => setNewPortion({ ...newPortion, barcode: e.target.value })}
+                                                        placeholder="Auto Generate"
+                                                        className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500`}
                                                     />
-                                                </td>
-                                                <td className="p-4 text-right">
                                                     <button
-                                                        onClick={() => handleRemovePortion(idx)}
-                                                        className="text-red-400 hover:text-red-600 p-1"
+                                                        type="button"
+                                                        onClick={() => setNewPortion({ ...newPortion, barcode: generateVariantBarcodeCode() })}
+                                                        className={`px-3.5 rounded-xl border-2 ${theme.inputBorder} ${theme.surfaceBg} ${theme.textPrimary} font-black text-xs uppercase hover:border-indigo-500 hover:text-indigo-600 transition-colors`}
+                                                        title="Generate barcode for this variant"
                                                     >
-                                                        <Trash2 size={16} />
+                                                        Auto
                                                     </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                                </div>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div>
+                                            <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Portion Factor</label>
+                                            <input
+                                                type="number"
+                                                onWheel={(e) => e.target.blur()}
+                                                value={newPortion.quantityFactor}
+                                                onChange={(e) => setNewPortion({ ...newPortion, quantityFactor: parseFloat(e.target.value || 1) })}
+                                                placeholder="1 = Full, 0.5 = Half"
+                                                className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500`}
+                                                title="How much of the main product this portion uses"
+                                            />
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={(e) => { e.preventDefault(); handleAddPortion(); }}
+                                        className="p-4 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200/20 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center"
+                                        title="Add Variant"
+                                    >
+                                        <Plus size={24} />
+                                    </button>
+                                </div>
+
+                                {formData.portionPricing?.length > 0 && (
+                                    <div className={`${theme.surfaceBg} rounded-2xl border ${theme.tableBorder} overflow-hidden shadow-sm`}>
+                                        <div className="overflow-x-auto">
+                                        <table className="w-full text-left min-w-[640px]">
+                                            <thead className={`${theme.tableHeaderBg} text-[10px] uppercase ${theme.tableHeaderText}`}>
+                                                <tr>
+                                                    <th className="p-4 font-black">Variant</th>
+                                                    <th className="p-4 font-black">Price</th>
+                                                    {isSeparateStock && <th className="p-4 font-black">Stock</th>}
+                                                    {isSeparateStock && <th className="p-4 font-black">Barcode</th>}
+                                                    {isSharedPortions && <th className="p-4 font-black">Portion Factor</th>}
+                                                    <th className="p-4 font-black text-center">Default</th>
+                                                    <th className="p-4 font-black text-right">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className={`text-sm font-bold ${theme.textPrimary}`}>
+                                                {formData.portionPricing.map((portion, idx) => (
+                                                    <tr key={idx} className={`border-t ${theme.tableBorder} ${theme.tableRowHover} transition-colors`}>
+                                                        <td className="p-4">
+                                                            <span className="font-extrabold">{portion.name}</span>
+                                                        </td>
+                                                        <td className="p-4">{formatCurrency(portion.price)}</td>
+                                                        {isSeparateStock && (
+                                                            <td className="p-3">
+                                                                <input
+                                                                    type="number"
+                                                                    onWheel={(e) => e.target.blur()}
+                                                                    value={portion.openingStock ?? 0}
+                                                                    onChange={(e) => handleUpdatePortion(idx, 'openingStock', e.target.value)}
+                                                                    className={`w-24 p-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-lg font-bold text-sm outline-none focus:border-indigo-500`}
+                                                                />
+                                                            </td>
+                                                        )}
+                                                        {isSeparateStock && (
+                                                            <td className="p-3">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={portion.barcode || ''}
+                                                                        onChange={(e) => handleUpdatePortion(idx, 'barcode', e.target.value)}
+                                                                        placeholder="Auto Generate"
+                                                                        className={`w-36 p-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-lg font-bold text-xs outline-none focus:border-indigo-500`}
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        title="Auto Generate Barcode"
+                                                                        onClick={() => handleUpdatePortion(idx, 'barcode', generateVariantBarcodeCode())}
+                                                                        className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-lg border ${theme.borderLight} ${theme.surfaceBg} ${theme.textPrimary} hover:border-indigo-500 hover:text-indigo-600 transition-colors`}
+                                                                    >
+                                                                        Auto
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                        {isSharedPortions && (
+                                                            <td className="p-4">
+                                                                <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${theme.mode === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                                                                    {portion.quantityFactor || 1}
+                                                                </span>
+                                                            </td>
+                                                        )}
+                                                        <td className="p-4 text-center">
+                                                            <input
+                                                                type="radio"
+                                                                checked={portion.isDefault}
+                                                                onChange={() => {
+                                                                    const updated = formData.portionPricing.map((p, i) => ({
+                                                                        ...p,
+                                                                        isDefault: i === idx
+                                                                    }));
+                                                                    setFormData(prev => ({ ...prev, portionPricing: updated }));
+                                                                }}
+                                                                className="accent-indigo-600 w-4 h-4 cursor-pointer"
+                                                            />
+                                                        </td>
+                                                        <td className="p-4 text-right">
+                                                            <button
+                                                                onClick={() => handleRemovePortion(idx)}
+                                                                className="text-red-400 hover:text-red-600 p-1.5 transition-colors"
+                                                                title="Remove variant"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {isSeparateStock && (formData.portionPricing || []).length > 0 && (
+                                    <div className="flex flex-wrap gap-3 pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={handleGenerateAllVariantBarcodes}
+                                            className={`px-4 py-2.5 rounded-xl border-2 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm ${
+                                                theme.mode === 'dark'
+                                                    ? 'border-indigo-500/50 bg-indigo-950/50 text-indigo-300 hover:bg-indigo-900/60 hover:border-indigo-400'
+                                                    : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300'
+                                            }`}
+                                        >
+                                            <Barcode size={16} className={theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'} /> Generate Variant Barcodes
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowMaterialUsage((v) => !v)}
+                                            className={`px-4 py-2.5 rounded-xl border-2 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm ${
+                                                showMaterialUsage
+                                                    ? (theme.mode === 'dark'
+                                                        ? 'border-orange-500/60 bg-orange-950/60 text-orange-300'
+                                                        : 'border-orange-300 bg-orange-50 text-orange-700 shadow-orange-100')
+                                                    : `${theme.borderLight} ${theme.surfaceBg} ${theme.textPrimary} hover:border-orange-400 hover:text-orange-600`
+                                            }`}
+                                        >
+                                            <Settings size={16} className={showMaterialUsage ? (theme.mode === 'dark' ? 'text-orange-400' : 'text-orange-600') : 'text-orange-500'} /> Material Usage {showMaterialUsage ? "▲" : "▼"}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {isSeparateStock && showMaterialUsage && (
+                                    <div className={`rounded-2xl border-2 ${theme.tableBorder} ${theme.surfaceBg} p-5 space-y-6 shadow-sm`}>
+                                        <div>
+                                            <h5 className={`font-black text-base ${theme.textHeading} flex items-center gap-2`}>
+                                                <Settings size={18} className="text-orange-500" /> Material Usage
+                                            </h5>
+                                            <p className={`text-xs ${theme.textMuted} mt-0.5`}>
+                                                Optional raw materials or fabrics consumed per variant (e.g. Cloth → 2 meters).
+                                            </p>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            {(formData.portionPricing || []).map((portion, idx) => {
+                                                const draft = variantBomDraft[idx] || {};
+                                                const ingredients = portion.ingredients || [];
+                                                return (
+                                                    <div key={idx} className={`border ${theme.borderLight} rounded-2xl p-4 ${theme.sectionBg}`}>
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <span className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider ${
+                                                                theme.mode === 'dark' 
+                                                                    ? 'bg-indigo-900/60 text-indigo-300 border border-indigo-700/50' 
+                                                                    : 'bg-indigo-100 text-indigo-700'
+                                                            }`}>
+                                                                {portion.name}
+                                                            </span>
+                                                            <span className={`text-[11px] font-bold ${theme.textMuted}`}>
+                                                                {ingredients.length} material{ingredients.length === 1 ? '' : 's'} linked
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Tree view of materials */}
+                                                        <div className="space-y-2 mb-3">
+                                                            {ingredients.length === 0 ? (
+                                                                <div className={`text-xs font-mono pl-2 ${theme.textMuted}`}>
+                                                                    └── No materials added yet (optional)
+                                                                </div>
+                                                            ) : (
+                                                                ingredients.map((ing, ingIdx) => (
+                                                                    <div key={ingIdx} className={`flex items-center justify-between py-2 px-3.5 rounded-xl text-xs font-bold ${theme.surfaceBg} border ${theme.borderLight}`}>
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            <span className={`font-mono ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>└──</span>
+                                                                            <span className={theme.textPrimary}>{ing.name}</span>
+                                                                            <span className={theme.textMuted}>→</span>
+                                                                            <span className={theme.mode === 'dark' ? 'text-indigo-400 font-extrabold' : 'text-indigo-600 font-extrabold'}>
+                                                                                {ing.quantity} {ing.unitName}
+                                                                                {ing.selectedUnit === 'SECONDARY' && ing.conversionFactor > 1 && (
+                                                                                    <span className="text-[10px] text-gray-400 font-normal ml-1">
+                                                                                        (= {(ing.quantity / ing.conversionFactor).toFixed(3)} Primary Units)
+                                                                                    </span>
+                                                                                )}
+                                                                            </span>
+                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleUpdatePortion(idx, 'ingredients', ingredients.filter((_, i) => i !== ingIdx))}
+                                                                            className="text-red-400 hover:text-red-600 p-1 transition-colors"
+                                                                            title="Remove material"
+                                                                        >
+                                                                            <Trash2 size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+
+                                                        {/* Add material row */}
+                                                        <div className={`flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center pt-3 border-t border-dashed ${theme.borderLight}`}>
+                                                            <div className="flex-1 min-w-[200px]">
+                                                                <CommonSelect
+                                                                    options={stockItems.map(item => ({
+                                                                        label: `${item.name} (${item.unitId?.name || "N/A"})`,
+                                                                        value: item._id || item.id
+                                                                    }))}
+                                                                    value={draft.itemId || ''}
+                                                                    onChange={(val) => {
+                                                                        const availUnits = getAvailableUnitsForItem(val, stockItems, units);
+                                                                        const defaultUnitId = availUnits.length > 0 ? availUnits[0].value : '';
+                                                                        setVariantBomDraft(prev => ({ ...prev, [idx]: { ...prev[idx], itemId: val, unitId: defaultUnitId } }));
+                                                                    }}
+                                                                    placeholder="Select material..."
+                                                                    triggerClassName={`h-11 flex items-center justify-between px-3.5 border-2 rounded-xl text-xs ${theme.inputBorder}`}
+                                                                />
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <input
+                                                                    type="number"
+                                                                    onWheel={(e) => e.target.blur()}
+                                                                    value={draft.quantity || ''}
+                                                                    onChange={(e) => setVariantBomDraft(prev => ({ ...prev, [idx]: { ...prev[idx], quantity: e.target.value } }))}
+                                                                    placeholder="Qty"
+                                                                    className={`w-24 h-11 px-3 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold text-xs outline-none focus:border-orange-400`}
+                                                                />
+                                                                <div className="w-44 sm:w-48">
+                                                                    <CommonSelect
+                                                                        options={getAvailableUnitsForItem(draft.itemId, stockItems, units)}
+                                                                        value={draft.unitId || ''}
+                                                                        onChange={(val) => setVariantBomDraft(prev => ({ ...prev, [idx]: { ...prev[idx], unitId: val } }))}
+                                                                        placeholder={draft.itemId ? "Select Unit" : "Select material first"}
+                                                                        disabled={!draft.itemId}
+                                                                        triggerClassName={`h-11 flex items-center justify-between px-3.5 border-2 rounded-xl text-xs ${theme.inputBorder}`}
+                                                                    />
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleAddVariantIngredient(idx)}
+                                                                    className="h-11 w-11 shrink-0 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-all shadow-sm flex items-center justify-center active:scale-95"
+                                                                    title="Add material to variant"
+                                                                >
+                                                                    <Plus size={18} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
 
-                    {/* NEW RECIPE SECTION */}
-                    {showRecipe && (
+                    {/* Product-level materials for items without separate-variant stock */}
+                    {showRecipe && !isSeparateStock && (
                         <div>
                             <div className="flex items-center gap-4 mb-2">
                                 <ClipboardList className="text-orange-500" size={24} />
@@ -1684,10 +2243,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                             </div>
                             <p className={`text-sm ${theme.textMuted} mb-8`}>Define what stock items are used to create this manufactured product.</p>
 
-                            <div className="flex flex-col gap-3 mb-6">
-                                {/* Stock Item — full width on all screens */}
-                                <div>
-                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Stock Item</label>
+                            <div className={`grid grid-cols-1 sm:grid-cols-12 gap-3 mb-6 p-4 rounded-2xl border ${theme.borderLight} ${theme.surfaceBg}`}>
+                                {/* Stock Item — 6 cols */}
+                                <div className="sm:col-span-6">
+                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-1.5 block`}>Stock Item</label>
                                     <CommonSelect
                                         options={stockItems.map(item => ({ 
                                             label: `${item.name} (${item.unitId?.name || "N/A"})`, 
@@ -1696,41 +2255,46 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                         value={selectedRawItem}
                                         onChange={(val) => {
                                             setSelectedRawItem(val);
-                                            const item = stockItems.find(i => (i._id || i.id) === val);
-                                            if (item && item.unitId) {
-                                                setIngredientUnitId(item.unitId._id || item.unitId);
-                                            }
+                                            const availUnits = getAvailableUnitsForItem(val, stockItems, units);
+                                            const defaultUnitId = availUnits.length > 0 ? availUnits[0].value : '';
+                                            setIngredientUnitId(defaultUnitId);
                                         }}
                                         placeholder="Select Stock Item..."
                                         className="w-full"
+                                        triggerClassName={`h-11 flex items-center justify-between px-3.5 border-2 rounded-xl text-xs ${theme.inputBorder}`}
                                     />
                                 </div>
-                                {/* QTY + UNIT + Add button — single row on mobile */}
-                                <div className="flex items-end gap-2">
-                                    <div className="w-24 sm:w-32 flex-shrink-0">
-                                        <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Qty</label>
-                                        <input
-                                            type="number"
-                                            onWheel={(e) => e.target.blur()}
-                                            value={ingredientQty}
-                                            onChange={(e) => setIngredientQty(e.target.value)}
-                                            placeholder="0"
-                                            className={`w-full p-3 sm:p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400 text-sm`}
-                                        />
-                                    </div>
-                                    <div className="flex-1">
-                                        <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Unit</label>
-                                        <CommonSelect
-                                            options={units.map(u => ({ label: u.name, value: u._id }))}
-                                            value={ingredientUnitId}
-                                            onChange={(val) => setIngredientUnitId(val)}
-                                            placeholder="Unit..."
-                                            className="w-full"
-                                        />
-                                    </div>
+                                {/* Qty — 2 cols */}
+                                <div className="sm:col-span-2">
+                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-1.5 block`}>Qty</label>
+                                    <input
+                                        type="number"
+                                        onWheel={(e) => e.target.blur()}
+                                        value={ingredientQty}
+                                        onChange={(e) => setIngredientQty(e.target.value)}
+                                        placeholder="0"
+                                        className={`w-full h-11 px-3 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-orange-400 text-xs`}
+                                    />
+                                </div>
+                                {/* Unit — 3 cols */}
+                                <div className="sm:col-span-3">
+                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-1.5 block`}>Unit</label>
+                                    <CommonSelect
+                                        options={getAvailableUnitsForItem(selectedRawItem, stockItems, units)}
+                                        value={ingredientUnitId}
+                                        onChange={(val) => setIngredientUnitId(val)}
+                                        placeholder={selectedRawItem ? "Select Unit" : "Select material first"}
+                                        disabled={!selectedRawItem}
+                                        className="w-full"
+                                        triggerClassName={`h-11 flex items-center justify-between px-3.5 border-2 rounded-xl text-xs ${theme.inputBorder}`}
+                                    />
+                                </div>
+                                {/* Add button — 1 col */}
+                                <div className="sm:col-span-1 flex flex-col justify-end">
                                     <button
                                         onClick={(e) => { e.preventDefault(); handleAddIngredient(); }}
-                                        className="flex-shrink-0 p-3 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-200/20 hover:bg-orange-600 active:scale-95 transition-all"
+                                        className="h-11 w-full bg-orange-500 text-white rounded-xl shadow-md hover:bg-orange-600 active:scale-95 transition-all flex items-center justify-center"
+                                        title="Add material"
                                     >
                                         <Plus size={20} />
                                     </button>
@@ -1753,11 +2317,20 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                 <tr key={idx} className={`border-t ${theme.tableBorder}`}>
                                                     <td className="p-3">{ing.name}</td>
                                                     <td className="p-3">{ing.quantity}</td>
-                                                    <td className={`p-3 ${theme.textMuted}`}>{ing.unitName}</td>
+                                                    <td className={`p-3 ${theme.textMuted}`}>
+                                                        {ing.unitName}
+                                                        {ing.selectedUnit === 'SECONDARY' && ing.conversionFactor > 1 && (
+                                                            <span className="text-[10px] text-gray-400 font-normal ml-1.5">
+                                                                (1 Pri = {ing.conversionFactor} {ing.unitName})
+                                                            </span>
+                                                        )}
+                                                    </td>
                                                     <td className="p-3 text-right">
                                                         <button
+                                                            type="button"
                                                             onClick={() => handleRemoveIngredient(idx)}
                                                             className="text-red-400 hover:text-red-600 p-1"
+                                                            title="Remove material"
                                                         >
                                                             <Trash2 size={16} />
                                                         </button>
@@ -1778,14 +2351,14 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             {/* Sticky Footer */}
             <div className={`flex flex-row gap-2 p-3 sm:p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 shrink-0`}>
                 <button
-                    onClick={() => asDialog && onClose ? onClose() : navigate('/inventory')}
-                    className={`flex-1 py-2.5 sm:py-4 font-black text-xs sm:text-base ${theme.textSecondary} hover:${theme.textPrimary} transition-colors border-2 ${theme.borderLight} rounded-[20px]`}
+                    onClick={() => asDialog && onClose ? onClose() : navigate('/inventory', { state: { activeTab: currentTab } })}
+                    className={`flex-1 py-2.5 sm:py-4 font-black text-xs sm:text-base ${theme.textPrimary} hover:opacity-80 transition-opacity border-2 ${theme.borderLight} ${theme.surfaceBg} rounded-[20px]`}
                 >
                     {asDialog ? "Cancel" : "Discard"}
                 </button>
                 <button
                     onClick={handleSubmit}
-                    className={`flex-[2] py-2.5 sm:py-4 ${theme.buttonBg} ${theme.buttonText} rounded-[20px] font-black shadow-xl shadow-indigo-100/10 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-1.5 text-sm sm:text-lg`}
+                    className={`flex-[2] py-2.5 sm:py-4 ${theme.buttonBg} ${theme.buttonText} rounded-[20px] font-black shadow-lg shadow-indigo-500/20 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-1.5 text-sm sm:text-lg`}
                 >
                     <Save size={16} className="sm:w-5 sm:h-5" />
                     {isEditing ? "Update Product" : "Save Product"}
