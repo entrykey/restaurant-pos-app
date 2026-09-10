@@ -1432,10 +1432,10 @@ const PurchasePage = () => {
     }
 
     return (
-        <div className={`p-3 md:p-8 min-h-full ${theme.pageBg}`}>
-            <div className="max-w-[1400px] mx-auto">
+        <div className={`p-3 md:p-5 lg:p-6 min-h-full ${theme.pageBg}`}>
+            <div className="w-full max-w-[1600px] mx-auto">
                 {/* Breadcrumb — compact back link only */}
-                <div className="mb-4 md:mb-6">
+                <div className="mb-3 md:mb-5">
                     <Link
                         to="/purchases"
                         className={`inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest transition-colors hover:opacity-70 ${theme.textMuted}`}
@@ -1445,7 +1445,7 @@ const PurchasePage = () => {
                     </Link>
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 md:mb-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 md:mb-6">
                     <div>
                         <h1 className={`text-xl md:text-3xl font-black uppercase ${theme.textHeading}`}>
                             {isEditing ? "Edit Purchase" : "New Purchase Entry"}
@@ -1457,7 +1457,7 @@ const PurchasePage = () => {
                         <button
                             type="button"
                             onClick={() => setIsScannerOpen(true)}
-                            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 md:px-6 md:py-4 rounded-[20px] font-black transition-all shadow-xl active:scale-95 group overflow-hidden relative ${theme.mode === 'dark'
+                            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 md:px-5 md:py-3 rounded-2xl font-black transition-all shadow-lg active:scale-95 group overflow-hidden relative ${theme.mode === 'dark'
                                 ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-600/20'
                                 : 'bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-100'}`}
                         >
@@ -1471,9 +1471,9 @@ const PurchasePage = () => {
                     )}
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4 md:space-y-8 pb-8">
+                <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6 pb-8">
                     {/* section: General Info */}
-                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-12 border ${theme.borderLight}`}>
+                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 lg:p-7 border ${theme.borderLight}`}>
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
                             <div className="space-y-3">
                                 <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
@@ -1748,9 +1748,9 @@ const PurchasePage = () => {
                     </div>
 
                     {/* section: Item Entry */}
-                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-12 border ${theme.borderLight} flex flex-col gap-4 md:gap-8`}>
-                        <div className={`flex flex-col gap-4 md:gap-6 border-b pb-4 md:pb-8 ${theme.borderLight}`}>
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2 md:mb-6">
+                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 lg:p-7 border ${theme.borderLight} flex flex-col gap-4 md:gap-6`}>
+                        <div className={`flex flex-col gap-4 border-b pb-4 md:pb-6 ${theme.borderLight}`}>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
                                 <h2 className={`text-base md:text-xl font-black flex items-center gap-3 uppercase tracking-tight ${theme.textHeading}`}>
                                     <Package className="text-indigo-600" /> Items List
                                 </h2>
@@ -1761,7 +1761,7 @@ const PurchasePage = () => {
                                             setProductPrefillData(null);
                                             setIsProductModalOpen(true);
                                         }}
-                                        className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${theme.mode === 'dark' ? 'bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/20' : 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100'}`}
+                                        className={`px-5 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${theme.mode === 'dark' ? 'bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/20' : 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100'}`}
                                     >
                                         <Plus size={14} /> Add New Item
                                     </button>
@@ -1823,38 +1823,38 @@ const PurchasePage = () => {
 
                         {/* Items Table */}
                         {/* ── Desktop table: lg and above only ── */}
-                        <div className="hidden lg:block overflow-x-auto relative pb-4">
+                        <div className="overflow-x-auto custom-scrollbar relative pb-4">
                             <table className="w-full text-left border-collapse">
                                 <thead>
-                                    <tr className={`text-[10px] font-black uppercase tracking-widest border-b ${theme.textMuted} ${theme.borderLight}`}>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2`}>#</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2`}>Item Description</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28 text-center`}>Qty</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-36`}>Unit</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Purchase Price</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Selling Price</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>MRP</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-24`}>Margin (%)</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-28`}>Batch / Exp</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-44`}>Barcode / Print</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 w-32`}>Tax (%)</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 text-right w-32`}>Total</th>
-                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-4 px-2 text-right w-12`}></th>
+                                    <tr className={`text-xs font-black uppercase tracking-wider border-b ${theme.textMuted} ${theme.borderLight}`}>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-8 text-center`}>#</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 min-w-[160px]`}>Item Description</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-24 text-center`}>Qty</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-36`}>Unit</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-28`}>Buy Price</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-28`}>Sell Price</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-28`}>MRP</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-28`}>Margin</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-32`}>Batch / Exp</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-36`}>Barcode / Print</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 w-36`}>Tax (%)</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 text-right w-28`}>Total</th>
+                                        <th className={`sticky top-0 ${theme.surfaceBg} z-20 py-3 px-2 text-right w-10`}></th>
                                     </tr>
                                 </thead>
                                 <tbody className={`divide-y ${theme.borderLight.replace('border-', 'divide-')} ${theme.textPrimary}`}>
                                     {formData.items.map((it, idx) => (
                                         <tr key={it.itemId} className="group hover:opacity-80 transition-opacity relative" style={{ zIndex: 50 - idx }}>
-                                            <td className={`py-5 px-2 font-bold ${theme.textMuted}`}>{idx + 1}</td>
-                                            <td className="py-5 px-2">
-                                                <div className="flex items-center gap-2">
-                                                    <div className={`font-black ${theme.textPrimary}`}>{it.name}</div>
+                                            <td className={`py-3 px-2 text-center font-bold text-xs ${theme.textMuted}`}>{idx + 1}</td>
+                                            <td className="py-3 px-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <div className={`font-black text-sm ${theme.textPrimary}`}>{it.name}</div>
                                                     {it.isNew && (
                                                         <span className="text-[9px] font-black bg-orange-500 text-white px-2 py-0.5 rounded-full animate-pulse">NEW</span>
                                                     )}
                                                 </div>
                                                 <div className="flex items-center justify-between mt-1">
-                                                    <div className={`text-[10px] font-bold ${theme.textSecondary}`}>{it.itemCode}</div>
+                                                    <div className={`text-xs font-bold ${theme.textSecondary}`}>{it.itemCode}</div>
                                                     {it.isNew && (
                                                         <button
                                                             type="button"
@@ -1871,34 +1871,31 @@ const PurchasePage = () => {
                                                                 });
                                                                 setIsProductModalOpen(true);
                                                             }}
-                                                            className="text-[9px] font-black text-indigo-600 hover:underline"
+                                                            className="text-[10px] font-black text-indigo-600 hover:underline ml-1"
                                                         >
-                                                            + CREATE PRODUCT
+                                                            + CREATE
                                                         </button>
                                                     )}
                                                 </div>
                                             </td>
 
-                                            <td className="py-5 px-2">
+                                            <td className="py-3 px-2">
                                                 <div className="relative group/qty w-full">
                                                     <input
                                                         type="number"
                                                         value={it.quantity}
                                                         onChange={e => handleItemChange(idx, 'quantity', parseFloat(e.target.value || 0))}
-                                                        className={`w-full p-3 rounded-2xl font-black text-indigo-600 border-2 border-transparent focus:border-indigo-500 outline-none text-center transition-all ${theme.inputBg} text-sm shadow-sm`}
+                                                        className={`w-full p-2 rounded-xl font-black text-indigo-600 border border-transparent focus:border-indigo-500 outline-none text-center transition-all ${theme.inputBg} text-sm shadow-sm`}
                                                     />
-                                                    <div className={`absolute -top-2 -right-2 px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[8px] font-black uppercase shadow-lg opacity-0 group-focus-within/qty:opacity-100 transition-opacity pointer-events-none`}>
-                                                        Qty
-                                                    </div>
                                                 </div>
                                             </td>
-                                            <td className="py-5 px-2">
-                                                <div className={`flex flex-col gap-1.5 ${it.secondaryUnitId ? 'min-w-[150px]' : 'min-w-[90px]'}`}>
-                                                    <div className={`flex rounded-2xl border-2 ${theme.borderLight} overflow-hidden font-black text-[10px] shadow-sm bg-white dark:bg-gray-800`}>
+                                            <td className="py-3 px-2">
+                                                <div className="flex flex-col gap-1.5">
+                                                    <div className={`flex rounded-xl border ${theme.borderLight} overflow-hidden font-black text-xs shadow-sm bg-white dark:bg-gray-800`}>
                                                         <button
                                                             type="button"
                                                             onClick={() => handleItemChange(idx, 'selectedUnit', 'PRIMARY')}
-                                                            className={`flex-1 px-3 py-3 transition-all ${it.selectedUnit !== 'SECONDARY' ? 'bg-indigo-600 text-white shadow-lg' : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
+                                                            className={`flex-1 px-2.5 py-1.5 transition-all ${it.selectedUnit !== 'SECONDARY' ? 'bg-indigo-600 text-white shadow-sm' : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
                                                         >
                                                             {it.primaryUnitName || "Primary"}
                                                         </button>
@@ -1906,126 +1903,110 @@ const PurchasePage = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleItemChange(idx, 'selectedUnit', 'SECONDARY')}
-                                                                className={`flex-1 px-3 py-3 border-l-2 ${theme.borderLight} transition-all ${it.selectedUnit === 'SECONDARY' ? 'bg-indigo-600 text-white shadow-lg' : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
+                                                                className={`flex-1 px-2.5 py-1.5 border-l ${theme.borderLight} transition-all ${it.selectedUnit === 'SECONDARY' ? 'bg-indigo-600 text-white shadow-sm' : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
                                                             >
-                                                                {it.secondaryUnitName || "Secondary"}
+                                                                {it.secondaryUnitName || "Sec"}
                                                             </button>
                                                         )}
                                                     </div>
                                                     {it.selectedUnit === 'SECONDARY' && it.conversionFactor > 1 && (
-                                                        <div className={`text-[8px] font-black text-indigo-500/70 text-center uppercase tracking-wider flex items-center justify-center gap-1 bg-indigo-50/50 dark:bg-indigo-900/20 py-1 rounded-lg`}>
-                                                            <Layers size={8} /> 1 {it.primaryUnitName || "Primary"} = {it.conversionFactor} {it.secondaryUnitName || "Secondary"}
+                                                        <div className={`text-[8px] font-black text-indigo-500/80 text-center uppercase tracking-tight flex items-center justify-center gap-1 bg-indigo-50/50 dark:bg-indigo-900/20 py-0.5 rounded-md`}>
+                                                            <Layers size={8} /> 1 {it.primaryUnitName || "Pri"} = {it.conversionFactor} {it.secondaryUnitName || "Sec"}
                                                         </div>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="py-5 px-2">
-                                                <div className="relative group/price w-full">
-                                                    <input
-                                                        type="number"
-                                                        value={it.purchasePrice}
-                                                        onChange={e => handleItemChange(idx, 'purchasePrice', parseFloat(e.target.value || 0))}
-                                                        className={`w-full p-3 rounded-2xl font-black border-2 border-transparent focus:border-indigo-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
-                                                    />
-                                                </div>
+                                            <td className="py-3 px-2">
+                                                <input
+                                                    type="number"
+                                                    value={it.purchasePrice}
+                                                    onChange={e => handleItemChange(idx, 'purchasePrice', parseFloat(e.target.value || 0))}
+                                                    className={`w-full p-2 rounded-xl font-black border border-transparent focus:border-indigo-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
+                                                />
                                             </td>
-                                            <td className="py-5 px-2">
-                                                <div className="relative group/price w-full">
-                                                    <input
-                                                        type="number"
-                                                        value={it.sellingPrice || ""}
-                                                        onChange={e => handleItemChange(idx, 'sellingPrice', parseFloat(e.target.value || 0))}
-                                                        className={`w-full p-3 rounded-2xl font-black border-2 border-transparent focus:border-emerald-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
-                                                    />
-                                                </div>
+                                            <td className="py-3 px-2">
+                                                <input
+                                                    type="number"
+                                                    value={it.sellingPrice || ""}
+                                                    onChange={e => handleItemChange(idx, 'sellingPrice', parseFloat(e.target.value || 0))}
+                                                    className={`w-full p-2 rounded-xl font-black border border-transparent focus:border-emerald-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
+                                                />
                                             </td>
-                                            <td className="py-5 px-2">
-                                                <div className="relative group/price w-full">
-                                                    <input
-                                                        type="number"
-                                                        value={it.mrp || ""}
-                                                        onChange={e => handleItemChange(idx, 'mrp', parseFloat(e.target.value || 0))}
-                                                        className={`w-full p-3 rounded-2xl font-black border-2 border-transparent focus:border-blue-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
-                                                    />
-                                                </div>
+                                            <td className="py-3 px-2">
+                                                <input
+                                                    type="number"
+                                                    value={it.mrp || ""}
+                                                    onChange={e => handleItemChange(idx, 'mrp', parseFloat(e.target.value || 0))}
+                                                    className={`w-full p-2 rounded-xl font-black border border-transparent focus:border-blue-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
+                                                />
                                             </td>
-                                            <td className="py-5 px-2">
-                                                <div className={`flex flex-col text-xs font-black p-2 rounded bg-opacity-10 ${((it.sellingPrice || 0) - (it.purchasePrice || 0)) >= 0 ? 'text-green-500 bg-green-500' : 'text-red-500 bg-red-500'}`}>
+                                            <td className="py-3 px-2">
+                                                <div className={`flex flex-col text-xs font-black p-1.5 rounded-xl text-center bg-opacity-10 ${((it.sellingPrice || 0) - (it.purchasePrice || 0)) >= 0 ? 'text-green-500 bg-green-500' : 'text-red-500 bg-red-500'}`}>
                                                     <span>{formatCurrency((it.sellingPrice || 0) - (it.purchasePrice || 0))}</span>
-                                                    <span className="opacity-70">
+                                                    <span className="opacity-70 text-[9px]">
                                                         {it.sellingPrice > 0
                                                             ? `${(((it.sellingPrice - it.purchasePrice) / it.sellingPrice) * 100).toFixed(1)}%`
                                                             : '0%'}
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="py-5 px-2 space-y-1">
+                                            <td className="py-3 px-2">
                                                 {(!it.batchTracking && !it.expiryTracking) ? (
-                                                    <div className="flex justify-center items-center h-full text-gray-400 font-bold opacity-50">—</div>
+                                                    <div className="flex justify-center items-center h-full text-gray-400 font-bold opacity-40 text-xs">—</div>
                                                 ) : (
-                                                    <div className="flex flex-col gap-1 w-full relative group/tracking cursor-pointer">
+                                                    <div className="flex flex-col gap-1 w-full">
                                                         {it.batchTracking && (
-                                                            <div className="relative">
-                                                                <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-indigo-400`}>
-                                                                    BAT <span className="text-red-500">*</span>
-                                                                </span>
-                                                                <input
-                                                                    placeholder="BATCH NO (REQUIRED)"
-                                                                    value={it.batchNo}
-                                                                    onChange={e => handleItemChange(idx, 'batchNo', e.target.value)}
-                                                                    className={`w-full pl-12 p-1.5 text-[11px] rounded border-transparent focus:border-indigo-400 uppercase font-bold outline-none border ${theme.inputBg} ${theme.textPrimary}`}
-                                                                />
-                                                            </div>
+                                                            <input
+                                                                placeholder="Batch No"
+                                                                value={it.batchNo || ""}
+                                                                onChange={e => handleItemChange(idx, 'batchNo', e.target.value)}
+                                                                className={`w-full p-1.5 text-xs rounded-lg border-transparent focus:border-indigo-400 uppercase font-bold outline-none border ${theme.inputBg} ${theme.textPrimary}`}
+                                                            />
                                                         )}
                                                         {it.expiryTracking && (
-                                                            <div className="relative">
-                                                                <span className={`absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-pink-400 z-10 pointer-events-none`}>
-                                                                    EXP <span className="text-red-500">*</span>
-                                                                </span>
-                                                                <DatePicker
-                                                                    value={it.expiryDate}
-                                                                    onChange={val => handleItemChange(idx, 'expiryDate', val)}
-                                                                    className={`w-full pl-12 py-1.5 text-[11px] rounded border-transparent focus-within:border-indigo-400 uppercase font-bold outline-none border ${theme.inputBg} ${theme.textPrimary}`}
-                                                                    placeholder="EXPIRY (REQUIRED)"
-                                                                />
-                                                            </div>
+                                                            <DatePicker
+                                                                value={it.expiryDate}
+                                                                onChange={val => handleItemChange(idx, 'expiryDate', val)}
+                                                                className={`w-full py-1.5 text-xs rounded-lg border-transparent focus-within:border-indigo-400 uppercase font-bold outline-none border ${theme.inputBg} ${theme.textPrimary}`}
+                                                                placeholder="Expiry"
+                                                            />
                                                         )}
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="py-5 px-2">
-                                                <div className="space-y-2">
+                                            <td className="py-3 px-2">
+                                                <div className="space-y-1.5">
                                                     <input
-                                                        placeholder="Scan / enter barcode"
+                                                        placeholder="Barcode"
                                                         value={it.existingBarcode || ""}
                                                         onChange={e => handleItemChange(idx, 'existingBarcode', e.target.value)}
-                                                        className={`w-full p-1.5 text-[11px] rounded border-transparent focus:border-indigo-200 outline-none border ${theme.inputBg} ${theme.textPrimary}`}
+                                                        className={`w-full p-1.5 text-xs rounded-lg border-transparent focus:border-indigo-200 outline-none border ${theme.inputBg} ${theme.textPrimary}`}
                                                     />
-                                                    <div className="flex items-center justify-between gap-2">
+                                                    <div className="flex items-center justify-between gap-1">
                                                         <label className="flex items-center gap-1 text-[10px] font-bold text-gray-500">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={!!it.hasIndividualBarcode}
                                                                 onChange={e => handleItemChange(idx, 'hasIndividualBarcode', e.target.checked)}
-                                                                className="rounded accent-indigo-600"
+                                                                className="rounded accent-indigo-600 h-3 w-3"
                                                             />
-                                                            Per-unit barcode
+                                                            Per-unit
                                                         </label>
                                                         <button
                                                             type="button"
                                                             onClick={() => handlePrintBarcode(it)}
-                                                            className="px-2 py-1 text-[10px] font-black rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+                                                            className="px-2 py-1 text-[10px] font-black rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
                                                         >
                                                             Print
                                                         </button>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="py-5 px-2">
+                                            <td className="py-3 px-2">
                                                 {/* Tax Type Selector */}
                                                 <CommonSelect
                                                     options={[
-                                                        { label: "Select Type...", value: "" },
+                                                        { label: "Select...", value: "" },
                                                         { label: "Inclusive", value: "INCLUSIVE" },
                                                         { label: "Exclusive", value: "EXCLUSIVE" }
                                                     ]}
@@ -2037,7 +2018,7 @@ const PurchasePage = () => {
                                                             taxPercent: 0
                                                         });
                                                     }}
-                                                    className="w-full text-[11px] font-black mb-2"
+                                                    className="w-full text-xs font-black mb-1"
                                                 />
                                                 
                                                 {/* Tax Percentage Selector - only show if type is selected */}
@@ -2063,22 +2044,22 @@ const PurchasePage = () => {
                                                                 }
                                                             }
                                                         }}
-                                                        className="w-full text-[11px] font-black"
+                                                        className="w-full text-xs font-black"
                                                     />
                                                 )}
-                                             </td>
-                                            <td className="py-5 px-2 text-right font-black">
+                                            </td>
+                                            <td className="py-3 px-2 text-right font-black text-sm">
                                                 {(() => {
                                                     const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
                                                     const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
                                                     return formatCurrency(isExclusive ? (it.quantity * it.purchasePrice) + (it.taxAmount || 0) : (it.quantity * it.purchasePrice));
                                                 })()}
                                             </td>
-                                            <td className="py-5 px-2 text-right">
+                                            <td className="py-3 px-2 text-right">
                                                 <button
                                                     type="button"
                                                     onClick={() => handleRemoveItem(idx)}
-                                                    className="p-2 text-red-200 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                    className="p-1.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>

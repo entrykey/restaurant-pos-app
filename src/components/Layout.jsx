@@ -32,6 +32,15 @@ const Layout = ({
     const { theme } = useTheme();
     const location = useLocation();
 
+    // Auto-collapse sidebar when navigating to billing / purchase / sales pages to maximize table width
+    React.useEffect(() => {
+        const collapsePaths = ["/purchases", "/sales", "/pos", "/takeaway", "/dininghall"];
+        const currentPath = (location.pathname || "").toLowerCase();
+        if (collapsePaths.some((p) => currentPath.startsWith(p)) || view === "purchases" || view === "sales") {
+            setIsSidebarExpanded(false);
+        }
+    }, [location.pathname, view]);
+
     const hideChrome = useMemo(() => {
         // Owner selection page should be full-width with no Navbar/Sidebar.
         return location.pathname === "/owner-dashboard" && Boolean(currentUser?.isOwner);
