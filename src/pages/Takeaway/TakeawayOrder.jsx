@@ -20,7 +20,8 @@ import {
     ArrowUpDown,
     Flame,
     Gift,
-    Tag as TagIcon
+    Tag as TagIcon,
+    ChevronDown
 } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import FoodItemCard from "../../components/FoodItemCard";
@@ -91,6 +92,7 @@ const TakeawayOrder = ({
     } = useTakeaway();
 
     const [showAvailableOffers, setShowAvailableOffers] = useState(false);
+    const [isCartBreakdownExpanded, setIsCartBreakdownExpanded] = useState(true);
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -1476,190 +1478,207 @@ const TakeawayOrder = ({
                         {(() => {
                             return (
                                 <>
-                                    <div className={`flex justify-between items-center text-xs md:text-sm ${theme.textMuted}`}>
-                                        <span>Subtotal</span>
-                                        <span className={theme.textPrimary}>{formatCurrency(finalBillDetails.subtotal)}</span>
-                                    </div>
+                                    {/* Accordion Toggle Header for Bill Breakdown & Discount */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCartBreakdownExpanded(prev => !prev)}
+                                        className={`flex items-center justify-between w-full py-1 text-xs font-black ${theme.textMuted} hover:${theme.textPrimary} transition-colors cursor-pointer border-b ${theme.borderLight} pb-2 mb-1`}
+                                    >
+                                        <span className="uppercase tracking-wider text-[10px] font-black">
+                                            Bill Breakdown & Discount
+                                        </span>
+                                        <ChevronDown size={16} className={`transition-transform duration-200 text-indigo-600 dark:text-indigo-400 ${isCartBreakdownExpanded ? 'rotate-180' : ''}`} />
+                                    </button>
 
-                                    {/* Discount input */}
-                                    <div className={`rounded-xl border ${theme.borderLight} ${theme.inputBg} overflow-hidden`}>
-                                        <div className={`flex items-center border-b ${theme.borderLight}`}>
-                                            <span className={`px-3 text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Discount</span>
-                                            <div className="ml-auto flex">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => applyDiscount('flat', discountInputValue)}
-                                                    className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountInputType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}
-                                                >
-                                                    ₹ Flat
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => applyDiscount('percent', discountInputValue)}
-                                                    className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountInputType === 'percent' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}
-                                                >
-                                                    % Off
-                                                </button>
+                                    {/* Collapsible Fields Section (Initially Expanded) */}
+                                    {isCartBreakdownExpanded && (
+                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <div className={`flex justify-between items-center text-xs md:text-sm ${theme.textMuted}`}>
+                                                <span>Subtotal</span>
+                                                <span className={theme.textPrimary}>{formatCurrency(finalBillDetails.subtotal)}</span>
                                             </div>
-                                        </div>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            value={discountInputValue}
-                                            onChange={e => applyDiscount(discountInputType, e.target.value)}
-                                            placeholder={discountInputType === 'percent' ? "Enter %" : "Enter amount"}
-                                            className={`w-full px-3 py-2 text-sm font-black outline-none bg-transparent ${theme.textPrimary}`}
-                                        />
-                                    </div>
-    
-                                    {/* Applied & Available Offers Section */}
-                                    {((billDetails.appliedOffers && billDetails.appliedOffers.length > 0) || availableUnappliedOffers.length > 0) && (
-                                        <div className="space-y-2 pt-1">
-                                            {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
-                                                <div className="space-y-1.5">
-                                                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                                                        <TagIcon size={12} />
-                                                        <span>Applied Offers ({billDetails.appliedOffers.length})</span>
+
+                                            {/* Discount input */}
+                                            <div className={`rounded-xl border ${theme.borderLight} ${theme.inputBg} overflow-hidden`}>
+                                                <div className={`flex items-center border-b ${theme.borderLight}`}>
+                                                    <span className={`px-3 text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Discount</span>
+                                                    <div className="ml-auto flex">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => applyDiscount('flat', discountInputValue)}
+                                                            className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountInputType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}
+                                                        >
+                                                            ₹ Flat
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => applyDiscount('percent', discountInputValue)}
+                                                            className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountInputType === 'percent' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}
+                                                        >
+                                                            % Off
+                                                        </button>
                                                     </div>
-                                                    {billDetails.appliedOffers.map((offer, oIdx) => {
-                                                        if (!offer) return null;
-                                                        const title = offer.offerName || offer.name || "Special Offer";
-                                                        const amt = Number(offer.discountAmount ?? offer.discount ?? 0);
-                                                        const typeLabel = (offer.offerType || "").replace(/_/g, " ");
-
-                                                        return (
-                                                            <div
-                                                                key={offer.offerId || oIdx}
-                                                                className="flex justify-between items-center bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/40 px-3 py-2 rounded-2xl gap-2 shadow-sm transition-all hover:border-emerald-300"
-                                                            >
-                                                                <div className="flex items-center gap-2 min-w-0">
-                                                                    <div className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 shrink-0">
-                                                                        <TagIcon size={13} />
-                                                                    </div>
-                                                                    <div className="flex flex-col min-w-0">
-                                                                        <span className="text-xs font-black text-emerald-900 dark:text-emerald-100 truncate tracking-tight">
-                                                                            {title}
-                                                                        </span>
-                                                                        {typeLabel && (
-                                                                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
-                                                                                {typeLabel}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="flex items-center gap-2 shrink-0">
-                                                                    <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
-                                                                        -{formatCurrency(amt)}
-                                                                    </span>
-                                                                    {offer.offerId && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => dismissOffer(offer.offerId)}
-                                                                            className="p-1 rounded-full hover:bg-emerald-200/60 dark:hover:bg-emerald-800/60 text-emerald-700 dark:text-emerald-300 transition-colors cursor-pointer"
-                                                                            title="Remove offer"
-                                                                        >
-                                                                            <X size={12} />
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
                                                 </div>
-                                            )}
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={discountInputValue}
+                                                    onChange={e => applyDiscount(discountInputType, e.target.value)}
+                                                    placeholder={discountInputType === 'percent' ? "Enter %" : "Enter amount"}
+                                                    className={`w-full px-3 py-2 text-sm font-black outline-none bg-transparent ${theme.textPrimary}`}
+                                                />
+                                            </div>
+            
+                                            {/* Applied & Available Offers Section */}
+                                            {((billDetails.appliedOffers && billDetails.appliedOffers.length > 0) || availableUnappliedOffers.length > 0) && (
+                                                <div className="space-y-2 pt-1">
+                                                    {billDetails.appliedOffers && billDetails.appliedOffers.length > 0 && (
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                                                <TagIcon size={12} />
+                                                                <span>Applied Offers ({billDetails.appliedOffers.length})</span>
+                                                            </div>
+                                                            {billDetails.appliedOffers.map((offer, oIdx) => {
+                                                                if (!offer) return null;
+                                                                const title = offer.offerName || offer.name || "Special Offer";
+                                                                const amt = Number(offer.discountAmount ?? offer.discount ?? 0);
+                                                                const typeLabel = (offer.offerType || "").replace(/_/g, " ");
 
-                                            {/* Other Available Offers Drawer */}
-                                            {availableUnappliedOffers.length > 0 && (
-                                                <div className="pt-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowAvailableOffers(prev => !prev)}
-                                                        className="flex items-center justify-between w-full text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-3 py-1.5 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all cursor-pointer"
-                                                    >
-                                                        <span className="flex items-center gap-1.5">
-                                                            <TagIcon size={12} />
-                                                            <span>Other Available Offers ({availableUnappliedOffers.length})</span>
-                                                        </span>
-                                                        <span className="text-[10px] uppercase font-black">{showAvailableOffers ? "Hide" : "View / Apply"}</span>
-                                                    </button>
-
-                                                    {showAvailableOffers && (
-                                                        <div className="mt-2 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                            {availableUnappliedOffers.map((off) => (
-                                                                <div
-                                                                    key={off._id || off.id}
-                                                                    className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-800 border border-indigo-100 dark:border-slate-700 shadow-sm text-xs"
-                                                                >
-                                                                    <div className="flex flex-col min-w-0 pr-2">
-                                                                        <span className="font-bold text-gray-800 dark:text-gray-200 truncate">{off.name}</span>
-                                                                        <span className="text-[10px] text-gray-500 font-medium truncate">
-                                                                            {off.description || (off.condition?.minBillAmount ? `Min bill ₹${off.condition.minBillAmount}` : "Special Offer")}
-                                                                        </span>
-                                                                    </div>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            restoreOffer(off._id || off.id);
-                                                                            toast.success(`Offer "${off.name}" applied!`, { icon: '🏷️' });
-                                                                        }}
-                                                                        className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-wider shrink-0 transition-all shadow-sm cursor-pointer"
+                                                                return (
+                                                                    <div
+                                                                        key={offer.offerId || oIdx}
+                                                                        className="flex justify-between items-center bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/40 px-3 py-2 rounded-2xl gap-2 shadow-sm transition-all hover:border-emerald-300"
                                                                     >
-                                                                        Apply
-                                                                    </button>
+                                                                        <div className="flex items-center gap-2 min-w-0">
+                                                                            <div className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 shrink-0">
+                                                                                <TagIcon size={13} />
+                                                                            </div>
+                                                                            <div className="flex flex-col min-w-0">
+                                                                                <span className="text-xs font-black text-emerald-900 dark:text-emerald-100 truncate tracking-tight">
+                                                                                    {title}
+                                                                                </span>
+                                                                                {typeLabel && (
+                                                                                    <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
+                                                                                        {typeLabel}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div className="flex items-center gap-2 shrink-0">
+                                                                            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                                                                                -{formatCurrency(amt)}
+                                                                            </span>
+                                                                            {offer.offerId && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => dismissOffer(offer.offerId)}
+                                                                                    className="p-1 rounded-full hover:bg-emerald-200/60 dark:hover:bg-emerald-800/60 text-emerald-700 dark:text-emerald-300 transition-colors cursor-pointer"
+                                                                                    title="Remove offer"
+                                                                                >
+                                                                                    <X size={12} />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Other Available Offers Drawer */}
+                                                    {availableUnappliedOffers.length > 0 && (
+                                                        <div className="pt-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowAvailableOffers(prev => !prev)}
+                                                                className="flex items-center justify-between w-full text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-3 py-1.5 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all cursor-pointer"
+                                                            >
+                                                                <span className="flex items-center gap-1.5">
+                                                                    <TagIcon size={12} />
+                                                                    <span>Other Available Offers ({availableUnappliedOffers.length})</span>
+                                                                </span>
+                                                                <span className="text-[10px] uppercase font-black">{showAvailableOffers ? "Hide" : "View / Apply"}</span>
+                                                            </button>
+
+                                                            {showAvailableOffers && (
+                                                                <div className="mt-2 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                                    {availableUnappliedOffers.map((off) => (
+                                                                        <div
+                                                                            key={off._id || off.id}
+                                                                            className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-800 border border-indigo-100 dark:border-slate-700 shadow-sm text-xs"
+                                                                        >
+                                                                            <div className="flex flex-col min-w-0 pr-2">
+                                                                                <span className="font-bold text-gray-800 dark:text-gray-200 truncate">{off.name}</span>
+                                                                                <span className="text-[10px] text-gray-500 font-medium truncate">
+                                                                                    {off.description || (off.condition?.minBillAmount ? `Min bill ₹${off.condition.minBillAmount}` : "Special Offer")}
+                                                                                </span>
+                                                                            </div>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    restoreOffer(off._id || off.id);
+                                                                                    toast.success(`Offer "${off.name}" applied!`, { icon: '🏷️' });
+                                                                                }}
+                                                                                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-wider shrink-0 transition-all shadow-sm cursor-pointer"
+                                                                            >
+                                                                                Apply
+                                                                            </button>
+                                                                        </div>
+                                                                    ))}
                                                                 </div>
-                                                            ))}
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
                                             )}
-                                        </div>
-                                    )}
-    
-                                    <div className={`flex justify-between items-center text-xs md:text-sm ${theme.textMuted}`}>
-                                        <span>Tax</span>
-                                        <span className={theme.textPrimary}>{formatCurrency(finalBillDetails.taxAmount)}</span>
-                                    </div>
-
-                                    {billDiscount.value > 0 && (
-                                        <div className={`flex justify-between items-center text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100`}>
-                                            <div className="flex flex-col">
-                                                <span>Customer Discount</span>
-                                                {billDiscount.type === 'percent' && <span className="text-[10px] opacity-70 uppercase tracking-wider">{billDiscount.value}% Off</span>}
+            
+                                            <div className={`flex justify-between items-center text-xs md:text-sm ${theme.textMuted}`}>
+                                                <span>Tax</span>
+                                                <span className={theme.textPrimary}>{formatCurrency(finalBillDetails.taxAmount)}</span>
                                             </div>
-                                            <span>-{formatCurrency(actualBillDetails.discountAmount)}</span>
-                                        </div>
-                                    )}
 
-                                    {loyaltyDiscount.amount > 0 && (
-                                        <div className={`flex justify-between items-center text-sm font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800`}>
-                                            <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <Gift size={14} />
-                                                    <span>Loyalty Points Redeemed</span>
+                                            {billDiscount.value > 0 && (
+                                                <div className={`flex justify-between items-center text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100`}>
+                                                    <div className="flex flex-col">
+                                                        <span>Customer Discount</span>
+                                                        {billDiscount.type === 'percent' && <span className="text-[10px] opacity-70 uppercase tracking-wider">{billDiscount.value}% Off</span>}
+                                                    </div>
+                                                    <span>-{formatCurrency(actualBillDetails.discountAmount)}</span>
                                                 </div>
-                                                <span className="text-[10px] opacity-70 uppercase tracking-wider">{loyaltyDiscount.points} pts used</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span>-{formatCurrency(loyaltyDiscount.amount)}</span>
-                                                <button
-                                                    onClick={() => {
-                                                        setLoyaltyDiscount({ points: 0, amount: 0 });
-                                                        toast.success('Loyalty discount removed');
-                                                    }}
-                                                    className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-full transition-colors"
-                                                    title="Remove loyalty discount"
-                                                >
-                                                    <X size={14} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
+                                            )}
 
-                                    {isTakeaway && exchangeCredit > 0 && (
-                                        <div className={`flex justify-between items-center text-sm font-bold text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100`}>
-                                            <span>Exchange Credit</span>
-                                            <span>-{formatCurrency(exchangeCredit)}</span>
+                                            {loyaltyDiscount.amount > 0 && (
+                                                <div className={`flex justify-between items-center text-sm font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800`}>
+                                                    <div className="flex flex-col">
+                                                        <div className="flex items-center gap-2">
+                                                            <Gift size={14} />
+                                                            <span>Loyalty Points Redeemed</span>
+                                                        </div>
+                                                        <span className="text-[10px] opacity-70 uppercase tracking-wider">{loyaltyDiscount.points} pts used</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span>-{formatCurrency(loyaltyDiscount.amount)}</span>
+                                                        <button
+                                                            onClick={() => {
+                                                                setLoyaltyDiscount({ points: 0, amount: 0 });
+                                                                toast.success('Loyalty discount removed');
+                                                            }}
+                                                            className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-full transition-colors"
+                                                            title="Remove loyalty discount"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {isTakeaway && exchangeCredit > 0 && (
+                                                <div className={`flex justify-between items-center text-sm font-bold text-orange-600 bg-orange-50 px-3 py-2 rounded-xl border border-orange-100`}>
+                                                    <span>Exchange Credit</span>
+                                                    <span>-{formatCurrency(exchangeCredit)}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
     

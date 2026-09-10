@@ -37,6 +37,13 @@ const TRADE_FIELD_KEYS = [
     "status"
 ];
 
+const formatStockQty = (val) => {
+    if (val === undefined || val === null || val === "" || isNaN(val)) return '0';
+    const num = Number(val);
+    if (Number.isInteger(num)) return String(num);
+    return parseFloat(num.toFixed(3)).toString();
+};
+
 const Inventory = ({
     menu,
     setMenu,
@@ -457,7 +464,7 @@ const Inventory = ({
                                 : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
                                 }`}>
                                 {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
-                                {qty}
+                                {formatStockQty(qty)}
                                 <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
                             </div>
                             {canManage && (
@@ -680,7 +687,7 @@ const Inventory = ({
                                 : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
                                 }`}>
                                 {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
-                                {qty}
+                                {formatStockQty(qty)}
                                 <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
                             </div>
                             {canManage && (
@@ -961,7 +968,7 @@ const Inventory = ({
                                     }`}
                                 >
                                     {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
-                                    {qty}
+                                    {formatStockQty(qty)}
                                     <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
                                 </button>
                                 {canManage && (

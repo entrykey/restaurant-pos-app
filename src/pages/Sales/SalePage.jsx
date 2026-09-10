@@ -472,8 +472,8 @@ const SalePage = () => {
                     </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4 md:space-y-8">
-                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-12 border ${theme.borderLight}`}>
+                <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
+                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 lg:p-7 border ${theme.borderLight}`}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
                             <div className="space-y-3">
                                 <label className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-1 ${theme.textMuted}`}>
@@ -602,7 +602,7 @@ const SalePage = () => {
                         </div>
                     </div>
 
-                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-12 border ${theme.borderLight} space-y-4 md:space-y-6`}>
+                    <div className={`${theme.surfaceBg} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 lg:p-7 border ${theme.borderLight} space-y-4 md:space-y-6`}>
                         <h2 className={`text-base md:text-xl font-black flex items-center gap-3 uppercase ${theme.textHeading}`}>
                             <Package className="text-indigo-600" /> Products
                         </h2>
