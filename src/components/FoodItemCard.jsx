@@ -110,7 +110,7 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
                                     Qty: {Number.isFinite(item.quantityOnHand)
                                         ? (Number.isInteger(item.quantityOnHand)
                                             ? item.quantityOnHand
-                                            : parseFloat(Number(item.quantityOnHand).toFixed(2)))
+                                            : parseFloat(Number(item.quantityOnHand).toFixed(3)))
                                         : 0}
                                 </span>
                             )}

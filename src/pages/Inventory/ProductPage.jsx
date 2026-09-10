@@ -1017,7 +1017,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         const currentBranchId = fixedBranchId || activeBranchId || userBranch || formData.branchId || (branches && branches.length > 0 ? (branches[0]._id || branches[0].id) : null);
         const minStock = parseFloat(formData.minStockAlert) || 0;
 
-        const sanitizedIngredients = (isSeparateStock ? [] : finalIngredients).map(ing => ({
+        const sanitizedIngredients = finalIngredients.map(ing => ({
             ...ing,
             rawItemId: toIdString(ing.rawItemId || ing.itemId),
             itemId: toIdString(ing.itemId || ing.rawItemId),
