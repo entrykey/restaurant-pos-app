@@ -11,7 +11,8 @@ import {
     Wallet,
     ShoppingBag,
     Printer,
-    Truck
+    Truck,
+    Plus
 } from "lucide-react";
 import AttributeSettings from "./AttributeSettings";
 import UnitSettings from "./UnitSettings";
@@ -29,6 +30,7 @@ import { settingService, roleService, payrollService } from "../../services/api"
 import CommonSelect from "../../components/ui/CommonSelect";
 import { useApp } from "../../context/AppContext";
 import RolePermissionEditor from "./RolePermissionEditor";
+import CreateRoleModal from "./CreateRoleModal";
 import { toast } from "react-hot-toast";
 
 const Settings = ({
@@ -82,6 +84,7 @@ const Settings = ({
 
     // Role Edit State
     const [isRoleEditorOpen, setIsRoleEditorOpen] = useState(false);
+    const [isCreateRoleOpen, setIsCreateRoleOpen] = useState(false);
     const [editingRoleId, setEditingRoleId] = useState(null);
     const [payrollSettings, setPayrollSettings] = useState({
         periodStartDay: 1,
@@ -355,14 +358,28 @@ const Settings = ({
                         valueKey={(options.length > 0 && typeof options[0] === 'string') ? null : "value"}
                         className="flex-1"
                     />
-                    {key === 'DEFAULT_SHOP_OWNER_ROLE' && value && (
-                        <button
-                            onClick={() => { setEditingRoleId(value); setIsRoleEditorOpen(true); }}
-                            className={`p-2.5 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all font-bold text-sm whitespace-nowrap`}
-                            title="Configure Modules & Permissions for this Role"
-                        >
-                            <SettingsIcon size={18} />
-                        </button>
+                    {key === 'DEFAULT_SHOP_OWNER_ROLE' && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setIsCreateRoleOpen(true)}
+                                className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition-all font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-sm"
+                                title="Create New Shop Owner Role"
+                            >
+                                <Plus size={16} />
+                                <span className="hidden sm:inline">Create Role</span>
+                            </button>
+                            {value && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setEditingRoleId(value); setIsRoleEditorOpen(true); }}
+                                    className={`p-2.5 rounded-xl border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all font-bold text-sm whitespace-nowrap shrink-0`}
+                                    title="Configure Modules & Permissions for this Role"
+                                >
+                                    <SettingsIcon size={18} />
+                                </button>
+                            )}
+                        </>
                     )}
                 </div>
             );
@@ -649,6 +666,18 @@ const Settings = ({
                 isOpen={isRoleEditorOpen}
                 onClose={() => { setIsRoleEditorOpen(false); setEditingRoleId(null); }}
                 roleId={editingRoleId}
+            />
+
+            <CreateRoleModal
+                isOpen={isCreateRoleOpen}
+                onClose={() => setIsCreateRoleOpen(false)}
+                currentShopId={currentShopId}
+                onRoleCreated={(newRole) => {
+                    fetchSystemRoles();
+                    if (newRole && (newRole._id || newRole.id)) {
+                        handleUpdateBackendSetting('DEFAULT_SHOP_OWNER_ROLE', newRole._id || newRole.id);
+                    }
+                }}
             />
         </div>
     );
