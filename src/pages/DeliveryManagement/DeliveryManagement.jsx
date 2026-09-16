@@ -6,7 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 
 const DeliveryManagement = () => {
-    const { currentShopId } = useApp();
+    const { currentShopId, formatCurrency } = useApp();
     const { user } = useAuth();
     const { theme } = useTheme();
     const shopId = currentShopId || user?.shopId || user?.shop_id;
@@ -344,7 +344,7 @@ const DeliveryManagement = () => {
                                     </div>
 
                                     <div className={`${theme.inputBg} p-3 rounded-xl flex justify-between items-center text-xs font-semibold ${theme.textHeading}`}>
-                                        <span>Delivery Fee: ₹{ord.deliveryFee || 0}</span>
+                                         <span>Delivery Fee: {formatCurrency(ord.deliveryFee || 0)}</span>
                                         <span className="text-blue-600 dark:text-blue-400">Dist: {ord.distanceKm || 0} km</span>
                                     </div>
 

@@ -416,9 +416,37 @@ const PayInList = () => {
                                                             <User size={18} />
                                                         </div>
                                                         <div>
-                                                            <p className={`text-lg font-black tracking-tight transition-colors capitalize ${theme.textHeading}`}>
-                                                                {group.customerName || 'Walk-in Customer'}
-                                                            </p>
+                                                            <div className="flex items-center gap-2">
+                                                                <p className={`text-lg font-black tracking-tight transition-colors capitalize ${theme.textHeading}`}>
+                                                                    {group.customerName || 'Walk-in Customer'}
+                                                                </p>
+                                                                {activeTab === 'pending' && (
+                                                                    group.totalPaid > 0 && group.totalBalance > 0 ? (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                                            Partially Paid
+                                                                        </span>
+                                                                    ) : group.totalBalance > 0 ? (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400">
+                                                                            Unpaid
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                                                            Fully Paid
+                                                                        </span>
+                                                                    )
+                                                                )}
+                                                                {activeTab === 'history' && (
+                                                                    group.balanceAmount > 0 ? (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                                            Partially Paid (Due: {formatCurrency(group.balanceAmount)})
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                                                            Fully Paid
+                                                                        </span>
+                                                                    )
+                                                                )}
+                                                            </div>
                                                             <p className={`text-sm font-bold ${theme.textMuted}`}>
                                                                 {group.customerPhone !== 'N/A' ? group.customerPhone : 'No Contact Info'}
                                                                 {activeTab === 'history' && group.orderNumber && ` • #${group.orderNumber}`}
@@ -484,7 +512,8 @@ const PayInList = () => {
                                                                     const events = [];
                                                                     const ordersToProcess = activeTab === 'pending' ? group.orders : [group];
                                                                     ordersToProcess.forEach(order => {
-                                                                        events.push({ id: `purchase-${order.id}`, type: 'PURCHASE', date: order.date, orderNumber: order.orderNumber, amount: order.grandTotal, balance: order.balanceAmount || 0, order: order });
+                                                                        const calcBalance = order.balanceAmount !== undefined ? order.balanceAmount : Math.max(0, order.grandTotal - (order.totalPaid || 0));
+                                                                        events.push({ id: `purchase-${order.id}`, type: 'PURCHASE', date: order.date, orderNumber: order.orderNumber, amount: order.grandTotal, balance: calcBalance, paymentStatus: order.paymentStatus, order: order });
                                                                         (order.payments || []).forEach(p => { events.push({ id: `payment-${p.id}`, type: 'PAYMENT', date: p.date, orderNumber: order.orderNumber, amount: p.amount, method: p.method }); });
                                                                     });
                                                                     return events.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -549,7 +578,35 @@ const PayInList = () => {
                                                         <User size={20} />
                                                     </div>
                                                     <div className="min-w-0">
-                                                        <p className={`font-black text-sm truncate ${theme.textHeading}`}>{group.customerName || 'Walk-in Customer'}</p>
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <p className={`font-black text-sm truncate ${theme.textHeading}`}>{group.customerName || 'Walk-in Customer'}</p>
+                                                            {activeTab === 'pending' && (
+                                                                group.totalPaid > 0 && group.totalBalance > 0 ? (
+                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                                        Partial
+                                                                    </span>
+                                                                ) : group.totalBalance > 0 ? (
+                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400">
+                                                                        Unpaid
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                                                        Paid
+                                                                    </span>
+                                                                )
+                                                            )}
+                                                            {activeTab === 'history' && (
+                                                                group.balanceAmount > 0 ? (
+                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                                        Partial
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                                                        Paid
+                                                                    </span>
+                                                                )
+                                                            )}
+                                                        </div>
                                                         <p className={`text-[11px] font-bold ${theme.textMuted} truncate`}>
                                                             {group.customerPhone !== 'N/A' ? group.customerPhone : 'No Contact Info'}
                                                             {activeTab === 'history' && group.orderNumber && ` • #${group.orderNumber}`}
@@ -627,7 +684,8 @@ const PayInList = () => {
                                                         const events = [];
                                                         const ordersToProcess = activeTab === 'pending' ? group.orders : [group];
                                                         ordersToProcess.forEach(order => {
-                                                            events.push({ id: `purchase-${order.id}`, type: 'PURCHASE', date: order.date, orderNumber: order.orderNumber, amount: order.grandTotal, balance: order.balanceAmount || 0, order: order });
+                                                            const calcBalance = order.balanceAmount !== undefined ? order.balanceAmount : Math.max(0, order.grandTotal - (order.totalPaid || 0));
+                                                            events.push({ id: `purchase-${order.id}`, type: 'PURCHASE', date: order.date, orderNumber: order.orderNumber, amount: order.grandTotal, balance: calcBalance, paymentStatus: order.paymentStatus, order: order });
                                                             (order.payments || []).forEach(p => { events.push({ id: `payment-${p.id}`, type: 'PAYMENT', date: p.date, orderNumber: order.orderNumber, amount: p.amount, method: p.method }); });
                                                         });
                                                         return events.sort((a, b) => new Date(b.date) - new Date(a.date));

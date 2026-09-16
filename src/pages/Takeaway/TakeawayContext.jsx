@@ -84,7 +84,13 @@ export const TakeawayProvider = ({ children }) => {
 
     // Active tab state
     const [isTakeaway, setIsTakeaway] = useState(false);
-    const [takeawayOrder, setTakeawayOrder] = useState(INITIAL_TAB_DATA.takeawayOrder);
+    const [takeawayOrder, setTakeawayOrder] = useState(() => {
+        const savedType = (typeof localStorage !== 'undefined' && localStorage.getItem("activePosOrderType")) || 'DIRECT_SALE';
+        return {
+            ...INITIAL_TAB_DATA.takeawayOrder,
+            orderType: savedType
+        };
+    });
     const [takeawayCustName, setTakeawayCustName] = useState("");
     const [takeawayCustPhone, setTakeawayCustPhone] = useState("");
     const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -374,23 +380,21 @@ export const TakeawayProvider = ({ children }) => {
         resetTakeaway();
     };
 
-    const activateSaleTab = (orderTypeOverride) => {
-        const currentTab = tabs.find(t => t.id === activeTabId) || createTab(1);
+    const activateSaleTab = React.useCallback((orderTypeOverride) => {
+        const targetType = orderTypeOverride || localStorage.getItem("activePosOrderType") || 'DIRECT_SALE';
+        try { localStorage.setItem("activePosOrderType", targetType); } catch (e) {}
 
         setIsTakeaway(true);
         setTableId(null);
 
-        const baseOrder = currentTab.takeawayOrder || INITIAL_TAB_DATA.takeawayOrder;
-        setTakeawayOrder({
-            ...baseOrder,
-            orderType: orderTypeOverride || baseOrder.orderType || 'TAKEAWAY'
+        setTakeawayOrder(prev => {
+            const updated = {
+                ...(prev || INITIAL_TAB_DATA.takeawayOrder),
+                orderType: targetType
+            };
+            return updated;
         });
-
-        setTakeawayCustName(currentTab.takeawayCustName || "");
-        setTakeawayCustPhone(currentTab.takeawayCustPhone || "");
-        setSelectedCustomer(currentTab.selectedCustomer || null);
-        setBillDiscount(currentTab.billDiscount || { type: "flat", value: 0 }); // Load discount
-    };
+    }, [activeTabId, tabs]);
 
     const loadHistorySale = (orderState, customerName, customerPhone, selectedCustomerData, historyEditBaseline) => {
         const nextOrder = {

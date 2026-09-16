@@ -15,7 +15,7 @@ const PARTIES_MODULE = MODULES.PARTIES;
 // hasPermissionFor prop signature comes from AppContent: (module, resource, action) => boolean
 const Parties = ({ hasPermissionFor }) => {
     const { theme } = useTheme();
-    const { activeBranchId } = useApp();
+    const { activeBranchId, formatCurrency } = useApp();
     const { user } = useAuth();
     const [tab, setTab] = useState('suppliers'); // 'suppliers' | 'customers'
     const [customers, setCustomers] = useState([]);
@@ -263,33 +263,11 @@ const Parties = ({ hasPermissionFor }) => {
         {
             header: 'Loyalty Points',
             key: 'loyaltyPoints',
-            render: (v, row) => (
+            render: (v) => (
                 <div className="flex items-center gap-1.5">
                     <Gift size={14} className="text-amber-500" />
                     <span className={`font-black text-sm ${theme.textPrimary}`}>{v || 0}</span>
                     <span className={`text-xs ${theme.textMuted}`}>pts</span>
-                    {/* Quick test button to add points */}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            const points = prompt('Add test points:', '50');
-                            if (points) {
-                                api.post('/customers/test-loyalty-points', {
-                                    customerId: row._id || row.id,
-                                    points: parseInt(points)
-                                }).then(() => {
-                                    toast.success(`Added ${points} points!`);
-                                    loadCustomers(customerSearch, customerPage);
-                                }).catch(err => {
-                                    toast.error('Failed to add points: ' + (err.response?.data?.message || err.message));
-                                });
-                            }
-                        }}
-                        className="ml-2 text-xs text-amber-600 hover:text-amber-700 font-bold"
-                        title="Add test points"
-                    >
-                        +
-                    </button>
                 </div>
             )
         },
@@ -524,7 +502,12 @@ const Parties = ({ hasPermissionFor }) => {
                                         max="100" 
                                         className={`w-full p-4 border rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary}`} 
                                         value={customerForm.discountPercentage} 
-                                        onChange={e => setCustomerForm(f => ({ ...f, discountPercentage: e.target.value }))} 
+                                        onChange={e => {
+                                            let val = parseFloat(e.target.value);
+                                            if (isNaN(val) || val < 0) val = "";
+                                            else if (val > 100) val = 100;
+                                            setCustomerForm(f => ({ ...f, discountPercentage: val }));
+                                        }} 
                                         placeholder="0" 
                                     />
                                 </div>
@@ -667,10 +650,10 @@ const Parties = ({ hasPermissionFor }) => {
                             <div className={`p-4 rounded-2xl ${theme.inputBg} space-y-2`}>
                                 <p className={`text-xs font-black uppercase ${theme.textMuted}`}>Example Calculation:</p>
                                 <p className={`text-sm font-bold ${theme.textPrimary}`}>
-                                    Spend ₹{loyaltyForm.conversionRate} → Earn {loyaltyForm.pointsPerCurrency} point(s)
+                                    Spend {formatCurrency(loyaltyForm.conversionRate)} → Earn {loyaltyForm.pointsPerCurrency} point(s)
                                 </p>
                                 <p className={`text-sm font-bold ${theme.textPrimary}`}>
-                                    Redeem {loyaltyForm.minPointsToRedeem} points → Save ₹{(loyaltyForm.minPointsToRedeem * loyaltyForm.redemptionValue).toFixed(2)}
+                                    Redeem {loyaltyForm.minPointsToRedeem} points → Save {formatCurrency(loyaltyForm.minPointsToRedeem * loyaltyForm.redemptionValue)}
                                 </p>
                             </div>
 

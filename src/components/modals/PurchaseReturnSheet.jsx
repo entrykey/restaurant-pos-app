@@ -19,14 +19,17 @@ const PurchaseReturnSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
         }
     }, [isOpen, purchase]);
 
+    const getItemId = (item) => typeof item.itemId === 'object' && item.itemId?._id ? item.itemId._id : (item.itemId || item._id);
+
     const handleToggleReturn = (item) => {
-        const isAlreadyAdded = returnedItems.find(ri => ri.itemId === item.itemId?._id);
+        const itemId = getItemId(item);
+        const isAlreadyAdded = returnedItems.find(ri => ri.itemId === itemId);
         if (isAlreadyAdded) {
-            setReturnedItems(prev => prev.filter(ri => ri.itemId !== item.itemId?._id));
+            setReturnedItems(prev => prev.filter(ri => ri.itemId !== itemId));
         } else {
             setReturnedItems(prev => [...prev, {
-                itemId: item.itemId?._id,
-                itemName: item.itemId?.name || item.itemName,
+                itemId,
+                itemName: item.itemId?.name || item.itemName || 'Item',
                 quantity: 1,
                 maxQuantity: item.quantity,
                 purchasePrice: item.purchasePrice || 0,
@@ -104,7 +107,8 @@ const PurchaseReturnSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
                         </h3>
                         <div className={`rounded-3xl border overflow-hidden ${theme.borderLight}`}>
                             {(purchase.items || []).map((item, idx) => {
-                                const isAdded = returnedItems.find(ri => ri.itemId === item.itemId?._id);
+                                const itemId = getItemId(item);
+                                const isAdded = returnedItems.find(ri => ri.itemId === itemId);
                                 return (
                                     <div key={idx} className={`p-4 flex items-center justify-between group transition-colors ${isAdded ? 'bg-red-50/50 dark:bg-red-900/10' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                                         <div className="flex items-center gap-4">
@@ -121,9 +125,9 @@ const PurchaseReturnSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
                                         </div>
                                         {isAdded && (
                                             <div className="flex items-center gap-3">
-                                                <button onClick={() => updateReturnQty(item.itemId?._id, -1)} className={`w-8 h-8 rounded-lg flex items-center justify-center bg-white dark:bg-slate-800 border ${theme.borderLight} ${theme.textPrimary}`}>-</button>
+                                                <button onClick={() => updateReturnQty(itemId, -1)} className={`w-8 h-8 rounded-lg flex items-center justify-center bg-white dark:bg-slate-800 border ${theme.borderLight} ${theme.textPrimary}`}>-</button>
                                                 <span className={`w-8 text-center font-black ${theme.textPrimary}`}>{isAdded.quantity}</span>
-                                                <button onClick={() => updateReturnQty(item.itemId?._id, 1)} className={`w-8 h-8 rounded-lg flex items-center justify-center bg-white dark:bg-slate-800 border ${theme.borderLight} ${theme.textPrimary}`}>+</button>
+                                                <button onClick={() => updateReturnQty(itemId, 1)} className={`w-8 h-8 rounded-lg flex items-center justify-center bg-white dark:bg-slate-800 border ${theme.borderLight} ${theme.textPrimary}`}>+</button>
                                             </div>
                                         )}
                                     </div>

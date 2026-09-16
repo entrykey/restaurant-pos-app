@@ -270,8 +270,8 @@ const PurchasePage = () => {
             taxPercent: item.taxPercent || 0,
             taxType: "", // For two-step tax selection
             taxAmount: (() => {
-                const taxObj = item.taxId ? shopTaxes.find(t => t._id === item.taxId) : shopTaxes.find(t => t.percentage === Number(item.taxPercent || 0));
-                const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+                const taxObj = item.taxId ? shopTaxes.find(t => String(t._id || t.id) === String(item.taxId?._id || item.taxId)) : shopTaxes.find(t => t.percentage === Number(item.taxPercent || 0));
+                const isExclusive = item.isExclusiveTax ?? (taxObj ? taxObj.taxType === 'EXCLUSIVE' : false);
                 const p = item.pricing?.purchasePrice || 0;
                 const r = item.taxPercent || 0;
                 if (!r) return 0;
@@ -427,8 +427,8 @@ const PurchasePage = () => {
     const { subtotal, taxTotal } = useMemo(() => {
         if (!formData.items) return { subtotal: 0, taxTotal: 0 };
         const totals = formData.items.reduce((acc, it) => {
-            const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
-            const isExclusive = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+            const taxObj = it.taxId ? shopTaxes.find(t => String(t._id || t.id) === String(it.taxId?._id || it.taxId)) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
+            const isExclusive = it.isExclusiveTax ?? (taxObj ? taxObj.taxType === 'EXCLUSIVE' : false);
 
             if (isExclusive) {
                 acc.subtotal += (it.quantity * it.purchasePrice);
@@ -2285,8 +2285,9 @@ const PurchasePage = () => {
                                 <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Discount (-)</span>
                                 <input
                                     type="number"
+                                    min="0"
                                     value={formData.discountTotal}
-                                    onChange={e => setFormData({ ...formData, discountTotal: parseFloat(e.target.value || 0) })}
+                                    onChange={e => setFormData({ ...formData, discountTotal: Math.max(0, parseFloat(e.target.value || 0)) })}
                                     className={`text-right font-black ${theme.mode === 'dark' ? 'text-indigo-400 bg-indigo-900/40' : 'text-indigo-600 bg-indigo-50'} w-full sm:w-28 p-2.5 rounded-xl outline-none border ${theme.mode === 'dark' ? 'border-indigo-800' : 'border-indigo-100'}`}
                                 />
                             </div>

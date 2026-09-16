@@ -51,7 +51,7 @@ const Settings = ({
     const canViewAppearance = hasPermissionFor?.('settings', 'settings', 'appearence_settings');
     const canViewPayroll = hasPermissionFor?.(ROUTE_ACCESS.PAYROLL_SETTINGS.module, ROUTE_ACCESS.PAYROLL_SETTINGS.resource, ROUTE_ACCESS.PAYROLL_SETTINGS.action);
     const canViewBarcodeBill = hasPermissionFor?.(ROUTE_ACCESS.BARCODE_BILL_SETTINGS.module, ROUTE_ACCESS.BARCODE_BILL_SETTINGS.resource, ROUTE_ACCESS.BARCODE_BILL_SETTINGS.action);
-    const canViewDelivery = hasPermissionFor?.('settings', 'settings', 'DELIVERY.SETTINGS') || hasPermissionFor?.('settings', 'settings', 'delivery.settings') || true;
+    const canViewDelivery = hasPermissionFor?.(ROUTE_ACCESS.DELIVERY_SETTINGS?.module || 'settings', ROUTE_ACCESS.DELIVERY_SETTINGS?.resource || 'DELIVERY', ROUTE_ACCESS.DELIVERY_SETTINGS?.action || 'SETTINGS') || hasPermissionFor?.('settings', 'settings', 'DELIVERY.SETTINGS') || hasPermissionFor?.('settings', 'settings', 'delivery.settings');
     const isSuperAdmin = currentUser?.isSuperAdmin === true;
 
     const allTabs = [

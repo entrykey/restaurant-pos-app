@@ -28,7 +28,7 @@ const MOCK_DATA = {
 const ServiceDetails = ({ hasPermissionFor }) => {
     const { theme, themeName } = useTheme();
     const { organization } = useApp();
-    const currency = organization?.defaultCurrency || 'USD';
+    const currency = organization?.defaultCurrency || 'INR';
     const { id } = useParams();
     const service = MOCK_DATA; // In real app, fetch based on ID
 

@@ -82,13 +82,15 @@ export const OrderProvider = ({ children }) => {
 
         // Apply Item-Level Discount (Percent % or Flat ₹)
         let itemDiscAmount = 0;
-        const discVal = Number(item.itemDiscount !== undefined && item.itemDiscount !== null && item.itemDiscount !== "" ? item.itemDiscount : 0);
+        let discVal = Number(item.itemDiscount !== undefined && item.itemDiscount !== null && item.itemDiscount !== "" ? item.itemDiscount : 0);
+        discVal = Math.max(0, discVal);
         if (discVal > 0) {
             const discType = item.itemDiscountType || 'percent';
             if (discType === 'percent') {
-                itemDiscAmount = (baseCost * discVal) / 100;
+                const clampedDisc = Math.min(100, discVal);
+                itemDiscAmount = (baseCost * clampedDisc) / 100;
             } else {
-                itemDiscAmount = discVal;
+                itemDiscAmount = Math.min(baseCost, discVal);
             }
         }
 
@@ -403,10 +405,12 @@ export const OrderProvider = ({ children }) => {
 
         let discountAmount = 0;
         const netSubtotal = Math.max(0, subtotal - offerDiscountTotal);
+        const rawDiscVal = Math.max(0, Number(discount.value || 0));
         if (discount.type === "flat") {
-            discountAmount = discount.value;
+            discountAmount = Math.min(netSubtotal, rawDiscVal);
         } else {
-            discountAmount = parseFloat(((netSubtotal * discount.value) / 100).toFixed(4));
+            const discPercent = Math.min(100, rawDiscVal);
+            discountAmount = parseFloat(((netSubtotal * discPercent) / 100).toFixed(4));
         }
 
         const totalDiscount = discountAmount + offerDiscountTotal;

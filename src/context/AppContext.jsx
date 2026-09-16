@@ -7,7 +7,7 @@ import { initialRoles, initialStaff } from "../pages/Staff/StaffService";
 import { initialOrganization, initialBranches } from "../pages/Organization/OrganizationService";
 import { BUSINESS_TYPES, getDefaultModules } from "../config/businessTypes";
 import { businessTypesService } from "../services/api/businessTypes";
-import { formatCurrency } from "../utils/format";
+import { formatCurrency, getCurrencySymbol } from "../utils/format";
 
 const AppContext = createContext();
 
@@ -263,9 +263,12 @@ export const AppProvider = ({ children }) => {
                 inventoryItems,
                 setInventoryItems,
                 currentShopId,
+                shopCurrency: organization?.defaultCurrency || 'INR',
+                currencySymbol: getCurrencySymbol(organization?.defaultCurrency || 'INR'),
+                getCurrencySymbol,
                 formatCurrency: (value, currency) => {
-                    const codeRaw = (currency || organization?.defaultCurrency || 'USD');
-                    const finalCode = (typeof codeRaw === 'object' && codeRaw !== null) ? (codeRaw.code || codeRaw.id || 'USD') : codeRaw;
+                    const codeRaw = (currency || organization?.defaultCurrency || 'INR');
+                    const finalCode = (typeof codeRaw === 'object' && codeRaw !== null) ? (codeRaw.code || codeRaw.id || 'INR') : codeRaw;
                     return formatCurrency(value, finalCode);
                 },
                 globalLoading,

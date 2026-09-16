@@ -49,11 +49,24 @@ export const buildPrintHeader = ({ organization, branch, orderFromBackend, setti
     const backendBranch = orderFromBackend?.branchId || null;
     const activeBranch = backendBranch || branch || null;
     const address = activeBranch?.address || {};
+
+    const getAddrStr = (val) => {
+        if (!val) return "";
+        if (typeof val === "string") return val;
+        if (typeof val === "object") return val.name || val.label || val.title || "";
+        return String(val);
+    };
+
+    const city = getAddrStr(address?.city);
+    const state = getAddrStr(address?.state);
+    const country = getAddrStr(address?.country);
+    const pincode = getAddrStr(address?.pincode);
+
     const addressLines = [
-        address?.line1,
-        address?.line2,
-        [address?.city, address?.state?.name || address?.state].filter(Boolean).join(', '),
-        [address?.country?.name || address?.country, address?.pincode].filter(Boolean).join(' - '),
+        getAddrStr(address?.line1),
+        getAddrStr(address?.line2),
+        [city, state].filter(Boolean).join(', '),
+        [country, pincode].filter(Boolean).join(' - '),
     ].filter(Boolean);
 
     const toAbsoluteLogoUrl = (logoUrl) => {
@@ -103,13 +116,19 @@ export const printSaleOrder = async ({
         finalTotal: order?.grandTotal ?? 0,
     };
 
+    const orderType = order?.orderType;
+    const isDirectOrWholesale = orderType === 'DIRECT_SALE' || orderType === 'WHOLESALE';
+    const tableLabelName = (!isDirectOrWholesale && order?.tableId?.name)
+        ? order.tableId.name
+        : (!isDirectOrWholesale && orderType === 'TAKEAWAY' ? 'Takeaway' : '');
+
     const printer = printFormat === 'a4' ? printBillA4 : printBill;
     printer({
         header,
         meta: {
             invoiceLabel: order?.invoiceNumber || '',
             orderLabel: order?.orderNumber || '',
-            tableLabel: order?.tableId?.name ? order.tableId.name : (order?.orderType === 'DIRECT_SALE' ? 'Direct Sale' : ''),
+            tableLabel: tableLabelName ? `Table: ${tableLabelName}` : '',
             customerLabel: order?.customerId?.name
                 ? `${order.customerId.name}${order.customerId.phone ? ` (${order.customerId.phone})` : ''}`
                 : (order?.customerName || ''),

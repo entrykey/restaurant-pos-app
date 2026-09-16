@@ -482,6 +482,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         weightBased: full.weightBased ?? false,
                         taxPercent: full.taxPercent ?? 0,
                         taxId: full.taxId || "",
+                        isExclusiveTax: full.isExclusiveTax ?? false,
                         isSellable: full.isSellable ?? true,
                         portionPricing: full.portionPricing || [],
                         inventoryMode: full.inventoryMode || "shared"
@@ -524,14 +525,23 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     useEffect(() => {
         if (shopTaxes.length > 0 && (formData.taxId || (formData.taxPercent !== undefined && formData.taxPercent > 0))) {
             const matchedTax = shopTaxes.find(t => 
-                (formData.taxId && String(t._id || t.id) === String(formData.taxId)) ||
-                (formData.taxPercent !== undefined && formData.taxPercent !== null && Number(t.percentage) === Number(formData.taxPercent))
+                (formData.taxId && String(t._id || t.id) === String(formData.taxId))
+            ) || shopTaxes.find(t => 
+                (formData.taxPercent !== undefined && formData.taxPercent !== null && Number(t.percentage) === Number(formData.taxPercent) &&
+                (formData.isExclusiveTax !== undefined ? (formData.isExclusiveTax ? (t.taxType || '').toUpperCase() === 'EXCLUSIVE' : (t.taxType || 'INCLUSIVE').toUpperCase() === 'INCLUSIVE') : true))
             );
-            if (matchedTax && matchedTax.taxType && !selectedTaxType) {
-                setSelectedTaxType(matchedTax.taxType.toUpperCase());
+            if (!selectedTaxType) {
+                // Prefer explicit item flag when true; otherwise trust linked tax master (Stock source of truth)
+                if (formData.isExclusiveTax === true) {
+                    setSelectedTaxType('EXCLUSIVE');
+                } else if (matchedTax?.taxType) {
+                    setSelectedTaxType(String(matchedTax.taxType).toUpperCase());
+                } else if (formData.isExclusiveTax !== undefined) {
+                    setSelectedTaxType(formData.isExclusiveTax ? 'EXCLUSIVE' : 'INCLUSIVE');
+                }
             }
         }
-    }, [formData.taxId, formData.taxPercent, shopTaxes, selectedTaxType]);
+    }, [formData.taxId, formData.taxPercent, formData.isExclusiveTax, shopTaxes, selectedTaxType]);
     useEffect(() => {
         if (!isEditing && !isLoading && settings) {
             const defaultIsSellable = activeTab === 'raw' 
@@ -757,11 +767,14 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
     const handleChange = (fieldKey, value) => {
         if (fieldKey === "tax_percent") {
-            const selectedTax = shopTaxes.find(t => t._id === value);
+            const selectedTax = shopTaxes.find(t => String(t._id || t.id) === String(value));
             setFormData(prev => ({
                 ...prev,
                 taxId: value || "",
-                taxPercent: selectedTax ? selectedTax.percentage : 0
+                taxPercent: selectedTax ? selectedTax.percentage : 0,
+                isExclusiveTax: selectedTax
+                    ? String(selectedTax.taxType || "INCLUSIVE").toUpperCase() === "EXCLUSIVE"
+                    : selectedTaxType === "EXCLUSIVE"
             }));
             return;
         }
@@ -948,6 +961,16 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 }
             }
         });
+
+        // Mandatory tax percentage selection validation
+        if (shopTaxes.length > 0) {
+            if (!selectedTaxType) {
+                newErrors['tax_type'] = "Tax Type is required";
+            } else if (!formData.taxId || formData.taxId === "") {
+                newErrors['tax_percent'] = "Please select an Item Tax % for the selected Tax Type";
+            }
+        }
+
         setErrors(newErrors);
         if (Object.keys(newErrors).length > 0) {
             const firstError = Object.values(newErrors)[0];
@@ -1055,6 +1078,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             brandId: toIdString(formData.brandId),
             supplierId: toIdString(formData.supplierId),
             taxId: toIdString(formData.taxId),
+            taxPercent: parseFloat(formData.taxPercent || 0),
+            isExclusiveTax: selectedTaxType === 'EXCLUSIVE',
             openingStock: (formData.openingStock !== undefined && formData.openingStock !== null && formData.openingStock !== "") ? parseFloat(formData.openingStock) : undefined,
             shopId: toIdString(currentShopId),
             branchId: toIdString(currentBranchId),
@@ -1398,7 +1423,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                             setFormData(prev => ({
                                                                 ...prev,
                                                                 taxId: "",
-                                                                taxPercent: 0
+                                                                taxPercent: 0,
+                                                                isExclusiveTax: val === "EXCLUSIVE"
                                                             }));
                                                         }
                                                     }}

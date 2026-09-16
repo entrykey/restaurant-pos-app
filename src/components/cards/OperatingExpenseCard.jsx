@@ -19,7 +19,7 @@ const OperatingExpenseCard = ({
 }) => {
     const { theme } = useTheme();
     const { organization } = useApp();
-    const currency = organization?.defaultCurrency || 'USD';
+    const currency = organization?.defaultCurrency || 'INR';
 
     const terms = [
         { value: 'daily', label: 'Daily' },
