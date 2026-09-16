@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../../context/ThemeContext';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, getCurrencySymbol } from '../../utils/format';
 import { X, Save, Plus, Minus, Trash2, Search, CheckCircle2, AlertCircle, ShoppingBag, Loader2 } from 'lucide-react';
 import { orderService, itemService } from '../../services/api';
 
 const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
     const { theme } = useTheme();
+    const currencySymbol = getCurrencySymbol(order?.currency || 'INR');
     const [loading, setLoading] = useState(false);
     const [items, setItems] = useState([]);
     const [notes, setNotes] = useState('');
@@ -121,10 +122,11 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
 
         subtotal = parseFloat(subtotal.toFixed(4));
         taxTotal = parseFloat(taxTotal.toFixed(4));
-        // Apply discount
+        const discVal = Math.max(0, discountTotal);
+        const discPercent = Math.min(100, discVal);
         const disc = discountType === 'percent'
-            ? parseFloat(((subtotal * discountTotal) / 100).toFixed(4))
-            : discountTotal;
+            ? parseFloat(((subtotal * discPercent) / 100).toFixed(4))
+            : Math.min(subtotal + taxTotal, discVal);
         const grandTotal = parseFloat(Math.max(0, subtotal + taxTotal - disc).toFixed(4));
         return { subtotal, taxTotal, grandTotal, discountTotal: disc, taxBreakdown: Object.values(taxBreakdown) };
     };
@@ -132,9 +134,19 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
     const totals = calculateTotals();
 
     const applyDiscount = (type, raw) => {
+        let val = parseFloat(raw);
+        if (isNaN(val) || val < 0) val = 0;
+        let cleanRaw = raw;
+        if (type === 'percent' && val > 100) {
+            val = 100;
+            cleanRaw = "100";
+            setError("Percentage discount cannot exceed 100%");
+        } else if (error && error.includes("Percentage discount")) {
+            setError(null);
+        }
         setDiscountType(type);
-        setDiscountInput(raw);
-        setDiscountTotal(parseFloat(raw) || 0);
+        setDiscountInput(raw === "" ? "" : cleanRaw);
+        setDiscountTotal(val);
     };
 
     const handleSave = async () => {
@@ -300,7 +312,7 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
                                 <div className="ml-auto flex">
                                     <button type="button" onClick={() => applyDiscount('flat', discountInput)}
                                         className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}>
-                                        ₹ Flat
+                                        {currencySymbol || '₹'} Flat
                                     </button>
                                     <button type="button" onClick={() => applyDiscount('percent', discountInput)}
                                         className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'percent' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}>
@@ -308,10 +320,10 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
                                     </button>
                                 </div>
                             </div>
-                            <input type="number" min="0"
+                            <input type="number" min="0" max={discountType === 'percent' ? "100" : undefined}
                                 value={discountInput}
                                 onChange={e => applyDiscount(discountType, e.target.value)}
-                                placeholder={discountType === 'percent' ? "Enter %" : "Enter amount"}
+                                placeholder={discountType === 'percent' ? "Enter % (Max 100)" : "Enter amount"}
                                 className={`w-full px-3 py-2 text-sm font-black outline-none bg-transparent ${theme.textPrimary}`}
                             />
                         </div>

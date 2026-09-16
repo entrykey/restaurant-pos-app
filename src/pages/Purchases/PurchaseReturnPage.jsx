@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Loader2, Search, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { PurchaseService } from '../../services/PurchaseService';
@@ -9,6 +9,7 @@ import PurchaseReturnSheet from '../../components/modals/PurchaseReturnSheet';
 import { toast } from 'react-hot-toast';
 
 const PurchaseReturnPage = () => {
+    const [searchParams] = useSearchParams();
     const { user } = useAuth();
     const { theme } = useTheme();
     const resolvedShopId = user?.shopId || user?.shop_id;
@@ -37,6 +38,11 @@ const PurchaseReturnPage = () => {
             setLoadingPurchase(false);
         }
     }, []);
+
+    useEffect(() => {
+        const pId = searchParams.get('purchaseId');
+        if (pId) loadPurchase(pId);
+    }, [searchParams, loadPurchase]);
 
     useEffect(() => {
         if (!resolvedShopId) return;

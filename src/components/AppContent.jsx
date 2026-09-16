@@ -23,6 +23,7 @@ import { printBill, printBillA4, printKot } from "../utils/print";
 import { loadBillPrintSettings, buildBillExtraInfo, printSaleOrder } from "../utils/printSettingsUtils";
 import { isItemTypeAllowedOnSale } from "../utils/cartStockUtils";
 import { syncItemBogoQuantity } from "../utils/posOfferHelpers";
+import { findTaxForItem, resolveIsExclusiveTax } from "../utils/taxUtils";
 import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService, loyaltyService } from "../services/api";
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
 import { TextProvider } from "../context/TextContext";
@@ -188,7 +189,8 @@ const AppContent = () => {
                     ]);
                     
                     const items = response.data || [];
-                    const activeTaxes = taxesRes.filter(t => t.isActive !== false);
+                    const allTaxes = Array.isArray(taxesRes) ? taxesRes : [];
+                    const activeTaxes = allTaxes.filter(t => t.isActive !== false);
 
                     // Filter only items that are sellable for the POS menu and allowed by Sale Settings
                     const menuData = items.filter(item => isItemTypeAllowedOnSale(item, settings));
@@ -201,8 +203,10 @@ const AppContent = () => {
                     // Map backend ID to `id` for frontend consistency and normalize fields for POS logic
                     const mapItems = (arr) => arr.map(item => {
                         const taxPercent = Number(item.taxPercent || item.tax_percent || 0);
-                        const taxObj = activeTaxes.find(t => t.percentage === taxPercent);
-                        const isExclusiveTax = taxObj ? taxObj.taxType === 'EXCLUSIVE' : false;
+                        // Use full tax list so linked taxId still resolves if marked inactive
+                        const taxObj = findTaxForItem(item, allTaxes.length ? allTaxes : activeTaxes);
+                        const isExclusiveTax = resolveIsExclusiveTax(item, taxObj);
+
                         return {
                             ...item,
                             id: item._id,
@@ -777,6 +781,8 @@ const AppContent = () => {
         setIsMultipleShopsModalOpen(false);
         if (!shopId) return;
         try {
+            setMenu([]);
+            setInventoryItems([]);
             localStorage.removeItem("pos_activeBranchId");
             setActiveBranchId(null);
             const data = await shopService.switchShop(shopId);
@@ -867,11 +873,24 @@ const AppContent = () => {
         const backendBranch = orderFromBackend?.branchId || null;
         const activeBranch = backendBranch || getActiveBranchForPrint();
         const address = activeBranch?.address || {};
+
+        const getAddrStr = (val) => {
+            if (!val) return "";
+            if (typeof val === "string") return val;
+            if (typeof val === "object") return val.name || val.label || val.title || "";
+            return String(val);
+        };
+
+        const city = getAddrStr(address?.city);
+        const state = getAddrStr(address?.state);
+        const country = getAddrStr(address?.country);
+        const pincode = getAddrStr(address?.pincode);
+
         const addressLines = [
-            address?.line1,
-            address?.line2,
-            [address?.city, address?.state?.name || address?.state].filter(Boolean).join(", "),
-            [address?.country?.name || address?.country, address?.pincode].filter(Boolean).join(" - "),
+            getAddrStr(address?.line1),
+            getAddrStr(address?.line2),
+            [city, state].filter(Boolean).join(", "),
+            [country, pincode].filter(Boolean).join(" - "),
         ].filter(Boolean);
 
         return {
@@ -941,7 +960,13 @@ const AppContent = () => {
                 finalTotal: orderFromBackend?.grandTotal ?? 0,
             };
 
-            const tableLabel = isTakeaway ? "Takeaway" : (table?.name || activeTable?.name || "");
+            const orderType = orderFromBackend?.orderType || activeOrderType;
+            const isDirectOrWholesale = orderType === "DIRECT_SALE" || orderType === "WHOLESALE";
+            const tableLabelName = !isDirectOrWholesale
+                ? (!isTakeaway ? (table?.name || activeTable?.name || "") : (orderType === "TAKEAWAY" ? "Takeaway" : ""))
+                : "";
+
+            const tableLabel = tableLabelName ? `Table: ${tableLabelName}` : "";
             const customerLabel = orderFromBackend?.customerId?.name
                 ? `Customer: ${orderFromBackend.customerId.name}${orderFromBackend.customerId.phone ? ` (${orderFromBackend.customerId.phone})` : ""}`
                 : "";
@@ -955,7 +980,7 @@ const AppContent = () => {
                 meta: {
                     invoiceLabel: orderFromBackend?.invoiceNumber || "",
                     orderLabel: orderFromBackend?.orderNumber || "",
-                    tableLabel: tableLabel ? `Table: ${tableLabel}` : "",
+                    tableLabel,
                     customerLabel,
                     printedAt: new Date().toLocaleString(),
                 },
@@ -1016,18 +1041,19 @@ const AppContent = () => {
             const basePrice = item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice || 0);
             const qty = item.quantity || 1;
             const lineBaseCost = basePrice * qty;
-            const discVal = Number(item.itemDiscount !== undefined && item.itemDiscount !== null && item.itemDiscount !== "" ? item.itemDiscount : 0);
+            let discVal = Number(item.itemDiscount !== undefined && item.itemDiscount !== null && item.itemDiscount !== "" ? item.itemDiscount : 0);
+            discVal = Math.max(0, discVal);
             const discType = item.itemDiscountType || 'percent';
 
             let itemDiscAmount = 0;
             let itemDiscPercent = 0;
             if (discVal > 0) {
                 if (discType === 'percent') {
-                    itemDiscPercent = discVal;
-                    itemDiscAmount = (lineBaseCost * discVal) / 100;
+                    itemDiscPercent = Math.min(100, discVal);
+                    itemDiscAmount = (lineBaseCost * itemDiscPercent) / 100;
                 } else {
-                    itemDiscAmount = discVal;
-                    itemDiscPercent = lineBaseCost > 0 ? (discVal / lineBaseCost) * 100 : 0;
+                    itemDiscAmount = Math.min(lineBaseCost, discVal);
+                    itemDiscPercent = lineBaseCost > 0 ? (itemDiscAmount / lineBaseCost) * 100 : 0;
                 }
             }
 
@@ -1673,6 +1699,105 @@ const AppContent = () => {
         }
     };
 
+    const updateItemDiscount = (itemIndex, itemDiscount, itemDiscountType) => {
+        let val = itemDiscount;
+        if (itemDiscount !== "" && itemDiscount !== null && itemDiscount !== undefined) {
+            const parsed = parseFloat(itemDiscount);
+            if (!isNaN(parsed)) {
+                val = Math.max(0, parsed);
+                const type = itemDiscountType !== undefined ? itemDiscountType : 'percent';
+                if (type === 'percent' && val > 100) {
+                    val = 100;
+                }
+            }
+        }
+        const updateList = (items) => {
+            const item = items[itemIndex];
+            if (!item) return items;
+            const targetType = itemDiscountType !== undefined ? itemDiscountType : (item.itemDiscountType || 'percent');
+            let finalVal = val;
+            if (typeof finalVal === 'number' && targetType === 'percent' && finalVal > 100) {
+                finalVal = 100;
+            }
+            const newItems = [...items];
+            newItems[itemIndex] = {
+                ...item,
+                itemDiscount: finalVal,
+                itemDiscountType: targetType,
+            };
+            return newItems;
+        };
+
+        if (isTakeaway) {
+            setTakeawayOrder((prev) => ({
+                ...prev,
+                items: updateList(prev.items),
+                isSentToKOT: prev.isSentToKOT || false,
+            }));
+        } else {
+            setTables((prev) =>
+                prev.map((t) => {
+                    if ((String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) && t.order) {
+                        const newItems = updateList(t.order.items);
+                        return {
+                            ...t,
+                            order: withStaffTracking({ ...t.order, items: newItems, isSentToKOT: t.order?.isSentToKOT || false, _localDraftPending: true }),
+                        };
+                    }
+                    return t;
+                })
+            );
+        }
+    };
+
+    const updateItemPrice = (itemIndex, newPrice) => {
+        let val = parseFloat(newPrice);
+        if (isNaN(val) || val < 0) val = 0;
+        
+        const updateList = (items) => {
+            const item = items[itemIndex];
+            if (!item) return items;
+            const newItems = [...items];
+            const updatedItem = {
+                ...item,
+                price: val,
+                sellingPrice: val,
+            };
+            if (updatedItem.selectedVariant) {
+                updatedItem.selectedVariant = {
+                    ...updatedItem.selectedVariant,
+                    price: val
+                };
+            }
+            if (updatedItem.sellingType === "Weight") {
+                updatedItem.pricePerUnit = val;
+            }
+            newItems[itemIndex] = updatedItem;
+            return newItems;
+        };
+
+        if (isTakeaway) {
+            setTakeawayOrder((prev) => ({
+                ...prev,
+                items: updateList(prev.items),
+                isSentToKOT: prev.isSentToKOT || false,
+            }));
+        } else {
+            setTables((prev) =>
+                prev.map((t) => {
+                    if ((String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) && t.order) {
+                        const newItems = updateList(t.order.items);
+                        return {
+                            ...t,
+                            order: withStaffTracking({ ...t.order, items: newItems, isSentToKOT: t.order?.isSentToKOT || false, _localDraftPending: true }),
+                        };
+                    }
+                    return t;
+                })
+            );
+        }
+    };
+
     const handleSendToKOT = async () => {
         if (isSubmittingKOT) return;
         const nowTs = Date.now();
@@ -2103,15 +2228,13 @@ const AppContent = () => {
                     />
                 } />
                 <Route path="/register" element={
-                    <div className={`fixed inset-0 flex items-center justify-center p-4 overflow-y-auto ${theme?.background || 'bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-800'}`}>
-                        <RegisterShop
-                            onBack={() => navigate('/login')}
-                            onRegisterSuccess={() => {
-                                navigate('/login');
-                                alert('Shop Registered Successfully! Please login.');
-                            }}
-                        />
-                    </div>
+                    <RegisterShop
+                        onBack={() => navigate('/login')}
+                        onRegisterSuccess={() => {
+                            navigate('/login');
+                            alert('Shop Registered Successfully! Please login.');
+                        }}
+                    />
                 } />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
@@ -2198,6 +2321,8 @@ const AppContent = () => {
                         updateItemQuantity={updateItemQuantity}
                         removeItemFromCart={removeItemFromCart}
                         updateItemUnit={updateItemUnit}
+                        updateItemDiscount={updateItemDiscount}
+                        updateItemPrice={updateItemPrice}
                         openNoteModal={openNoteModal}
                         takeawayCustName={takeawayCustName}
                         setTakeawayCustName={setTakeawayCustName}

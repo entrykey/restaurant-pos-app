@@ -134,14 +134,21 @@ const PosTabBar = ({ view }) => {
         }
     };
 
+    const { isTakeaway: isTakeawayActive } = useTakeaway();
+
     // Never show when a table order is active
     if (tableId) return null;
 
     const normalizedView = String(view || '').toLowerCase();
-    const showTabs = normalizedView === 'takeaway'
-        || normalizedView === 'wholesale'
-        || normalizedView === 'direct-sale'
-        || normalizedView === 'order';
+    const isDirectOrSale = takeawayOrder?.orderType === 'DIRECT_SALE' || takeawayOrder?.orderType === 'WHOLESALE' || takeawayOrder?.orderType === 'TAKEAWAY';
+    const showTabs = isTakeawayActive || isDirectOrSale || [
+        'takeaway',
+        'wholesale',
+        'direct-sale',
+        'direct_sale',
+        'order',
+        'pos'
+    ].includes(normalizedView);
 
     if (!showTabs) return null;
 
@@ -373,8 +380,8 @@ const PosTabBar = ({ view }) => {
     ) : null;
 
     return (
-        <div className="flex items-center justify-start md:justify-center xl:justify-center w-full px-4 pt-2 pb-2 xl:pt-0 xl:pb-0">
-            <div className="flex items-center gap-1.5 p-1.5 bg-[#7a818e] rounded-full shadow-lg max-w-full xl:pointer-events-auto overflow-hidden">
+        <div className="flex items-center justify-start md:justify-center xl:justify-center w-full px-4 pt-1 pb-1">
+            <div className="flex items-center gap-1.5 p-1.5 bg-[#1e1b4b]/95 backdrop-blur-md border border-indigo-500/30 rounded-full shadow-xl max-w-full xl:pointer-events-auto overflow-hidden">
                 {/* Scrollable tabs area */}
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar min-w-0">
                     {saleTabs.map((tab) => {

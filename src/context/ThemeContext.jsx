@@ -25,15 +25,16 @@ export const themes = {
 
         // Semantic Sections
         sectionBg: "bg-gray-50/50",
-        sectionBorder: "border-gray-100",
-        infoBg: "bg-blue-50/50",
-        infoBorder: "border-blue-100",
-        infoText: "text-blue-600",
-        warningBg: "bg-orange-50/50",
-        warningBorder: "border-orange-100",
-        warningText: "text-orange-600",
-        successBg: "bg-green-100",
-        successText: "text-green-600",
+        sectionBorder: "border-gray-200",
+        infoBg: "bg-blue-50/80",
+        infoBorder: "border-blue-200",
+        infoText: "text-blue-900",
+        warningBg: "bg-amber-50/80",
+        warningBorder: "border-amber-200",
+        warningText: "text-amber-900",
+        successBg: "bg-emerald-50/80",
+        successBorder: "border-emerald-200",
+        successText: "text-emerald-900",
 
         // Sidebar
         sidebarBg: "bg-indigo-900",

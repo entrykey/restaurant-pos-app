@@ -51,13 +51,28 @@ const HistoryTimeline = ({ events = [], onAction, onReturn }) => {
                         <div className={`flex-1 rounded-2xl p-5 border transition-all ${theme.surfaceBg} ${theme.borderLight}`}>
                             <div className="flex flex-wrap justify-between items-start gap-4">
                                 <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                         <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${event.type === 'PURCHASE' 
                                             ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-400' 
                                             : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400'
                                             }`}>
                                             {event.type === 'PURCHASE' ? 'Purchase' : 'Payment Received'}
                                         </span>
+                                        {event.type === 'PURCHASE' && (
+                                            event.balance <= 0 ? (
+                                                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400">
+                                                    Fully Paid
+                                                </span>
+                                            ) : (event.amount > event.balance && (event.amount - event.balance) > 0) ? (
+                                                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                    Partially Paid
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400">
+                                                    Unpaid
+                                                </span>
+                                            )
+                                        )}
                                         <span className={`text-xs font-bold flex items-center gap-1.5 ${theme.textMuted}`}>
                                             <Calendar size={12} />
                                             {formatDate(event.date)}

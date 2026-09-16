@@ -458,11 +458,11 @@ const LandingPage = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
 
                     {/* Hero Left Content */}
-                    <div className="lg:col-span-5 space-y-6 text-center lg:text-left">
-                        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 text-xs font-bold tracking-wide">
+                    <div className="lg:col-span-5 space-y-2 text-center lg:text-left">
+                        {/* <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 text-xs font-bold tracking-wide">
                             <ShieldCheck size={14} className="text-emerald-400" />
                             <span>Developed by Entrykey Business Solution LLP</span>
-                        </div>
+                        </div> */}
 
                         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-[1.08]">
                             FilePe - The Complete <span className="bg-gradient-to-r from-indigo-400 via-indigo-500 to-purple-400 bg-clip-text text-transparent">POS & Billing Engine</span> Built for Growth.

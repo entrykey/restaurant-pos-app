@@ -12,7 +12,7 @@ import { getErrorMessage } from "../../utils/errorUtils";
 const PayOutSheet = ({ isOpen, onClose, purchase, onSuccess }) => {
     const { theme } = useTheme();
     const { formatCurrency, organization } = useApp();
-    const currency = organization?.defaultCurrency || 'USD';
+    const currency = organization?.defaultCurrency || 'INR';
     const [selectedMethod, setSelectedMethod] = useState(null);
     const [amount, setAmount] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);

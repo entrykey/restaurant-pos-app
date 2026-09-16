@@ -293,21 +293,26 @@ const PaymentModal = ({
                                                 key={i}
                                                 className={`flex justify-between items-start text-xs sm:text-sm border-b border-dashed ${theme.borderLight} pb-2 sm:pb-2.5 last:border-0 hover:bg-gray-50/50 dark:hover:bg-white/2 p-1.5 sm:p-2 rounded-lg transition-colors`}
                                             >
-                                                <div className="flex gap-2 sm:gap-3 min-w-0">
+                                                <div className="flex gap-2.5 sm:gap-3 min-w-0">
                                                     <span className={`font-black ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'} shrink-0 text-xs sm:text-sm`}>
-                                                        {item.quantity}x
+                                                        {item.quantity}×
                                                     </span>
                                                     <div className="min-w-0">
-                                                        <div className="flex flex-col">
-                                                            <span className={`font-black ${theme.textPrimary} leading-tight text-xs sm:text-sm truncate`}>
-                                                                {item.name}
-                                                                <span className={`ml-1.5 text-[9px] sm:text-[10px] ${theme.textMuted} font-bold opacity-60`}>
-                                                                    ({(item.taxPercent !== undefined && item.taxPercent !== null) ? item.taxPercent : (settings?.defaultTaxPercent || 0)}%)
-                                                                </span>
-                                                            </span>
+                                                        <span className={`font-bold ${theme.textPrimary} leading-tight text-xs sm:text-sm block truncate`}>
+                                                            {item.name}
+                                                        </span>
+                                                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[10px] sm:text-xs">
                                                             {item.selectedVariant && (
-                                                                <span className="text-[9px] sm:text-[10px] text-indigo-500 font-black uppercase tracking-widest mt-0.5">{item.selectedVariant.name}</span>
+                                                                <span className="text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider">
+                                                                    {item.selectedVariant.name}
+                                                                </span>
                                                             )}
+                                                            {item.selectedVariant && (
+                                                                <span className={`${theme.textMuted}`}>•</span>
+                                                            )}
+                                                            <span className={`${theme.textMuted} font-medium`}>
+                                                                {(item.taxPercent !== undefined && item.taxPercent !== null) ? item.taxPercent : (settings?.defaultTaxPercent || 0)}% Tax
+                                                            </span>
                                                         </div>
                                                         {item.selectedExtras?.length > 0 && (
                                                             <div className={`text-[9px] sm:text-[10px] font-bold ${theme.textMuted} uppercase tracking-wider mt-0.5 text-orange-500`}>+ Extras</div>
@@ -458,9 +463,11 @@ const PaymentModal = ({
                                         )}
                                     </div>
 
-                                    <div className={`flex justify-between items-end pt-2 sm:pt-2.5 lg:pt-3 border-t-4 border-double ${theme.borderLight}`}>
-                                        <span className={`text-[9px] sm:text-[10px] lg:text-xs font-black ${theme.textMuted} uppercase tracking-widest`}>Amount Due</span>
-                                        <span className={`text-xl sm:text-2xl lg:text-3xl font-black ${theme.textHeading}`}>{formatCurrency(finalBillDetails.finalTotal)}</span>
+                                    <div className={`flex justify-between items-baseline pt-2.5 sm:pt-3 border-t-2 ${theme.borderLight}`}>
+                                        <span className={`text-[10px] sm:text-xs font-black ${theme.textMuted} uppercase tracking-widest`}>Amount Due</span>
+                                        <span className={`text-2xl sm:text-3xl lg:text-4xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight`}>
+                                            {formatCurrency(finalBillDetails.finalTotal)}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -666,7 +673,7 @@ const PaymentModal = ({
                                                                     <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center justify-between pt-1 border-t border-emerald-500/20">
                                                                         <span>Outstanding Ledger / Credit Balance:</span>
                                                                         <span className={customerSearchResult.creditDue > 0 ? "text-amber-600 dark:text-amber-400 font-black text-sm" : "text-emerald-700 dark:text-emerald-300 font-bold"}>
-                                                                            {customerSearchResult.creditDue > 0 ? `${formatCurrency(customerSearchResult.creditDue)} (Due)` : "No Outstanding Credit Due (₹0.00)"}
+                                                                            {customerSearchResult.creditDue > 0 ? `${formatCurrency(customerSearchResult.creditDue)} (Due)` : `No Outstanding Credit Due (${formatCurrency(0)})`}
                                                                         </span>
                                                                     </div>
                                                                 </div>
@@ -770,9 +777,9 @@ const PaymentModal = ({
                                 <button
                                     type="button"
                                     onClick={() => onPrintBill?.(printFormat)}
-                                    className={`flex-1 py-2.5 sm:py-3 md:py-3.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border-2 border-indigo-100 dark:border-indigo-900/40 rounded-xl sm:rounded-2xl font-black text-sm sm:text-base md:text-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm touch-manipulation`}
+                                    className={`flex-1 py-2.5 sm:py-3 md:py-3.5 bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-200 dark:border-indigo-800/60 rounded-xl sm:rounded-2xl font-black text-sm sm:text-base md:text-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm touch-manipulation`}
                                 >
-                                    <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-500" />
+                                    <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 dark:text-indigo-400" />
                                     <span className="font-black uppercase tracking-tight">Print Bill</span>
                                 </button>
                                 <div className={`px-3 sm:px-4 py-2.5 sm:py-3 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl sm:rounded-2xl flex items-center justify-between sm:justify-start gap-2 sm:gap-3`}>
@@ -798,9 +805,11 @@ const PaymentModal = ({
                                     setBillingStage("payment");
                                     setSelectedPayments([]);
                                 }}
-                                className="w-full py-3 sm:py-3.5 md:py-4 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-xl sm:rounded-2xl font-black text-base sm:text-lg md:text-xl shadow-2xl shadow-indigo-500/30 hover:from-indigo-700 hover:to-indigo-800 flex justify-center px-4 items-center group active:scale-95 transition-all touch-manipulation"
+                                className="w-full py-3.5 sm:py-4 bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl sm:rounded-2xl font-black text-base sm:text-lg md:text-xl shadow-xl shadow-indigo-500/25 flex justify-center px-4 items-center group active:scale-95 transition-all touch-manipulation"
                             >
-                                <span className="group-hover:translate-x-1 transition-transform">Proceed to Checkout</span>
+                                <span className="group-hover:translate-x-0.5 transition-transform">
+                                    Checkout • {formatCurrency(finalBillDetails.finalTotal)} →
+                                </span>
                             </button>
                         </div>
                     )}

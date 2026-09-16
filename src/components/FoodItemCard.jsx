@@ -53,7 +53,7 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
 
     return (
         <div
-            className={`${theme.surfaceBg} rounded-2xl shadow-sm border-2 border-transparent transition-all flex flex-col justify-between h-full w-full group relative 
+            className={`${theme.surfaceBg} rounded-2xl shadow-sm border-2 border-transparent transition-all flex flex-col h-full w-full group relative 
                 ${isGrid ? "p-0 overflow-hidden" : "p-3 md:p-4"} 
                 ${isEffectivelyDisabled ? "grayscale opacity-60 cursor-not-allowed pointer-events-none" : "hover:border-indigo-500 hover:shadow-lg cursor-pointer"}`}
             onClick={() => !isEffectivelyDisabled && onSelect(item)}
@@ -68,7 +68,7 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
                     )}
                 </div>
             )}
-            <div className={`flex ${isGrid ? "flex-col flex-1 justify-between h-full" : "items-center gap-3 h-full"}`}>
+            <div className={`flex ${isGrid ? "flex-col flex-1" : "items-center gap-3 h-full"}`}>
                 <div className={`relative ${isGrid ? "w-full" : "shrink-0"}`}>
                     <img
                         src={getBingImage(item?.name, { w: isGrid ? 300 : 110, h: isGrid ? 180 : 110 })}
@@ -99,71 +99,80 @@ const FoodItemCard = ({ item, onSelect, formatCurrency, viewMode = "grid", disab
                     )}
                 </div>
 
-                <div className={`flex-1 min-w-0 flex flex-col justify-between ${isGrid ? "p-3" : "h-full"}`}>
-                    <div>
-                        <div className="flex justify-between items-center">
+                <div className={`flex-1 min-w-0 flex flex-col ${isGrid ? "p-2.5 sm:p-3" : "h-full justify-between"}`}>
+                    <div className="space-y-0.5">
+                        <div className="flex justify-between items-center gap-1">
                             <span className={`text-[8px] md:text-[10px] uppercase font-black ${theme.textMuted} tracking-widest truncate max-w-[120px]`}>
                                 {item.category || "Others"}
                             </span>
-                            {(['STOCK', 'TRADE', 'MANUFACTURED'].includes(item.itemType) || item.stockSettings?.stockApplicable === true) && (
-                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-lg border ${isOutOfStock ? 'bg-red-50 text-red-500 border-red-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                                    Qty: {Number.isFinite(item.quantityOnHand)
-                                        ? (Number.isInteger(item.quantityOnHand)
-                                            ? item.quantityOnHand
-                                            : parseFloat(Number(item.quantityOnHand).toFixed(3)))
-                                        : 0}
-                                </span>
-                            )}
+                            <div className="flex items-center gap-1">
+                                {item.taxPercent > 0 && (
+                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-lg border ${item.isExclusiveTax ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300'}`}>
+                                        {item.taxPercent}% {item.isExclusiveTax ? 'Excl.' : 'Incl.'}
+                                    </span>
+                                )}
+                                {(['STOCK', 'TRADE', 'MANUFACTURED'].includes(item.itemType) || item.stockSettings?.stockApplicable === true) && (
+                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-lg border ${isOutOfStock ? 'bg-red-50 text-red-500 border-red-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+                                        Qty: {Number.isFinite(item.quantityOnHand)
+                                            ? (Number.isInteger(item.quantityOnHand)
+                                                ? item.quantityOnHand
+                                                : parseFloat(Number(item.quantityOnHand).toFixed(3)))
+                                            : 0}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         <div className="flex items-start gap-1 mt-0.5">
-                            <p className={`font-bold ${theme.textPrimary} flex-1 text-sm md:text-base truncate`}>
+                            <p className={`font-bold ${theme.textPrimary} flex-1 text-xs md:text-sm line-clamp-2 leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors`}>
                                 {item.name}
                             </p>
                         </div>
                         {item.secondaryUnitId && item.conversionFactor > 1 && (
-                            <div className="mt-0.5 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 text-[8px] font-black w-fit uppercase tracking-tighter">
+                            <div className="mt-1 flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 text-[8px] font-black w-fit uppercase tracking-tighter">
                                 1 {item.unitName || 'Pri'} = {item.conversionFactor} {item.secondaryUnitName || 'Sec'}
                             </div>
                         )}
                     </div>
 
-                    {/* Pricing Section */}
+                    {/* Portion Pricing Chips */}
+                    {isGrid && hasPortions && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                            {portionList.map((v) => (
+                                <div
+                                    key={v.name}
+                                    className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md font-bold border transition-all ${
+                                        themeName === 'dark' 
+                                            ? 'bg-indigo-950/60 text-indigo-300 border-indigo-800/80' 
+                                            : 'bg-indigo-50/90 text-indigo-700 border-indigo-100 shadow-sm'
+                                    }`}
+                                >
+                                    <span className="opacity-75 font-medium">{v.name}:</span>
+                                    <span className="font-black text-indigo-600 dark:text-indigo-400">{formatPriceWithCurrency(v.price)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Bottom Pricing Section (Pinned via mt-auto) */}
                     {isGrid && (
-                        <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-800/60">
+                        <div className="mt-auto pt-2 border-t border-gray-100 dark:border-gray-800/60">
                             {hasPortions ? (
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between gap-1">
-                                        <span className="text-[9px] uppercase font-black tracking-wider text-indigo-500 flex items-center gap-1">
-                                            <Tag size={10} /> Portion Pricing
-                                        </span>
-                                        <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 shrink-0">
-                                            {minPrice === maxPrice 
-                                                ? formatPriceWithCurrency(minPrice) 
-                                                : `${formatPriceWithCurrency(minPrice)} – ${formatPriceWithCurrency(maxPrice)}`}
-                                        </span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {portionList.map((v) => (
-                                            <div
-                                                key={v.name}
-                                                className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg font-bold border transition-all ${
-                                                    themeName === 'dark' 
-                                                        ? 'bg-indigo-950/60 text-indigo-300 border-indigo-800/80' 
-                                                        : 'bg-indigo-50/90 text-indigo-700 border-indigo-100 shadow-sm'
-                                                }`}
-                                            >
-                                                <span className="opacity-75 font-medium">{v.name}:</span>
-                                                <span className="font-black text-indigo-600 dark:text-indigo-400">{formatPriceWithCurrency(v.price)}</span>
-                                            </div>
-                                        ))}
-                                    </div>
+                                <div className="flex items-center justify-between gap-1">
+                                    <span className="text-[9px] uppercase font-black tracking-wider text-indigo-500 flex items-center gap-1">
+                                        <Tag size={10} /> Portion Pricing
+                                    </span>
+                                    <span className="text-xs md:text-sm font-black text-indigo-600 dark:text-indigo-400 shrink-0">
+                                        {minPrice === maxPrice 
+                                            ? formatPriceWithCurrency(minPrice) 
+                                            : `${formatPriceWithCurrency(minPrice)} – ${formatPriceWithCurrency(maxPrice)}`}
+                                    </span>
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-between">
                                     <span className={`text-[10px] uppercase font-black tracking-wider ${theme.textMuted}`}>
                                         Price
                                     </span>
-                                    <span className="text-sm md:text-base font-black text-indigo-600 dark:text-indigo-400">
+                                    <span className="text-xs md:text-sm font-black text-indigo-600 dark:text-indigo-400">
                                         {item.sellingType === "Weight" 
                                             ? `${formatPriceWithCurrency(item.price)}/${item.unitName || 'kg'}` 
                                             : formatPriceWithCurrency(item.price)}

@@ -613,7 +613,12 @@ const OfferForm = () => {
                                         value={reward.discountPercent === "" ? "" : reward.discountPercent}
                                         onChange={e => {
                                             const val = e.target.value;
-                                            setReward({ ...reward, discountPercent: val === "" ? "" : parseFloat(val) });
+                                            let num = val === "" ? "" : parseFloat(val);
+                                            if (typeof num === 'number' && !isNaN(num)) {
+                                                if (num < 0) num = 0;
+                                                if (num > 100) num = 100;
+                                            }
+                                            setReward({ ...reward, discountPercent: num });
                                         }}
                                         onBlur={e => {
                                             const val = parseFloat(reward.discountPercent);

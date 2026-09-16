@@ -1,9 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { shopService } from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
-import { Building2, Plus, TrendingUp, Store } from 'lucide-react';
+import {
+    Building2,
+    Plus,
+    TrendingUp,
+    Store,
+    ShoppingCart,
+    Package,
+    Settings,
+    ArrowUpRight,
+    CheckCircle2,
+    BarChart3,
+    Sparkles,
+    Wallet
+} from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency } from '../../utils/format';
 import AddShopModal from './AddShopModal';
@@ -15,7 +28,7 @@ const OwnerDashboard = () => {
     const [shops, setShops] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    
+
     const toShopSegment = (shop) => {
         const raw = String(shop?.slug || shop?.name || "").trim().toLowerCase();
         if (!raw) return "shop";
@@ -29,11 +42,10 @@ const OwnerDashboard = () => {
     const fetchShops = async () => {
         try {
             setLoading(true);
-            // Assuming the login user id is stored in user.id or user._id
             const userId = user?.id || user?._id;
             if (!userId) return;
             const data = await shopService.getShopsByOwner(userId);
-            setShops(data);
+            setShops(data || []);
         } catch (error) {
             console.error("Failed to fetch owner shops:", error);
         } finally {
@@ -50,226 +62,359 @@ const OwnerDashboard = () => {
         fetchShops();
     };
 
+    // Calculate Portfolio Summaries
+    const portfolioSummary = useMemo(() => {
+        if (!shops || shops.length === 0) return { totalRevenue: 0, totalProfit: 0, totalPayIn: 0, totalPayOut: 0, activeCount: 0 };
+        return shops.reduce((acc, s) => {
+            acc.totalRevenue += Number(s.todayRevenue || 0);
+            acc.totalProfit += Number(s.todayProfit || 0);
+            acc.totalPayIn += Number(s.payIn || 0);
+            acc.totalPayOut += Number(s.payOut || 0);
+            if (s.status === 'ACTIVE') acc.activeCount += 1;
+            return acc;
+        }, { totalRevenue: 0, totalProfit: 0, totalPayIn: 0, totalPayOut: 0, activeCount: 0 });
+    }, [shops]);
+
+    const switchAndNavigate = async (shopId, targetPath) => {
+        try {
+            const shop = shops.find((s) => String(s._id) === String(shopId));
+            const shopSegment = toShopSegment(shop);
+            const scopedPath = `/${shopSegment}${targetPath}`;
+
+            if ((user?.shopId || user?.shop_id) === shopId) {
+                navigate(scopedPath);
+                return;
+            }
+
+            const newAuthData = await shopService.switchShop(shopId);
+            const newAccessToken = newAuthData.accessToken;
+
+            localStorage.setItem('accessToken', newAccessToken);
+
+            const storageKey = "restaurant_pos_auth_v1";
+            const currentStorageParams = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            localStorage.setItem(storageKey, JSON.stringify({
+                ...currentStorageParams,
+                user: { ...newAuthData.user, accessToken: newAccessToken }
+            }));
+
+            login({ ...newAuthData.user, accessToken: newAccessToken });
+
+            setTimeout(() => {
+                navigate(scopedPath);
+            }, 50);
+        } catch (err) {
+            console.error("Failed to switch shop context:", err);
+            const shop = shops.find((s) => String(s._id) === String(shopId));
+            const shopSegment = toShopSegment(shop);
+            navigate(`/${shopSegment}${targetPath}`, { state: { shopId } });
+        }
+    };
+
+    const handleShopClick = (shopId) => {
+        switchAndNavigate(shopId, '/dashboard');
+    };
+
+    const handleStatClick = (e, shopId, targetPath) => {
+        e.stopPropagation();
+        switchAndNavigate(shopId, targetPath);
+    };
+
     if (loading) {
         return (
-            <div className="flex justify-center items-center h-full">
-                <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${theme.buttonBg.replace('bg-', 'border-')}`}></div>
+            <div className="flex justify-center items-center h-screen bg-gray-50/50 dark:bg-slate-950">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
+                    <p className="text-xs font-black uppercase tracking-widest text-indigo-500 animate-pulse">Loading Owner Portfolio...</p>
+                </div>
             </div>
         );
     }
-    const handleStatClick = async (e, shopId, targetPath) => {
-        e.stopPropagation(); // Prevent trigger handleShopClick
-        try {
-            const shop = shops.find((s) => String(s._id) === String(shopId));
-            const shopSegment = toShopSegment(shop);
-            const scopedTargetPath = `/${shopSegment}${targetPath}`;
-
-            if ((user?.shopId || user?.shop_id) === shopId) {
-                navigate(scopedTargetPath);
-                return;
-            }
-
-            // Perform actual shop switch so tokens match the new shop
-            const newAuthData = await shopService.switchShop(shopId);
-            const newAccessToken = newAuthData.accessToken;
-
-            localStorage.setItem('accessToken', newAccessToken);
-
-            const storageKey = "restaurant_pos_auth_v1";
-            const currentStorageParams = JSON.parse(localStorage.getItem(storageKey) || '{}');
-            localStorage.setItem(storageKey, JSON.stringify({
-                ...currentStorageParams,
-                user: { ...newAuthData.user, accessToken: newAccessToken }
-            }));
-
-            login({ ...newAuthData.user, accessToken: newAccessToken });
-
-            // Small timeout to allow context to update before navigation
-            setTimeout(() => {
-                navigate(scopedTargetPath);
-            }, 50);
-
-        } catch (err) {
-            console.error("Failed to switch shop context for stat click:", err);
-            const shop = shops.find((s) => String(s._id) === String(shopId));
-            const shopSegment = toShopSegment(shop);
-            const scopedTargetPath = `/${shopSegment}${targetPath}`;
-            navigate(scopedTargetPath, { state: { shopId } });
-        }
-    };
-
-    const handleShopClick = async (shopId) => {
-        try {
-            const shop = shops.find((s) => String(s._id) === String(shopId));
-            const shopSegment = toShopSegment(shop);
-
-            if ((user?.shopId || user?.shop_id) === shopId) {
-                navigate(`/${shopSegment}/dashboard`);
-                return;
-            }
-
-            // Perform actual shop switch so tokens match the new shop
-            const newAuthData = await shopService.switchShop(shopId);
-            const newAccessToken = newAuthData.accessToken;
-
-            localStorage.setItem('accessToken', newAccessToken);
-
-            const storageKey = "restaurant_pos_auth_v1";
-            const currentStorageParams = JSON.parse(localStorage.getItem(storageKey) || '{}');
-            localStorage.setItem(storageKey, JSON.stringify({
-                ...currentStorageParams,
-                user: { ...newAuthData.user, accessToken: newAccessToken }
-            }));
-
-            login({ ...newAuthData.user, accessToken: newAccessToken });
-
-            // Small timeout to allow context to update before navigation
-            setTimeout(() => {
-                navigate(`/${shopSegment}/dashboard`);
-            }, 50);
-
-        } catch (err) {
-            console.error("Failed to switch shop context from dashboard:", err);
-            // Fallback to simple navigation if switch fails
-            const shop = shops.find((s) => String(s._id) === String(shopId));
-            const shopSegment = toShopSegment(shop);
-            navigate(`/${shopSegment}/dashboard`, { state: { shopId } });
-        }
-    };
 
     return (
-        <div className="p-6 md:p-8 pb-12 space-y-8 w-full">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className={`text-3xl font-black ${theme.textHeading}`}>Owner Dashboard</h1>
-                    <p className={`text-sm ${theme.textSecondary} mt-1`}>Manage your business portfolio</p>
+        <div className={`p-4 sm:p-6 md:p-8 pb-16 space-y-8 min-h-screen ${theme.pageBg} font-sans`}>
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 p-6 sm:p-8 rounded-3xl text-white shadow-2xl relative overflow-hidden">
+                <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
+                    <Building2 size={240} />
                 </div>
-                <button
-                    onClick={() => setIsAddModalOpen(true)}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 ${theme.buttonBg} ${theme.buttonText}`}
-                >
-                    <Plus size={20} />
-                    <span>Add New Shop</span>
-                </button>
+                <div className="relative z-10 space-y-1">
+                    <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                            <Sparkles size={12} className="text-amber-300" /> Executive Business Command
+                        </span>
+                    </div>
+                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-white mt-2">
+                        Welcome back, {user?.name || user?.username || 'Owner'}
+                    </h1>
+                    <p className="text-xs sm:text-sm text-indigo-200/90 font-medium">
+                        Managing {shops.length} business {shops.length === 1 ? 'outlet' : 'outlets'} • {portfolioSummary.activeCount} active & operational
+                    </p>
+                </div>
+
+                <div className="relative z-10 flex items-center gap-3 shrink-0">
+                    <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg hover:shadow-emerald-500/25 transition-all transform hover:-translate-y-0.5 active:scale-95"
+                    >
+                        <Plus size={18} strokeWidth={3} />
+                        <span>Add New Shop</span>
+                    </button>
+                </div>
             </div>
 
+            {/* Portfolio Summary Widgets */}
+            {shops.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-5">
+                    <div className={`${theme.surfaceBg} border ${theme.borderLight} p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all`}>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className={`text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Portfolio Revenue</span>
+                            <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                                <TrendingUp size={16} />
+                            </div>
+                        </div>
+                        <p className={`text-lg sm:text-2xl font-black ${theme.textHeading}`}>
+                            {formatCurrency(portfolioSummary.totalRevenue)}
+                        </p>
+                        <p className="text-[10px] font-bold text-emerald-500 mt-1 flex items-center gap-1">
+                            <CheckCircle2 size={11} /> Today's total sales
+                        </p>
+                    </div>
+
+                    <div className={`${theme.surfaceBg} border ${theme.borderLight} p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all`}>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className={`text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Portfolio Profit</span>
+                            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                                <BarChart3 size={16} />
+                            </div>
+                        </div>
+                        <p className={`text-lg sm:text-2xl font-black ${portfolioSummary.totalProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                            {formatCurrency(portfolioSummary.totalProfit)}
+                        </p>
+                        <p className="text-[10px] font-bold text-emerald-500 mt-1 flex items-center gap-1">
+                            <CheckCircle2 size={11} /> Est. Net Profit
+                        </p>
+                    </div>
+
+                    <div className={`${theme.surfaceBg} border ${theme.borderLight} p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all`}>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className={`text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Total Outlets</span>
+                            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
+                                <Store size={16} />
+                            </div>
+                        </div>
+                        <p className={`text-lg sm:text-2xl font-black ${theme.textHeading}`}>
+                            {shops.length} <span className="text-xs font-bold text-indigo-500">Shops</span>
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-400 mt-1">
+                            {portfolioSummary.activeCount} Active Outlets
+                        </p>
+                    </div>
+
+                    <div className={`${theme.surfaceBg} border ${theme.borderLight} p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all`}>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className={`text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Net Cashflow</span>
+                            <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
+                                <Wallet size={16} />
+                            </div>
+                        </div>
+                        <p className={`text-lg sm:text-2xl font-black ${theme.textHeading}`}>
+                            {formatCurrency(portfolioSummary.totalPayIn - portfolioSummary.totalPayOut)}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-400 mt-1">
+                            PayIn: {formatCurrency(portfolioSummary.totalPayIn)}
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Shop Grid */}
             {shops.length === 0 ? (
-                <div className={`flex flex-col items-center justify-center p-12 text-center rounded-3xl border-2 border-dashed ${theme.inputBorder} ${theme.cardBg}`}>
-                    <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 ${theme.sidebarLogoBg} ${theme.sidebarLogoText}`}>
+                <div className={`flex flex-col items-center justify-center p-12 text-center rounded-3xl border-2 border-dashed ${theme.inputBorder} ${theme.surfaceBg}`}>
+                    <div className="w-20 h-20 rounded-3xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 shadow-inner">
                         <Store size={40} />
                     </div>
-                    <h3 className={`text-xl font-bold ${theme.textHeading} mb-2`}>No Shops Found</h3>
-                    <p className={`${theme.textSecondary} max-w-md`}>You haven't registered any shops yet. Click the button above to add your first shop to the portfolio.</p>
+                    <h3 className={`text-xl font-black ${theme.textHeading} mb-2`}>No Shops in Portfolio</h3>
+                    <p className={`${theme.textMuted} max-w-md text-xs sm:text-sm mb-6`}>
+                        You haven't registered any shops under your owner account yet. Add your first outlet to start tracking live POS sales and inventory.
+                    </p>
+                    <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm transition-all shadow-lg hover:shadow-indigo-500/25 flex items-center gap-2"
+                    >
+                        <Plus size={18} strokeWidth={3} />
+                        Add First Shop
+                    </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {shops.map(shop => (
                         <div
                             key={shop._id}
                             onClick={() => handleShopClick(shop._id)}
-                            className={`rounded-3xl shadow-lg border p-6 flex flex-col transition-all hover:shadow-xl cursor-pointer hover:-translate-y-1 ${theme.cardBg} ${theme.inputBorder}`}
+                            className={`${theme.surfaceBg} rounded-3xl border ${theme.borderLight} shadow-sm hover:shadow-xl transition-all duration-300 p-5 sm:p-6 flex flex-col group cursor-pointer hover:-translate-y-1 relative overflow-hidden`}
                         >
-                            <div className="flex justify-between items-start mb-6">
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-2xl shadow-sm ${theme.sidebarLogoBg} ${theme.sidebarLogoText}`}>
+                            {/* Card Top Row */}
+                            <div className="flex justify-between items-start mb-5 gap-3">
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white font-black text-2xl flex items-center justify-center shadow-lg shrink-0 overflow-hidden border border-white/20">
                                         {shop.logoUrl ? (
-                                            <img src={shop.logoUrl} alt={shop.name} className="w-full h-full object-cover rounded-2xl" />
+                                            <img src={shop.logoUrl} alt={shop.name} className="w-full h-full object-cover" />
                                         ) : (
                                             shop.name.charAt(0).toUpperCase()
                                         )}
                                     </div>
-                                    <div>
-                                        <h3 className={`text-xl font-black ${theme.textHeading}`}>{shop.name}</h3>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className={`text-xs px-2 py-1 rounded-lg font-bold bg-indigo-50 text-indigo-600 border border-indigo-100`}>
-                                                {shop.businessType?.displayString || 'Business'}
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <h3 className={`text-xl font-black ${theme.textHeading} truncate group-hover:text-indigo-600 transition-colors`}>
+                                                {shop.name}
+                                            </h3>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                            <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/50 uppercase tracking-tight">
+                                                {shop.businessType?.displayString || shop.businessType || 'Business'}
                                             </span>
-                                            <span className={`text-xs px-2 py-1 rounded-lg font-bold bg-emerald-50 text-emerald-600 border border-emerald-100`}>
-                                                {shop.subType?.displayString || 'Subtype'}
-                                            </span>
+                                            {shop.subType?.displayString && (
+                                                <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/50 uppercase tracking-tight">
+                                                    {shop.subType.displayString}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
-                                <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 ${shop.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                    <div className={`w-2 h-2 rounded-full ${shop.status === 'ACTIVE' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                                    {shop.status}
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 border uppercase tracking-wider ${
+                                        shop.status === 'ACTIVE'
+                                            ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-400'
+                                            : 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/60 dark:text-red-400'
+                                    }`}>
+                                        <span className={`w-2 h-2 rounded-full ${shop.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
+                                        {shop.status}
+                                    </span>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                                <div className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.inputBorder}`}>
-                                    <p className={`text-[10px] font-black ${theme.textSecondary} mb-1 flex items-center gap-2 uppercase tracking-tight`}>
-                                        <TrendingUp size={14} className="text-indigo-500" /> Daily Revenue
+                            {/* Stat Chips */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5">
+                                <div className={`p-3 rounded-2xl ${theme.sectionBg} border ${theme.borderLight}`}>
+                                    <p className={`text-[9px] font-black ${theme.textMuted} mb-0.5 flex items-center gap-1 uppercase tracking-tight`}>
+                                        <TrendingUp size={12} className="text-indigo-500" /> Revenue
                                     </p>
-                                    <p className={`text-xl font-black ${theme.textHeading}`}>
+                                    <p className={`text-base font-black ${theme.textHeading} truncate`}>
                                         {formatCurrency(shop.todayRevenue || 0, shop.defaultCurrencyCode || 'INR')}
                                     </p>
                                 </div>
-                                <div className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.inputBorder}`}>
-                                    <p className={`text-[10px] font-black ${theme.textSecondary} mb-1 flex items-center gap-2 uppercase tracking-tight`}>
-                                        <TrendingUp size={14} className="text-emerald-500" /> Daily Profit
+
+                                <div className={`p-3 rounded-2xl ${theme.sectionBg} border ${theme.borderLight}`}>
+                                    <p className={`text-[9px] font-black ${theme.textMuted} mb-0.5 flex items-center gap-1 uppercase tracking-tight`}>
+                                        <BarChart3 size={12} className="text-emerald-500" /> Profit
                                     </p>
-                                    <p className={`text-xl font-black ${shop.todayProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                    <p className={`text-base font-black ${shop.todayProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'} truncate`}>
                                         {formatCurrency(shop.todayProfit || 0, shop.defaultCurrencyCode || 'INR')}
                                     </p>
                                 </div>
-                                <div 
+
+                                <div
                                     onClick={(e) => handleStatClick(e, shop._id, '/dashboard/pay-in')}
-                                    className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.inputBorder} cursor-pointer hover:bg-orange-50 transition-colors group`}
+                                    className={`p-3 rounded-2xl ${theme.sectionBg} border ${theme.borderLight} hover:border-orange-300 dark:hover:border-orange-700 transition-colors group/stat`}
                                 >
-                                    <p className={`text-[10px] font-black ${theme.textSecondary} mb-1 flex items-center gap-2 uppercase tracking-tight group-hover:text-orange-600`}>
-                                        <TrendingUp size={14} className="text-orange-500" /> Pay In
+                                    <p className="text-[9px] font-black text-orange-500 mb-0.5 flex items-center justify-between uppercase tracking-tight">
+                                        <span>Pay In</span>
+                                        <ArrowUpRight size={10} className="group-hover/stat:translate-x-0.5 transition-transform" />
                                     </p>
-                                    <p className={`text-xl font-black text-orange-600`}>
+                                    <p className="text-base font-black text-orange-600 dark:text-orange-400 truncate">
                                         {formatCurrency(shop.payIn || 0, shop.defaultCurrencyCode || 'INR')}
                                     </p>
                                 </div>
-                                <div 
+
+                                <div
                                     onClick={(e) => handleStatClick(e, shop._id, '/dashboard/pay-out')}
-                                    className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.inputBorder} cursor-pointer hover:bg-red-50 transition-colors group`}
+                                    className={`p-3 rounded-2xl ${theme.sectionBg} border ${theme.borderLight} hover:border-red-300 dark:hover:border-red-700 transition-colors group/stat`}
                                 >
-                                    <p className={`text-[10px] font-black ${theme.textSecondary} mb-1 flex items-center gap-2 uppercase tracking-tight group-hover:text-red-600`}>
-                                        <TrendingUp size={14} className="text-red-500" /> Pay Out
+                                    <p className="text-[9px] font-black text-red-500 mb-0.5 flex items-center justify-between uppercase tracking-tight">
+                                        <span>Pay Out</span>
+                                        <ArrowUpRight size={10} className="group-hover/stat:translate-x-0.5 transition-transform" />
                                     </p>
-                                    <p className={`text-xl font-black text-red-600`}>
+                                    <p className="text-base font-black text-red-600 dark:text-red-400 truncate">
                                         {formatCurrency(shop.payOut || 0, shop.defaultCurrencyCode || 'INR')}
                                     </p>
                                 </div>
                             </div>
 
-                            <div className={`flex-1 rounded-2xl p-4 bg-white border shadow-sm ${theme.inputBorder} ${theme.textSecondary}`}>
-                                <h4 className={`text-xs font-black uppercase tracking-wider mb-4 pl-2`}>Sales Trend (Last 7 Days)</h4>
-                                <div className="h-[200px] w-full">
+                            {/* Chart Area */}
+                            <div className={`rounded-2xl p-3 sm:p-4 border ${theme.borderLight} ${theme.sectionBg} mb-4 flex-1`}>
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} flex items-center gap-1.5`}>
+                                        <BarChart3 size={13} className="text-indigo-500" /> Sales Trend (7 Days)
+                                    </h4>
+                                </div>
+                                <div className="h-[140px] sm:h-[160px] w-full">
                                     {shop.recentSalesData && shop.recentSalesData.length > 0 ? (
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart data={shop.recentSalesData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                            <AreaChart data={shop.recentSalesData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                                                 <defs>
                                                     <linearGradient id={`colorSales-${shop._id}`} x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                                                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35} />
                                                         <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                                                     </linearGradient>
                                                     <linearGradient id={`colorProfit-${shop._id}`} x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                                                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                                                     </linearGradient>
                                                 </defs>
-                                                <XAxis dataKey="_id" tickFormatter={(tick) => tick.split('-').slice(1).join('/')} stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                                                <YAxis width={60} tickFormatter={(tick) => formatCurrency(tick, shop.defaultCurrencyCode || 'INR').replace(/[0-9., ]/g, '') + tick} stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
+                                                <XAxis dataKey="_id" tickFormatter={(tick) => tick.split('-').slice(1).join('/')} stroke="#9ca3af" fontSize={10} tickLine={false} axisLine={false} />
+                                                <YAxis width={45} tickFormatter={(tick) => `${tick}`} stroke="#9ca3af" fontSize={9} tickLine={false} axisLine={false} />
                                                 <Tooltip
                                                     formatter={(value, name) => [formatCurrency(value, shop.defaultCurrencyCode || 'INR'), name === 'totalSales' ? 'Revenue' : 'Profit']}
-                                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                                    labelStyle={{ color: '#000', fontWeight: 'bold' }}
+                                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', fontSize: '11px' }}
                                                 />
-                                                <Area type="monotone" name="totalSales" dataKey="totalSales" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill={`url(#colorSales-${shop._id})`} />
-                                                <Area type="monotone" name="totalProfit" dataKey="totalProfit" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill={`url(#colorProfit-${shop._id})`} />
+                                                <Area type="monotone" name="totalSales" dataKey="totalSales" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill={`url(#colorSales-${shop._id})`} />
+                                                <Area type="monotone" name="totalProfit" dataKey="totalProfit" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill={`url(#colorProfit-${shop._id})`} />
                                             </AreaChart>
                                         </ResponsiveContainer>
                                     ) : (
-                                        <div className="flex h-full items-center justify-center text-sm font-medium italic opacity-60">
-                                            No sales data yet
+                                        <div className="flex h-full items-center justify-center text-xs font-bold text-slate-400">
+                                            No sales data yet for this period
                                         </div>
                                     )}
                                 </div>
+                            </div>
+
+                            {/* Quick Action Navigation Bar */}
+                            <div className="grid grid-cols-4 gap-1.5 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleStatClick(e, shop._id, '/takeaway')}
+                                    className="py-2 px-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-600 hover:text-white text-indigo-600 dark:text-indigo-300 font-bold text-[10px] transition-all flex items-center justify-center gap-1 border border-indigo-100 dark:border-indigo-900/40 truncate"
+                                    title="Open Direct Sale / POS"
+                                >
+                                    <ShoppingCart size={12} /> <span className="hidden sm:inline">Direct POS</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleStatClick(e, shop._id, '/inventory')}
+                                    className="py-2 px-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-600 dark:text-emerald-300 font-bold text-[10px] transition-all flex items-center justify-center gap-1 border border-emerald-100 dark:border-emerald-900/40 truncate"
+                                    title="Manage Stock & Menu"
+                                >
+                                    <Package size={12} /> <span className="hidden sm:inline">Stock</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleStatClick(e, shop._id, '/sales')}
+                                    className="py-2 px-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-300 font-bold text-[10px] transition-all flex items-center justify-center gap-1 border border-blue-100 dark:border-blue-900/40 truncate"
+                                    title="View Sales History"
+                                >
+                                    <TrendingUp size={12} /> <span className="hidden sm:inline">Sales</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleStatClick(e, shop._id, '/settings')}
+                                    className="py-2 px-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-700 hover:text-white text-slate-700 dark:text-slate-300 font-bold text-[10px] transition-all flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-700 truncate"
+                                    title="Shop Settings"
+                                >
+                                    <Settings size={12} /> <span className="hidden sm:inline">Settings</span>
+                                </button>
                             </div>
                         </div>
                     ))}

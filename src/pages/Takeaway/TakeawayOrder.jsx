@@ -21,10 +21,13 @@ import {
     Flame,
     Gift,
     Tag as TagIcon,
-    ChevronDown
+    ChevronDown,
+    UserPlus,
+    AlertTriangle
 } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import FoodItemCard from "../../components/FoodItemCard";
+import PosTabBar from "../../components/PosTabBar";
 import { useApp } from "../../context/AppContext";
 import { itemService, customerService, api, loyaltyService } from "../../services/api";
 import { DEFAULT_ITEM_IMAGE, getBingImage } from "../../utils/getImage";
@@ -42,6 +45,7 @@ import {
 } from "../../utils/cartStockUtils";
 
 const TakeawayOrder = ({
+    view,
     isTakeaway,
     activeTableId,
     tables,
@@ -59,6 +63,8 @@ const TakeawayOrder = ({
     updateItemQuantity,
     removeItemFromCart,
     updateItemUnit,
+    updateItemDiscount,
+    updateItemPrice: propsUpdateItemPrice,
     openNoteModal,
     takeawayCustName,
     setTakeawayCustName,
@@ -77,7 +83,7 @@ const TakeawayOrder = ({
     offers = [],
 }) => {
     const { theme, themeName } = useTheme();
-    const { activeBranchId } = useApp();
+    const { activeBranchId, currencySymbol, shopCurrency } = useApp();
     const {
         isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
         setOriginalOrderId, setReturnedItems,
@@ -91,8 +97,47 @@ const TakeawayOrder = ({
         setTakeawayOrder,
     } = useTakeaway();
 
+    const handleUpdateItemPrice = useCallback((itemIndex, newPrice) => {
+        let val = parseFloat(newPrice);
+        if (isNaN(val) || val < 0) val = 0;
+
+        if (propsUpdateItemPrice) {
+            propsUpdateItemPrice(itemIndex, val);
+            return;
+        }
+
+        if (setTakeawayOrder) {
+            setTakeawayOrder((prev) => {
+                const items = [...(prev?.items || [])];
+                const item = items[itemIndex];
+                if (!item) return prev;
+
+                const updatedItem = {
+                    ...item,
+                    price: val,
+                    sellingPrice: val,
+                };
+                if (updatedItem.selectedVariant) {
+                    updatedItem.selectedVariant = {
+                        ...updatedItem.selectedVariant,
+                        price: val
+                    };
+                }
+                if (updatedItem.sellingType === "Weight") {
+                    updatedItem.pricePerUnit = val;
+                }
+                items[itemIndex] = updatedItem;
+                return {
+                    ...prev,
+                    items,
+                };
+            });
+        }
+    }, [propsUpdateItemPrice, setTakeawayOrder]);
+
     const [showAvailableOffers, setShowAvailableOffers] = useState(false);
     const [isCartBreakdownExpanded, setIsCartBreakdownExpanded] = useState(true);
+    const [priceInputs, setPriceInputs] = useState({});
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -368,9 +413,16 @@ const TakeawayOrder = ({
     };
 
     const applyDiscount = (type, raw) => {
-        const val = parseFloat(raw) || 0;
+        let val = parseFloat(raw);
+        if (isNaN(val) || val < 0) val = 0;
+        let cleanRaw = raw;
+        if (type === 'percent' && val > 100) {
+            val = 100;
+            cleanRaw = "100";
+            toast.error("Percentage discount cannot exceed 100%");
+        }
         setDiscountInputType(type);
-        setDiscountInputValue(raw);
+        setDiscountInputValue(raw === "" ? "" : cleanRaw);
         setBillDiscount({ type, value: val });
     };
 
@@ -433,7 +485,7 @@ const TakeawayOrder = ({
         setShowLoyaltyModal(false);
         setLoyaltyPointsToRedeem("");
         
-        toast.success(`${pointsToUse} points redeemed! ₹${discountAmount} off your bill`, {
+        toast.success(`${pointsToUse} points redeemed! ${formatCurrency(discountAmount)} off your bill`, {
             icon: '🎁',
             duration: 3000
         });
@@ -805,8 +857,16 @@ const TakeawayOrder = ({
         return !appliedOfferIds.includes(oId);
     });
 
+    const shouldShowPosTabBar = isTakeaway && !activeTableId && (currentOrder?.orderType !== 'DINE_IN');
+
     return (
-        <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg}`}>
+        <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg} relative`}>
+            {/* Overlay POS Tab Bar for direct sale / takeaway (hidden when from Dining Hall table order) */}
+            {shouldShowPosTabBar && (
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-auto hidden sm:block">
+                    <PosTabBar view={view || (isTakeaway ? 'takeaway' : 'direct-sale')} />
+                </div>
+            )}
             {/* Mobile/Tablet Tab Switcher — visible below xl */}
             <div className={`xl:hidden flex p-2 ${theme.surfaceBg} border-b ${theme.borderLight} gap-2 shrink-0`}>
                 <button
@@ -919,21 +979,40 @@ const TakeawayOrder = ({
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="relative">
-                                        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={15} />
-                                        <input
-                                            value={custSearchTerm}
-                                            onChange={(e) => {
-                                                const v = e.target.value;
-                                                setCustSearchTerm(v);
-                                                setTakeawayCustName(v);
-                                                handleCustomerSearch(v, "name");
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={15} />
+                                            <input
+                                                value={custSearchTerm}
+                                                onChange={(e) => {
+                                                    const v = e.target.value;
+                                                    setCustSearchTerm(v);
+                                                    setTakeawayCustName(v);
+                                                    handleCustomerSearch(v, "name");
+                                                }}
+                                                onFocus={() => { if (custSearchTerm.length >= 2) setShowCustomerDropdown(true); }}
+                                                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                                                placeholder="Search customer by name or phone…"
+                                                className={`w-full pl-9 pr-4 py-2.5 border ${theme.borderLight} rounded-xl outline-none text-sm ${theme.inputBg} ${theme.textPrimary}`}
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const isPhone = /^\d+$/.test(custSearchTerm.trim());
+                                                setNewCustForm({
+                                                    name: isPhone ? "" : custSearchTerm.trim(),
+                                                    phone: isPhone ? custSearchTerm.trim() : "",
+                                                    email: ""
+                                                });
+                                                setShowNewCustDialog(true);
                                             }}
-                                            onFocus={() => { if (custSearchTerm.length >= 2) setShowCustomerDropdown(true); }}
-                                            onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-                                            placeholder="Search customer by name or phone…"
-                                            className={`w-full pl-9 pr-4 py-2.5 border ${theme.borderLight} rounded-xl outline-none text-sm ${theme.inputBg} ${theme.textPrimary}`}
-                                        />
+                                            className="px-3 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all shadow-sm flex items-center gap-1.5 shrink-0"
+                                            title="Add New Customer"
+                                        >
+                                            <UserPlus size={15} />
+                                            <span className="hidden sm:inline">Add Customer</span>
+                                        </button>
                                     </div>
                                 )}
 
@@ -941,28 +1020,47 @@ const TakeawayOrder = ({
                                 {showCustomerDropdown && !selectedCustomer && (
                                     <div className={`absolute top-full left-0 right-0 mt-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-xl shadow-xl z-[60] overflow-hidden`}>
                                         {customerSearchResults.length > 0 ? (
-                                            <div className="max-h-52 overflow-y-auto">
-                                                {customerSearchResults.map(cust => (
-                                                    <div
-                                                        key={cust._id}
-                                                        onMouseDown={() => selectCustomer(cust)}
-                                                        className={`p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer border-b ${theme.borderLight} last:border-0 flex items-center justify-between`}
-                                                    >
-                                                        <div className="flex-1">
-                                                            <div className={`font-bold text-sm ${theme.textPrimary}`}>{cust.name}</div>
-                                                            <div className={`text-xs ${theme.textMuted} flex items-center gap-2 flex-wrap`}>
-                                                                <span>{cust.phone}</span>
-                                                                {cust.discountPercentage > 0 && <span className="text-emerald-600">· {cust.discountPercentage}% disc</span>}
-                                                                {cust.loyaltyPoints > 0 && (
-                                                                    <span className="flex items-center gap-1 text-amber-600">
-                                                                        · <Gift size={10} /> {cust.loyaltyPoints} pts
-                                                                    </span>
-                                                                )}
+                                            <div>
+                                                <div className="max-h-52 overflow-y-auto">
+                                                    {customerSearchResults.map(cust => (
+                                                        <div
+                                                            key={cust._id}
+                                                            onMouseDown={() => selectCustomer(cust)}
+                                                            className={`p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer border-b ${theme.borderLight} last:border-0 flex items-center justify-between`}
+                                                        >
+                                                            <div className="flex-1">
+                                                                <div className={`font-bold text-sm ${theme.textPrimary}`}>{cust.name}</div>
+                                                                <div className={`text-xs ${theme.textMuted} flex items-center gap-2 flex-wrap`}>
+                                                                    <span>{cust.phone}</span>
+                                                                    {cust.discountPercentage > 0 && <span className="text-emerald-600">· {cust.discountPercentage}% disc</span>}
+                                                                    {cust.loyaltyPoints > 0 && (
+                                                                        <span className="flex items-center gap-1 text-amber-600">
+                                                                            · <Gift size={10} /> {cust.loyaltyPoints} pts
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
+                                                            <Check size={14} className="text-indigo-500 opacity-0 group-hover:opacity-100" />
                                                         </div>
-                                                        <Check size={14} className="text-indigo-500 opacity-0 group-hover:opacity-100" />
-                                                    </div>
-                                                ))}
+                                                    ))}
+                                                </div>
+                                                <div className={`p-2 border-t ${theme.borderLight} bg-gray-50/80 dark:bg-slate-900/80`}>
+                                                    <button
+                                                        onMouseDown={() => {
+                                                            const isPhone = /^\d+$/.test(custSearchTerm.trim());
+                                                            setNewCustForm({
+                                                                name: isPhone ? "" : custSearchTerm.trim(),
+                                                                phone: isPhone ? custSearchTerm.trim() : "",
+                                                                email: ""
+                                                            });
+                                                            setShowCustomerDropdown(false);
+                                                            setShowNewCustDialog(true);
+                                                        }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 text-xs font-black hover:bg-indigo-100 transition-colors"
+                                                    >
+                                                        <Plus size={14} /> Add {custSearchTerm.trim() ? `"${custSearchTerm.trim()}"` : "New Customer"} as new customer
+                                                    </button>
+                                                </div>
                                             </div>
                                         ) : custSearchTerm.length >= 2 ? (
                                             <div className="p-3">
@@ -971,8 +1069,8 @@ const TakeawayOrder = ({
                                                     onMouseDown={() => {
                                                         const isPhone = /^\d+$/.test(custSearchTerm.trim());
                                                         setNewCustForm({
-                                                            name: isPhone ? "" : custSearchTerm,
-                                                            phone: isPhone ? custSearchTerm : "",
+                                                            name: isPhone ? "" : custSearchTerm.trim(),
+                                                            phone: isPhone ? custSearchTerm.trim() : "",
                                                             email: ""
                                                         });
                                                         setShowCustomerDropdown(false);
@@ -1185,7 +1283,7 @@ const TakeawayOrder = ({
 
                     <div
                         className={`${viewMode === "grid"
-                            ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5"
+                            ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5 items-stretch content-start"
                             : "flex flex-col gap-2 md:gap-3"
                             } pr-1 xl:overflow-y-auto xl:flex-1 xl:min-h-0 custom-scrollbar mt-2 min-h-[320px] xl:min-h-0`}
                     >
@@ -1280,196 +1378,306 @@ const TakeawayOrder = ({
                                 <p className={`text-sm font-bold uppercase tracking-widest ${theme.textMuted}`}>Cart is empty</p>
                             </div>
                         ) : (
-                            <div className={`divide-y ${theme.borderLight} border rounded-xl`}>
-                                {deduplicatedOrderItems.map((item, idx) => (
-                                    <div key={item.id + idx} className={`p-3 hover:${themeName === 'dark' ? 'bg-gray-800' : 'bg-gray-50'} transition-colors ${theme.surfaceBg}`}>
-                                        <div className="flex justify-between items-start gap-2">
-                                            <div className="flex gap-3 flex-1 min-w-0">
-                                                <div className={`flex flex-col items-center ${theme.pageBg} rounded-xl sm:rounded-xl md:rounded-2xl p-1 sm:p-1.5 h-fit shrink-0 shadow-sm`}>
+                            <div className="space-y-3">
+                                {deduplicatedOrderItems.map((item, idx) => {
+                                    const itemTotal = calculateItemTotal(item);
+                                    const baseUnitPrice = item.selectedVariant 
+                                        ? item.selectedVariant.price 
+                                        : (item.sellingType === "Weight" ? (item.pricePerUnit || item.sellingPrice || item.price || 0) : (item.sellingPrice || item.price || 0));
+                                    const isZeroPrice = itemTotal <= 0 || baseUnitPrice <= 0;
+                                    const itemKey = (item.id || item._id || 'item') + '_' + idx;
+                                    const currentInputVal = priceInputs[itemKey] !== undefined ? priceInputs[itemKey] : "";
+
+                                    return (
+                                        <div
+                                            key={item.id + idx}
+                                            className={`p-3.5 rounded-xl border transition-all shadow-xs space-y-2.5 ${
+                                                isZeroPrice
+                                                    ? "bg-amber-50/70 border-amber-300 dark:bg-amber-950/40 dark:border-amber-700/80 ring-1 ring-amber-400/40"
+                                                    : `${theme.borderLight} ${theme.surfaceBg} hover:border-indigo-200 dark:hover:border-indigo-900/50`
+                                            }`}
+                                        >
+                                            {/* Top Row: 56px Product Image, Name/Category, Price & Delete Button */}
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                                                    <img
+                                                        src={getBingImage(item?.name, { w: 64, h: 64 })}
+                                                        alt={item?.name || "Item"}
+                                                        loading="lazy"
+                                                        className={`w-14 h-14 rounded-xl object-cover ${theme.pageBg} border ${theme.borderLight} shrink-0 shadow-2xs ${isZeroPrice ? 'opacity-75' : ''}`}
+                                                        onError={(e) => {
+                                                            e.currentTarget.onerror = null;
+                                                            e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                                        }}
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            <h4 className={`font-bold text-sm leading-snug line-clamp-2 ${theme.textPrimary}`}>
+                                                                {item.name}
+                                                            </h4>
+                                                            {isZeroPrice && (
+                                                                <span className="px-1.5 py-0.5 bg-amber-500 text-white font-black text-[9px] uppercase tracking-wider rounded-md shadow-2xs">
+                                                                    Disabled (Price 0)
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-xs">
+                                                            {item.categoryName && (
+                                                                <span className={`text-[11px] font-medium ${theme.textMuted}`}>
+                                                                    {item.categoryName}
+                                                                </span>
+                                                            )}
+                                                            {item.selectedVariant && (
+                                                                <span className="text-[10px] bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                                                    {item.selectedVariant.name}
+                                                                </span>
+                                                            )}
+                                                            <span className={`text-[10px] ${theme.textMuted} font-semibold`}>
+                                                                ({(item.taxPercent !== undefined && item.taxPercent !== null) ? item.taxPercent : (settings?.defaultTaxPercent || 0)}% {item.isExclusiveTax ? 'Excl. Tax' : 'Incl. Tax'})
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Price & Delete Button */}
+                                                <div className="flex flex-col items-end shrink-0 gap-1 ml-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`font-black text-base ${isZeroPrice ? 'text-amber-600 dark:text-amber-400' : theme.textPrimary}`}>
+                                                            {formatCurrency(calculateItemTotal(item))}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveItem(item._originalIndex !== undefined ? item._originalIndex : idx)}
+                                                            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors"
+                                                            title="Remove item from cart"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Reason Banner & Price Input Box — SHOWN ONLY IF PRICE/AMOUNT IS ZERO */}
+                                            {isZeroPrice && (
+                                                <div className="p-2.5 rounded-xl bg-amber-100/90 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700/80 space-y-2 text-xs">
+                                                    <div className="flex items-start gap-1.5 font-bold text-amber-900 dark:text-amber-200">
+                                                        <AlertTriangle size={15} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="font-extrabold text-[12px] leading-tight">Price is zero (0.00). Item disabled for checkout.</p>
+                                                            <p className="text-[10px] text-amber-800 dark:text-amber-300 font-medium mt-0.5">Enter a valid price below and click Apply or press Enter to enable checkout.</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 pt-1 border-t border-amber-200 dark:border-amber-800/80">
+                                                        <span className="text-[11px] font-black text-amber-900 dark:text-amber-200 shrink-0">Set Price:</span>
+                                                        <div className="relative flex-1 flex items-center gap-1.5">
+                                                            <div className="relative flex-1">
+                                                                <input
+                                                                    type="number"
+                                                                    min="0.01"
+                                                                    step="any"
+                                                                    value={currentInputVal}
+                                                                    placeholder="Enter price..."
+                                                                    className="w-full pl-2.5 pr-8 py-1.5 text-xs font-black rounded-lg border-2 border-amber-400 focus:border-amber-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setPriceInputs(prev => ({
+                                                                            ...prev,
+                                                                            [itemKey]: val
+                                                                        }));
+                                                                    }}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') {
+                                                                            e.preventDefault();
+                                                                            const parsed = parseFloat(currentInputVal);
+                                                                            if (!isNaN(parsed) && parsed > 0) {
+                                                                                const targetIdx = item._originalIndex !== undefined ? item._originalIndex : idx;
+                                                                                handleUpdateItemPrice(targetIdx, parsed);
+                                                                            } else {
+                                                                                toast.error("Please enter a valid price greater than 0");
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                    onBlur={() => {
+                                                                        const parsed = parseFloat(currentInputVal);
+                                                                        if (!isNaN(parsed) && parsed > 0) {
+                                                                            const targetIdx = item._originalIndex !== undefined ? item._originalIndex : idx;
+                                                                            handleUpdateItemPrice(targetIdx, parsed);
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-black text-amber-600 dark:text-amber-400 pointer-events-none uppercase">
+                                                                    {currencySymbol || '₹'}
+                                                                </span>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const parsed = parseFloat(currentInputVal);
+                                                                    if (!isNaN(parsed) && parsed > 0) {
+                                                                        const targetIdx = item._originalIndex !== undefined ? item._originalIndex : idx;
+                                                                        handleUpdateItemPrice(targetIdx, parsed);
+                                                                    } else {
+                                                                        toast.error("Please enter a valid price greater than 0");
+                                                                    }
+                                                                }}
+                                                                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-black text-xs rounded-lg shadow-2xs transition-all cursor-pointer shrink-0"
+                                                            >
+                                                                Apply
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Unit Selector for multi-unit items */}
+                                            {(item.unitId && item.secondaryUnitId) && (
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`flex rounded-lg border ${theme.borderLight} overflow-hidden text-[10px] font-black`}>
+                                                        <button
+                                                            onClick={() => updateItemUnit(idx, "PRIMARY")}
+                                                            className={`px-2 py-0.5 ${item.selectedUnit !== "SECONDARY" ? "bg-indigo-600 text-white" : `${theme.surfaceBg} ${theme.textMuted}`}`}
+                                                        >
+                                                            {item.unitName || "Pri"}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => updateItemUnit(idx, "SECONDARY")}
+                                                            className={`px-2 py-0.5 border-l ${theme.borderLight} ${item.selectedUnit === "SECONDARY" ? "bg-indigo-600 text-white" : `${theme.surfaceBg} ${theme.textMuted}`}`}
+                                                        >
+                                                            {item.secondaryUnitName || "Sec"}
+                                                        </button>
+                                                    </div>
+                                                    <span className={`text-[9px] ${theme.textMuted}`}>
+                                                        {item.selectedUnit === "SECONDARY" ? `1 ${item.unitName || 'Pri'} = ${item.conversionFactor} ${item.secondaryUnitName || 'Sec'}` : ""}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {/* Offers & Free items badges */}
+                                            {(() => {
+                                                const freeItemInfo = billDetails.freeItems?.find(fi => fi.itemId === (item.id || item._id));
+                                                const isOfferApplied = billDetails.appliedOfferItemIds?.includes(item.id || item._id);
+                                                
+                                                if (!isOfferApplied && !freeItemInfo) return null;
+
+                                                return (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {freeItemInfo ? (
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-tighter flex items-center gap-1 shadow-sm">
+                                                                    <Plus size={10} strokeWidth={4} /> {freeItemInfo.quantity} FREE
+                                                                </span>
+                                                                <span className="text-[9px] text-emerald-600 font-bold uppercase truncate max-w-[120px]">
+                                                                    {freeItemInfo.offerName}
+                                                                </span>
+                                                            </div>
+                                                        ) : isOfferApplied ? (
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide flex items-center gap-1">
+                                                                    <Check size={10} strokeWidth={4} /> Offer Applied
+                                                                </span>
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* Note Preview if present */}
+                                            {item.suggestion && (
+                                                <div className="text-xs text-amber-600 dark:text-amber-400 italic font-medium flex items-center gap-1 truncate">
+                                                    <Edit3 size={11} className="shrink-0" />
+                                                    <span>Note: {item.suggestion}</span>
+                                                </div>
+                                            )}
+
+                                            {/* Bottom Controls Row: Horizontal Quantity Pill + Note + Discount Input */}
+                                            <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-gray-100 dark:border-gray-800">
+                                                {/* Quantity Horizontal Control: [ - ] 1 [ + ] */}
+                                                <div className={`inline-flex items-center rounded-lg border ${theme.borderLight} ${theme.pageBg} p-0.5 shadow-2xs`}>
                                                     <button
-                                                        onClick={() => handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, 1)}
-                                                        className={`w-full p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 rounded-lg sm:rounded-lg md:rounded-xl transition-all duration-200 shadow-md hover:shadow-lg hover:scale-110 active:scale-95 touch-manipulation`}
+                                                        type="button"
+                                                        onClick={() => handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, -1)}
+                                                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gradient-to-br from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 transition-all active:scale-90 shadow-2xs"
+                                                        title="Decrease quantity"
                                                     >
-                                                        <Plus className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 mx-auto" strokeWidth={3} />
+                                                        <Minus size={14} strokeWidth={3} />
                                                     </button>
-                                                    <span className={`font-black text-xs sm:text-sm md:text-base py-0.5 sm:py-1 md:py-1.5 w-6 sm:w-7 md:w-9 text-center ${theme.textPrimary}`}>
+                                                    <span className={`w-7 text-center font-black text-xs ${theme.textPrimary}`}>
                                                         {item.sellingType === "Weight" && item.enteredUnit === "g"
                                                             ? `${parseFloat((item.quantity * 1000).toFixed(0))}`
                                                             : item.quantity}
                                                     </span>
                                                     <button
-                                                        onClick={() => handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, -1)}
-                                                        className={`w-full p-1 sm:p-1.5 md:p-2 bg-gradient-to-br from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 rounded-lg sm:rounded-lg md:rounded-xl transition-all duration-200 shadow-md hover:shadow-lg hover:scale-110 active:scale-95 touch-manipulation`}
+                                                        type="button"
+                                                        onClick={() => handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, 1)}
+                                                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 transition-all active:scale-90 shadow-2xs"
+                                                        title="Increase quantity"
                                                     >
-                                                        <Minus className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 mx-auto" strokeWidth={3} />
+                                                        <Plus size={14} strokeWidth={3} />
                                                     </button>
                                                 </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex justify-between items-start">
-                                                        <div className="flex items-start gap-2 min-w-0">
-                                                            <img
-                                                                src={getBingImage(item?.name, { w: 64, h: 64 })}
-                                                                alt={item?.name || "Item"}
-                                                                loading="lazy"
-                                                                className={`w-10 h-10 rounded-lg object-cover ${theme.pageBg} border ${theme.borderLight} shrink-0`}
-                                                                onError={(e) => {
-                                                                    e.currentTarget.onerror = null;
-                                                                    e.currentTarget.src = DEFAULT_ITEM_IMAGE;
-                                                                }}
-                                                            />
-                                                            <span className={`font-bold text-sm ${theme.textPrimary} leading-tight truncate`}>
-                                                                {item.name}
-                                                                {item.selectedVariant && (
-                                                                    <span className="ml-1 text-xs text-indigo-600 font-black">
-                                                                        ({item.selectedVariant.name})
-                                                                    </span>
-                                                                )}
-                                                                <span className={`ml-1 text-[10px] ${theme.textMuted} font-medium`}>
-                                                                    ({(item.taxPercent !== undefined && item.taxPercent !== null) ? item.taxPercent : (settings?.defaultTaxPercent || 0)}%)
-                                                                </span>
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                                                            <span className={`font-bold text-sm ${theme.textPrimary}`}>
-                                                                {formatCurrency(calculateItemTotal(item))}
-                                                            </span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleRemoveItem(item._originalIndex !== undefined ? item._originalIndex : idx)}
-                                                                className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                                                                title="Remove item from cart"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    {/* Unit Selector for multi-unit items */}
-                                                    {(item.unitId && item.secondaryUnitId) && (
-                                                        <div className="mt-1 flex items-center gap-2">
-                                                            <div className={`flex rounded-lg border ${theme.borderLight} overflow-hidden text-[10px] font-black`}>
-                                                                <button
-                                                                    onClick={() => updateItemUnit(idx, "PRIMARY")}
-                                                                    className={`px-2 py-0.5 ${item.selectedUnit !== "SECONDARY" ? "bg-indigo-600 text-white" : `${theme.surfaceBg} ${theme.textMuted}`}`}
-                                                                >
-                                                                    {item.unitName || "Pri"}
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => updateItemUnit(idx, "SECONDARY")}
-                                                                    className={`px-2 py-0.5 border-l ${theme.borderLight} ${item.selectedUnit === "SECONDARY" ? "bg-indigo-600 text-white" : `${theme.surfaceBg} ${theme.textMuted}`}`}
-                                                                >
-                                                                    {item.secondaryUnitName || "Sec"}
-                                                                </button>
-                                                            </div>
-                                                            <span className={`text-[9px] ${theme.textMuted}`}>
-                                                                {item.selectedUnit === "SECONDARY" ? `1 ${item.unitName || 'Pri'} = ${item.conversionFactor} ${item.secondaryUnitName || 'Sec'}` : ""}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                    {(() => {
-                                                        const freeItemInfo = billDetails.freeItems?.find(fi => fi.itemId === (item.id || item._id));
-                                                        const isOfferApplied = billDetails.appliedOfferItemIds?.includes(item.id || item._id);
-                                                        
-                                                        if (!item.selectedVariant && !isOfferApplied && !freeItemInfo) return null;
 
-                                                        return (
-                                                            <div className="mt-1 flex flex-wrap gap-1">
-                                                                {item.selectedVariant && (
-                                                                    <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
-                                                                        {item.selectedVariant.name}
-                                                                    </span>
-                                                                )}
-                                                                
-                                                                {freeItemInfo ? (
-                                                                    <div className="flex items-center gap-1">
-                                                                        <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-tighter flex items-center gap-1 shadow-sm">
-                                                                            <Plus size={10} strokeWidth={4} /> {freeItemInfo.quantity} FREE
-                                                                        </span>
-                                                                        <span className="text-[9px] text-emerald-600 font-bold uppercase truncate max-w-[120px]">
-                                                                            {freeItemInfo.offerName}
-                                                                        </span>
-                                                                    </div>
-                                                                ) : isOfferApplied ? (
-                                                                    <div className="flex items-center gap-1">
-                                                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide flex items-center gap-1">
-                                                                            <Check size={10} strokeWidth={4} /> Offer Applied
-                                                                        </span>
-                                                                        <div className="relative">
-                                                                            <button 
-                                                                                onClick={(e) => {
-                                                                                    const rect = e.currentTarget.getBoundingClientRect();
-                                                                                    if (activeOfferTip) {
-                                                                                        setActiveOfferTip(null);
-                                                                                    } else {
-                                                                                        const offer = offers.find(o => 
-                                                                                            o.condition?.itemIds?.includes(item.id || item._id) || 
-                                                                                            o.condition?.categoryIds?.includes(item.categoryId || item.category_id)
-                                                                                        );
-                                                                                        if (offer) {
-                                                                                            setActiveOfferTip({
-                                                                                                x: rect.right,
-                                                                                                y: rect.bottom,
-                                                                                                offer
-                                                                                            });
-                                                                                        }
-                                                                                    }
-                                                                                }}
-                                                                                className={`p-1 ${activeOfferTip?.offer?._id === (offers.find(o => o.condition?.itemIds?.includes(item.id || item._id) || o.condition?.categoryIds?.includes(item.categoryId || item.category_id))?._id) ? 'bg-indigo-100 text-indigo-700' : 'text-emerald-600 hover:bg-emerald-50'} rounded-full transition-all`}
-                                                                                title="View Offer Info"
-                                                                            >
-                                                                                <Info size={12} />
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                ) : null}
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                    {item.suggestion && (
-                                                        <div className="text-[11px] text-orange-600 italic mt-1 truncate">
-                                                            Note: {item.suggestion}
-                                                        </div>
-                                                    )}
+                                                {/* Add / Edit Note Button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openNoteModal(idx, item.suggestion)}
+                                                    className={`flex items-center gap-1 ${theme.surfaceBg} px-2.5 py-1 rounded-lg border ${theme.borderLight} text-[11px] font-bold ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-300 transition-colors shadow-2xs`}
+                                                >
+                                                    <Edit3 size={11} />
+                                                    <span>{item.suggestion ? "Edit Note" : "Add Note"}</span>
+                                                </button>
+
+                                                {/* Cleaner Per-item Discount Input: DISC [ 0 ] [ % ] */}
+                                                <div className={`inline-flex items-center gap-1 rounded-lg border ${theme.borderLight} ${theme.inputBg} p-0.5`}>
+                                                    <span className={`pl-1.5 text-[9px] font-black uppercase tracking-wider ${theme.textMuted}`}>Disc</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={(item.itemDiscountType || 'percent') === 'percent' ? "100" : undefined}
+                                                        value={item.itemDiscount !== undefined && item.itemDiscount !== null ? item.itemDiscount : ""}
+                                                        onChange={e => {
+                                                            const raw = e.target.value;
+                                                            let v = raw === "" ? "" : parseFloat(raw);
+                                                            const type = item.itemDiscountType || 'percent';
+                                                            if (typeof v === 'number' && !isNaN(v)) {
+                                                                if (v < 0) v = 0;
+                                                                if (type === 'percent' && v > 100) {
+                                                                    v = 100;
+                                                                    toast.error("Percentage discount cannot exceed 100%");
+                                                                }
+                                                            }
+                                                            const targetIdx = item._originalIndex !== undefined ? item._originalIndex : idx;
+                                                            if (updateItemDiscount) {
+                                                                updateItemDiscount(targetIdx, v, type);
+                                                            }
+                                                        }}
+                                                        placeholder="0"
+                                                        className={`w-10 px-1 py-0.5 text-xs font-black text-center outline-none ${theme.surfaceBg} ${theme.textPrimary} rounded border ${theme.borderLight} focus:ring-1 focus:ring-indigo-500`}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const nextType = (item.itemDiscountType || 'percent') === 'flat' ? 'percent' : 'flat';
+                                                            let v = item.itemDiscount;
+                                                            if (nextType === 'percent' && typeof v === 'number' && v > 100) {
+                                                                v = 100;
+                                                                toast.error("Percentage discount cannot exceed 100%");
+                                                            }
+                                                            const targetIdx = item._originalIndex !== undefined ? item._originalIndex : idx;
+                                                            if (updateItemDiscount) {
+                                                                updateItemDiscount(targetIdx, v, nextType);
+                                                            }
+                                                        }}
+                                                        className={`px-2 py-0.5 text-[10px] font-black uppercase rounded ${theme.buttonBg} hover:opacity-90 transition-colors`}
+                                                        title={`Toggle discount type (% or ${currencySymbol || '₹'})`}
+                                                    >
+                                                        {(item.itemDiscountType || 'percent') === 'flat' ? (currencySymbol || '₹') : '%'}
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="mt-2 flex items-center justify-between gap-2">
-                                            <button
-                                                onClick={() => openNoteModal(idx, item.suggestion)}
-                                                className={`flex items-center gap-1 ${theme.surfaceBg} px-2 py-1 rounded-lg border ${theme.borderLight} text-[10px] font-bold ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-200 transition-colors`}
-                                            >
-                                                <Edit3 size={10} />
-                                                {item.suggestion ? "Edit Note" : "Add Note"}
-                                            </button>
-                                            {/* Per-item discount */}
-                                            <div className={`flex items-center gap-1 rounded-lg border ${theme.borderLight} ${theme.inputBg} overflow-hidden`}>
-                                                <span className={`pl-2 text-[9px] font-black uppercase ${theme.textMuted}`}>Disc</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={item.itemDiscount !== undefined && item.itemDiscount !== null ? item.itemDiscount : ""}
-                                                    onChange={e => {
-                                                        const raw = e.target.value;
-                                                        const v = raw === "" ? "" : parseFloat(raw);
-                                                        initiateAddItem({ ...item, itemDiscount: v, itemDiscountType: item.itemDiscountType || 'percent' }, 0);
-                                                    }}
-                                                    placeholder="0"
-                                                    className={`w-12 px-1 py-1 text-xs font-black outline-none bg-transparent ${theme.textPrimary}`}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const nextType = (item.itemDiscountType || 'percent') === 'flat' ? 'percent' : 'flat';
-                                                        initiateAddItem({ ...item, itemDiscountType: nextType }, 0);
-                                                    }}
-                                                    className={`px-1.5 py-0.5 text-[10px] font-black uppercase transition-colors ${theme.buttonBg} hover:opacity-90`}
-                                                    title="Toggle discount type (% or ₹)"
-                                                >
-                                                    {(item.itemDiscountType || 'percent') === 'flat' ? '₹' : '%'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -1508,7 +1716,7 @@ const TakeawayOrder = ({
                                                             onClick={() => applyDiscount('flat', discountInputValue)}
                                                             className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountInputType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}
                                                         >
-                                                            ₹ Flat
+                                                            {currencySymbol || '₹'} Flat
                                                         </button>
                                                         <button
                                                             type="button"
@@ -1522,9 +1730,10 @@ const TakeawayOrder = ({
                                                 <input
                                                     type="number"
                                                     min="0"
+                                                    max={discountInputType === 'percent' ? "100" : undefined}
                                                     value={discountInputValue}
                                                     onChange={e => applyDiscount(discountInputType, e.target.value)}
-                                                    placeholder={discountInputType === 'percent' ? "Enter %" : "Enter amount"}
+                                                    placeholder={discountInputType === 'percent' ? "Enter % (Max 100)" : "Enter amount"}
                                                     className={`w-full px-3 py-2 text-sm font-black outline-none bg-transparent ${theme.textPrimary}`}
                                                 />
                                             </div>
@@ -1611,7 +1820,7 @@ const TakeawayOrder = ({
                                                                             <div className="flex flex-col min-w-0 pr-2">
                                                                                 <span className="font-bold text-gray-800 dark:text-gray-200 truncate">{off.name}</span>
                                                                                 <span className="text-[10px] text-gray-500 font-medium truncate">
-                                                                                    {off.description || (off.condition?.minBillAmount ? `Min bill ₹${off.condition.minBillAmount}` : "Special Offer")}
+                                                                                    {off.description || (off.condition?.minBillAmount ? `Min bill ${formatCurrency(off.condition.minBillAmount)}` : "Special Offer")}
                                                                                 </span>
                                                                             </div>
                                                                             <button
@@ -1735,6 +1944,20 @@ const TakeawayOrder = ({
                             )}
                             <button
                                 onClick={() => {
+                                    const zeroPriceItem = deduplicatedOrderItems.find(item => {
+                                        const lineTotal = calculateItemTotal(item);
+                                        const baseUnitPrice = item.selectedVariant 
+                                            ? item.selectedVariant.price 
+                                            : (item.sellingType === "Weight" ? (item.pricePerUnit || item.sellingPrice || item.price || 0) : (item.sellingPrice || item.price || 0));
+                                        return lineTotal <= 0 || baseUnitPrice <= 0;
+                                    });
+                                    if (zeroPriceItem) {
+                                        toast.error(`Cannot checkout: "${zeroPriceItem.name}" has 0 price. Please set a price to proceed.`, {
+                                            duration: 4500,
+                                            icon: '⚠️'
+                                        });
+                                        return;
+                                    }
                                     setIsPaymentModalOpen(true);
                                     setBillingStage("review");
                                 }}
@@ -1743,7 +1966,28 @@ const TakeawayOrder = ({
                                     !hasPermission("orders.ORDERS.PROCESSPAYMENT") &&
                                     !hasPermission("orders.processpayment")
                                 ) || currentOrder.items.length === 0}
-                                className={`py-2.5 xl:py-4 rounded-lg xl:rounded-xl text-sm font-bold bg-green-600 text-white shadow-lg shadow-green-100 hover:bg-green-700 disabled:opacity-50 disabled:bg-gray-300 disabled:shadow-none ${(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) ? "" : "col-span-2"}`}
+                                title={
+                                    deduplicatedOrderItems.some(item => {
+                                        const lineTotal = calculateItemTotal(item);
+                                        const baseUnitPrice = item.selectedVariant 
+                                            ? item.selectedVariant.price 
+                                            : (item.sellingType === "Weight" ? (item.pricePerUnit || item.sellingPrice || item.price || 0) : (item.sellingPrice || item.price || 0));
+                                        return lineTotal <= 0 || baseUnitPrice <= 0;
+                                    })
+                                        ? "Cannot checkout: Set price for zero-priced items first"
+                                        : "Proceed to Checkout"
+                                }
+                                className={`py-2.5 xl:py-4 rounded-lg xl:rounded-xl text-sm font-bold text-white shadow-lg transition-all ${
+                                    deduplicatedOrderItems.some(item => {
+                                        const lineTotal = calculateItemTotal(item);
+                                        const baseUnitPrice = item.selectedVariant 
+                                            ? item.selectedVariant.price 
+                                            : (item.sellingType === "Weight" ? (item.pricePerUnit || item.sellingPrice || item.price || 0) : (item.sellingPrice || item.price || 0));
+                                        return lineTotal <= 0 || baseUnitPrice <= 0;
+                                    })
+                                        ? "bg-amber-600 hover:bg-amber-700 shadow-amber-200"
+                                        : "bg-green-600 hover:bg-green-700 shadow-green-100"
+                                } disabled:opacity-50 disabled:bg-gray-300 disabled:shadow-none ${(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) ? "" : "col-span-2"}`}
                             >
                                 {(
                                     hasPermissionFor("pos", "order", "process_payment") ||
@@ -1816,7 +2060,7 @@ const TakeawayOrder = ({
                                 <p className={`text-xs font-bold ${theme.textMuted} mb-1`}>Available Points</p>
                                 <p className={`text-3xl font-black ${theme.textPrimary}`}>{selectedCustomer.loyaltyPoints || 0} pts</p>
                                 <p className={`text-xs ${theme.textMuted} mt-1`}>
-                                    = ₹{((selectedCustomer.loyaltyPoints || 0) * (loyaltySettings?.redemptionValue || 1)).toFixed(2)} value
+                                    = {formatCurrency((selectedCustomer.loyaltyPoints || 0) * (loyaltySettings?.redemptionValue || 1))} value
                                 </p>
                             </div>
 
@@ -1873,7 +2117,7 @@ const TakeawayOrder = ({
                                 <div className={`p-4 rounded-2xl ${theme.inputBg} border ${theme.borderLight}`}>
                                     <p className={`text-xs font-bold ${theme.textMuted} mb-1`}>You'll Save</p>
                                     <p className={`text-2xl font-black text-emerald-600`}>
-                                        ₹{(parseInt(loyaltyPointsToRedeem) * (loyaltySettings?.redemptionValue || 1)).toFixed(2)}
+                                        {formatCurrency(parseInt(loyaltyPointsToRedeem) * (loyaltySettings?.redemptionValue || 1))}
                                     </p>
                                     <p className={`text-xs ${theme.textMuted} mt-1`}>
                                         Remaining: {(selectedCustomer.loyaltyPoints || 0) - parseInt(loyaltyPointsToRedeem)} pts
