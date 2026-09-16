@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import { useTheme } from '../../context/ThemeContext';
 import { subscriptionService } from '../../services/api/subscriptions';
-import { Search, Edit2, Wallet, AlertCircle, CheckCircle, Clock, Trash2, Sparkles } from 'lucide-react';
+import { Search, Edit2, Wallet, AlertCircle, CheckCircle, Clock, Trash2, Sparkles, Check, DollarSign } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
+import Modal from '../../components/ui/Modal';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
@@ -14,6 +15,14 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
     const [trialRequestsLoading, setTrialRequestsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+
+    // Approval Modal State
+    const [approvalModalSub, setApprovalModalSub] = useState(null);
+    const [approveCycle, setApproveCycle] = useState('monthly');
+    const [approveAmount, setApproveAmount] = useState(0);
+    const [approvePaymentMethod, setApprovePaymentMethod] = useState('CASH');
+    const [approveTransactionId, setApproveTransactionId] = useState('');
+    const [isApproving, setIsApproving] = useState(false);
 
     useEffect(() => {
         fetchSubscriptions();
@@ -69,15 +78,49 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
         }
     };
 
-    const handleConfirmSubscriptionPayment = async (subscriptionId) => {
-        if (!window.confirm('Accept and activate this plan subscription request for the shop?')) return;
+    const openApprovalModal = (sub) => {
+        const cycle = (sub.billing_cycle || 'monthly').toLowerCase();
+        const normCycle = (cycle === 'annual' || cycle === 'yearly') ? 'yearly' : 'monthly';
+        const planPricing = sub.plan_id?.pricing || [];
+        const matchedPricing = planPricing.find(p => p.cycle === normCycle) || planPricing[0];
+        const initialPrice = sub.final_amount || sub.amount || (matchedPricing ? matchedPricing.price : 0);
+
+        setApprovalModalSub(sub);
+        setApproveCycle(normCycle);
+        setApproveAmount(initialPrice);
+        setApprovePaymentMethod(sub.payment_method || 'CASH');
+        setApproveTransactionId(sub.transaction_id || '');
+    };
+
+    const handleCycleChangeInModal = (newCycle) => {
+        setApproveCycle(newCycle);
+        const planPricing = approvalModalSub?.plan_id?.pricing || [];
+        const matchedPricing = planPricing.find(p => p.cycle === newCycle) || planPricing[0];
+        if (matchedPricing) {
+            setApproveAmount(matchedPricing.price);
+        }
+    };
+
+    const handleConfirmApprovalSubmit = async (e) => {
+        e?.preventDefault?.();
+        if (!approvalModalSub) return;
+        setIsApproving(true);
         try {
-            await subscriptionService.confirmSubscriptionPayment(subscriptionId);
+            await subscriptionService.confirmSubscriptionPayment(approvalModalSub._id, {
+                billing_cycle: approveCycle,
+                amount: Number(approveAmount) || 0,
+                final_amount: Number(approveAmount) || 0,
+                payment_method: approvePaymentMethod,
+                transaction_id: approveTransactionId,
+            });
+            toast.success(`Subscription request accepted for ${approvalModalSub.shop_id?.name || 'Shop'}. Plan activated!`);
+            setApprovalModalSub(null);
             await fetchSubscriptions();
-            toast.success('Subscription request accepted. Plan is now active.');
         } catch (error) {
             console.error('Confirm payment failed:', error);
             toast.error(getErrorMessage(error, 'Failed to accept subscription request'));
+        } finally {
+            setIsApproving(false);
         }
     };
 
@@ -196,7 +239,12 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
             header: "Billing Cycle",
             key: "billing_cycle",
             className: `text-sm font-medium ${theme.textSecondary} capitalize`,
-            render: (value) => value || 'N/A'
+            render: (value) => {
+                const norm = (String(value || '').toLowerCase());
+                if (norm === 'yearly' || norm === 'annual') return 'Annual (Yearly)';
+                if (norm === 'monthly') return 'Monthly';
+                return value || 'N/A';
+            }
         },
         {
             header: "Next Billing",
@@ -208,7 +256,12 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
             header: "Amount",
             key: "amount",
             className: `text-sm font-bold ${theme.textPrimary}`,
-            render: (_, sub) => `${sub.currency} ${sub.final_amount || sub.amount}`
+            render: (_, sub) => {
+                const normCycle = (sub.billing_cycle || '').toLowerCase() === 'yearly' ? 'yearly' : 'monthly';
+                const pricing = sub.plan_id?.pricing?.find(p => p.cycle === normCycle) || sub.plan_id?.pricing?.[0];
+                const amt = sub.final_amount || sub.amount || (pricing ? pricing.price : 0);
+                return `${sub.currency || 'INR'} ${amt}`;
+            }
         },
         {
             header: "Actions",
@@ -224,12 +277,12 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        handleConfirmSubscriptionPayment(sub._id);
+                                        openApprovalModal(sub);
                                     }}
-                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-                                    title="Accept & Activate Subscription"
+                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors flex items-center gap-1 shadow-sm"
+                                    title="Accept & Select Plan Billing Cycle / Price"
                                 >
-                                    Accept
+                                    <Check size={14} /> Accept
                                 </button>
                                 <button
                                     onClick={(e) => {
@@ -439,6 +492,126 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
                     emptyMessage="No subscriptions found"
                 />
             </div>
+
+            {approvalModalSub && (
+                <Modal
+                    isOpen={Boolean(approvalModalSub)}
+                    onClose={() => setApprovalModalSub(null)}
+                    title="Approve Subscription Request"
+                    className="max-w-md"
+                >
+                    <form onSubmit={handleConfirmApprovalSubmit} className="space-y-4">
+                        <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
+                            <div className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-400">
+                                {approvalModalSub.shop_id?.name || 'Shop'}
+                            </div>
+                            <div className={`text-lg font-black ${theme.textHeading} mt-1`}>
+                                {approvalModalSub.plan_id?.name || 'Selected Plan'}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className={`text-xs font-black uppercase tracking-wider ${theme.textMuted}`}>
+                                Billing Cycle (Monthly / Annual)
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => handleCycleChangeInModal('monthly')}
+                                    className={`py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all border ${
+                                        approveCycle === 'monthly'
+                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                                            : `${theme.inputBg} ${theme.textMuted} ${theme.borderLight}`
+                                    }`}
+                                >
+                                    Monthly
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleCycleChangeInModal('yearly')}
+                                    className={`py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all border ${
+                                        approveCycle === 'yearly'
+                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                                            : `${theme.inputBg} ${theme.textMuted} ${theme.borderLight}`
+                                    }`}
+                                >
+                                    Annual (Yearly)
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className={`text-xs font-black uppercase tracking-wider ${theme.textMuted}`}>
+                                Confirmed Paid Amount ({approvalModalSub.currency || 'INR'})
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                required
+                                value={approveAmount}
+                                onChange={(e) => setApproveAmount(e.target.value)}
+                                placeholder="Enter paid plan amount"
+                                className={`w-full p-3.5 rounded-2xl border font-black text-base outline-none focus:border-indigo-500 ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight}`}
+                            />
+                            {approvalModalSub.plan_id?.pricing && (
+                                <div className="text-[10px] font-bold text-gray-500 flex justify-between">
+                                    <span>Monthly: {approvalModalSub.currency || 'INR'} {approvalModalSub.plan_id.pricing.find(p => p.cycle === 'monthly')?.price ?? 0}</span>
+                                    <span>Yearly: {approvalModalSub.currency || 'INR'} {approvalModalSub.plan_id.pricing.find(p => p.cycle === 'yearly')?.price ?? 0}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className={`text-xs font-black uppercase tracking-wider ${theme.textMuted}`}>
+                                Payment Method
+                            </label>
+                            <select
+                                value={approvePaymentMethod}
+                                onChange={(e) => setApprovePaymentMethod(e.target.value)}
+                                className={`w-full p-3.5 rounded-2xl border font-black text-sm outline-none ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight}`}
+                            >
+                                <option value="CASH">Cash</option>
+                                <option value="UPI">UPI</option>
+                                <option value="BANK_TRANSFER">Bank Transfer</option>
+                                <option value="CARD">Credit/Debit Card</option>
+                                <option value="ONLINE">Online Payment</option>
+                                <option value="MANUAL">Manual Confirmation</option>
+                            </select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className={`text-xs font-black uppercase tracking-wider ${theme.textMuted}`}>
+                                Transaction ID / Reference (Optional)
+                            </label>
+                            <input
+                                type="text"
+                                value={approveTransactionId}
+                                onChange={(e) => setApproveTransactionId(e.target.value)}
+                                placeholder="e.g. TXN123456789"
+                                className={`w-full p-3.5 rounded-2xl border font-bold text-sm outline-none focus:border-indigo-500 ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight}`}
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
+                            <button
+                                type="button"
+                                onClick={() => setApprovalModalSub(null)}
+                                className={`flex-1 py-3.5 rounded-2xl font-black uppercase text-xs tracking-wider ${theme.mode === 'dark' ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isApproving}
+                                className="flex-1 py-3.5 rounded-2xl font-black uppercase text-xs tracking-wider bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+                            >
+                                {isApproving ? "Activating…" : "Confirm & Activate Plan"}
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
+            )}
         </div>
     );
 };

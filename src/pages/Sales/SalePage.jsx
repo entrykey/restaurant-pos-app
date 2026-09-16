@@ -13,6 +13,7 @@ import ProductPage from "../Inventory/ProductPage";
 import DatePicker from "../../components/ui/DatePicker";
 import CommonSelect from "../../components/ui/CommonSelect";
 import { toast } from "react-hot-toast";
+import { findTaxForItem, resolveIsExclusiveTax } from "../../utils/taxUtils";
 import { applyBogoQuantity, getCrossItemFreeAdds } from "../../utils/posOfferHelpers";
 import { loadBillPrintSettings, buildBillExtraInfo, buildPrintHeader, printSaleOrder } from "../../utils/printSettingsUtils";
 
@@ -23,17 +24,22 @@ const PAYMENT_METHODS = [
     { id: "ONLINE", label: "Online", icon: CreditCard },
 ];
 
-const calcLineTax = (price, qty, taxPercent) => {
+const calcLineTax = (price, qty, taxPercent, isExclusiveTax = false) => {
     const lineTotal = (Number(price) || 0) * (Number(qty) || 0);
     const r = Number(taxPercent) || 0;
     if (!r) return 0;
-    return parseFloat(((lineTotal * r) / 100).toFixed(4));
+    if (isExclusiveTax) {
+        return parseFloat(((lineTotal * r) / 100).toFixed(4));
+    } else {
+        const baseLine = lineTotal / (1 + r / 100);
+        return parseFloat((lineTotal - baseLine).toFixed(4));
+    }
 };
 
 const SalePage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { activeBranchId, formatCurrency, branches, currentShopId, businessType, organization } = useApp();
+    const { activeBranchId, formatCurrency, branches, currentShopId, businessType, organization, currencySymbol } = useApp();
     const { calculateBillDetails, fetchActiveOffers, dismissOffer, offers } = useOrder();
     const { theme } = useTheme();
 
@@ -41,6 +47,7 @@ const SalePage = () => {
     const [customers, setCustomers] = useState([]);
     const [stockItems, setStockItems] = useState([]);
     const [shopTaxes, setShopTaxes] = useState([]);
+    const [allShopTaxes, setAllShopTaxes] = useState([]);
     const [units, setUnits] = useState([]);
     const [paymentMethod, setPaymentMethod] = useState("CASH");
 
@@ -83,16 +90,22 @@ const SalePage = () => {
             ]);
             setCustomers(Array.isArray(customersData) ? customersData : customersData?.data || []);
             const items = itemsRes.data || [];
+            const allTaxes = Array.isArray(taxesRes) ? taxesRes : [];
+            const activeTaxes = allTaxes.filter(t => t.isActive !== false);
+            setAllShopTaxes(allTaxes);
+            setShopTaxes(activeTaxes);
+
             setStockItems(items.map((item) => {
                 const taxPercent = Number(item.taxPercent || 0);
-                const taxObj = (taxesRes || []).find((t) => t.percentage === taxPercent);
+                const taxObj = findTaxForItem(item, allTaxes.length ? allTaxes : activeTaxes);
+                const isExclusiveTax = resolveIsExclusiveTax(item, taxObj);
+
                 return {
                     ...item,
                     taxPercent,
-                    isExclusiveTax: taxObj ? taxObj.taxType === "EXCLUSIVE" : false,
+                    isExclusiveTax,
                 };
             }));
-            setShopTaxes((taxesRes || []).filter((t) => t.isActive !== false));
             setUnits(unitsRes || []);
         } catch (error) {
             console.error("Error loading sale form data:", error);
@@ -131,10 +144,10 @@ const SalePage = () => {
     const buildLineItem = useCallback((item, quantity) => {
         const sellingPrice = item.pricing?.sellingPrice ?? item.sellingPrice ?? 0;
         const taxPercent = Number(item.taxPercent || 0);
-        const taxObj = item.taxId
-            ? shopTaxes.find((t) => t._id === (item.taxId?._id || item.taxId))
-            : shopTaxes.find((t) => t.percentage === taxPercent);
-        const isExclusiveTax = item.isExclusiveTax ?? (taxObj ? taxObj.taxType === "EXCLUSIVE" : false);
+        const taxList = allShopTaxes.length ? allShopTaxes : shopTaxes;
+        const taxObj = findTaxForItem(item, taxList);
+        const isExclusiveTax = resolveIsExclusiveTax(item, taxObj);
+
         return {
             itemId: item._id || item.itemId,
             name: item.name,
@@ -146,7 +159,7 @@ const SalePage = () => {
             category_id: item.categoryId?._id || item.categoryId || null,
             taxId: item.taxId?._id || item.taxId || null,
             taxPercent,
-            taxAmount: calcLineTax(sellingPrice, quantity, taxPercent),
+            taxAmount: calcLineTax(sellingPrice, quantity, taxPercent, isExclusiveTax),
             isExclusiveTax,
             unitId: item.unitId?._id || item.unitId,
             primaryUnitName: item.unitId?.name || "",
@@ -156,7 +169,7 @@ const SalePage = () => {
             conversionFactor: item.conversionFactor || 1,
             selectedUnit: item.defaultSaleUnit || item.defaultPurchaseUnit || "PRIMARY",
         };
-    }, [shopTaxes]);
+    }, [shopTaxes, allShopTaxes]);
 
     const appendCrossItemFreeAdds = useCallback((items, sourceItemId, paidQty, catalog) => {
         const crossAdds = getCrossItemFreeAdds(paidQty, sourceItemId, offers, catalog);
@@ -169,7 +182,7 @@ const SalePage = () => {
                 next[existingIdx] = {
                     ...row,
                     quantity: newQty,
-                    taxAmount: calcLineTax(row.sellingPrice, newQty, row.taxPercent),
+                    taxAmount: calcLineTax(row.sellingPrice, newQty, row.taxPercent, row.isExclusiveTax),
                 };
             } else {
                 next.push(buildLineItem(item, quantity));
@@ -198,7 +211,7 @@ const SalePage = () => {
                     paidQuantity: newPaid,
                     freeQuantity: withBogo - newPaid,
                     quantity: withBogo,
-                    taxAmount: calcLineTax(row.sellingPrice, withBogo, row.taxPercent),
+                    taxAmount: calcLineTax(row.sellingPrice, withBogo, row.taxPercent, row.isExclusiveTax),
                 };
             } else {
                 const withBogo = applyBogoQuantity(1, item._id, offers);
@@ -258,7 +271,11 @@ const SalePage = () => {
 
         if (needsRecalc) {
             const row = updatedItems[index];
-            row.taxAmount = calcLineTax(row.sellingPrice, row.quantity, row.taxPercent);
+            const taxList = allShopTaxes.length ? allShopTaxes : shopTaxes;
+            const taxObj = findTaxForItem(row, taxList);
+            const isExclusiveTax = resolveIsExclusiveTax(row, taxObj);
+            row.isExclusiveTax = isExclusiveTax;
+            row.taxAmount = calcLineTax(row.sellingPrice, row.quantity, row.taxPercent, isExclusiveTax);
         }
 
         setFormData((prev) => ({
@@ -374,10 +391,9 @@ const SalePage = () => {
                 itemName: it.name,
                 price: Number(it.sellingPrice),
                 quantity: Number(it.quantity),
-                totalAmount:
-                    Number(it.quantity) * Number(it.sellingPrice) +
-                    (Number(it.taxAmount) || 0) -
-                    (Number(it.discountAmount) || 0),
+                totalAmount: it.isExclusiveTax
+                    ? Number(it.quantity) * Number(it.sellingPrice) + (Number(it.taxAmount) || 0) - (Number(it.discountAmount) || 0)
+                    : Number(it.quantity) * Number(it.sellingPrice) - (Number(it.discountAmount) || 0),
                 taxPercent: it.taxPercent || 0,
                 taxAmount: it.taxAmount || 0,
                 discountAmount: it.discountAmount || 0,
@@ -616,6 +632,27 @@ const SalePage = () => {
                             labelKey="name"
                             valueKey="_id"
                             className="w-full"
+                            renderOption={(item) => (
+                                <div className="flex items-center justify-between gap-2 py-1">
+                                    <div>
+                                        <div className={`font-black ${theme.textPrimary}`}>{item.name}</div>
+                                        <div className={`text-[10px] font-bold ${theme.textMuted}`}>
+                                            {item.itemCode ? `Code: ${item.itemCode}` : ''}
+                                            {item.quantityOnHand !== undefined ? ` • Stock: ${item.quantityOnHand}` : ''}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-black text-xs text-indigo-600">
+                                            {formatCurrency(item.pricing?.sellingPrice ?? item.sellingPrice ?? 0)}
+                                        </span>
+                                        {item.taxPercent > 0 && (
+                                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-lg border ${item.isExclusiveTax ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300'}`}>
+                                                {item.taxPercent}% {item.isExclusiveTax ? 'Excl.' : 'Incl.'}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                             extraAction={
                                 <button
                                     type="button"
@@ -647,17 +684,16 @@ const SalePage = () => {
                                                 <th className="py-4 px-2 w-24">Qty</th>
                                                 <th className="py-4 px-2 w-32">Price</th>
                                                 <th className="py-4 px-2 w-24">Tax %</th>
-                                                <th className="py-4 px-2 w-28">Disc ₹</th>
+                                                <th className="py-4 px-2 w-28">Disc {currencySymbol || '₹'}</th>
                                                 <th className="py-4 px-2 text-right">Line total</th>
                                                 <th className="py-4 w-12" />
                                             </tr>
                                         </thead>
                                         <tbody className={`divide-y ${theme.borderLight}`}>
                                             {formData.items.map((row, idx) => {
-                                                const lineTotal =
-                                                    row.quantity * row.sellingPrice +
-                                                    (row.taxAmount || 0) -
-                                                    (row.discountAmount || 0);
+                                                const lineTotal = row.isExclusiveTax
+                                                    ? row.quantity * row.sellingPrice + (row.taxAmount || 0) - (row.discountAmount || 0)
+                                                    : row.quantity * row.sellingPrice - (row.discountAmount || 0);
                                                 const freeItemInfo = billDetails.freeItems?.find(
                                                     (fi) => String(fi.itemId) === String(row.itemId)
                                                 );
@@ -668,7 +704,9 @@ const SalePage = () => {
                                                             <p className={`font-black ${theme.textPrimary}`}>
                                                                 {row.name}
                                                                 {row.taxPercent > 0 && (
-                                                                    <span className={`text-[10px] font-bold ${theme.textMuted} ml-1`}>({row.taxPercent}%)</span>
+                                                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-lg border ml-1.5 inline-block ${row.isExclusiveTax ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300'}`}>
+                                                                        {row.taxPercent}% {row.isExclusiveTax ? 'Excl.' : 'Incl.'}
+                                                                    </span>
                                                                 )}
                                                             </p>
                                                             <p className={`text-[10px] font-bold ${theme.textMuted}`}>{row.itemCode}</p>
@@ -706,7 +744,11 @@ const SalePage = () => {
                                                         </td>
                                                         <td className="py-4 px-2">
                                                             <input type="number" min="0" step="any" value={row.discountAmount || ""}
-                                                                onChange={(e) => handleItemChange(idx, "discountAmount", parseFloat(e.target.value) || 0)}
+                                                                onChange={(e) => {
+                                                                    let val = parseFloat(e.target.value) || 0;
+                                                                    if (val < 0) val = 0;
+                                                                    handleItemChange(idx, "discountAmount", val);
+                                                                }}
                                                                 placeholder="0"
                                                                 className={`w-full p-2 rounded-xl font-black text-center text-emerald-600 ${theme.inputBg} border ${theme.borderLight}`} />
                                                         </td>
@@ -726,7 +768,9 @@ const SalePage = () => {
                                 {/* Mobile/Tablet cards below lg */}
                                 <div className={`lg:hidden divide-y ${theme.borderLight}`}>
                                     {formData.items.map((row, idx) => {
-                                        const lineTotal = row.quantity * row.sellingPrice + (row.taxAmount || 0) - (row.discountAmount || 0);
+                                        const lineTotal = row.isExclusiveTax
+                                            ? row.quantity * row.sellingPrice + (row.taxAmount || 0) - (row.discountAmount || 0)
+                                            : row.quantity * row.sellingPrice - (row.discountAmount || 0);
                                         const freeItemInfo = billDetails.freeItems?.find(
                                             (fi) => String(fi.itemId) === String(row.itemId)
                                         );
@@ -734,7 +778,14 @@ const SalePage = () => {
                                             <div key={row.itemId} className="py-3 space-y-3">
                                                 <div className="flex items-start justify-between gap-2">
                                                     <div>
-                                                        <p className={`font-black ${theme.textPrimary}`}>{row.name}</p>
+                                                        <p className={`font-black ${theme.textPrimary}`}>
+                                                            {row.name}
+                                                            {row.taxPercent > 0 && (
+                                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-lg border ml-1.5 inline-block ${row.isExclusiveTax ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300'}`}>
+                                                                    {row.taxPercent}% {row.isExclusiveTax ? 'Excl.' : 'Incl.'}
+                                                                </span>
+                                                            )}
+                                                        </p>
                                                         <p className={`text-[10px] font-bold ${theme.textMuted}`}>{row.itemCode}</p>
                                                         {freeItemInfo && (
                                                             <span className="inline-block mt-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">
@@ -769,10 +820,14 @@ const SalePage = () => {
                                                             className={`w-full p-2 rounded-xl font-black text-center text-sm ${theme.inputBg} border ${theme.borderLight}`} />
                                                     </div>
                                                     <div>
-                                                        <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Disc ₹</p>
+                                                        <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Disc {currencySymbol || '₹'}</p>
                                                         <input type="number" min="0" step="any" value={row.discountAmount || ""}
-                                                            onChange={(e) => handleItemChange(idx, "discountAmount", parseFloat(e.target.value) || 0)}
-                                                            placeholder="0"
+                                                             onChange={(e) => {
+                                                                 let val = parseFloat(e.target.value) || 0;
+                                                                 if (val < 0) val = 0;
+                                                                 handleItemChange(idx, "discountAmount", val);
+                                                             }}
+                                                             placeholder="0"
                                                             className={`w-full p-2 rounded-xl font-black text-center text-sm text-emerald-600 ${theme.inputBg} border ${theme.borderLight}`} />
                                                     </div>
                                                 </div>
@@ -817,7 +872,7 @@ const SalePage = () => {
                                                 <button type="button"
                                                     onClick={() => setDiscountType('flat')}
                                                     className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}>
-                                                    ₹ Flat
+                                                    {currencySymbol || '₹'} Flat
                                                 </button>
                                                 <button type="button"
                                                     onClick={() => setDiscountType('percent')}
@@ -829,16 +884,21 @@ const SalePage = () => {
                                         <input
                                             type="number"
                                             min="0"
+                                            max={discountType === 'percent' ? "100" : undefined}
                                             value={formData.discountTotal}
                                             onChange={(e) => {
-                                                const raw = parseFloat(e.target.value) || 0;
-                                                // If percent, compute actual discount amount from subtotal
+                                                let raw = parseFloat(e.target.value) || 0;
+                                                if (raw < 0) raw = 0;
+                                                if (discountType === 'percent' && raw > 100) {
+                                                    raw = 100;
+                                                    toast.error("Percentage discount cannot exceed 100%");
+                                                }
                                                 const discAmt = discountType === 'percent'
                                                     ? parseFloat(((billDetails.subtotal * raw) / 100).toFixed(4))
                                                     : raw;
                                                 setFormData((prev) => ({ ...prev, discountTotal: discAmt }));
                                             }}
-                                            placeholder={discountType === 'percent' ? "Enter %" : "Enter amount"}
+                                            placeholder={discountType === 'percent' ? "Enter % (Max 100)" : "Enter amount"}
                                             className={`w-full px-4 py-3 font-black outline-none bg-transparent ${theme.textPrimary}`}
                                         />
                                     </div>

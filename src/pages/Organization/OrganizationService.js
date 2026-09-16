@@ -157,20 +157,24 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
     }));
 
     const availablePlans = (data.plans || []).map(p => {
-      const monthlyPrice = p.pricing.find(pr => pr.cycle === 'monthly')?.price || 0;
+      const monthlyPrice = p.pricing?.find(pr => pr.cycle === 'monthly')?.price ?? 0;
+      const yearlyPrice = p.pricing?.find(pr => pr.cycle === 'yearly')?.price ?? 0;
       return {
         id: p._id,
         name: p.name,
         price: monthlyPrice,
-        currency: p.currency,
-        priceLabel: `${p.currency} ${monthlyPrice}/mo`,
-        branchesLimit: p.limits.branches,
-        branchesLabel: `${p.limits.branches} Branches`,
+        monthlyPrice,
+        yearlyPrice,
+        currency: p.currency || 'INR',
+        priceLabel: `${p.currency || 'INR'} ${monthlyPrice}/mo`,
+        yearlyPriceLabel: `${p.currency || 'INR'} ${yearlyPrice}/yr`,
+        branchesLimit: p.limits?.branches ?? 1,
+        branchesLabel: `${p.limits?.branches ?? 1} Branches`,
         features: [
-          `${p.limits.branches} Branches`,
-          `${p.limits.users} Users`,
-          `${p.limits.products} Products`,
-          `${p.limits.ordersPerMonth} Orders/mo`
+          `${p.limits?.branches ?? 1} Branches`,
+          `${p.limits?.users ?? 1} Users`,
+          `${p.limits?.products ?? 100} Products`,
+          `${p.limits?.ordersPerMonth ?? 1000} Orders/mo`
         ],
         highlighted: false,
         hasTrial: p.hasTrial,

@@ -13,7 +13,7 @@ import { getErrorMessage } from '../../utils/errorUtils';
 const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuccess, formatCurrency: propFormatCurrency }) => {
     const { theme } = useTheme();
     const { organization, formatCurrency } = useApp();
-    const currency = organization?.defaultCurrency || 'USD';
+    const currency = organization?.defaultCurrency || 'INR';
     const [adjustmentType, setAdjustmentType] = useState('ADD'); // 'ADD', 'SUBTRACT', or 'SET'
     const [quantity, setQuantity] = useState('');
     const [price, setPrice] = useState('');

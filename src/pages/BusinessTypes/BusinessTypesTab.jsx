@@ -102,6 +102,11 @@ const BusinessTypesTab = () => {
         });
     };
 
+    const formatFeatureLabel = (key) => {
+        const spaced = key.replace(/([A-Z])/g, ' $1').trim();
+        return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -149,7 +154,7 @@ const BusinessTypesTab = () => {
                                         <div className={`w-5 h-5 rounded flex items-center justify-center border-2 ${formData.features[key] ? 'bg-indigo-600 border-indigo-600 text-white' : `${theme.inputBorder} ${theme.inputBg}`}`}>
                                             {formData.features[key] && <Check size={14} strokeWidth={3} />}
                                         </div>
-                                        <span className={`text-sm font-bold capitalize ${theme.textPrimary}`}>{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                                        <span className={`text-sm font-bold ${theme.textPrimary}`}>{formatFeatureLabel(key)}</span>
                                     </button>
                                 ))}
                             </div>
@@ -200,11 +205,13 @@ const BusinessTypesTab = () => {
                             </div>
 
                             <div className="flex flex-wrap gap-2">
-                                {Object.entries(type.features || {}).filter(([_, val]) => val).map(([key]) => (
-                                    <span key={key} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-black rounded ${theme.primaryIconBg} ${theme.primaryIconText}`}>
-                                        {key}
-                                    </span>
-                                ))}
+                                {Object.keys(defaultFeatures)
+                                    .filter(key => type.features && type.features[key])
+                                    .map((key) => (
+                                        <span key={key} className={`px-2.5 py-1 text-[11px] font-bold rounded-lg ${theme.primaryIconBg} ${theme.primaryIconText}`}>
+                                            {formatFeatureLabel(key)}
+                                        </span>
+                                    ))}
                             </div>
                         </div>
                     ))}

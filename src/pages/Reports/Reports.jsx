@@ -4,6 +4,7 @@ import {
     FileSpreadsheet,
     Download,
     TrendingUp,
+    TrendingDown,
     Utensils,
     Package,
     CreditCard,
@@ -17,7 +18,10 @@ import {
     Users,
     ChevronRight,
     Scale,
-    Landmark
+    Landmark,
+    ShoppingBag,
+    ArrowUpRight,
+    ArrowDownRight
 } from 'lucide-react';
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from '../../components/CommonTable';
@@ -27,6 +31,7 @@ import CommonSelect from "../../components/ui/CommonSelect";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { usePermission } from "../../auth/usePermission";
 import api, { reportsService } from "../../services/api";
+import { PurchaseService } from "../../services/PurchaseService";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { printCustomHtml, escapeHtml } from "../../utils/print";
@@ -65,16 +70,19 @@ const Reports = ({
     branchId
 }) => {
     const { theme, themeName } = useTheme();
+    const isDark = themeName === 'dark' || themeName === 'ocean';
     const { organization, branches, currentShopId, activeBranchId, formatCurrency } = useApp();
-    const currencyRaw = organization?.defaultCurrency || 'USD';
-    const currency = typeof currencyRaw === 'object' ? (currencyRaw.code || 'USD') : currencyRaw;
+    const currencyRaw = organization?.defaultCurrency || 'INR';
+    const currency = typeof currencyRaw === 'object' ? (currencyRaw.code || 'INR') : currencyRaw;
     const { can } = usePermission();
     const [reportCategory, setReportCategory] = useState("sales");
     const today = new Date().toISOString().split("T")[0];
     const [filterStartDate, setFilterStartDate] = useState(today);
     const [filterEndDate, setFilterEndDate] = useState(today);
     const [salesHistory, setSalesHistory] = useState([]);
+    const [purchasesHistory, setPurchasesHistory] = useState([]);
     const [expensesHistory, setExpensesHistory] = useState([]);
+    const [paymentFilter, setPaymentFilter] = useState("all"); // 'all' | 'sales' | 'purchases'
     const [performanceReport, setPerformanceReport] = useState([]);
     const [customerReport, setCustomerReport] = useState([]);
     const [supplierReport, setSupplierReport] = useState([]);
@@ -139,7 +147,7 @@ const Reports = ({
                 endDate: filterEndDate
             };
 
-            const [salesRes, expensesRes, perfRes, custRes, suppRes, plRes, bsRes] = await Promise.all([
+            const [salesRes, expensesRes, perfRes, custRes, suppRes, plRes, bsRes, purchasesRes] = await Promise.all([
                 reportsService.getSalesReport(params),
                 reportsService.getExpensesReport(params),
                 reportsService.getPerformanceReport(params),
@@ -147,12 +155,14 @@ const Reports = ({
                 reportsService.getSupplierReport(params),
                 reportsService.getProfitLossReport(params),
                 reportsService.getBalanceSheetReport(params),
+                PurchaseService.getPurchases(params).catch(() => []),
             ]);
             console.log("DEBUG_REPORTS_DATA_RESPONSES:", {
                 sales: salesRes.data,
                 expenses: expensesRes.data,
                 customers: custRes.data,
-                suppliers: suppRes.data
+                suppliers: suppRes.data,
+                purchases: purchasesRes
             });
 
             setSalesHistory(unwrapApiData(salesRes));
@@ -162,6 +172,7 @@ const Reports = ({
             setSupplierReport(unwrapApiData(suppRes));
             setProfitLossReport(plRes?.data || plRes || null);
             setBalanceSheetReport(bsRes?.data || bsRes || null);
+            setPurchasesHistory(unwrapApiData(purchasesRes));
         } catch (error) {
             console.error("Failed to fetch report data:", error);
         } finally {
@@ -206,6 +217,88 @@ const Reports = ({
         () => salesHistory.filter((s) => isWithinRange(s.date)),
         [salesHistory, filterStartDate, filterEndDate]
     );
+
+    const normalizePaymentMethod = React.useCallback((rawMethod) => {
+        if (!rawMethod) return "Cash";
+        const str = String(rawMethod).trim().toUpperCase();
+        if (str.includes("CASH")) return "Cash";
+        if (str.includes("UPI") || str.includes("GPAY") || str.includes("PAYTM") || str.includes("PHONEPE")) return "UPI";
+        if (str.includes("CARD") || str.includes("CREDIT") || str.includes("DEBIT")) return "Card";
+        if (str.includes("BANK") || str.includes("TRANSFER") || str.includes("NET")) return "Bank Transfer";
+        if (str.includes("CHEQUE") || str.includes("CHECK")) return "Cheque";
+        return rawMethod.charAt(0).toUpperCase() + rawMethod.slice(1).toLowerCase();
+    }, []);
+
+    const paymentMethodStats = React.useMemo(() => {
+        const statsMap = {};
+
+        const ensureMethod = (m) => {
+            const key = normalizePaymentMethod(m);
+            if (!statsMap[key]) {
+                statsMap[key] = {
+                    name: key,
+                    salesAmount: 0,
+                    salesCount: 0,
+                    purchaseAmount: 0,
+                    purchaseCount: 0,
+                };
+            }
+            return statsMap[key];
+        };
+
+        // Standard payment modes initialized
+        ["Cash", "UPI", "Card", "Bank Transfer"].forEach(ensureMethod);
+
+        // Process Sales Payments
+        salesHistory
+            .filter((s) => isWithinRange(s.date || s.createdAt))
+            .forEach((sale) => {
+                if (sale.payments && Array.isArray(sale.payments) && sale.payments.length > 0) {
+                    sale.payments.forEach((p) => {
+                        const obj = ensureMethod(p.method || p.paymentMethod || p.paymentMode || sale.method);
+                        obj.salesAmount += Number(p.amount || 0);
+                        obj.salesCount += 1;
+                    });
+                } else {
+                    const method = sale.method || sale.paymentMethod || sale.paymentMode || "Cash";
+                    const amount = Number(sale.amount || sale.totalAmount || sale.grandTotal || 0);
+                    const obj = ensureMethod(method);
+                    obj.salesAmount += amount;
+                    obj.salesCount += 1;
+                }
+            });
+
+        // Process Purchases Payments
+        purchasesHistory
+            .filter((p) => isWithinRange(p.date || p.purchaseDate || p.createdAt) && p.status !== 'CANCELLED')
+            .forEach((pur) => {
+                if (pur.payments && Array.isArray(pur.payments) && pur.payments.length > 0) {
+                    pur.payments.forEach((p) => {
+                        const obj = ensureMethod(p.paymentMethod || p.paymentMode || p.method || pur.paymentMethod);
+                        obj.purchaseAmount += Number(p.amount || 0);
+                        obj.purchaseCount += 1;
+                    });
+                } else {
+                    const method = pur.paymentMethod || pur.paymentMode || pur.method || "Cash";
+                    const amount = Number(pur.paidAmount !== undefined ? pur.paidAmount : (pur.grandTotal || pur.totalAmount || pur.total || 0));
+                    const obj = ensureMethod(method);
+                    obj.purchaseAmount += amount;
+                    obj.purchaseCount += 1;
+                }
+            });
+
+        return Object.values(statsMap).map((item) => ({
+            ...item,
+            netAmount: item.salesAmount - item.purchaseAmount,
+            totalCount: item.salesCount + item.purchaseCount,
+        }));
+    }, [salesHistory, purchasesHistory, isWithinRange, normalizePaymentMethod]);
+
+    const totalSalesPayments = React.useMemo(() => paymentMethodStats.reduce((acc, curr) => acc + curr.salesAmount, 0), [paymentMethodStats]);
+    const totalSalesCount = React.useMemo(() => paymentMethodStats.reduce((acc, curr) => acc + curr.salesCount, 0), [paymentMethodStats]);
+    const totalPurchasePayments = React.useMemo(() => paymentMethodStats.reduce((acc, curr) => acc + curr.purchaseAmount, 0), [paymentMethodStats]);
+    const totalPurchaseCount = React.useMemo(() => paymentMethodStats.reduce((acc, curr) => acc + curr.purchaseCount, 0), [paymentMethodStats]);
+    const netPaymentFlow = totalSalesPayments - totalPurchasePayments;
 
     const togglePlSection = (sectionId) => {
         setExpandedPlSections((prev) => ({
@@ -642,12 +735,22 @@ const Reports = ({
 
             {/* Global Summary Widgets */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className={`p-5 ${theme.infoBg} rounded-2xl border ${theme.infoBorder} shadow-sm`}>
+                <div className={`p-5 rounded-2xl border transition-all ${
+                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                }`}>
                     <div className="flex items-center gap-3 mb-2">
-                        <TrendingUp size={20} className={theme.infoText} />
-                        <p className={`text-xs font-bold ${theme.infoText} opacity-70 uppercase`}>Total Revenue</p>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                            isDark ? 'bg-blue-950/60 text-blue-400' : 'bg-blue-50 text-blue-600'
+                        }`}>
+                            <TrendingUp size={18} />
+                        </div>
+                        <p className={`text-xs font-bold uppercase tracking-wider ${
+                            isDark ? 'text-slate-400' : 'text-gray-600'
+                        }`}>Total Revenue</p>
                     </div>
-                    <p className={`text-2xl font-black ${theme.infoText}`}>
+                    <p className={`text-2xl md:text-3xl font-black ${
+                        isDark ? 'text-white' : 'text-gray-900'
+                    }`}>
                         {formatCurrency(
                             salesHistory
                                 .filter((s) => isWithinRange(s.date))
@@ -656,21 +759,41 @@ const Reports = ({
                         )}
                     </p>
                 </div>
-                <div className={`p-5 ${theme.successBg} rounded-2xl border ${theme.successBorder || 'border-green-100'} shadow-sm`}>
+                <div className={`p-5 rounded-2xl border transition-all ${
+                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                }`}>
                     <div className="flex items-center gap-3 mb-2">
-                        <ReceiptText size={20} className={theme.successText} />
-                        <p className={`text-xs font-bold ${theme.successText} opacity-70 uppercase`}>Total Orders</p>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                            isDark ? 'bg-emerald-950/60 text-emerald-400' : 'bg-emerald-50 text-emerald-600'
+                        }`}>
+                            <ReceiptText size={18} />
+                        </div>
+                        <p className={`text-xs font-bold uppercase tracking-wider ${
+                            isDark ? 'text-slate-400' : 'text-gray-600'
+                        }`}>Total Orders</p>
                     </div>
-                    <p className={`text-2xl font-black ${theme.successText}`}>
+                    <p className={`text-2xl md:text-3xl font-black ${
+                        isDark ? 'text-white' : 'text-gray-900'
+                    }`}>
                         {salesHistory.filter((s) => isWithinRange(s.date)).length}
                     </p>
                 </div>
-                <div className={`p-5 ${theme.warningBg} rounded-2xl border ${theme.warningBorder} shadow-sm`}>
+                <div className={`p-5 rounded-2xl border transition-all ${
+                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                }`}>
                     <div className="flex items-center gap-3 mb-2">
-                        <Coins size={20} className={theme.warningText} />
-                        <p className={`text-xs font-bold ${theme.warningText} opacity-70 uppercase`}>Total Expenses</p>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                            isDark ? 'bg-amber-950/60 text-amber-400' : 'bg-amber-50 text-amber-600'
+                        }`}>
+                            <Coins size={18} />
+                        </div>
+                        <p className={`text-xs font-bold uppercase tracking-wider ${
+                            isDark ? 'text-slate-400' : 'text-gray-600'
+                        }`}>Total Expenses</p>
                     </div>
-                    <p className={`text-2xl font-black ${theme.warningText}`}>
+                    <p className={`text-2xl md:text-3xl font-black ${
+                        isDark ? 'text-white' : 'text-gray-900'
+                    }`}>
                         {formatCurrency(
                             expensesHistory
                                 .filter((e) => isWithinRange(e.date))
@@ -679,12 +802,22 @@ const Reports = ({
                         )}
                     </p>
                 </div>
-                <div className={`p-5 ${theme.surfaceBg} rounded-2xl border ${theme.borderLight} shadow-sm`}>
+                <div className={`p-5 rounded-2xl border transition-all ${
+                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                }`}>
                     <div className="flex items-center gap-3 mb-2">
-                        <Scale size={20} className="text-indigo-600" />
-                        <p className={`text-xs font-bold text-indigo-600 opacity-70 uppercase`}>Net Profit</p>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                            isDark ? 'bg-indigo-950/60 text-indigo-400' : 'bg-indigo-50 text-indigo-600'
+                        }`}>
+                            <Scale size={18} />
+                        </div>
+                        <p className={`text-xs font-bold uppercase tracking-wider ${
+                            isDark ? 'text-slate-400' : 'text-gray-600'
+                        }`}>Net Profit</p>
                     </div>
-                    <p className={`text-2xl font-black text-indigo-600`}>
+                    <p className={`text-2xl md:text-3xl font-black ${
+                        isDark ? 'text-white' : 'text-gray-900'
+                    }`}>
                         {formatCurrency(
                             salesHistory
                                 .filter((s) => isWithinRange(s.date))
@@ -732,9 +865,22 @@ const Reports = ({
                                 Sales Summary ({rangeLabel})
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className={`p-6 ${theme.infoBg} rounded-2xl border ${theme.infoBorder}`}>
-                                    <p className={`text-xs font-bold ${theme.infoText} opacity-70 uppercase`}>Total Revenue</p>
-                                    <p className={`text-3xl font-black ${theme.infoText} mt-2`}>
+                                <div className={`p-5 rounded-2xl border transition-all ${
+                                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                                }`}>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                                            isDark ? 'bg-blue-950/60 text-blue-400' : 'bg-blue-50 text-blue-600'
+                                        }`}>
+                                            <TrendingUp size={16} />
+                                        </div>
+                                        <p className={`text-xs font-bold uppercase tracking-wider ${
+                                            isDark ? 'text-slate-400' : 'text-gray-600'
+                                        }`}>Total Revenue</p>
+                                    </div>
+                                    <p className={`text-2xl md:text-3xl font-black ${
+                                        isDark ? 'text-white' : 'text-gray-900'
+                                    }`}>
                                         {formatCurrency(
                                             salesHistory
                                                 .filter((s) => isWithinRange(s.date))
@@ -743,15 +889,41 @@ const Reports = ({
                                         )}
                                     </p>
                                 </div>
-                                <div className={`p-6 ${theme.successBg} rounded-2xl border ${theme.successBorder || 'border-green-100'}`}>
-                                    <p className={`text-xs font-bold ${theme.successText} opacity-70 uppercase`}>Total Orders</p>
-                                    <p className={`text-3xl font-black ${theme.successText} mt-2`}>
+                                <div className={`p-5 rounded-2xl border transition-all ${
+                                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                                }`}>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                                            isDark ? 'bg-emerald-950/60 text-emerald-400' : 'bg-emerald-50 text-emerald-600'
+                                        }`}>
+                                            <ReceiptText size={16} />
+                                        </div>
+                                        <p className={`text-xs font-bold uppercase tracking-wider ${
+                                            isDark ? 'text-slate-400' : 'text-gray-600'
+                                        }`}>Total Orders</p>
+                                    </div>
+                                    <p className={`text-2xl md:text-3xl font-black ${
+                                        isDark ? 'text-white' : 'text-gray-900'
+                                    }`}>
                                         {salesHistory.filter((s) => isWithinRange(s.date)).length}
                                     </p>
                                 </div>
-                                <div className={`p-6 ${theme.warningBg} rounded-2xl border ${theme.warningBorder}`}>
-                                    <p className={`text-xs font-bold ${theme.warningText} opacity-70 uppercase`}>Avg Bill Value</p>
-                                    <p className={`text-3xl font-black ${theme.warningText} mt-2`}>
+                                <div className={`p-5 rounded-2xl border transition-all ${
+                                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                                }`}>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                                            isDark ? 'bg-amber-950/60 text-amber-400' : 'bg-amber-50 text-amber-600'
+                                        }`}>
+                                            <Coins size={16} />
+                                        </div>
+                                        <p className={`text-xs font-bold uppercase tracking-wider ${
+                                            isDark ? 'text-slate-400' : 'text-gray-600'
+                                        }`}>Avg Bill Value</p>
+                                    </div>
+                                    <p className={`text-2xl md:text-3xl font-black ${
+                                        isDark ? 'text-white' : 'text-gray-900'
+                                    }`}>
                                         {formatCurrency(
                                             salesHistory.filter((s) => isWithinRange(s.date)).length
                                                 ? salesHistory
@@ -914,35 +1086,271 @@ const Reports = ({
                     {/* 4. PAYMENT MODES */}
                     {reportCategory === "payments" && (
                         <div className="space-y-6">
-                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
-                                Payment Methods
-                            </h3>
+                            {/* Header & Filter Controls */}
+                            <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-5 ${
+                                isDark ? 'border-slate-800' : 'border-gray-200'
+                            }`}>
+                                <div>
+                                    <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                        Payment Methods & Cashflow
+                                    </h3>
+                                    <p className={`text-xs mt-1 font-medium ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>
+                                        Breakdown of sales collections (Inflow) and purchase payments (Outflow).
+                                    </p>
+                                </div>
+                                {/* Filter Toggle Tabs: All / Sales Only / Purchases Only */}
+                                <div className={`flex items-center p-1 rounded-xl border ${
+                                    isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-gray-100 border-gray-300'
+                                }`}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPaymentFilter("all")}
+                                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                            paymentFilter === "all"
+                                                ? isDark ? "bg-slate-900 text-indigo-400 shadow-xs" : "bg-white text-indigo-600 border border-gray-200 shadow-xs"
+                                                : isDark ? "text-slate-400 hover:text-white" : "text-gray-600 hover:text-gray-900"
+                                        }`}
+                                    >
+                                        <span>All Transactions</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPaymentFilter("sales")}
+                                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                            paymentFilter === "sales"
+                                                ? isDark ? "bg-slate-900 text-emerald-400 shadow-xs" : "bg-white text-emerald-600 border border-gray-200 shadow-xs"
+                                                : isDark ? "text-slate-400 hover:text-emerald-400" : "text-gray-600 hover:text-emerald-600"
+                                        }`}
+                                    >
+                                        <TrendingUp size={14} />
+                                        <span>Sales Only</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPaymentFilter("purchases")}
+                                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                            paymentFilter === "purchases"
+                                                ? isDark ? "bg-slate-900 text-amber-400 shadow-xs" : "bg-white text-amber-600 border border-gray-200 shadow-xs"
+                                                : isDark ? "text-slate-400 hover:text-amber-400" : "text-gray-600 hover:text-amber-600"
+                                        }`}
+                                    >
+                                        <ShoppingBag size={14} />
+                                        <span>Purchases Only</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Summary Metric Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className={`p-5 rounded-2xl border transition-all space-y-2 ${
+                                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                                }`}>
+                                    <div className="flex items-center justify-between">
+                                        <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
+                                            isDark ? 'text-slate-400' : 'text-gray-600'
+                                        }`}>
+                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${
+                                                isDark ? 'bg-emerald-950/60 text-emerald-400' : 'bg-emerald-50 text-emerald-600'
+                                            }`}>
+                                                <TrendingUp size={14} />
+                                            </div>
+                                            Sales Collected (Inflow)
+                                        </span>
+                                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                            isDark ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50' : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                        }`}>
+                                            {totalSalesCount} Sales
+                                        </span>
+                                    </div>
+                                    <p className={`text-2xl font-black ${isDark ? 'text-white' : 'text-gray-900'} mt-1`}>
+                                        {formatCurrency(totalSalesPayments, currency)}
+                                    </p>
+                                </div>
+
+                                <div className={`p-5 rounded-2xl border transition-all space-y-2 ${
+                                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                                }`}>
+                                    <div className="flex items-center justify-between">
+                                        <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
+                                            isDark ? 'text-slate-400' : 'text-gray-600'
+                                        }`}>
+                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${
+                                                isDark ? 'bg-amber-950/60 text-amber-400' : 'bg-amber-50 text-amber-600'
+                                            }`}>
+                                                <ShoppingBag size={14} />
+                                            </div>
+                                            Purchases Paid (Outflow)
+                                        </span>
+                                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                            isDark ? 'bg-amber-950/60 text-amber-300 border-amber-800/50' : 'bg-amber-50 text-amber-800 border-amber-300'
+                                        }`}>
+                                            {totalPurchaseCount} Purchases
+                                        </span>
+                                    </div>
+                                    <p className={`text-2xl font-black ${isDark ? 'text-white' : 'text-gray-900'} mt-1`}>
+                                        {formatCurrency(totalPurchasePayments, currency)}
+                                    </p>
+                                </div>
+
+                                <div className={`p-5 rounded-2xl border transition-all space-y-2 ${
+                                    isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                                }`}>
+                                    <div className="flex items-center justify-between">
+                                        <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
+                                            isDark ? 'text-slate-400' : 'text-gray-600'
+                                        }`}>
+                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${
+                                                isDark ? 'bg-indigo-950/60 text-indigo-400' : 'bg-indigo-50 text-indigo-600'
+                                            }`}>
+                                                <Scale size={14} />
+                                            </div>
+                                            Net Payment Flow
+                                        </span>
+                                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                            netPaymentFlow >= 0 
+                                                ? isDark ? 'bg-indigo-950/60 text-indigo-300 border-indigo-800/50' : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                                                : isDark ? 'bg-rose-950/60 text-rose-300 border-rose-800/50' : 'bg-rose-50 text-rose-800 border-rose-300'
+                                        }`}>
+                                            {netPaymentFlow >= 0 ? 'Positive Cashflow' : 'Negative Cashflow'}
+                                        </span>
+                                    </div>
+                                    <p className={`text-2xl font-black ${
+                                        netPaymentFlow >= 0 ? isDark ? 'text-white' : 'text-gray-900' : 'text-rose-600'
+                                    } mt-1`}>
+                                        {formatCurrency(netPaymentFlow, currency)}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Payment Methods Cards */}
                             <div className="space-y-4">
-                                {["Cash", "UPI", "Card"].map((method) => {
-                                    const total = salesHistory
-                                        .filter((s) => isWithinRange(s.date) && s.method === method)
-                                        .reduce((a, b) => a + b.amount, 0);
-                                    const count = salesHistory.filter(
-                                        (s) => isWithinRange(s.date) && s.method === method
-                                    ).length;
+                                {paymentMethodStats.map((item) => {
+                                    const { name, salesAmount, salesCount, purchaseAmount, purchaseCount, netAmount, totalCount } = item;
+                                    
+                                    if (paymentFilter === "sales" && salesAmount === 0 && salesCount === 0) return null;
+                                    if (paymentFilter === "purchases" && purchaseAmount === 0 && purchaseCount === 0) return null;
+                                    if (paymentFilter === "all" && totalCount === 0 && salesAmount === 0 && purchaseAmount === 0) return null;
+
+                                    const displayAmount = paymentFilter === "sales" 
+                                        ? salesAmount 
+                                        : paymentFilter === "purchases" 
+                                            ? purchaseAmount 
+                                            : netAmount;
+
+                                    const displayCount = paymentFilter === "sales"
+                                        ? salesCount
+                                        : paymentFilter === "purchases"
+                                            ? purchaseCount
+                                            : totalCount;
+
                                     return (
-                                        <div key={method} className={`flex justify-between items-center p-5 ${theme.pageBg} rounded-2xl border ${theme.borderLight}`}>
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                                                    method === "Cash" 
-                                                        ? (themeName === 'dark' ? "bg-green-900/40 text-green-400" : "bg-green-100 text-green-600")
-                                                        : method === "UPI" 
-                                                            ? (themeName === 'dark' ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-100 text-indigo-600")
-                                                            : (themeName === 'dark' ? "bg-blue-900/40 text-blue-400" : "bg-blue-100 text-blue-600")
-                                                }`}>
-                                                    {method === "Cash" ? <Coins size={20} /> : method === "UPI" ? <Zap size={20} /> : <CreditCard size={20} />}
+                                        <div key={name} className={`p-5 rounded-2xl border space-y-4 ${
+                                            isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
+                                        }`}>
+                                            {/* Top Header Row */}
+                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+                                                        name === "Cash" 
+                                                            ? "bg-emerald-600 text-white"
+                                                            : name === "UPI" 
+                                                                ? "bg-indigo-600 text-white"
+                                                                : name === "Card"
+                                                                    ? "bg-blue-600 text-white"
+                                                                    : "bg-sky-600 text-white"
+                                                    }`}>
+                                                        {name === "Cash" ? <Coins size={20} /> : name === "UPI" ? <Zap size={20} /> : name === "Card" ? <CreditCard size={20} /> : <Landmark size={20} />}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{name}</h4>
+                                                        <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
+                                                            {displayCount} {displayCount === 1 ? 'Transaction' : 'Transactions'} Total
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className={`font-bold ${theme.textPrimary}`}>{method}</p>
-                                                    <p className={`text-xs ${theme.textMuted}`}>{count} Transactions</p>
+
+                                                <div className="text-left sm:text-right">
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
+                                                        {paymentFilter === "sales" ? "Sales Collected" : paymentFilter === "purchases" ? "Purchases Paid" : "Net Payment Balance"}
+                                                    </span>
+                                                    <span className={`text-2xl font-black mt-0.5 block ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                                        {formatCurrency(displayAmount, currency)}
+                                                    </span>
                                                 </div>
                                             </div>
-                                            <p className={`text-xl font-black ${theme.textPrimary}`}>{formatCurrency(total, currency)}</p>
+
+                                            {/* Inflow vs Outflow Breakdown Grid */}
+                                            <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t ${
+                                                isDark ? 'border-slate-800' : 'border-gray-200'
+                                            }`}>
+                                                {(paymentFilter === "all" || paymentFilter === "sales") && (
+                                                    <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
+                                                        isDark ? 'bg-slate-950/50 border-slate-800/80' : 'bg-gray-50 border-gray-200'
+                                                    }`}>
+                                                        <div>
+                                                            <span className={`text-[11px] font-bold uppercase tracking-wider block flex items-center gap-1 ${
+                                                                isDark ? 'text-slate-400' : 'text-gray-600'
+                                                            }`}>
+                                                                <ArrowUpRight size={13} className="text-emerald-600" /> Sales (Inflow)
+                                                            </span>
+                                                            <span className={`text-sm font-black mt-0.5 block ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                                                {formatCurrency(salesAmount, currency)}
+                                                            </span>
+                                                        </div>
+                                                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border ${
+                                                            isDark ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50' : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                                        }`}>
+                                                            {salesCount} Txns
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {(paymentFilter === "all" || paymentFilter === "purchases") && (
+                                                    <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
+                                                        isDark ? 'bg-slate-950/50 border-slate-800/80' : 'bg-gray-50 border-gray-200'
+                                                    }`}>
+                                                        <div>
+                                                            <span className={`text-[11px] font-bold uppercase tracking-wider block flex items-center gap-1 ${
+                                                                isDark ? 'text-slate-400' : 'text-gray-600'
+                                                            }`}>
+                                                                <ArrowDownRight size={13} className="text-amber-600" /> Purchases (Outflow)
+                                                            </span>
+                                                            <span className={`text-sm font-black mt-0.5 block ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                                                {formatCurrency(purchaseAmount, currency)}
+                                                            </span>
+                                                        </div>
+                                                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border ${
+                                                            isDark ? 'bg-amber-950/60 text-amber-300 border-amber-800/50' : 'bg-amber-50 text-amber-800 border-amber-300'
+                                                        }`}>
+                                                            {purchaseCount} Txns
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {paymentFilter === "all" && (
+                                                    <div className={`p-3.5 rounded-xl border flex items-center justify-between ${
+                                                        isDark ? 'bg-slate-950/50 border-slate-800/80' : 'bg-gray-50 border-gray-200'
+                                                    }`}>
+                                                        <div>
+                                                            <span className={`text-[11px] font-bold uppercase tracking-wider block ${
+                                                                isDark ? 'text-slate-400' : 'text-gray-600'
+                                                            }`}>
+                                                                Net Flow
+                                                            </span>
+                                                            <span className={`text-sm font-black mt-0.5 block ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                                                {formatCurrency(netAmount, currency)}
+                                                            </span>
+                                                        </div>
+                                                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg border ${
+                                                            netAmount >= 0 
+                                                                ? isDark ? 'bg-indigo-950/60 text-indigo-300 border-indigo-800/50' : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                                                                : isDark ? 'bg-rose-950/60 text-rose-300 border-rose-800/50' : 'bg-rose-50 text-rose-800 border-rose-300'
+                                                        }`}>
+                                                            {netAmount >= 0 ? '+Net In' : '-Net Out'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     );
                                 })}

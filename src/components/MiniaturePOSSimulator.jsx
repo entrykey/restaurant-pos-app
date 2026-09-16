@@ -18,6 +18,7 @@ import {
     TrendingUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatCurrency } from '../utils/format';
 
 const MINI_PRODUCTS = [
     {
@@ -410,7 +411,7 @@ const MiniaturePOSSimulator = ({ isDark = false, onNavigateLogin }) => {
                                             <span className={`text-[11px] font-black ${
                                                 isDark ? 'text-indigo-400' : 'text-indigo-700'
                                             }`}>
-                                                ₹{product.price} <span className="text-[8px] text-slate-500 font-normal">{product.unit}</span>
+                                                {formatCurrency(product.price)} <span className="text-[8px] text-slate-500 font-normal">{product.unit}</span>
                                             </span>
                                             <span className={`text-[8px] font-extrabold ${
                                                 isDark ? 'text-emerald-400' : 'text-emerald-700'
@@ -482,7 +483,7 @@ const MiniaturePOSSimulator = ({ isDark = false, onNavigateLogin }) => {
                                             }`}>{item.name}</p>
                                             <p className={`text-[10px] font-extrabold mt-0.5 ${
                                                 isDark ? 'text-slate-400' : 'text-slate-600'
-                                            }`}>₹{item.price} each</p>
+                                            }`}>{formatCurrency(item.price)} each</p>
                                         </div>
 
                                         <div className="flex items-center gap-2">
@@ -512,7 +513,7 @@ const MiniaturePOSSimulator = ({ isDark = false, onNavigateLogin }) => {
                                             <span className={`text-xs font-black min-w-[42px] text-right ${
                                                 isDark ? 'text-indigo-400' : 'text-indigo-700'
                                             }`}>
-                                                ₹{item.price * item.qty}
+                                                {formatCurrency(item.price * item.qty)}
                                             </span>
                                         </div>
                                     </div>
@@ -527,7 +528,7 @@ const MiniaturePOSSimulator = ({ isDark = false, onNavigateLogin }) => {
                     }`}>
                         <div className="flex justify-between font-bold">
                             <span className={isDark ? 'text-slate-400' : 'text-slate-700'}>Subtotal</span>
-                            <span className={`font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>₹{subtotal}.00 INR</span>
+                            <span className={`font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(subtotal)}</span>
                         </div>
 
                         {/* Apply Offer Banner */}
@@ -553,20 +554,20 @@ const MiniaturePOSSimulator = ({ isDark = false, onNavigateLogin }) => {
                                 isDark ? 'text-emerald-400' : 'text-emerald-700'
                             }`}>
                                 <span>Discount (10%)</span>
-                                <span>- ₹{calculatedDiscount}.00 INR</span>
+                                <span>- {formatCurrency(calculatedDiscount)}</span>
                             </div>
                         )}
 
                         <div className="flex justify-between font-bold">
                             <span className={isDark ? 'text-slate-400' : 'text-slate-700'}>Tax (GST 5%)</span>
-                            <span className={`font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>₹{tax}.00 INR</span>
+                            <span className={`font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(tax)}</span>
                         </div>
 
                         <div className={`flex justify-between items-center text-xs sm:text-sm pt-2 border-t ${
                             isDark ? 'border-slate-800' : 'border-slate-300'
                         }`}>
                             <span className={`font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Net Payable</span>
-                            <span className={`text-base font-black ${isDark ? 'text-indigo-400' : 'text-indigo-700'}`}>₹{total}.00 INR</span>
+                            <span className={`text-base font-black ${isDark ? 'text-indigo-400' : 'text-indigo-700'}`}>{formatCurrency(total)}</span>
                         </div>
 
                         {/* Payment Selector & QR Badge */}
@@ -608,7 +609,7 @@ const MiniaturePOSSimulator = ({ isDark = false, onNavigateLogin }) => {
                             <button 
                                 onClick={() => {
                                     if (onNavigateLogin) onNavigateLogin();
-                                    else toast.success(`Bill Paid ₹${total}.00 INR!`);
+                                    else toast.success(`Bill Paid ${formatCurrency(total)}!`);
                                 }}
                                 className="py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/25 transition-transform hover:scale-[1.01]"
                             >

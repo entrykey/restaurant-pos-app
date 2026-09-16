@@ -6,7 +6,7 @@ import { useTheme } from "../../context/ThemeContext";
 import CommonSelect from "../../components/ui/CommonSelect";
 
 const DeliverySettings = ({ currentUser }) => {
-    const { currentShopId } = useApp();
+    const { currentShopId, currencySymbol, formatCurrency } = useApp();
     const { theme } = useTheme();
     const shopId = currentShopId || currentUser?.shopId || currentUser?.shop_id;
 
@@ -259,10 +259,10 @@ const DeliverySettings = ({ currentUser }) => {
                 <div className={`${theme.surfaceBg} p-6 rounded-2xl border ${theme.borderLight} shadow-sm space-y-2`}>
                     <div className={`flex items-center space-x-2 font-semibold ${theme.textHeading}`}>
                         <Banknote className="w-4 h-4 text-emerald-500" />
-                        <span>Delivery Rate per KM (₹)</span>
+                        <span>Delivery Rate per KM ({currencySymbol || '₹'})</span>
                     </div>
                     <p className={`text-xs ${theme.textSecondary}`}>
-                        Default: ₹1 per km. Used to calculate distance-based delivery fee.
+                        Default: {formatCurrency(1)} per km. Used to calculate distance-based delivery fee.
                     </p>
                     <input
                         type="number"

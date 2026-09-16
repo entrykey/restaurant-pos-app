@@ -18,7 +18,7 @@ const OnlineOrders = () => {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const { can } = usePermission();
     const { user } = useAuth();
-    const { currentShopId, organization } = useApp();
+    const { currentShopId, organization, formatCurrency } = useApp();
     const onlineOrderContext = useOnlineOrders();
 
     // Dynamically resolve auth token and shopId from Context & Storage
@@ -41,11 +41,6 @@ const OnlineOrders = () => {
 
         return localStorage.getItem('selectedShopId') || null;
     }, [currentShopId, organization, user]);
-
-    // Format currency
-    const formatCurrency = (amount) => {
-        return `₹${parseFloat(amount || 0).toFixed(2)}`;
-    };
 
     // Extract context updater reference safely
     const setContextOnlineOrders = onlineOrderContext?.setOnlineOrders;

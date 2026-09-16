@@ -7,7 +7,7 @@ import { useTheme } from "../../context/ThemeContext";
 import CommonSelect from "../../components/ui/CommonSelect";
 
 const DeliverySettlement = () => {
-    const { currentShopId } = useApp();
+    const { currentShopId, formatCurrency } = useApp();
     const { user } = useAuth();
     const { theme } = useTheme();
     const shopId = currentShopId || user?.shopId || user?.shop_id;
@@ -162,18 +162,18 @@ const DeliverySettlement = () => {
 
                                 {/* Financial Summary */}
                                 <div className={`grid grid-cols-3 gap-3 p-3 ${theme.inputBg} rounded-xl text-center border ${theme.inputBorder}`}>
-                                    <div>
-                                        <span className={`text-[10px] uppercase font-bold ${theme.textSecondary}`}>Customer Cash</span>
-                                        <div className={`text-sm font-black ${theme.textHeading}`}>₹{partner.totalCollected.toFixed(2)}</div>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] uppercase font-bold text-emerald-500">Partner Fee</span>
-                                        <div className="text-sm font-black text-emerald-600">₹{partner.totalDeliveryFeeEarned.toFixed(2)}</div>
-                                    </div>
-                                    <div>
-                                        <span className="text-[10px] uppercase font-bold text-blue-500">Shop Net Due</span>
-                                        <div className="text-sm font-black text-blue-600 dark:text-blue-400">₹{partner.netShopBalance.toFixed(2)}</div>
-                                    </div>
+                                     <div>
+                                         <span className={`text-[10px] uppercase font-bold ${theme.textSecondary}`}>Customer Cash</span>
+                                         <div className={`text-sm font-black ${theme.textHeading}`}>{formatCurrency(partner.totalCollected)}</div>
+                                     </div>
+                                     <div>
+                                         <span className="text-[10px] uppercase font-bold text-emerald-500">Partner Fee</span>
+                                         <div className="text-sm font-black text-emerald-600">{formatCurrency(partner.totalDeliveryFeeEarned)}</div>
+                                     </div>
+                                     <div>
+                                         <span className="text-[10px] uppercase font-bold text-blue-500">Shop Net Due</span>
+                                         <div className="text-sm font-black text-blue-600 dark:text-blue-400">{formatCurrency(partner.netShopBalance)}</div>
+                                     </div>
                                 </div>
 
                                 {/* Settle Action Button */}
@@ -183,7 +183,7 @@ const DeliverySettlement = () => {
                                         className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center space-x-2"
                                     >
                                         <Wallet className="w-5 h-5" />
-                                        <span>Settle Balance (₹{partner.netShopBalance.toFixed(2)})</span>
+                                         <span>Settle Balance ({formatCurrency(partner.netShopBalance)})</span>
                                     </button>
                                 ) : (
                                     <div className="py-2.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 font-bold text-xs rounded-xl text-center flex items-center justify-center space-x-1">
@@ -212,7 +212,7 @@ const DeliverySettlement = () => {
                             </p>
                             <div className="p-4 bg-emerald-50 dark:bg-emerald-900/30 rounded-2xl text-center space-y-1">
                                 <span className="text-xs uppercase font-bold text-emerald-600">Net Amount to Receive by Shop</span>
-                                <div className="text-3xl font-black text-emerald-700 dark:text-emerald-300">₹{selectedPartner.netShopBalance.toFixed(2)}</div>
+                                <div className="text-3xl font-black text-emerald-700 dark:text-emerald-300">{formatCurrency(selectedPartner.netShopBalance)}</div>
                             </div>
                         </div>
 

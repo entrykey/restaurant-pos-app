@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Building2,
     Edit3, Plus, MapPin, CreditCard, AlertTriangle, Save,
-    Sparkles, Check, Clock
+    Sparkles, Check, Clock, ArrowRight
 } from "lucide-react";
 import ThemeLoader from "../../components/ui/ThemeLoader";
 import { useSearchParams } from "react-router-dom";
@@ -214,6 +214,7 @@ const Organization = ({
     const { user, login } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const [highlightSubscriptionSection, setHighlightSubscriptionSection] = useState(false);
+    const [billingCycleToggle, setBillingCycleToggle] = useState('monthly'); // 'monthly' | 'yearly'
 
     const [logoUploading, setLogoUploading] = useState(false);
     const mainBranch = useMemo(() => {
@@ -228,6 +229,40 @@ const Organization = ({
     const completedCount = profileChecklist.filter((item) => Boolean(item.value)).length;
     const profileCompletion = profileChecklist.length ? Math.round((completedCount / profileChecklist.length) * 100) : 0;
     const missingProfileKeys = new Set(profileChecklist.filter((item) => !item.value).map((item) => item.key));
+
+    const [focusedMissingKey, setFocusedMissingKey] = useState(null);
+
+    const handleNavigateToMissingField = (key) => {
+        const missingList = profileChecklist.filter((item) => !item.value).map((item) => item.key);
+        const targetKey = key || missingList[0];
+        if (!targetKey) return;
+
+        setFocusedMissingKey(targetKey);
+
+        const branchKeys = ['line1', 'city', 'state', 'pincode', 'tax'];
+        if (branchKeys.includes(targetKey)) {
+            const targetBranch = mainBranch || branches?.[0];
+            if (targetBranch) {
+                openEditBranch(targetBranch);
+            } else {
+                openAddBranch();
+            }
+            setTimeout(() => {
+                const el = document.getElementById(`branch-field-${targetKey}`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.focus?.();
+                }
+            }, 350);
+        } else {
+            setIsBranchModalOpen(false);
+            const el = document.getElementById(`org-field-${targetKey}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => el.focus?.(), 350);
+            }
+        }
+    };
 
     const loadData = useCallback(async () => {
         try {
@@ -446,18 +481,20 @@ const Organization = ({
     const handlePlanChange = (plan) => {
         const isCurrent = organization?.subscriptionPlanId === plan.id;
         const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
-        const actionText = isCurrent ? (isExpired ? "renew request for" : "request subscription to") : "request subscription to";
+        const cycleName = billingCycleToggle === 'yearly' ? 'Annual (Yearly)' : 'Monthly';
+        const cyclePrice = billingCycleToggle === 'yearly' ? (plan.yearlyPrice || plan.price) : (plan.monthlyPrice || plan.price);
 
-        confirmToast(`Request subscription activation for ${plan.name}? A request will be sent to the Super Admin for approval.`, async () => {
+        confirmToast(`Request ${cycleName} subscription activation for ${plan.name} at ${plan.currency || 'INR'} ${cyclePrice}? A request will be sent to the Super Admin for approval.`, async () => {
             setPlanLoading(true);
             try {
                 await subscriptionService.createSubscription({
                     shop_id: organization.id,
                     plan_id: plan.id,
-                    billing_cycle: 'monthly',
+                    billing_cycle: billingCycleToggle,
+                    amount: cyclePrice,
                     subscription_intent: 'subscribe',
                 });
-                toast.success("Subscription request submitted! Waiting for super admin manual approval.");
+                toast.success(`Subscription request for ${plan.name} (${cycleName}) submitted! Waiting for super admin manual approval.`);
                 localStorage.removeItem("subscription_notified");
                 localStorage.removeItem("pos_subscription_modal_dismissed");
                 await loadData();
@@ -666,18 +703,30 @@ const Organization = ({
                 </div>
 
                 {/* Organization Details */}
-                <div className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight || 'border-slate-100 dark:border-slate-700'}`}>
+                <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight}`}>
                     {profileCompletion < 100 && (
-                        <div className="mb-6 p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-4 animate-in fade-in">
-                            <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-500 shrink-0">
-                                <AlertTriangle size={24} />
+                        <div className="mb-6 p-5 rounded-3xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in shadow-sm">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-500 shrink-0">
+                                    <AlertTriangle size={26} className="animate-bounce" />
+                                </div>
+                                <div>
+                                    <h5 className="text-sm font-black text-amber-600 dark:text-amber-400 uppercase tracking-wide flex items-center gap-2">
+                                        <span>Warning: Profile Incomplete ({profileCompletion}%)</span>
+                                    </h5>
+                                    <p className={`text-xs mt-1 font-medium leading-relaxed ${theme.textSecondary || 'text-gray-400'}`}>
+                                        Your organization profile is incomplete. Click on any missing item below or the button to jump directly to incomplete fields.
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <h5 className="text-sm font-black text-amber-500 uppercase tracking-wide">Warning: Profile Incomplete ({profileCompletion}%)</h5>
-                                <p className={`text-xs mt-1 font-medium leading-relaxed ${theme.textSecondary || 'text-gray-400'}`}>
-                                    Your organization profile is incomplete. Please fill in all required fields marked with <span className="text-red-400 font-bold">✖</span> below to complete setup.
-                                </p>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handleNavigateToMissingField()}
+                                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-500/25 active:scale-95 transition-all flex items-center gap-2 shrink-0"
+                            >
+                                <span>Complete Profile Now</span>
+                                <ArrowRight size={16} />
+                            </button>
                         </div>
                     )}
                     <div className={`mb-6 p-5 rounded-3xl border ${profileCompletion >= 100 ? 'border-green-200 bg-green-50/70 dark:bg-green-900/20' : 'border-amber-200 bg-amber-50/80 dark:bg-amber-900/20'}`}>
@@ -688,12 +737,33 @@ const Organization = ({
                         <div className="w-full h-2 rounded-full bg-gray-200 dark:bg-slate-700 mb-4">
                             <div className={`h-2 rounded-full transition-all ${profileCompletion >= 100 ? 'bg-green-500' : 'bg-amber-500'}`} style={{ width: `${profileCompletion}%` }} />
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {profileChecklist.map((item) => (
-                                <div key={item.key} className={`text-xs px-2 py-1 rounded-lg font-bold ${item.value ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
-                                    {item.value ? '✔' : '✖'} {item.label}
-                                </div>
-                            ))}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                            {profileChecklist.map((item) => {
+                                if (item.value) {
+                                    return (
+                                        <div key={item.key} className="text-xs px-3 py-2 rounded-xl font-bold bg-emerald-100/90 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 flex items-center gap-1.5 shadow-sm">
+                                            <Check size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                            <span className="truncate">{item.label}</span>
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <button
+                                        key={item.key}
+                                        type="button"
+                                        onClick={() => handleNavigateToMissingField(item.key)}
+                                        className="text-xs px-3 py-2 rounded-xl font-bold bg-rose-100/90 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-300 dark:border-rose-800/60 hover:bg-amber-100 dark:hover:bg-amber-900/50 hover:text-amber-900 dark:hover:text-amber-200 hover:border-amber-400 transition-all flex items-center justify-between gap-1.5 group shadow-sm cursor-pointer active:scale-95"
+                                        title={`Click to fill in ${item.label}`}
+                                    >
+                                        <span className="truncate flex items-center gap-1">
+                                            <span className="text-rose-600 dark:text-rose-400 font-black">✖</span> {item.label}
+                                        </span>
+                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-rose-200 dark:bg-rose-900/60 text-rose-900 dark:text-rose-200 group-hover:bg-amber-500 group-hover:text-white transition-all shrink-0 flex items-center gap-0.5">
+                                            Fix <ArrowRight size={10} />
+                                        </span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -763,28 +833,52 @@ const Organization = ({
                         {/* Right Side: 6 Inputs in a 3-column / 2-row grid */}
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
                             <div className="space-y-2">
-                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Business Name</label>
+                                <div className="flex items-center justify-between">
+                                    <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Business Name</label>
+                                    {missingProfileKeys.has('businessName') && (
+                                        <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                            <span className="text-sm leading-none animate-blink-glow">👇</span> Required
+                                        </span>
+                                    )}
+                                </div>
                                 <input
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('businessName') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                    id="org-field-businessName"
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${theme.inputBg} ${theme.textPrimary} ${missingProfileKeys.has('businessName') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : theme.borderLight}`}
                                     value={organization?.businessName ?? ""}
                                     onChange={(e) => canEditOrg && setOrganization({ ...organization, businessName: e.target.value })}
                                     readOnly={!canEditOrg}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Owner Name</label>
+                                <div className="flex items-center justify-between">
+                                    <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Owner Name</label>
+                                    {missingProfileKeys.has('ownerName') && (
+                                        <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                            <span className="text-sm leading-none animate-blink-glow">👇</span> Required
+                                        </span>
+                                    )}
+                                </div>
                                 <input
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('ownerName') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                    id="org-field-ownerName"
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${theme.inputBg} ${theme.textPrimary} ${missingProfileKeys.has('ownerName') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : theme.borderLight}`}
                                     value={organization?.ownerName ?? ""}
                                     onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerName: e.target.value })}
                                     readOnly={!canEditOrg}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Owner Email</label>
+                                <div className="flex items-center justify-between">
+                                    <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Owner Email</label>
+                                    {missingProfileKeys.has('ownerEmail') && (
+                                        <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                            <span className="text-sm leading-none animate-blink-glow">👇</span> Required
+                                        </span>
+                                    )}
+                                </div>
                                 <input
+                                    id="org-field-ownerEmail"
                                     type="email"
-                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${theme.inputBg} ${theme.borderLight} ${theme.textPrimary} ${missingProfileKeys.has('ownerEmail') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                    className={`w-full p-4 rounded-2xl border focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${theme.inputBg} ${theme.textPrimary} ${missingProfileKeys.has('ownerEmail') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : theme.borderLight}`}
                                     value={organization?.ownerEmail ?? ""}
                                     onChange={(e) => canEditOrg && setOrganization({ ...organization, ownerEmail: e.target.value })}
                                     readOnly={!canEditOrg}
@@ -806,8 +900,15 @@ const Organization = ({
                                     placeholder="e.g. +91 98765 43210"
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Country</label>
+                            <div className="space-y-2" id="org-field-defaultCountry">
+                                <div className="flex items-center justify-between">
+                                    <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Country</label>
+                                    {missingProfileKeys.has('defaultCountry') && (
+                                        <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                            <span className="text-sm leading-none animate-blink-glow">👇</span> Required
+                                        </span>
+                                    )}
+                                </div>
                                 <CommonSelect
                                     options={DEFAULT_COUNTRIES}
                                     value={organization?.defaultCountry ?? ""}
@@ -816,11 +917,18 @@ const Organization = ({
                                     labelKey="name"
                                     valueKey="code"
                                     disabled={!canEditOrg}
-                                    triggerClassName={missingProfileKeys.has('defaultCountry') ? 'border-amber-400 ring-1 ring-amber-300' : ''}
+                                    triggerClassName={missingProfileKeys.has('defaultCountry') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : ''}
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Currency</label>
+                            <div className="space-y-2" id="org-field-defaultCurrency">
+                                <div className="flex items-center justify-between">
+                                    <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Currency</label>
+                                    {missingProfileKeys.has('defaultCurrency') && (
+                                        <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                            <span className="text-sm leading-none animate-blink-glow">👇</span> Required
+                                        </span>
+                                    )}
+                                </div>
                                 <CommonSelect
                                     options={CURRENCIES}
                                     value={organization?.defaultCurrency ?? ""}
@@ -829,11 +937,18 @@ const Organization = ({
                                     labelKey="name"
                                     valueKey="code"
                                     disabled={!canEditOrg}
-                                    triggerClassName={missingProfileKeys.has('defaultCurrency') ? 'border-amber-400 ring-1 ring-amber-300' : ''}
+                                    triggerClassName={missingProfileKeys.has('defaultCurrency') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : ''}
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Tax System</label>
+                            <div className="space-y-2" id="org-field-defaultTaxSystem">
+                                <div className="flex items-center justify-between">
+                                    <label className={`text-xs font-black uppercase ${theme.textSecondary || 'text-gray-400'}`}>Default Tax System</label>
+                                    {missingProfileKeys.has('defaultTaxSystem') && (
+                                        <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                            <span className="text-sm leading-none animate-blink-glow">👇</span> Required
+                                        </span>
+                                    )}
+                                </div>
                                 <CommonSelect
                                     options={Object.values(TAX_SYSTEMS).map(t => ({ label: t, value: t }))}
                                     value={organization?.defaultTaxSystem ?? ""}
@@ -842,7 +957,7 @@ const Organization = ({
                                     labelKey="label"
                                     valueKey="value"
                                     disabled={!canEditOrg}
-                                    triggerClassName={missingProfileKeys.has('defaultTaxSystem') ? 'border-amber-400 ring-1 ring-amber-300' : ''}
+                                    triggerClassName={missingProfileKeys.has('defaultTaxSystem') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : ''}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -863,13 +978,13 @@ const Organization = ({
                 {/* Subscription & Plans — id used by SubscriptionNoticeModal deep-link */}
                 <div
                     id="organization-subscription-plans"
-                    className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border transition-[box-shadow,ring] duration-500 ${theme.borderLight || 'border-slate-100 dark:border-slate-700'} ${
+                    className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border transition-[box-shadow,ring] duration-500 ${theme.borderLight} ${
                         highlightSubscriptionSection
                             ? 'ring-4 ring-indigo-500 ring-offset-4 ring-offset-slate-950/0 dark:ring-offset-slate-900 shadow-2xl shadow-indigo-500/20'
                             : ''
                     }`}
                 >
-                    <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} mb-6 flex items-center gap-2`}>
+                    <h3 className={`text-xl font-bold ${theme.textHeading} mb-6 flex items-center gap-2`}>
                         <CreditCard size={20} className="text-indigo-500 dark:text-indigo-400" /> Subscription & Plans
                     </h3>
 
@@ -879,7 +994,7 @@ const Organization = ({
                                 {isTrialRunMode ? 'Access status' : (organization?.isTrial ? 'Trial Period (Free Trial)' : 'Current Plan')}
                             </p>
                             <h4 className={`text-2xl font-black ${theme.textHeading}`}>{organization?.planName}</h4>
-                            <p className={`font-medium ${theme.textSecondary || 'text-gray-500'}`}>{organization?.planPriceLabel}</p>
+                            <p className={`font-medium ${theme.textSecondary}`}>{organization?.planPriceLabel}</p>
                         </div>
                     </div>
 
@@ -937,7 +1052,7 @@ const Organization = ({
 
                     {!isTrialRunMode && plans.length > 0 && (
                         <>
-                            <p className={`font-medium mb-6 ${theme.textSecondary || 'text-gray-500'}`}>Choose a plan and request activation from Super Admin</p>
+                            <p className={`font-medium mb-6 ${theme.textSecondary}`}>Choose a plan and request activation from Super Admin</p>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {plans.map((plan) => {
@@ -966,9 +1081,9 @@ const Organization = ({
                                         <span className={`text-3xl font-black ${theme.primaryIconText}`}>
                                             {plan.priceLabel.split(" ")[0]} {plan.price}
                                         </span>
-                                        <span className={`font-medium ${theme.textSecondary || 'text-gray-400'}`}>/mo</span>
+                                        <span className={`font-medium ${theme.textSecondary}`}>/mo</span>
                                     </div>
-                                    <p className={`text-xs font-medium mb-6 ${theme.textSecondary || 'text-gray-500'}`}>Up to {plan.branchesLimit === -1 ? "Unlimited" : plan.branchesLimit} branches</p>
+                                    <p className={`text-xs font-medium mb-6 ${theme.textSecondary}`}>Up to {plan.branchesLimit === -1 ? "Unlimited" : plan.branchesLimit} branches</p>
 
                                     <ul className="space-y-3 mb-8">
                                         {plan.features.map((feature, i) => (
@@ -1030,9 +1145,9 @@ const Organization = ({
                 </div>
 
                 {/* Branches */}
-                <div className={`${theme.surfaceBg || 'bg-white dark:bg-slate-800'} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight || 'border-slate-100 dark:border-slate-700'}`}>
+                <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight}`}>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                        <h3 className={`text-xl font-bold ${theme.textHeading || 'text-gray-800 dark:text-white'} flex items-center gap-2`}>
+                        <h3 className={`text-xl font-bold ${theme.textHeading} flex items-center gap-2`}>
                             <MapPin size={20} className="text-indigo-500 dark:text-indigo-400" /> Branches
                         </h3>
                         {canCreateBranch && (
@@ -1057,11 +1172,11 @@ const Organization = ({
                 isOpen={isBranchModalOpen}
                 onClose={() => setIsBranchModalOpen(false)}
                 title={editingBranch ? "Edit Branch" : "Add New Branch"}
-                className="max-w-lg dark:bg-slate-800 dark:border-slate-700"
+                className="max-w-lg"
             >
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Branch Name</label>
+                        <label className={`text-xs font-black uppercase block mb-1 ${theme.textMuted}`}>Branch Name</label>
                         <button
                             type="button"
                             onClick={handleUseCurrentLocation}
@@ -1074,7 +1189,7 @@ const Organization = ({
                     </div>
                     <div>
                         <input
-                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
+                            className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${theme.inputBg} ${theme.inputBorder} ${theme.inputText}`}
                             value={branchForm.name}
                             onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })}
                             placeholder="e.g. Food Plaza - Dubai"
@@ -1083,10 +1198,18 @@ const Organization = ({
 
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Pincode</label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Pincode</label>
+                                {missingProfileKeys.has('pincode') && (
+                                    <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                        <span className="text-sm leading-none animate-blink-glow">👈</span> Required
+                                    </span>
+                                )}
+                            </div>
                             <div className="relative">
                                 <input
-                                    className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white ${missingProfileKeys.has('pincode') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                    id="branch-field-pincode"
+                                    className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${theme.inputBg} ${theme.inputText} ${missingProfileKeys.has('pincode') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : theme.inputBorder}`}
                                     value={branchForm.address?.pincode ?? ""}
                                     onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, pincode: e.target.value } })}
                                     onBlur={handlePincodeBlur}
@@ -1096,9 +1219,17 @@ const Organization = ({
                             </div>
                         </div>
                         <div>
-                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Address Line 1</label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className={`text-xs font-black uppercase ${theme.textMuted}`}>Address Line 1</label>
+                                {missingProfileKeys.has('line1') && (
+                                    <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                        <span className="text-sm leading-none animate-blink-glow">👈</span> Required
+                                    </span>
+                                )}
+                            </div>
                             <input
-                                className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white ${missingProfileKeys.has('line1') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                id="branch-field-line1"
+                                className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${theme.inputBg} ${theme.inputText} ${missingProfileKeys.has('line1') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : theme.inputBorder}`}
                                 value={branchForm.address?.line1 ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, line1: e.target.value } })}
                                 placeholder="Street / Area"
@@ -1107,17 +1238,33 @@ const Organization = ({
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">City</label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className={`text-xs font-black uppercase ${theme.textMuted}`}>City</label>
+                                {missingProfileKeys.has('city') && (
+                                    <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                        <span className="text-sm leading-none animate-blink-glow">👈</span> Required
+                                    </span>
+                                )}
+                            </div>
                             <input
-                                className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white ${missingProfileKeys.has('city') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                id="branch-field-city"
+                                className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${theme.inputBg} ${theme.inputText} ${missingProfileKeys.has('city') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : theme.inputBorder}`}
                                 value={branchForm.address?.city ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, city: e.target.value } })}
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">State</label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className={`text-xs font-black uppercase ${theme.textMuted}`}>State</label>
+                                {missingProfileKeys.has('state') && (
+                                    <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                                        <span className="text-sm leading-none animate-blink-glow">👈</span> Required
+                                    </span>
+                                )}
+                            </div>
                             <input
-                                className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white ${missingProfileKeys.has('state') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                id="branch-field-state"
+                                className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${theme.inputBg} ${theme.inputText} ${missingProfileKeys.has('state') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : theme.inputBorder}`}
                                 value={branchForm.address?.state ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, state: e.target.value } })}
                             />
@@ -1125,16 +1272,16 @@ const Organization = ({
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Country</label>
+                            <label className={`text-xs font-black uppercase block mb-1 ${theme.textMuted}`}>Country</label>
                             <input
-                                className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                                className={`w-full p-3 border rounded-xl ${theme.inputBg} ${theme.inputBorder} ${theme.inputText}`}
                                 value={branchForm.address?.country ?? ""}
                                 onChange={(e) => setBranchForm({ ...branchForm, address: { ...branchForm.address, country: e.target.value } })}
                             />
                         </div>
                     </div>
                     <div>
-                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Currency</label>
+                        <label className={`text-xs font-black uppercase block mb-1 ${theme.textMuted}`}>Currency</label>
                         <CommonSelect
                             options={CURRENCIES}
                             value={branchForm.currency}
@@ -1145,7 +1292,7 @@ const Organization = ({
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Tax System</label>
+                        <label className={`text-xs font-black uppercase block mb-1 ${theme.textMuted}`}>Tax System</label>
                         <CommonSelect
                             options={Object.values(TAX_SYSTEMS).map(t => ({ label: t, value: t }))}
                             value={branchForm.taxConfig?.taxSystem}
@@ -1162,18 +1309,18 @@ const Organization = ({
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">Branch UPI ID</label>
+                        <label className={`text-xs font-black uppercase block mb-1 ${theme.textMuted}`}>Branch UPI ID</label>
                         <input
-                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                            className={`w-full p-3 border rounded-xl ${theme.inputBg} ${theme.inputBorder} ${theme.inputText}`}
                             value={branchForm.upiId ?? ""}
                             onChange={(e) => setBranchForm({ ...branchForm, upiId: e.target.value })}
                             placeholder="e.g. branch@upi"
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">FSSAI License No.</label>
+                        <label className={`text-xs font-black uppercase block mb-1 ${theme.textMuted}`}>FSSAI License No.</label>
                         <input
-                            className="w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white"
+                            className={`w-full p-3 border rounded-xl ${theme.inputBg} ${theme.inputBorder} ${theme.inputText}`}
                             value={branchForm.fssai ?? ""}
                             onChange={(e) => setBranchForm({ ...branchForm, fssai: e.target.value })}
                             placeholder="e.g. 12345678901234"
@@ -1193,7 +1340,7 @@ const Organization = ({
                                 taxSystem === TAX_SYSTEMS.VAT ? "VAT or TRN" : "Optional";
                         return (
                             <>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2" id="branch-field-tax">
                                     <input
                                         type="checkbox"
                                         id="taxRegistered"
@@ -1202,15 +1349,21 @@ const Organization = ({
                                             ...branchForm,
                                             taxConfig: { ...branchForm.taxConfig, isGstRegistered: e.target.checked },
                                         })}
-                                        className="rounded accent-indigo-600 dark:bg-slate-900 border-slate-700"
+                                        className="rounded accent-indigo-600"
                                     />
-                                    <label htmlFor="taxRegistered" className="text-sm font-medium dark:text-white">{registeredLabel}</label>
+                                    <label htmlFor="taxRegistered" className={`text-sm font-medium ${theme.textPrimary}`}>{registeredLabel}</label>
+                                    {missingProfileKeys.has('tax') && (
+                                        <span className="flex items-center gap-1 text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse ml-auto">
+                                            <span className="text-sm leading-none animate-blink-glow">👈</span> Required
+                                        </span>
+                                    )}
                                 </div>
                                 {isRegistered && (
                                     <div>
-                                        <label className="text-xs font-black text-gray-400 dark:text-slate-400 uppercase block mb-1">{regNumberLabel}</label>
+                                        <label className={`text-xs font-black uppercase block mb-1 ${theme.textMuted}`}>{regNumberLabel}</label>
                                         <input
-                                            className={`w-full p-3 bg-gray-50 dark:bg-slate-900/50 border dark:border-slate-700 rounded-xl dark:text-white ${missingProfileKeys.has('tax') ? 'border-amber-400 ring-1 ring-amber-300' : ''}`}
+                                            id="branch-field-tax-number"
+                                            className={`w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${theme.inputBg} ${theme.inputText} ${missingProfileKeys.has('tax') ? 'border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/5 animate-pulse' : theme.inputBorder}`}
                                             value={branchForm.taxConfig?.gstin ?? ""}
                                             onChange={(e) => setBranchForm({
                                                 ...branchForm,
@@ -1229,15 +1382,15 @@ const Organization = ({
                             id="mainBranch"
                             checked={branchForm.isMainBranch ?? false}
                             onChange={(e) => setBranchForm({ ...branchForm, isMainBranch: e.target.checked })}
-                            className="rounded accent-indigo-600 dark:bg-slate-900 border-slate-700"
+                            className="rounded accent-indigo-600"
                         />
-                        <label htmlFor="mainBranch" className="text-sm font-medium dark:text-white">Main Branch</label>
+                        <label htmlFor="mainBranch" className={`text-sm font-medium ${theme.textPrimary}`}>Main Branch</label>
                     </div>
-                    <div className="flex justify-end gap-3 pt-4 border-t dark:border-slate-700">
+                    <div className={`flex justify-end gap-3 pt-4 border-t ${theme.borderLight}`}>
                         <button
                             type="button"
                             onClick={() => setIsBranchModalOpen(false)}
-                            className="px-4 py-2 rounded-xl font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
+                            className={`px-4 py-2 rounded-xl font-bold transition-colors ${theme.textSecondary} hover:${theme.pageBg}`}
                         >
                             Cancel
                         </button>
@@ -1245,7 +1398,7 @@ const Organization = ({
                             type="button"
                             onClick={handleSaveBranch}
                             disabled={!branchForm.name?.trim()}
-                            className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                            className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
                         >
                             <Save size={18} /> Save
                         </button>

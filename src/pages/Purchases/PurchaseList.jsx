@@ -4,7 +4,7 @@ import {
     Plus, Search, Eye, Edit3, Trash2, ShoppingCart, Calendar,
     CheckCircle, CheckCircle2, Clock, AlertCircle, X, Package,
     Calculator, ChevronDown, ReceiptText, XCircle, CreditCard,
-    Printer, Coins
+    Printer, Coins, RotateCcw
 } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
 import { PurchaseService } from "../../services/PurchaseService";
@@ -15,13 +15,14 @@ import { useApp } from "../../context/AppContext";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
 import { toast } from "react-hot-toast";
+import PurchaseReturnSheet from "../../components/modals/PurchaseReturnSheet";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 import { formatCurrency as globalFormatCurrency } from "../../utils/format";
 
-const fmt = (val, currency = 'USD') => {
-    const code = (typeof currency === 'object' && currency !== null) ? (currency.code || currency.id || 'USD') : currency;
+const fmt = (val, currency = 'INR') => {
+    const code = (typeof currency === 'object' && currency !== null) ? (currency.code || currency.id || 'INR') : currency;
     return globalFormatCurrency(val || 0, code);
 };
 
@@ -726,7 +727,7 @@ const PaymentModal = ({ purchase, onClose, onSuccess, currency }) => {
 const PurchaseList = ({ hasPermissionFor }) => {
     const { user } = useAuth();
     const { activeBranchId, organization, currentShopId } = useApp();
-    const currency = organization?.defaultCurrency || 'USD';
+    const currency = organization?.defaultCurrency || 'INR';
     const { theme } = useTheme();
     const navigate = useNavigate();
     const [purchases, setPurchases] = useState([]);
@@ -734,6 +735,19 @@ const PurchaseList = ({ hasPermissionFor }) => {
     const [searchTerm, setSearchTerm] = useState("");
     const [payTarget, setPayTarget] = useState(null); // purchase row for payment modal
     const [viewTarget, setViewTarget] = useState(null); // purchase id for detail modal
+    const [returnTarget, setReturnTarget] = useState(null); // purchase object for return sheet
+
+    const handleOpenReturn = async (row) => {
+        try {
+            const fullData = await PurchaseService.getPurchaseById(row._id);
+            const p = fullData?.purchase || row;
+            const items = fullData?.items || row.items || [];
+            setReturnTarget({ ...p, items });
+        } catch (err) {
+            console.error("Failed to load purchase items for return:", err);
+            setReturnTarget(row);
+        }
+    };
 
     // ── Permissions
     const access = ROUTE_ACCESS.PURCHASES;
@@ -805,10 +819,10 @@ const PurchaseList = ({ hasPermissionFor }) => {
     const columns = [
         {
             header: "Invoice",
-            key: "purchaseNumber",
+            key: "invoiceNumber",
             render: (val, row) => (
                 <div>
-                    <div className={`font-black ${theme.textPrimary}`}>{val}</div>
+                    <div className={`font-black ${theme.textPrimary}`}>{row.invoiceNumber || row.purchaseNumber}</div>
                     {row.supplierInvoiceNumber && (
                         <div className="text-[10px] font-black text-indigo-500 mt-0.5">
                             #{row.supplierInvoiceNumber}
@@ -883,6 +897,17 @@ const PurchaseList = ({ hasPermissionFor }) => {
                             className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all"
                             title="Record Payment"
                         ><CreditCard size={15} /></button>
+                    )}
+                    {/* 🔄 Return — allowed for CONFIRMED purchases */}
+                    {canManage && row.status === "CONFIRMED" && (
+                        <button
+                            onClick={() => handleOpenReturn(row)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-black bg-orange-600 text-white hover:bg-orange-700 flex items-center gap-1.5 shadow-sm transition-all"
+                            title="Make Purchase Return"
+                        >
+                            <RotateCcw size={13} />
+                            Return
+                        </button>
                     )}
                     {/* Cancel — orange, allowed if no payments */}
                     {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && row.paidAmount === 0 && (
@@ -1002,7 +1027,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                                 {/* Top: invoice + status */}
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0">
-                                        <div className={`font-black text-base ${theme.textHeading} truncate`}>{row.purchaseNumber}</div>
+                                        <div className={`font-black text-base ${theme.textHeading} truncate`}>{row.invoiceNumber || row.purchaseNumber}</div>
                                         {row.supplierInvoiceNumber && (
                                             <div className="text-[10px] font-black text-indigo-500">#{row.supplierInvoiceNumber}</div>
                                         )}
@@ -1048,6 +1073,11 @@ const PurchaseList = ({ hasPermissionFor }) => {
                                             <CreditCard size={13} /> Pay
                                         </button>
                                     )}
+                                    {canManage && row.status === "CONFIRMED" && (
+                                        <button onClick={(e) => { e.stopPropagation(); handleOpenReturn(row); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center gap-1.5">
+                                            <RotateCcw size={13} /> Return
+                                        </button>
+                                    )}
                                     {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && row.paidAmount === 0 && (
                                         <button onClick={(e) => { e.stopPropagation(); handleDelete(row._id); }} className="p-2 text-[10px] font-black rounded-xl bg-red-50 text-red-400">
                                             <Trash2 size={13} />
@@ -1077,6 +1107,20 @@ const PurchaseList = ({ hasPermissionFor }) => {
                     onClose={() => setPayTarget(null)}
                     onSuccess={() => { setPayTarget(null); loadPurchases(); }}
                     currency={currency}
+                />
+            )}
+
+            {/* ── Return Sheet Modal ── */}
+            {returnTarget && (
+                <PurchaseReturnSheet
+                    isOpen={Boolean(returnTarget)}
+                    onClose={() => setReturnTarget(null)}
+                    purchase={returnTarget}
+                    onSuccess={() => {
+                        toast.success("Purchase return processed successfully!");
+                        setReturnTarget(null);
+                        loadPurchases();
+                    }}
                 />
             )}
         </div>
