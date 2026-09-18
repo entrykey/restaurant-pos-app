@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { Plus, Layers, Eye, ChevronRight, X } from "lucide-react";
 import { DEFAULT_ITEM_IMAGE, getBingImage } from "../utils/getImage";
 import { useTheme } from "../context/ThemeContext";
+import { useApp } from "../context/AppContext";
 import { isStockTracked, allowsNegativeStock, getAvailableStock } from "../utils/cartStockUtils";
 
 const FoodItemCard = ({
@@ -15,6 +16,8 @@ const FoodItemCard = ({
     disabled = false
 }) => {
     const { theme } = useTheme();
+    const { settings } = useApp();
+    const showAiImage = settings?.SHOW_AI_IMAGE_IN_SALE !== false && String(settings?.SHOW_AI_IMAGE_IN_SALE).toLowerCase() !== 'false';
 
     const formatPriceWithCurrency = (price) => {
         if (price === undefined || price === null) return formatCurrency ? formatCurrency(0) : "0.00";
@@ -90,17 +93,19 @@ const FoodItemCard = ({
                 onClick={handleCardClick}
             >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0">
-                        <img
-                            src={item?.image || item?.imageUrl || getBingImage(item?.name, item?.categoryName || item?.category, { w: 100, h: 100 })}
-                            alt={item?.name || "Item"}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                                e.currentTarget.onerror = null;
-                                e.currentTarget.src = DEFAULT_ITEM_IMAGE;
-                            }}
-                        />
-                    </div>
+                    {showAiImage && (
+                        <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0">
+                            <img
+                                src={item?.image || item?.imageUrl || getBingImage(item?.name, item?.categoryName || item?.category, { w: 100, h: 100 })}
+                                alt={item?.name || "Item"}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                }}
+                            />
+                        </div>
+                    )}
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                             <span className="text-[9px] uppercase font-black tracking-wider text-indigo-600">
@@ -181,17 +186,19 @@ const FoodItemCard = ({
                 <div className="flex-1 min-w-0 flex flex-col justify-between pr-0 sm:pr-3 border-b sm:border-b-0 sm:border-r border-slate-200/80 pb-3 sm:pb-0">
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden shrink-0 shadow-2xs">
-                                <img
-                                    src={item?.image || item?.imageUrl || getBingImage(item?.name, item?.categoryName || item?.category, { w: 160, h: 160 })}
-                                    alt={item?.name || "Item"}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                        e.currentTarget.onerror = null;
-                                        e.currentTarget.src = DEFAULT_ITEM_IMAGE;
-                                    }}
-                                />
-                            </div>
+                            {showAiImage && (
+                                <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden shrink-0 shadow-2xs">
+                                    <img
+                                        src={item?.image || item?.imageUrl || getBingImage(item?.name, item?.categoryName || item?.category, { w: 160, h: 160 })}
+                                        alt={item?.name || "Item"}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            e.currentTarget.onerror = null;
+                                            e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                        }}
+                                    />
+                                </div>
+                            )}
                             <div className="min-w-0">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 block truncate">
                                     {item.category || "General"}
@@ -381,18 +388,20 @@ const FoodItemCard = ({
                 {/* Top Section: Image + Category & Stock Header */}
                 <div className="flex items-start gap-2.5">
                     {/* 1:1 Image Container */}
-                    <div className="relative shrink-0 w-14 h-14 aspect-square rounded-xl overflow-hidden bg-slate-50 border border-slate-200/80 shadow-2xs">
-                        <img
-                            src={item?.image || item?.imageUrl || getBingImage(item?.name, item?.categoryName || item?.category, { w: 140, h: 140 })}
-                            alt={item?.name || "Item"}
-                            loading="lazy"
-                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                            onError={(e) => {
-                                e.currentTarget.onerror = null;
-                                e.currentTarget.src = DEFAULT_ITEM_IMAGE;
-                            }}
-                        />
-                    </div>
+                    {showAiImage && (
+                        <div className="relative shrink-0 w-14 h-14 aspect-square rounded-xl overflow-hidden bg-slate-50 border border-slate-200/80 shadow-2xs">
+                            <img
+                                src={item?.image || item?.imageUrl || getBingImage(item?.name, item?.categoryName || item?.category, { w: 140, h: 140 })}
+                                alt={item?.name || "Item"}
+                                loading="lazy"
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                }}
+                            />
+                        </div>
+                    )}
 
                     {/* Meta info & Title */}
                     <div className="flex-1 min-w-0 flex flex-col justify-between h-full">

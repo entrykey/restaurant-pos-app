@@ -86,7 +86,9 @@ const TakeawayOrder = ({
     offers = [],
 }) => {
     const { theme, themeName } = useTheme();
-    const { activeBranchId, currencySymbol, shopCurrency } = useApp();
+    const { activeBranchId, currencySymbol, shopCurrency, settings: appSettings } = useApp();
+    const activeSettings = settings || appSettings;
+    const showAiImage = activeSettings?.SHOW_AI_IMAGE_IN_SALE !== false && String(activeSettings?.SHOW_AI_IMAGE_IN_SALE).toLowerCase() !== 'false';
     const {
         isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
         setOriginalOrderId, setReturnedItems,
@@ -1447,16 +1449,18 @@ const TakeawayOrder = ({
                                             {/* Top Row: 56px Product Image, Name/Category, Price & Delete Button */}
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex items-start gap-3 min-w-0 flex-1">
-                                                    <img
-                                                        src={getBingImage(item?.name, { w: 64, h: 64 })}
-                                                        alt={item?.name || "Item"}
-                                                        loading="lazy"
-                                                        className={`w-14 h-14 rounded-xl object-cover ${theme.pageBg} border ${theme.borderLight} shrink-0 shadow-2xs ${isZeroPrice ? 'opacity-75' : ''}`}
-                                                        onError={(e) => {
-                                                            e.currentTarget.onerror = null;
-                                                            e.currentTarget.src = DEFAULT_ITEM_IMAGE;
-                                                        }}
-                                                    />
+                                                    {showAiImage && (
+                                                        <img
+                                                            src={getBingImage(item?.name, { w: 64, h: 64 })}
+                                                            alt={item?.name || "Item"}
+                                                            loading="lazy"
+                                                            className={`w-14 h-14 rounded-xl object-cover ${theme.pageBg} border ${theme.borderLight} shrink-0 shadow-2xs ${isZeroPrice ? 'opacity-75' : ''}`}
+                                                            onError={(e) => {
+                                                                e.currentTarget.onerror = null;
+                                                                e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                                            }}
+                                                        />
+                                                    )}
                                                     <div className="min-w-0 flex-1">
                                                         <div className="flex flex-wrap items-center gap-1.5">
                                                             <h4 className={`font-bold text-sm leading-snug line-clamp-2 ${theme.textPrimary}`}>

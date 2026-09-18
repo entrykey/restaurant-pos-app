@@ -54,7 +54,9 @@ const InlineReviewBill = ({
     orderType = "DIRECT_SALE",
 }) => {
     const { theme } = useTheme();
-    const { activeBranchId, branches, organization, user } = useApp();
+    const { activeBranchId, branches, organization, user, settings: appSettings } = useApp();
+    const activeSettings = settings || appSettings;
+    const showAiImage = activeSettings?.SHOW_AI_IMAGE_IN_SALE !== false && String(activeSettings?.SHOW_AI_IMAGE_IN_SALE).toLowerCase() !== 'false';
     const {
         isExchange, exchangeCredit, originalOrderId, returnedItems,
         couponCode, setCouponCode,
@@ -741,21 +743,27 @@ const InlineReviewBill = ({
                                             <div className="flex items-center justify-between gap-3">
                                                 {/* Left: Thumbnail & Details */}
                                                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                                    <div className="relative shrink-0">
-                                                        <img
-                                                            src={getBingImage(item?.name, { w: 48, h: 48 })}
-                                                            alt={item?.name || "Item"}
-                                                            loading="lazy"
-                                                            className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg object-cover border border-gray-200 dark:border-gray-700 shadow-2xs"
-                                                            onError={(e) => {
-                                                                e.currentTarget.onerror = null;
-                                                                e.currentTarget.src = DEFAULT_ITEM_IMAGE;
-                                                            }}
-                                                        />
-                                                        <span className="absolute -top-1 -left-1 bg-indigo-600 text-white font-black text-[9px] px-1.5 py-0.2 rounded-full shadow-2xs">
+                                                    {showAiImage ? (
+                                                        <div className="relative shrink-0">
+                                                            <img
+                                                                src={getBingImage(item?.name, { w: 48, h: 48 })}
+                                                                alt={item?.name || "Item"}
+                                                                loading="lazy"
+                                                                className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg object-cover border border-gray-200 dark:border-gray-700 shadow-2xs"
+                                                                onError={(e) => {
+                                                                    e.currentTarget.onerror = null;
+                                                                    e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                                                }}
+                                                            />
+                                                            <span className="absolute -top-1 -left-1 bg-indigo-600 text-white font-black text-[9px] px-1.5 py-0.2 rounded-full shadow-2xs">
+                                                                {item.quantity}x
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="bg-indigo-600 text-white font-black text-[10px] px-2 py-0.5 rounded-md shadow-2xs shrink-0">
                                                             {item.quantity}x
                                                         </span>
-                                                    </div>
+                                                    )}
 
                                                     <div className="min-w-0 flex-1">
                                                         <div className="flex items-center gap-2">

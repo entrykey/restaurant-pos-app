@@ -2,10 +2,13 @@ import React, { useState, useMemo } from "react";
 import { X, Plus, Minus, ShoppingBag, Tag, Check, Package, AlertCircle } from "lucide-react";
 import { DEFAULT_ITEM_IMAGE, getBingImage } from "../utils/getImage";
 import { useTheme } from "../context/ThemeContext";
+import { useApp } from "../context/AppContext";
 import { isStockTracked, allowsNegativeStock, getAvailableStock } from "../utils/cartStockUtils";
 
 const ProductQuickViewPanel = ({ item, onClose, onAddToCart, formatCurrency }) => {
     const { theme } = useTheme();
+    const { settings } = useApp();
+    const showAiImage = settings?.SHOW_AI_IMAGE_IN_SALE !== false && String(settings?.SHOW_AI_IMAGE_IN_SALE).toLowerCase() !== 'false';
 
     const portionList = useMemo(() => {
         if (Array.isArray(item?.portionPricing) && item.portionPricing.length > 0) {
@@ -79,31 +82,33 @@ const ProductQuickViewPanel = ({ item, onClose, onAddToCart, formatCurrency }) =
                 {/* Content Body */}
                 <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/50">
                     {/* Large Product Image Container */}
-                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-sm group">
-                        <img
-                            src={item?.image || item?.imageUrl || getBingImage(item?.name, { w: 400, h: 250 })}
-                            alt={item?.name || "Item"}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            onError={(e) => {
-                                e.currentTarget.onerror = null;
-                                e.currentTarget.src = DEFAULT_ITEM_IMAGE;
-                            }}
-                        />
-                        <div className="absolute top-3 left-3 flex gap-2">
-                            <span className="bg-slate-900/80 backdrop-blur-md text-white font-extrabold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-md shadow-md">
-                                {item.category || "General"}
-                            </span>
-                            {isOutOfStock ? (
-                                <span className="bg-red-500/90 backdrop-blur-md text-white font-extrabold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-md shadow-md flex items-center gap-1">
-                                    <AlertCircle size={10} /> Out of Stock
+                    {showAiImage && (
+                        <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-sm group">
+                            <img
+                                src={item?.image || item?.imageUrl || getBingImage(item?.name, { w: 400, h: 250 })}
+                                alt={item?.name || "Item"}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                }}
+                            />
+                            <div className="absolute top-3 left-3 flex gap-2">
+                                <span className="bg-slate-900/80 backdrop-blur-md text-white font-extrabold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-md shadow-md">
+                                    {item.category || "General"}
                                 </span>
-                            ) : (
-                                <span className="bg-emerald-500/90 backdrop-blur-md text-white font-extrabold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-md shadow-md">
-                                    In Stock ({item.quantityOnHand ?? 'Available'})
-                                </span>
-                            )}
+                                {isOutOfStock ? (
+                                    <span className="bg-red-500/90 backdrop-blur-md text-white font-extrabold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-md shadow-md flex items-center gap-1">
+                                        <AlertCircle size={12} /> Out of Stock
+                                    </span>
+                                ) : (
+                                    <span className="bg-emerald-600/90 backdrop-blur-md text-white font-extrabold text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-md shadow-md flex items-center gap-1">
+                                        <Check size={12} /> In Stock
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Title & Price */}
                     <div className="space-y-1 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
