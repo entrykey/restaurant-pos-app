@@ -348,6 +348,16 @@ export function printBill({
     ? `<div class="center tiny muted">Billed by: ${escapeHtml(staffName)}</div>`
     : "";
 
+  const finalAmt = totals?.finalTotal ?? 0;
+  const paidAmt = totals?.paidAmount !== undefined ? totals.paidAmount : (totals?.remainingBalance !== undefined ? Math.max(0, finalAmt - totals.remainingBalance) : finalAmt);
+  const remainingBal = totals?.remainingBalance !== undefined ? totals.remainingBalance : Math.max(0, finalAmt - paidAmt);
+  const isFullyPaid = remainingBal <= 0;
+
+  const settlementHtml = isFullyPaid
+    ? `<div class="row bold" style="margin-top:6px; color:#16a34a;"><span>Payment Status</span><span>FULLY PAID</span></div>`
+    : `<div class="row" style="margin-top:6px;"><span class="muted">Amount Paid</span><span>${escapeHtml(formatCurrency(paidAmt))}</span></div>
+       <div class="row bold" style="color:#d97706;"><span>Balance Due</span><span>${escapeHtml(formatCurrency(remainingBal))}</span></div>`;
+
   const html = `
     <div class="paper" style="width:${paperWidth}mm; font-size:${baseFont}px;">
       ${headerHtml}
@@ -379,6 +389,7 @@ export function printBill({
         ${taxBreakdownHtml}
         ${totals?.roundOff ? `<div class="row"><span class="muted">Round off</span><span>${escapeHtml(formatCurrency(totals.roundOff))}</span></div>` : ""}
         <div class="row md bold"><span>Total</span><span>${escapeHtml(formatCurrency(totals?.finalTotal ?? 0))}</span></div>
+        ${settlementHtml}
       </div>
 
       ${upiHtml}
@@ -411,6 +422,16 @@ export function printBillA4({
   const footerText = formatSettings.includeThankYou !== false
     ? (formatSettings.footerText || "Thank you! Visit Again")
     : "";
+  const finalAmtA4 = totals?.finalTotal ?? 0;
+  const paidAmtA4 = totals?.paidAmount !== undefined ? totals.paidAmount : (totals?.remainingBalance !== undefined ? Math.max(0, finalAmtA4 - totals.remainingBalance) : finalAmtA4);
+  const remainingBalA4 = totals?.remainingBalance !== undefined ? totals.remainingBalance : Math.max(0, finalAmtA4 - paidAmtA4);
+  const isFullyPaidA4 = remainingBalA4 <= 0;
+
+  const settlementHtmlA4 = isFullyPaidA4
+    ? `<div class="row bold" style="margin-top:8px; color:#16a34a; font-weight:900;"><span>Payment Status</span><span>FULLY PAID</span></div>`
+    : `<div class="row" style="margin-top:8px;"><span class="muted">Amount Paid</span><span>${escapeHtml(formatCurrency(paidAmtA4))}</span></div>
+       <div class="row bold" style="color:#d97706; font-weight:900;"><span>Balance Due</span><span>${escapeHtml(formatCurrency(remainingBalA4))}</span></div>`;
+
   const html = `
     <div style="padding: 0; margin: 0;">
       <style>
@@ -450,14 +471,14 @@ export function printBillA4({
               ${formatSettings.includeOrderNumber !== false && meta?.orderLabel ? `<div><strong>Order:</strong> ${escapeHtml(meta.orderLabel)}</div>` : ""}
               ${formatSettings.includeTable !== false && meta?.tableLabel ? `<div><strong>Table:</strong> ${escapeHtml(meta.tableLabel)}</div>` : ""}
               ${formatSettings.includeCustomer !== false && meta?.customerLabel ? `<div><strong>Customer:</strong> ${escapeHtml(meta.customerLabel)}</div>` : ""}
-              ${meta?.printedAt ? `<div><strong>Date:</strong> ${escapeHtml(meta.printedAt)}</div>` : ""}
+              <div><strong>Date:</strong> ${escapeHtml(meta?.printedAt || "")}</div>
               ${formatSettings.includePaymentMethod && paymentMethod ? `<div><strong>Payment:</strong> ${escapeHtml(paymentMethod)}</div>` : ""}
             </div>
           </div>
           <div class="brand">
             ${formatSettings.includeLogo !== false && header?.logoUrl ? `<img src="${escapeHtml(header.logoUrl)}" alt="logo" />` : ""}
             ${formatSettings.includeShopName !== false ? `<div class="shop">${escapeHtml(header?.shopName || "")}</div>` : ""}
-            ${formatSettings.includeBranchName !== false ? `<div style="font-size:12px; color:#444; font-weight:700;">${escapeHtml(header?.branchName || "")}</div>` : ""}
+            ${formatSettings.includeBranchName !== false ? `<div class="line" style="font-size:12px; font-weight:700; color:#555;">${escapeHtml(header?.branchName || "")}</div>` : ""}
           </div>
         </div>
 
@@ -515,6 +536,7 @@ export function printBillA4({
             ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.igst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>IGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.igst))}</span></div>` : ""}
 
             <div class="row grand"><span>Grand Total</span><span>${escapeHtml(formatCurrency(totals?.finalTotal ?? 0))}</span></div>
+            ${settlementHtmlA4}
             ${upiQrHtml}
           </div>
         </div>

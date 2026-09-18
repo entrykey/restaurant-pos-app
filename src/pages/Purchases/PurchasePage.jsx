@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera, Layers } from "lucide-react";
+import { X, Save, Plus, Trash2, Search, Calculator, Calendar, User, Building, FileText, ShoppingCart, Package, Info, Check, ArrowLeft, ChevronRight, Phone, Mail, MapPin, Loader2, Printer, Camera, Layers, CreditCard } from "lucide-react";
 import { useNavigate, useParams, useLocation, Link } from "react-router-dom";
 import { PurchaseService } from "../../services/PurchaseService";
 import { SupplierService } from "../Suppliers/SupplierService";
@@ -74,7 +74,9 @@ const PurchasePage = () => {
         otherCharges: 0,
         grandTotal: 0,
         paidAmount: 0,
-        balanceAmount: 0
+        balanceAmount: 0,
+        paymentMethod: "CASH",
+        paymentReference: ""
     });
 
     const [itemSearch, setItemSearch] = useState("");
@@ -211,6 +213,10 @@ const PurchasePage = () => {
                 branchId: p.branchId?._id || p.branchId,
                 invoiceDate: new Date(p.invoiceDate).toISOString().split('T')[0],
                 dueDate: p.dueDate ? new Date(p.dueDate).toISOString().split('T')[0] : "",
+                paidAmount: p.paidAmount != null ? p.paidAmount : (p.paymentStatus === "PAID" ? p.grandTotal : 0),
+                balanceAmount: p.balanceAmount != null ? p.balanceAmount : Math.max(0, (p.grandTotal || 0) - (p.paidAmount || 0)),
+                paymentMethod: p.paymentMethod || (p.payments && p.payments[0]?.paymentMethod) || "CASH",
+                paymentReference: p.paymentReference || p.referenceNumber || (p.payments && p.payments[0]?.referenceNumber) || "",
                 items: data.items.map(it => {
                     const productMaster = it.itemId;
                     const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
@@ -1029,8 +1035,24 @@ const PurchasePage = () => {
                 totalAmount: (Number(it.quantity) * Number(it.purchasePrice)) + (Number(it.taxAmount) || 0) - (Number(it.discountAmount) || 0)
             }));
 
+            const paidAmt = Number(formData.paidAmount) || 0;
+            const grandAmt = Number(formData.grandTotal) || 0;
+            const balAmt = Math.max(0, parseFloat((grandAmt - paidAmt).toFixed(4)));
+            const payStatus = grandAmt > 0 && paidAmt >= grandAmt ? "PAID" : (paidAmt > 0 ? "PARTIAL" : "UNPAID");
+
             const payload = {
                 ...formData,
+                paidAmount: paidAmt,
+                balanceAmount: balAmt,
+                paymentStatus: payStatus,
+                paymentMethod: formData.paymentMethod || "CASH",
+                paymentReference: formData.paymentReference || "",
+                payments: paidAmt > 0 ? [{
+                    amount: paidAmt,
+                    paymentMethod: formData.paymentMethod || "CASH",
+                    referenceNumber: formData.paymentReference || "",
+                    paymentDate: new Date()
+                }] : [],
                 items: itemsWithTotal,
                 shopId: finalShopId,
                 editNote: editNote || undefined,
@@ -2223,19 +2245,128 @@ const PurchasePage = () => {
 
                     {/* section: Footer Totals & Save */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8">
-                        {/* Notes Area */}
-                        <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-8 border ${theme.borderLight}`}>
-                            <label className={`text-[10px] font-black uppercase tracking-widest px-1 block mb-3 ${theme.textMuted}`}>Optional Notes</label>
-                            <textarea
-                                value={formData.notes}
-                                onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                                placeholder="Any additional information about this purchase..."
-                                className={`w-full min-h-[140px] p-4 md:p-6 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none transition-all font-bold resize-none ${theme.inputBg} ${theme.textPrimary}`}
-                            />
+                        {/* Notes & Payment Area */}
+                        <div className={`${theme.surfaceBg} rounded-2xl md:rounded-[40px] shadow-md md:shadow-2xl p-4 md:p-8 border ${theme.borderLight} space-y-6`}>
+                            <div>
+                                <label className={`text-[10px] font-black uppercase tracking-widest px-1 block mb-3 ${theme.textMuted}`}>Optional Notes</label>
+                                <textarea
+                                    value={formData.notes}
+                                    onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                                    placeholder="Any additional information about this purchase..."
+                                    className={`w-full min-h-[120px] p-4 md:p-6 rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none transition-all font-bold resize-none ${theme.inputBg} ${theme.textPrimary}`}
+                                />
+                            </div>
+
+                            {/* Payment Details & Marking Section */}
+                            <div className={`p-5 rounded-3xl border ${theme.borderLight} ${theme.mode === 'dark' ? 'bg-gray-800/40' : 'bg-gray-50/70'} space-y-4`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <CreditCard size={18} className="text-emerald-500" />
+                                        <span className={`text-[11px] font-black uppercase tracking-wider ${theme.textHeading}`}>Payment Details</span>
+                                    </div>
+                                    {/* Payment Status Pill */}
+                                    {(() => {
+                                        const paid = Number(formData.paidAmount || 0);
+                                        const grand = Number(formData.grandTotal || 0);
+                                        if (grand > 0 && paid >= grand) {
+                                            return (
+                                                <span className="px-3 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 uppercase tracking-wider">
+                                                    FULLY PAID
+                                                </span>
+                                            );
+                                        } else if (paid > 0) {
+                                            return (
+                                                <span className="px-3 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-300 dark:border-blue-800 uppercase tracking-wider">
+                                                    PARTIAL
+                                                </span>
+                                            );
+                                        } else {
+                                            return (
+                                                <span className="px-3 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-300 dark:border-amber-800 uppercase tracking-wider">
+                                                    UNPAID / CREDIT
+                                                </span>
+                                            );
+                                        }
+                                    })()}
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {/* Amount Paying */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex justify-between items-center px-1">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Amount Paying</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData(prev => ({
+                                                    ...prev,
+                                                    paidAmount: prev.grandTotal,
+                                                    balanceAmount: 0
+                                                }))}
+                                                className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 hover:underline uppercase"
+                                            >
+                                                Pay Full
+                                            </button>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="any"
+                                            value={formData.paidAmount ?? 0}
+                                            onChange={e => {
+                                                const val = parseFloat(e.target.value || 0);
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    paidAmount: val,
+                                                    balanceAmount: Math.max(0, parseFloat((prev.grandTotal - val).toFixed(4)))
+                                                }));
+                                            }}
+                                            className={`w-full p-3 rounded-2xl border ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} font-black text-base outline-none focus:border-emerald-500`}
+                                        />
+                                    </div>
+
+                                    {/* Payment Method Selector using CommonSelect */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 pl-1">Method</label>
+                                        <CommonSelect
+                                            options={[
+                                                { label: "Cash", value: "CASH" },
+                                                { label: "Bank Transfer", value: "BANK_TRANSFER" },
+                                                { label: "Cheque", value: "CHEQUE" },
+                                                { label: "UPI", value: "UPI" },
+                                                { label: "Card", value: "CARD" }
+                                            ]}
+                                            value={formData.paymentMethod || "CASH"}
+                                            onChange={val => setFormData(prev => ({ ...prev, paymentMethod: val }))}
+                                            placeholder="Select Method"
+                                            triggerClassName={`w-full p-3 rounded-2xl border ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} text-xs font-bold`}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Ref / Txn No. */}
+                                <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 pl-1">Ref / Txn No. (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Ref / Txn No..."
+                                        value={formData.paymentReference || ""}
+                                        onChange={e => setFormData(prev => ({ ...prev, paymentReference: e.target.value }))}
+                                        className={`w-full p-3 rounded-2xl border ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} text-xs font-bold outline-none focus:border-emerald-500`}
+                                    />
+                                </div>
+
+                                {/* Remaining Balance Summary */}
+                                <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700/60 text-xs px-1">
+                                    <span className={`font-bold text-[10px] uppercase tracking-wider ${theme.textMuted}`}>Remaining Balance</span>
+                                    <span className={`font-black text-sm ${formData.balanceAmount > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                                        {formatCurrency ? formatCurrency(formData.balanceAmount || 0) : (formData.balanceAmount || 0).toFixed(2)}
+                                    </span>
+                                </div>
+                            </div>
 
                             {/* --- Audit Note for Edits --- */}
                             {isEditing && (
-                                <div className={`mt-6 p-6 rounded-[32px] border-2 border-dashed ${theme.mode === 'dark' ? 'bg-amber-500/5 border-amber-500/20' : 'bg-amber-50 border-amber-200'} space-y-4`}>
+                                <div className={`p-6 rounded-[32px] border-2 border-dashed ${theme.mode === 'dark' ? 'bg-amber-500/5 border-amber-500/20' : 'bg-amber-50 border-amber-200'} space-y-4`}>
                                     <div className="flex items-center gap-3">
                                         <div className={`p-2 rounded-xl ${theme.mode === 'dark' ? 'bg-amber-500/20 text-amber-500' : 'bg-amber-500 text-white'}`}>
                                             <Info size={18} />
@@ -2787,36 +2918,27 @@ const PurchasePage = () => {
                     </div>
                     <div>
                         <label className={`text-xs font-black uppercase block mb-1 ${theme.textMuted}`}>Currency</label>
-                        <select
-                            className={`w-full p-3 border rounded-xl ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight}`}
+                        <CommonSelect
+                            options={CURRENCIES.map(c => ({ label: c.name, value: c.code }))}
                             value={branchForm.currency}
-                            onChange={(e) => setBranchForm({ ...branchForm, currency: e.target.value })}
-                        >
-                            {CURRENCIES.map((c) => (
-                                <option key={c.code} value={c.code}>{c.name}</option>
-                            ))}
-                        </select>
+                            onChange={val => setBranchForm({ ...branchForm, currency: val })}
+                            placeholder="Select Currency"
+                        />
                     </div>
                     <div>
                         <label className={`text-xs font-black uppercase block mb-1 ${theme.textMuted}`}>Tax System</label>
-                        <select
-                            className={`w-full p-3 border rounded-xl ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight}`}
+                        <CommonSelect
+                            options={Object.values(TAX_SYSTEMS).map(t => ({ label: t, value: t }))}
                             value={branchForm.taxConfig?.taxSystem}
-                            onChange={(e) => {
-                                const newSystem = e.target.value;
-                                setBranchForm({
-                                    ...branchForm,
-                                    taxConfig: {
-                                        ...branchForm.taxConfig,
-                                        taxSystem: newSystem,
-                                    },
-                                });
-                            }}
-                        >
-                            {Object.values(TAX_SYSTEMS).map((t) => (
-                                <option key={t} value={t}>{t}</option>
-                            ))}
-                        </select>
+                            onChange={val => setBranchForm({
+                                ...branchForm,
+                                taxConfig: {
+                                    ...branchForm.taxConfig,
+                                    taxSystem: val
+                                }
+                            })}
+                            placeholder="Select Tax System"
+                        />
                     </div>
                     {(() => {
                         const taxSystem = branchForm.taxConfig?.taxSystem || TAX_SYSTEMS.GST;

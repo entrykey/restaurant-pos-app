@@ -37,6 +37,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     const showRecipe = activeTab === 'menu';
 
     const [isLoading, setIsLoading] = useState(isEditing && !location.state?.formData);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState(location.state?.formData || {});
     const [errors, setErrors] = useState({});
     const [isGSTApplicable, setIsGSTApplicable] = useState(true);
@@ -906,6 +907,85 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         toast.success("Variant barcodes generated");
     };
 
+    const handlePrintVariantBarcode = async (portion) => {
+        if (!portion) return;
+        let barcodeCode = (portion.barcode || '').trim();
+        if (!barcodeCode) {
+            barcodeCode = generateVariantBarcodeCode();
+            const portionIdx = (formData.portionPricing || []).findIndex(p => p === portion || (p.name === portion.name && p.price === portion.price));
+            if (portionIdx >= 0) {
+                handleUpdatePortion(portionIdx, 'barcode', barcodeCode);
+            }
+        }
+
+        let barcodeImg = null;
+        try {
+            const res = await itemService.getPreviewBarcode(barcodeCode);
+            barcodeImg = res;
+        } catch (e) {
+            console.error("Failed to fetch variant barcode preview:", e);
+        }
+
+        const root = (api.defaults.baseURL || "").replace(/\/api\/?$/, "");
+        const rawImgPath = barcodeImg?.fullUrl || barcodeImg?.url || barcodeImg?.imageUrl || '';
+        const fullBarcodeUrl = rawImgPath
+            ? (rawImgPath.startsWith("http") ? rawImgPath : `${root}${rawImgPath}`)
+            : (barcodeCode ? `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(barcodeCode)}&scale=2&rotate=N&includetext` : '');
+
+        const itemLabel = formData.name ? `${formData.name} - ${portion.name}` : portion.name;
+        const copies = Math.max(1, parseInt(portion.openingStock || 1));
+
+        setBarcodePrintDialog({
+            isOpen: true,
+            copies,
+            item: {
+                name: itemLabel,
+                itemCode: portion.code || formData.itemCode || barcodeCode,
+                sellingPrice: portion.price,
+                mrp: portion.mrp || portion.price,
+                quantityOnHand: portion.openingStock
+            },
+            barcode: {
+                code: barcodeCode,
+                fullUrl: fullBarcodeUrl,
+                imageUrl: barcodeImg?.imageUrl || ''
+            },
+            includeName: true,
+            includeCode: true,
+            includePrice: true,
+            includeMRP: false,
+            includeLogo: false,
+            includeShopName: true,
+            includeBatch: false,
+            includeExpiry: false,
+            includeUnit: false,
+            customText: "",
+            batchOverride: "",
+            expiryOverride: "",
+            unitValueOverride: portion.name,
+            layout: "ROWS",
+            labelWidth: 50,
+            labelHeight: 25,
+            labelGapX: 2,
+            labelGapY: 2,
+            barcodeHeight: 30,
+            baseFontSize: 10,
+            printMode: 'ROLL',
+            labelsPerRow: 1,
+            elementsOrder: ["shopName", "logo", "barcode", "name", "code", "unit", "price", "mrp", "batch", "expiry", "custom"]
+        });
+    };
+
+    const handlePrintAllVariantBarcodes = () => {
+        const portions = formData.portionPricing || [];
+        if (portions.length === 0) {
+            toast.error("Add variants first");
+            return;
+        }
+        const firstVariantWithBarcode = portions.find(p => p.barcode && p.barcode.trim()) || portions[0];
+        handlePrintVariantBarcode(firstVariantWithBarcode);
+    };
+
     const handleAddVariantIngredient = (index) => {
         const draft = variantBomDraft[index] || {};
         if (!draft.itemId || !draft.quantity || !draft.unitId) {
@@ -962,12 +1042,25 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             }
         });
 
-        // Mandatory tax percentage selection validation
-        if (shopTaxes.length > 0) {
-            if (!selectedTaxType) {
-                newErrors['tax_type'] = "Tax Type is required";
-            } else if (!formData.taxId || formData.taxId === "") {
-                newErrors['tax_percent'] = "Please select an Item Tax % for the selected Tax Type";
+        // Tax percentage selection validation (optional)
+
+        // Validate unique item name for the same branch locally if items are in state
+        if (formData.name && typeof formData.name === 'string' && formData.name.trim()) {
+            const trimmedName = formData.name.trim().toLowerCase();
+            const userBranch = user?.branchId || user?.branch_id || (user?.branchIds && user.branchIds.length > 0 ? (typeof user.branchIds[0] === 'object' ? user.branchIds[0]._id : user.branchIds[0]) : null);
+            const currentBranchId = fixedBranchId || activeBranchId || userBranch || formData.branchId || (branches && branches.length > 0 ? (branches[0]._id || branches[0].id) : null);
+
+            const allLocalItems = [...(menu || []), ...(inventoryItems || [])];
+            const duplicateLocal = allLocalItems.find(item => {
+                const itemBranchId = item.branchId?._id || item.branchId?.id || item.branchId;
+                const sameBranch = !currentBranchId || !itemBranchId || String(itemBranchId) === String(currentBranchId);
+                const sameName = item.name && item.name.trim().toLowerCase() === trimmedName;
+                const isDifferentItem = isEditing ? String(item._id || item.id) !== String(id) : true;
+                return sameBranch && sameName && isDifferentItem;
+            });
+
+            if (duplicateLocal) {
+                newErrors.name = `An item with the name "${formData.name.trim()}" already exists in this branch.`;
             }
         }
 
@@ -981,7 +1074,10 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     };
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
         if (!validate()) return;
+
+        setIsSubmitting(true);
 
         let finalIngredients = [...ingredients];
         // Auto-add current ingredient if fields are filled but "Plus" wasn't clicked
@@ -1031,6 +1127,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             ];
         } else if (newPortion.name?.trim() || (newPortion.price !== "" && newPortion.price !== null && newPortion.price !== undefined) || (newPortion.mrp !== "" && newPortion.mrp !== null && newPortion.mrp !== undefined)) {
             toast.error("Please enter both variant name and price, or clear the fields.");
+            setIsSubmitting(false);
             return;
         }
 
@@ -1061,6 +1158,46 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 unitId: toIdString(ing.unitId)
             }))
         }));
+
+        // Validate raw material stock availability if setting opening stock for manufactured product
+        if (hasVariants) {
+            for (const portion of sanitizedPortionPricing) {
+                const vQty = portion.openingStock || 0;
+                if (vQty > 0) {
+                    const vIngs = (portion.ingredients && portion.ingredients.length > 0)
+                        ? portion.ingredients
+                        : sanitizedIngredients;
+                    for (const ing of (vIngs || [])) {
+                        const rawItem = stockItems.find(i => String(i._id || i.id) === String(ing.rawItemId || ing.itemId));
+                        if (rawItem) {
+                            const avail = rawItem.quantityOnHand ?? 0;
+                            const allowNeg = rawItem.stockSettings?.allowNegativeStock === true;
+                            if (!allowNeg && avail <= 0) {
+                                toast.error(`Cannot set opening stock for variant '${portion.name}': Linked material '${rawItem.name}' is out of stock (${avail} available). Please add stock for '${rawItem.name}' first.`);
+                                setIsSubmitting(false);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (formData.itemType === 'MANUFACTURED' || activeTab === 'menu') {
+            const mainQty = parseFloat(formData.openingStock) || 0;
+            if (mainQty > 0) {
+                for (const ing of (sanitizedIngredients || [])) {
+                    const rawItem = stockItems.find(i => String(i._id || i.id) === String(ing.rawItemId || ing.itemId));
+                    if (rawItem) {
+                        const avail = rawItem.quantityOnHand ?? 0;
+                        const allowNeg = rawItem.stockSettings?.allowNegativeStock === true;
+                        if (!allowNeg && avail <= 0) {
+                            toast.error(`Cannot set opening stock for '${formData.name}': Linked material '${rawItem.name}' is out of stock (${avail} available). Please add stock for '${rawItem.name}' first.`);
+                            setIsSubmitting(false);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
 
         let resolvedUnitId = toIdString(formData.unitId);
         if (!resolvedUnitId && units && units.length > 0) {
@@ -1153,6 +1290,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         } catch (error) {
             console.error("Failed to save product:", error);
             toast.error(getErrorMessage(error, "Failed to save product."));
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -1359,11 +1498,19 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
                                 // Special rendering for tax_percent - show tax type selector first
                                 if (fieldKey === 'tax_percent') {
+                                    const isSuperAdminUser = Boolean(
+                                        user?.isSuperAdmin === true ||
+                                        user?.role === 'superadmin' ||
+                                        user?.role === 'SUPER_ADMIN' ||
+                                        user?.role?.name === 'superadmin' ||
+                                        user?.role?.name === 'SUPER_ADMIN' ||
+                                        user?.roles?.some(r => ['superadmin', 'super_admin'].includes((r?.name || r || "").toLowerCase()))
+                                    );
                                     const effectiveBranch = currentBranchData || branches?.find(b => String(b._id || b.id) === String(activeBranchId || fixedBranchId));
                                     const branchCountry = effectiveBranch?.address?.country || organization?.defaultCountry;
                                     const countryVal = typeof branchCountry === 'object' ? (branchCountry?.code || branchCountry?.name) : branchCountry;
                                     const effectiveTaxSystem = branchTaxSystem || effectiveBranch?.taxProfile?.taxSystem || effectiveBranch?.taxConfig?.taxSystem || organization?.defaultTaxSystem;
-                                    const isTaxProfileComplete = Boolean(effectiveTaxSystem && countryVal);
+                                    const isTaxProfileComplete = isSuperAdminUser || Boolean(effectiveTaxSystem && countryVal);
 
                                     if (!isTaxProfileComplete) {
                                         return (
@@ -1398,11 +1545,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
                                     return (
                                         <React.Fragment key={fieldKey}>
-                                            {/* Tax Type Selector */}
+                                             {/* Tax Type Selector (Optional) */}
                                             <div>
                                                 <div className="flex items-center justify-between mb-2 ml-1">
                                                     <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest block`}>
-                                                        Tax Type <span className="text-red-500">*</span>
+                                                        Tax Type
                                                     </label>
                                                     {effectiveTaxSystem && (
                                                         <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md">
@@ -1412,23 +1559,25 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                 </div>
                                                 <CommonSelect
                                                     options={[
+                                                        { label: "None (No Tax)", value: "NONE" },
                                                         { label: "Inclusive", value: "INCLUSIVE" },
                                                         { label: "Exclusive", value: "EXCLUSIVE" }
                                                     ]}
-                                                    value={selectedTaxType}
+                                                    value={selectedTaxType || "NONE"}
                                                     onChange={(val) => {
-                                                        if (val !== selectedTaxType) {
-                                                            setSelectedTaxType(val);
+                                                        const targetType = val === "NONE" ? "" : val;
+                                                        if (targetType !== selectedTaxType) {
+                                                            setSelectedTaxType(targetType);
                                                             // Reset tax selection when type changes
                                                             setFormData(prev => ({
                                                                 ...prev,
                                                                 taxId: "",
                                                                 taxPercent: 0,
-                                                                isExclusiveTax: val === "EXCLUSIVE"
+                                                                isExclusiveTax: targetType === "EXCLUSIVE"
                                                             }));
                                                         }
                                                     }}
-                                                    placeholder="Select Tax Type..."
+                                                    placeholder="Select Tax Type (Optional)..."
                                                     className="w-full"
                                                 />
                                             </div>
@@ -1539,6 +1688,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                             <input
                                                 type={field.type}
                                                 onWheel={(e) => field.type === 'number' ? e.target.blur() : null}
+                                                onFocus={(e) => field.type === 'number' ? e.target.select() : null}
                                                 value={formData[field.key] !== undefined ? formData[field.key] : ""}
                                                 onChange={(e) => handleChange(fieldKey, e.target.value)}
                                                 className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
@@ -1953,6 +2103,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                         <input
                                             type="number"
                                             onWheel={(e) => e.target.blur()}
+                                            onFocus={(e) => e.target.select()}
                                             value={newPortion.price}
                                             onChange={(e) => setNewPortion({ ...newPortion, price: e.target.value })}
                                             placeholder="0.00"
@@ -1966,6 +2117,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                 <input
                                                     type="number"
                                                     onWheel={(e) => e.target.blur()}
+                                                    onFocus={(e) => e.target.select()}
                                                     value={newPortion.openingStock}
                                                     onChange={(e) => setNewPortion({ ...newPortion, openingStock: e.target.value })}
                                                     placeholder="0"
@@ -1999,6 +2151,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                             <input
                                                 type="number"
                                                 onWheel={(e) => e.target.blur()}
+                                                onFocus={(e) => e.target.select()}
                                                 value={newPortion.quantityFactor}
                                                 onChange={(e) => setNewPortion({ ...newPortion, quantityFactor: parseFloat(e.target.value || 1) })}
                                                 placeholder="1 = Full, 0.5 = Half"
@@ -2025,7 +2178,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                     <th className="p-4 font-black">Variant</th>
                                                     <th className="p-4 font-black">Price</th>
                                                     {isSeparateStock && <th className="p-4 font-black">Stock</th>}
-                                                    {isSeparateStock && <th className="p-4 font-black">Barcode</th>}
+                                                    <th className="p-4 font-black">Barcode</th>
                                                     {isSharedPortions && <th className="p-4 font-black">Portion Factor</th>}
                                                     <th className="p-4 font-black text-center">Default</th>
                                                     <th className="p-4 font-black text-right">Action</th>
@@ -2049,27 +2202,33 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                                 />
                                                             </td>
                                                         )}
-                                                        {isSeparateStock && (
-                                                            <td className="p-3">
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <input
-                                                                        type="text"
-                                                                        value={portion.barcode || ''}
-                                                                        onChange={(e) => handleUpdatePortion(idx, 'barcode', e.target.value)}
-                                                                        placeholder="Auto Generate"
-                                                                        className={`w-36 p-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-lg font-bold text-xs outline-none focus:border-indigo-500`}
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        title="Auto Generate Barcode"
-                                                                        onClick={() => handleUpdatePortion(idx, 'barcode', generateVariantBarcodeCode())}
-                                                                        className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-lg border ${theme.borderLight} ${theme.surfaceBg} ${theme.textPrimary} hover:border-indigo-500 hover:text-indigo-600 transition-colors`}
-                                                                    >
-                                                                        Auto
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                        )}
+                                                        <td className="p-3">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <input
+                                                                    type="text"
+                                                                    value={portion.barcode || ''}
+                                                                    onChange={(e) => handleUpdatePortion(idx, 'barcode', e.target.value)}
+                                                                    placeholder="Auto Generate"
+                                                                    className={`w-36 p-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-lg font-bold text-xs outline-none focus:border-indigo-500`}
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    title="Auto Generate Barcode"
+                                                                    onClick={() => handleUpdatePortion(idx, 'barcode', generateVariantBarcodeCode())}
+                                                                    className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-lg border ${theme.borderLight} ${theme.surfaceBg} ${theme.textPrimary} hover:border-indigo-500 hover:text-indigo-600 transition-colors`}
+                                                                >
+                                                                    Auto
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    title="Print Barcode Label for this Variant"
+                                                                    onClick={() => handlePrintVariantBarcode(portion)}
+                                                                    className="px-2.5 py-1 text-[10px] font-black uppercase rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1 shadow-sm shrink-0"
+                                                                >
+                                                                    <Printer size={12} /> Print
+                                                                </button>
+                                                            </div>
+                                                        </td>
                                                         {isSharedPortions && (
                                                             <td className="p-4">
                                                                 <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${theme.mode === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
@@ -2092,13 +2251,24 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                             />
                                                         </td>
                                                         <td className="p-4 text-right">
-                                                            <button
-                                                                onClick={() => handleRemovePortion(idx)}
-                                                                className="text-red-400 hover:text-red-600 p-1.5 transition-colors"
-                                                                title="Remove variant"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handlePrintVariantBarcode(portion)}
+                                                                    className="text-indigo-500 hover:text-indigo-700 p-1.5 transition-colors"
+                                                                    title="Print variant barcode"
+                                                                >
+                                                                    <Printer size={16} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRemovePortion(idx)}
+                                                                    className="text-red-400 hover:text-red-600 p-1.5 transition-colors"
+                                                                    title="Remove variant"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -2108,7 +2278,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                     </div>
                                 )}
 
-                                {isSeparateStock && (formData.portionPricing || []).length > 0 && (
+                                {(formData.portionPricing || []).length > 0 && (
                                     <div className="flex flex-wrap gap-3 pt-1">
                                         <button
                                             type="button"
@@ -2120,6 +2290,17 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                             }`}
                                         >
                                             <Barcode size={16} className={theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'} /> Generate Variant Barcodes
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handlePrintAllVariantBarcodes}
+                                            className={`px-4 py-2.5 rounded-xl border-2 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm ${
+                                                theme.mode === 'dark'
+                                                    ? 'border-emerald-500/50 bg-emerald-950/50 text-emerald-300 hover:bg-emerald-900/60 hover:border-emerald-400'
+                                                    : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300'
+                                            }`}
+                                        >
+                                            <Printer size={16} className={theme.mode === 'dark' ? 'text-emerald-400' : 'text-emerald-600'} /> Print Variant Barcodes
                                         </button>
                                         <button
                                             type="button"
@@ -2167,49 +2348,68 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                             </span>
                                                         </div>
 
-                                                        {/* Tree view of materials */}
-                                                        <div className="space-y-2 mb-3">
-                                                            {ingredients.length === 0 ? (
-                                                                <div className={`text-xs font-mono pl-2 ${theme.textMuted}`}>
-                                                                    └── No materials added yet (optional)
-                                                                </div>
-                                                            ) : (
-                                                                ingredients.map((ing, ingIdx) => (
-                                                                    <div key={ingIdx} className={`flex items-center justify-between py-2 px-3.5 rounded-xl text-xs font-bold ${theme.surfaceBg} border ${theme.borderLight}`}>
-                                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                                            <span className={`font-mono ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>└──</span>
-                                                                            <span className={theme.textPrimary}>{ing.name}</span>
-                                                                            <span className={theme.textMuted}>→</span>
-                                                                            <span className={theme.mode === 'dark' ? 'text-indigo-400 font-extrabold' : 'text-indigo-600 font-extrabold'}>
-                                                                                {ing.quantity} {ing.unitName}
-                                                                                {ing.selectedUnit === 'SECONDARY' && ing.conversionFactor > 1 && (
-                                                                                    <span className="text-[10px] text-gray-400 font-normal ml-1">
-                                                                                        (= {(ing.quantity / ing.conversionFactor).toFixed(3)} Primary Units)
-                                                                                    </span>
-                                                                                )}
-                                                                            </span>
-                                                                        </div>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => handleUpdatePortion(idx, 'ingredients', ingredients.filter((_, i) => i !== ingIdx))}
-                                                                            className="text-red-400 hover:text-red-600 p-1 transition-colors"
-                                                                            title="Remove material"
-                                                                        >
-                                                                            <Trash2 size={14} />
-                                                                        </button>
-                                                                    </div>
-                                                                ))
-                                                            )}
-                                                        </div>
+                                                         {/* Tree view of materials */}
+                                                         <div className="space-y-2 mb-3">
+                                                             {ingredients.length === 0 ? (
+                                                                 <div className={`text-xs font-mono pl-2 ${theme.textMuted}`}>
+                                                                     └── No materials added yet (optional)
+                                                                 </div>
+                                                             ) : (
+                                                                 ingredients.map((ing, ingIdx) => {
+                                                                     const rawItem = stockItems.find(i => String(i._id || i.id) === String(ing.rawItemId || ing.itemId));
+                                                                     const availQty = rawItem ? (rawItem.quantityOnHand ?? 0) : null;
+                                                                     const isOut = availQty !== null && availQty <= 0;
+                                                                     return (
+                                                                         <div key={ingIdx} className={`flex items-center justify-between py-2 px-3.5 rounded-xl text-xs font-bold ${theme.surfaceBg} border ${isOut ? 'border-red-300 dark:border-red-900/60 bg-red-50/50 dark:bg-red-950/20' : theme.borderLight}`}>
+                                                                             <div className="flex items-center gap-2 flex-wrap">
+                                                                                 <span className={`font-mono ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>└──</span>
+                                                                                 <span className={theme.textPrimary}>{ing.name}</span>
+                                                                                 <span className={theme.textMuted}>→</span>
+                                                                                 <span className={theme.mode === 'dark' ? 'text-indigo-400 font-extrabold' : 'text-indigo-600 font-extrabold'}>
+                                                                                     {ing.quantity} {ing.unitName}
+                                                                                     {ing.selectedUnit === 'SECONDARY' && ing.conversionFactor > 1 && (
+                                                                                         <span className="text-[10px] text-gray-400 font-normal ml-1">
+                                                                                             (= {(ing.quantity / ing.conversionFactor).toFixed(3)} Primary Units)
+                                                                                         </span>
+                                                                                     )}
+                                                                                 </span>
+                                                                                 {availQty !== null && (
+                                                                                     <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-tight ${
+                                                                                         isOut
+                                                                                             ? 'bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-200 dark:border-red-800'
+                                                                                             : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                                                                     }`}>
+                                                                                         {isOut ? `⚠️ Out of Stock (${availQty} ${rawItem?.unitId?.name || ''})` : `Stock: ${availQty} ${rawItem?.unitId?.name || ''}`}
+                                                                                     </span>
+                                                                                 )}
+                                                                             </div>
+                                                                             <button
+                                                                                 type="button"
+                                                                                 onClick={() => handleUpdatePortion(idx, 'ingredients', ingredients.filter((_, i) => i !== ingIdx))}
+                                                                                 className="text-red-400 hover:text-red-600 p-1 transition-colors"
+                                                                                 title="Remove material"
+                                                                             >
+                                                                                 <Trash2 size={14} />
+                                                                             </button>
+                                                                         </div>
+                                                                     );
+                                                                 })
+                                                             )}
+                                                         </div>
 
-                                                        {/* Add material row */}
-                                                        <div className={`flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center pt-3 border-t border-dashed ${theme.borderLight}`}>
-                                                            <div className="flex-1 min-w-[200px]">
-                                                                <CommonSelect
-                                                                    options={stockItems.map(item => ({
-                                                                        label: `${item.name} (${item.unitId?.name || "N/A"})`,
-                                                                        value: item._id || item.id
-                                                                    }))}
+                                                         {/* Add material row */}
+                                                         <div className={`flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center pt-3 border-t border-dashed ${theme.borderLight}`}>
+                                                             <div className="flex-1 min-w-[200px]">
+                                                                 <CommonSelect
+                                                                     options={stockItems.map(item => {
+                                                                         const qty = item.quantityOnHand ?? 0;
+                                                                         const isOut = qty <= 0;
+                                                                         const unitName = item.unitId?.name || "N/A";
+                                                                         return {
+                                                                             label: `${item.name} (${unitName})${isOut ? ` — ⚠️ 0 ${unitName} (OUT OF STOCK)` : ` — ${qty} ${unitName} in stock`}`,
+                                                                             value: item._id || item.id
+                                                                         };
+                                                                     })}
                                                                     value={draft.itemId || ''}
                                                                     onChange={(val) => {
                                                                         const availUnits = getAvailableUnitsForItem(val, stockItems, units);
@@ -2384,10 +2584,20 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 </button>
                 <button
                     onClick={handleSubmit}
-                    className={`flex-[2] py-2.5 sm:py-4 ${theme.buttonBg} ${theme.buttonText} rounded-[20px] font-black shadow-lg shadow-indigo-500/20 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-1.5 text-sm sm:text-lg`}
+                    disabled={isSubmitting}
+                    className={`flex-[2] py-2.5 sm:py-4 ${theme.buttonBg} ${theme.buttonText} rounded-[20px] font-black shadow-lg shadow-indigo-500/20 ${theme.buttonHoverBg} active:scale-95 transition-all flex items-center justify-center gap-1.5 text-sm sm:text-lg ${isSubmitting ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
                 >
-                    <Save size={16} className="sm:w-5 sm:h-5" />
-                    {isEditing ? "Update Product" : "Save Product"}
+                    {isSubmitting ? (
+                        <span className="flex items-center gap-2">
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            {isEditing ? "Updating..." : "Saving..."}
+                        </span>
+                    ) : (
+                        <>
+                            <Save size={16} className="sm:w-5 sm:h-5" />
+                            {isEditing ? "Update Product" : "Save Product"}
+                        </>
+                    )}
                 </button>
             </div>
 

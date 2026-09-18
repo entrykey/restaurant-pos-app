@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import FoodItemCard from "../../components/FoodItemCard";
+import ProductQuickViewPanel from "../../components/ProductQuickViewPanel";
 import PosTabBar from "../../components/PosTabBar";
 import { useApp } from "../../context/AppContext";
 import { itemService, customerService, api, loyaltyService } from "../../services/api";
@@ -43,6 +44,7 @@ import {
     collectOpenCartItems,
     isItemTypeAllowedOnSale,
 } from "../../utils/cartStockUtils";
+import InlineReviewBill from "../../components/pos/InlineReviewBill";
 
 const TakeawayOrder = ({
     view,
@@ -57,6 +59,7 @@ const TakeawayOrder = ({
     handlePrintReceipt,
     handleSendToKOT,
     isSubmittingKOT = false,
+    onFinalizePayment,
     setIsPaymentModalOpen,
     setBillingStage,
     initiateAddItem,
@@ -83,7 +86,9 @@ const TakeawayOrder = ({
     offers = [],
 }) => {
     const { theme, themeName } = useTheme();
-    const { activeBranchId, currencySymbol, shopCurrency } = useApp();
+    const { activeBranchId, currencySymbol, shopCurrency, settings: appSettings } = useApp();
+    const activeSettings = settings || appSettings;
+    const showAiImage = activeSettings?.SHOW_AI_IMAGE_IN_SALE !== false && String(activeSettings?.SHOW_AI_IMAGE_IN_SALE).toLowerCase() !== 'false';
     const {
         isExchange, setIsExchange, exchangeCredit, setExchangeCredit,
         setOriginalOrderId, setReturnedItems,
@@ -96,6 +101,8 @@ const TakeawayOrder = ({
         loyaltyDiscount, setLoyaltyDiscount, // Separate loyalty points discount
         setTakeawayOrder,
     } = useTakeaway();
+
+    const [isInlineCheckout, setIsInlineCheckout] = useState(false);
 
     const handleUpdateItemPrice = useCallback((itemIndex, newPrice) => {
         let val = parseFloat(newPrice);
@@ -138,6 +145,8 @@ const TakeawayOrder = ({
     const [showAvailableOffers, setShowAvailableOffers] = useState(false);
     const [isCartBreakdownExpanded, setIsCartBreakdownExpanded] = useState(true);
     const [priceInputs, setPriceInputs] = useState({});
+    const [quickViewItem, setQuickViewItem] = useState(null);
+    const [expandedItemId, setExpandedItemId] = useState(null);
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -857,7 +866,7 @@ const TakeawayOrder = ({
         return !appliedOfferIds.includes(oId);
     });
 
-    const shouldShowPosTabBar = isTakeaway && !activeTableId && (currentOrder?.orderType !== 'DINE_IN');
+    const shouldShowPosTabBar = isTakeaway && !activeTableId && (currentOrder?.orderType !== 'DINE_IN') && !isInlineCheckout;
 
     return (
         <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg} relative`}>
@@ -867,8 +876,8 @@ const TakeawayOrder = ({
                     <PosTabBar view={view || (isTakeaway ? 'takeaway' : 'direct-sale')} />
                 </div>
             )}
-            {/* Mobile/Tablet Tab Switcher — visible below xl */}
-            <div className={`xl:hidden flex p-2 ${theme.surfaceBg} border-b ${theme.borderLight} gap-2 shrink-0`}>
+            {/* Mobile/Tablet Tab Switcher — visible below lg */}
+            <div className={`lg:hidden flex p-2 ${theme.surfaceBg} border-b ${theme.borderLight} gap-2 shrink-0`}>
                 <button
                     onClick={() => setMobileOrderTab("menu")}
                     className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${mobileOrderTab === "menu" ? "bg-indigo-600 text-white" : `${theme.sectionBg} ${theme.textMuted}`
@@ -890,14 +899,43 @@ const TakeawayOrder = ({
                 </button>
             </div>
 
-            <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
+            {isInlineCheckout && window.innerWidth >= 1024 ? (
+                <InlineReviewBill
+                    onBack={() => setIsInlineCheckout(false)}
+                    isTakeaway={isTakeaway}
+                    activeTableId={activeTableId}
+                    tableName={activeTable ? activeTable.name : ""}
+                    orderItems={currentOrder.items}
+                    settings={settings}
+                    onFinalizePayment={async (method, billDetails, totalPaid, custName, custPhone, payments) => {
+                        if (onFinalizePayment) {
+                            await onFinalizePayment(method, billDetails, totalPaid, custName, custPhone, payments);
+                        }
+                        setIsInlineCheckout(false);
+                    }}
+                    onPrintBill={handlePrintReceipt}
+                    hasPermission={hasPermission}
+                    hasPermissionFor={hasPermissionFor}
+                    takeawayCustName={takeawayCustName}
+                    setTakeawayCustName={setTakeawayCustName}
+                    takeawayCustPhone={takeawayCustPhone}
+                    setTakeawayCustPhone={setTakeawayCustPhone}
+                    updateItemQuantity={updateItemQuantity}
+                    removeItemFromCart={removeItemFromCart}
+                    calculateItemTotal={calculateItemTotal}
+                    calculateBillDetails={calculateBillDetails}
+                    formatCurrency={formatCurrency}
+                    orderType={displayTitle}
+                />
+            ) : (
+                <div className="flex-1 min-w-0 w-full flex flex-col lg:flex-row overflow-hidden">
                 {/* Menu Section */}
                 <div
-                    className={`flex-1 ${theme.pageBg} flex flex-col min-h-0 ${mobileOrderTab === "cart" ? "hidden xl:flex" : "flex"
+                    className={`flex-1 min-w-0 ${theme.pageBg} flex flex-col min-h-0 ${mobileOrderTab === "cart" ? "hidden lg:flex" : "flex"
                         }`}
                 >
-                    {/* On small screens: entire section scrolls. On xl+: only grid scrolls */}
-                    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto xl:overflow-hidden custom-scrollbar p-2 sm:p-4">
+                    {/* On small screens: entire section scrolls. On lg+: only grid scrolls */}
+                    <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-y-auto lg:overflow-hidden custom-scrollbar p-2 sm:p-4">
                     {/* Breadcrumb — only shown for table orders */}
                     {!isTakeaway && (
                         <button
@@ -1283,9 +1321,9 @@ const TakeawayOrder = ({
 
                     <div
                         className={`${viewMode === "grid"
-                            ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5 items-stretch content-start"
-                            : "flex flex-col gap-2 md:gap-3"
-                            } pr-1 xl:overflow-y-auto xl:flex-1 xl:min-h-0 custom-scrollbar mt-2 min-h-[320px] xl:min-h-0`}
+                            ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4 gap-2.5 items-start content-start min-w-0"
+                            : "flex flex-col gap-2 md:gap-3 min-w-0"
+                            } pr-1 lg:overflow-y-auto lg:flex-1 lg:min-h-0 custom-scrollbar mt-2 min-h-[320px] lg:min-h-0`}
                     >
                         {isMenuLoading ? (
                             <div className="col-span-full py-20 flex flex-col items-center justify-center gap-4">
@@ -1319,9 +1357,17 @@ const TakeawayOrder = ({
                                 })
                                 .map((item) => {
                                     const isHot = item._orderCount > 0 && popularityMap[item.id || item._id] > 0;
+                                    const itemId = item.id || item._id;
+                                    const isExpanded = expandedItemId === itemId;
+
                                     return (
-                                        <div key={item.id} className="relative h-full flex flex-col">
-                                            {isHot && (
+                                        <div
+                                            key={itemId}
+                                            className={`relative transition-all duration-300 ${
+                                                isExpanded ? "col-span-2 shadow-xl z-20 min-h-[210px]" : "col-span-1 h-full"
+                                            }`}
+                                        >
+                                            {isHot && !isExpanded && (
                                                 <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-0.5 bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md pointer-events-none">
                                                     <Flame size={9} /> HOT
                                                 </div>
@@ -1329,7 +1375,10 @@ const TakeawayOrder = ({
                                             <FoodItemCard
                                                 item={item}
                                                 formatCurrency={formatCurrency}
-                                                onSelect={(item) => handleInitiateAddItem(item)}
+                                                onSelect={(item, variant) => handleInitiateAddItem(item, 1, variant)}
+                                                onOpenQuickView={(item) => setQuickViewItem(item)}
+                                                isExpanded={isExpanded}
+                                                onToggleExpand={() => setExpandedItemId(prev => prev === itemId ? null : itemId)}
                                                 viewMode={viewMode}
                                                 disabled={false}
                                             />
@@ -1343,7 +1392,7 @@ const TakeawayOrder = ({
 
                 {/* Cart Section */}
                 <div
-                    className={`w-full xl:w-[380px] 2xl:w-[440px] ${theme.surfaceBg} border-t xl:border-t-0 xl:border-l ${theme.borderLight} flex flex-col shrink-0 xl:h-full ${mobileOrderTab === "menu" ? "hidden xl:flex" : "flex h-full"
+                    className={`w-full lg:w-[360px] xl:w-[380px] 2xl:w-[440px] ${theme.surfaceBg} border-t lg:border-t-0 lg:border-l ${theme.borderLight} flex flex-col shrink-0 lg:h-full ${mobileOrderTab === "menu" ? "hidden lg:flex" : "flex h-full"
                         }`}
                 >
                     <div className={`p-3 xl:p-6 border-b ${theme.borderLight} ${theme.surfaceBg} z-10 flex justify-between items-center`}>
@@ -1400,16 +1449,18 @@ const TakeawayOrder = ({
                                             {/* Top Row: 56px Product Image, Name/Category, Price & Delete Button */}
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="flex items-start gap-3 min-w-0 flex-1">
-                                                    <img
-                                                        src={getBingImage(item?.name, { w: 64, h: 64 })}
-                                                        alt={item?.name || "Item"}
-                                                        loading="lazy"
-                                                        className={`w-14 h-14 rounded-xl object-cover ${theme.pageBg} border ${theme.borderLight} shrink-0 shadow-2xs ${isZeroPrice ? 'opacity-75' : ''}`}
-                                                        onError={(e) => {
-                                                            e.currentTarget.onerror = null;
-                                                            e.currentTarget.src = DEFAULT_ITEM_IMAGE;
-                                                        }}
-                                                    />
+                                                    {showAiImage && (
+                                                        <img
+                                                            src={getBingImage(item?.name, { w: 64, h: 64 })}
+                                                            alt={item?.name || "Item"}
+                                                            loading="lazy"
+                                                            className={`w-14 h-14 rounded-xl object-cover ${theme.pageBg} border ${theme.borderLight} shrink-0 shadow-2xs ${isZeroPrice ? 'opacity-75' : ''}`}
+                                                            onError={(e) => {
+                                                                e.currentTarget.onerror = null;
+                                                                e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                                            }}
+                                                        />
+                                                    )}
                                                     <div className="min-w-0 flex-1">
                                                         <div className="flex flex-wrap items-center gap-1.5">
                                                             <h4 className={`font-bold text-sm leading-snug line-clamp-2 ${theme.textPrimary}`}>
@@ -1891,9 +1942,16 @@ const TakeawayOrder = ({
                                         </div>
                                     )}
     
-                                    <div className={`flex justify-between items-center text-xl font-black ${theme.textHeading} pt-2 border-t-2 border-dashed ${theme.borderLight}`}>
-                                        <span>Total</span>
-                                        <span>{formatCurrency(finalBillDetails.finalTotal)}</span>
+                                    <div className="bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-700 text-white p-4 rounded-2xl shadow-lg shadow-indigo-600/20 border border-indigo-400/30 my-2 flex items-center justify-between">
+                                        <div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100 block">Grand Total</span>
+                                            <span className="text-2xl xl:text-3xl font-black text-white tracking-tight">{formatCurrency(finalBillDetails.finalTotal)}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-extrabold text-indigo-900 bg-white/90 px-2.5 py-1 rounded-full uppercase tracking-wider shadow-2xs">
+                                                {currentOrder.items.length} {currentOrder.items.length === 1 ? 'Item' : 'Items'}
+                                            </span>
+                                        </div>
                                     </div>
                                 </>
                             );
@@ -1953,13 +2011,18 @@ const TakeawayOrder = ({
                                     });
                                     if (zeroPriceItem) {
                                         toast.error(`Cannot checkout: "${zeroPriceItem.name}" has 0 price. Please set a price to proceed.`, {
-                                            duration: 4500,
+                                            duration: 3000,
                                             icon: '⚠️'
                                         });
                                         return;
                                     }
-                                    setIsPaymentModalOpen(true);
-                                    setBillingStage("review");
+                                    if (window.innerWidth >= 1024) {
+                                        setIsInlineCheckout(true);
+                                        setBillingStage("review");
+                                    } else {
+                                        setIsPaymentModalOpen(true);
+                                        setBillingStage("review");
+                                    }
                                 }}
                                 disabled={(
                                     !hasPermissionFor("pos", "order", "process_payment") &&
@@ -1999,6 +2062,7 @@ const TakeawayOrder = ({
                     </div>
                 </div>
             </div>
+            )}
             {/* Global Offer Tooltip (Fixed Position to avoid clipping) */}
             {activeOfferTip?.offer && (
                 <div 
@@ -2145,6 +2209,15 @@ const TakeawayOrder = ({
                         </div>
                     </div>
                 </div>
+            )}
+            {/* Product Quick View Panel */}
+            {quickViewItem && (
+                <ProductQuickViewPanel
+                    item={quickViewItem}
+                    onClose={() => setQuickViewItem(null)}
+                    onAddToCart={(item, variant, qty) => handleInitiateAddItem(item, qty, variant)}
+                    formatCurrency={formatCurrency}
+                />
             )}
         </div>
     );

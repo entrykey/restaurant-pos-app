@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Check, X, ShieldAlert } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, ShieldAlert } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useTheme } from "../../context/ThemeContext";
 import { businessTypesService } from "../../services/api/businessTypes";

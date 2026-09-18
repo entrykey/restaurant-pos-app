@@ -26,6 +26,7 @@ import { syncItemBogoQuantity } from "../utils/posOfferHelpers";
 import { findTaxForItem, resolveIsExclusiveTax } from "../utils/taxUtils";
 import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService, loyaltyService } from "../services/api";
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
+import { announceItemAdded, playCoinDropSound } from "../utils/soundService";
 import { TextProvider } from "../context/TextContext";
 import { useTheme } from "../context/ThemeContext";
 import { BUSINESS_TYPES, BUSINESS_FEATURES } from "../config/businessTypes";
@@ -783,17 +784,41 @@ const AppContent = () => {
         try {
             setMenu([]);
             setInventoryItems([]);
+
+            // Clear shop-scoped storage to prevent permissions / modules bleed from previous shop
             localStorage.removeItem("pos_activeBranchId");
+            localStorage.removeItem("permissions");
+            localStorage.removeItem("pos_enabledModules");
+            localStorage.removeItem("pos_businessType");
+            localStorage.removeItem("pos_businessSubtype");
+            localStorage.removeItem("pos_active_tabs");
+            localStorage.removeItem("pos_active_tab_id");
+            localStorage.removeItem("pos_active_tabs_shop");
+            localStorage.removeItem("subscription_notified");
             setActiveBranchId(null);
+
             const data = await shopService.switchShop(shopId);
             if (data && data.user) {
-                auth.login(data.user);
+                const newAccessToken = data.accessToken || localStorage.getItem('accessToken');
+                if (data.accessToken) {
+                    localStorage.setItem('accessToken', data.accessToken);
+                }
+
+                auth.login({ ...data.user, accessToken: newAccessToken });
+
                 const newIsSubscribed = data.user.subscription?.active;
                 if (!newIsSubscribed) {
                     setView('organization');
                     toast.success("Switching shop. Access is limited until you subscribe.");
                 } else {
-                    window.location.reload();
+                    const shopSlug = data.user.shopSlug || data.user.shopName || data.user.shop?.name || "";
+                    const shopSegment = String(shopSlug)
+                        .trim()
+                        .toLowerCase()
+                        .replace(/&/g, "and")
+                        .replace(/[^a-z0-9]+/g, "-")
+                        .replace(/^-+|-+$/g, "") || "shop";
+                    window.location.href = `/${shopSegment}/dashboard`;
                 }
             }
         } catch (error) {
@@ -951,13 +976,19 @@ const AppContent = () => {
                 lineTotal: it?.totalAmount ?? (Number(it?.price || 0) * Number(it?.quantity || 0)),
             }));
 
+            const backendGrand = Number(orderFromBackend?.grandTotal || 0);
+            const backendPaid = orderFromBackend?.paidAmount !== undefined ? Number(orderFromBackend.paidAmount) : backendGrand;
+            const backendRemaining = Math.max(0, backendGrand - backendPaid);
+
             const totals = {
                 subtotal: orderFromBackend?.subtotal ?? 0,
                 discountAmount: orderFromBackend?.discountTotal ?? 0,
                 taxAmount: orderFromBackend?.taxTotal ?? 0,
                 taxBreakdown: orderFromBackend?.taxBreakdown ?? null,
                 roundOff: 0,
-                finalTotal: orderFromBackend?.grandTotal ?? 0,
+                finalTotal: backendGrand,
+                paidAmount: backendPaid,
+                remainingBalance: backendRemaining,
             };
 
             const orderType = orderFromBackend?.orderType || activeOrderType;
@@ -1399,6 +1430,7 @@ const AppContent = () => {
         };
 
         const basePaidQty = parseFloat(quantity) || 1;
+        announceItemAdded(normalizedItem.name, basePaidQty);
 
         // --- Advanced Offer Logic (Cross-item auto-add) ---
         const triggeredOffers = (offers || []).filter(o => 
@@ -2062,30 +2094,28 @@ const AppContent = () => {
 
                 // createOrder already sets it to COMPLETED, but we update status just in case to ensure synchronization
                 await orderService.updateStatus(currentOrderId, { status: 'COMPLETED' });
+                playCoinDropSound();
 
-                // Award loyalty points if customer is selected
-                if (selectedCustomer?._id && billDetails.finalTotal > 0) {
+                // Award / Redeem loyalty points if customer is linked
+                const targetCustomerId = billDetails.customerId || selectedCustomer?._id || selectedCustomer?.id || activeOrderCustomerId || null;
+                if (targetCustomerId && billDetails.finalTotal > 0) {
                     try {
                         const loyaltySettings = await loyaltyService.getSettings(currentShopId);
                         
                         if (loyaltySettings && loyaltySettings.isActive) {
                             // Check if loyalty points were used (discount applied)
-                            const loyaltyDiscountApplied = billDiscount?.type === 'flat' && billDiscount?.value > 0;
+                            const loyaltyDiscountAmount = billDetails.appliedLoyaltyDiscount?.amount || (billDiscount?.type === 'flat' ? billDiscount?.value : 0);
+                            const pointsRedeemed = billDetails.appliedLoyaltyDiscount?.points || Math.round(loyaltyDiscountAmount / (loyaltySettings.redemptionValue || 1));
                             
-                            if (loyaltyDiscountApplied) {
-                                // Calculate points redeemed based on discount amount
-                                const pointsRedeemed = Math.round(billDiscount.value / (loyaltySettings.redemptionValue || 1));
-                                
-                                if (pointsRedeemed > 0) {
-                                    // Redeem the points
-                                    await loyaltyService.redeemPoints({
-                                        customerId: selectedCustomer._id,
-                                        shopId: currentShopId,
-                                        orderId: currentOrderId,
-                                        points: pointsRedeemed,
-                                        amountRedeemed: billDiscount.value
-                                    });
-                                }
+                            if (pointsRedeemed > 0 && loyaltyDiscountAmount > 0) {
+                                // Redeem the points
+                                await loyaltyService.redeemPoints({
+                                    customerId: targetCustomerId,
+                                    shopId: currentShopId,
+                                    orderId: currentOrderId,
+                                    points: pointsRedeemed,
+                                    amountRedeemed: loyaltyDiscountAmount
+                                });
                             }
                             
                             // Calculate points earned (on amount after discount)
@@ -2096,7 +2126,7 @@ const AppContent = () => {
                             
                             if (pointsEarned > 0) {
                                 await loyaltyService.addPoints({
-                                    customerId: selectedCustomer._id,
+                                    customerId: targetCustomerId,
                                     shopId: currentShopId,
                                     orderId: currentOrderId,
                                     points: pointsEarned,
@@ -2106,7 +2136,7 @@ const AppContent = () => {
                                 
                                 // Show success message with points earned
                                 toast.success(`Order completed! 🎉 Earned ${pointsEarned} loyalty points!`, {
-                                    duration: 4000,
+                                    duration: 3000,
                                     icon: '🎁'
                                 });
                             }
@@ -2315,6 +2345,7 @@ const AppContent = () => {
                         handleSendToKOT={handleSendToKOT}
                         isSubmittingKOT={isSubmittingKOT}
                         businessTypeData={businessTypeData}
+                        handleFinalizePayment={handleFinalizePayment}
                         setIsPaymentModalOpen={setIsPaymentModalOpen}
                         setBillingStage={setBillingStage}
                         initiateAddItem={initiateAddItem}

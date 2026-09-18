@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Minus, Equal, Calculator, FileText, Calendar, Coins } from 'lucide-react';
+import { X, Plus, Minus, Equal, Calculator, FileText, Coins } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import ThemeLoader from '../ui/ThemeLoader';
 import { useTheme } from '../../context/ThemeContext';
@@ -10,18 +10,30 @@ import { useApp } from '../../context/AppContext';
 import DatePicker from '../ui/DatePicker';
 import { getErrorMessage } from '../../utils/errorUtils';
 
-const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuccess, formatCurrency: propFormatCurrency }) => {
+const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuccess, formatCurrency: propFormatCurrency, initialVariant }) => {
     const { theme } = useTheme();
-    const { organization, formatCurrency } = useApp();
-    const currency = organization?.defaultCurrency || 'INR';
+    const { formatCurrency } = useApp();
     const [adjustmentType, setAdjustmentType] = useState('ADD'); // 'ADD', 'SUBTRACT', or 'SET'
     const [quantity, setQuantity] = useState('');
     const [price, setPrice] = useState('');
     const [description, setDescription] = useState('');
     const [adjustmentDate, setAdjustmentDate] = useState(new Date().toISOString().split('T')[0]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedVariant, setSelectedVariant] = useState(null);
 
     const { user } = useAuth();
+
+    const getItemPortions = (targetItem) => {
+        if (!targetItem) return null;
+        const portions = (Array.isArray(targetItem.portionPricing) && targetItem.portionPricing.length > 0)
+            ? targetItem.portionPricing
+            : (Array.isArray(targetItem.pricing?.portionPricing) && targetItem.pricing.portionPricing.length > 0)
+                ? targetItem.pricing.portionPricing
+                : (Array.isArray(targetItem.variants) && targetItem.variants.length > 0)
+                    ? targetItem.variants
+                    : null;
+        return portions;
+    };
 
     // Derive the best available price from the item — only auto-fill if purchase price exists
     const getAutoPrice = (item) => {
@@ -42,16 +54,23 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
     // Reset form whenever the modal opens with a new item
     useEffect(() => {
         if (isOpen && item) {
+            const portions = getItemPortions(item);
+            let defaultVar = initialVariant || null;
+            if (!defaultVar && portions && portions.length > 0) {
+                defaultVar = portions[0];
+            }
+            setSelectedVariant(defaultVar);
             setAdjustmentType('ADD');
             setQuantity('');
-            setPrice(getAutoPrice(item));
+            setPrice(defaultVar?.price ? String(defaultVar.price) : getAutoPrice(item));
             setDescription('');
             setAdjustmentDate(new Date().toISOString().split('T')[0]);
         }
-    }, [isOpen, item]);
+    }, [isOpen, item, initialVariant]);
 
     if (!isOpen || !item) return null;
 
+    const portions = getItemPortions(item);
     const priceSource = getPriceSource(item);
     const total = quantity && price && !isNaN(quantity) && !isNaN(price)
         ? Number(quantity) * Number(price)
@@ -73,8 +92,13 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                 quantity: numQty,
                 type: adjustmentType,
                 atPrice: price ? Number(price) : undefined,
-                description: description || `Stock adjustment (${adjustmentType})`,
-                adjustmentDate: new Date(adjustmentDate)
+                description: description || `Stock adjustment (${adjustmentType})${selectedVariant?.name ? ` - ${selectedVariant.name}` : ''}`,
+                adjustmentDate: new Date(adjustmentDate),
+                ...(selectedVariant ? {
+                    variantName: selectedVariant.name,
+                    variantId: selectedVariant._id || selectedVariant.id || null,
+                    portionName: selectedVariant.name
+                } : {})
             };
 
             await inventoryService.adjustInventory(payload);
@@ -171,10 +195,59 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                         </div>
                     </div>
 
+                    {/* Variant Selector (if item has variants/portions) */}
+                    {portions && portions.length > 0 && (
+                        <div className="space-y-3">
+                            <label className={`block text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>
+                                <span className="text-red-500 mr-1">*</span> Select Variant
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                                {portions.map((p, idx) => {
+                                    const isSelected = (selectedVariant?._id && p._id && String(selectedVariant._id) === String(p._id)) ||
+                                        (selectedVariant?.name && p.name && selectedVariant.name.toLowerCase() === p.name.toLowerCase());
+                                    const curQty = p.quantityOnHand ?? p.openingStock ?? p.stock ?? p.qty ?? 0;
+                                    return (
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedVariant(p);
+                                                if (p.price) setPrice(String(p.price));
+                                            }}
+                                            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all border ${
+                                                isSelected
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/20 scale-[1.02]'
+                                                    : `${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-400`
+                                            }`}
+                                        >
+                                            <span>{p.name || `Variant ${idx + 1}`}</span>
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                                isSelected ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'
+                                            }`}>
+                                                {curQty} in stock
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedVariant(null)}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all border ${
+                                        selectedVariant === null
+                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/20 scale-[1.02]'
+                                            : `${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-400`
+                                    }`}
+                                >
+                                    <span>All / Total Item Stock</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Quantity Field */}
                     <div className="space-y-3">
                         <label className={`block text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>
-                            <span className="text-red-500 mr-1">*</span> Quantity
+                            <span className="text-red-500 mr-1">*</span> Quantity {selectedVariant ? `(${selectedVariant.name})` : ''}
                         </label>
                         <div className="relative group">
                             <Calculator className={`absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-blue-500 transition-colors ${theme.textMuted}`} size={20} />
