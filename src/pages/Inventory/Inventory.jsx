@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen, ShoppingBag, AlertTriangle } from 'lucide-react';
+import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen, ShoppingBag, AlertTriangle, TrendingUp } from 'lucide-react';
 import ThemeLoader from '../../components/ui/ThemeLoader';
 import { BUSINESS_FEATURES } from '../../config/businessTypes';
 import CommonTable from '../../components/CommonTable';
@@ -139,6 +139,7 @@ const Inventory = ({
     // Stock Adjustment State
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
     const [selectedAdjustmentItem, setSelectedAdjustmentItem] = useState(null);
+    const [selectedAdjustmentVariant, setSelectedAdjustmentVariant] = useState(null);
 
     // Repack State
     const [isRepackModalOpen, setIsRepackModalOpen] = useState(false);
@@ -274,6 +275,61 @@ const Inventory = ({
         return () => window.removeEventListener('inventoryFieldsUpdated', handleUpdates);
     }, []);
 
+    // Calculate summary statistics for active tab
+    const tabStats = useMemo(() => {
+        let lowStockCount = 0;
+        let totalStockProfit = 0;
+
+        localItems.forEach((item) => {
+            const minAlert = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
+            const qty = item.quantityOnHand ?? 0;
+
+            const portions = (Array.isArray(item.portionPricing) && item.portionPricing.length > 0)
+                ? item.portionPricing
+                : (Array.isArray(item.pricing?.portionPricing) && item.pricing.portionPricing.length > 0)
+                    ? item.pricing.portionPricing
+                    : (Array.isArray(item.variants) && item.variants.length > 0)
+                        ? item.variants
+                        : null;
+
+            let isItemLowStock = false;
+            if (portions && portions.length > 0) {
+                portions.forEach((p) => {
+                    const pQty = Number(p.quantityOnHand ?? p.openingStock ?? p.quantity ?? p.currentStock ?? p.stock ?? p.qty) || 0;
+                    if (pQty <= minAlert) {
+                        isItemLowStock = true;
+                    }
+                    const pSalePrice = Number(p.price || item.pricing?.sellingPrice || item.sellingPrice) || 0;
+                    const pPurchasePrice = Number(p.costPrice || item.pricing?.purchasePrice || item.purchasePrice || item.costPerUnit) || 0;
+                    const margin = pSalePrice - pPurchasePrice;
+                    if (margin > 0) {
+                        totalStockProfit += margin * (pQty > 0 ? pQty : 1);
+                    }
+                });
+            } else {
+                if (qty <= minAlert) {
+                    isItemLowStock = true;
+                }
+                const salePrice = Number(item.pricing?.sellingPrice ?? item.sellingPrice) || 0;
+                const purchasePrice = Number(item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit) || 0;
+                const margin = salePrice - purchasePrice;
+                if (margin > 0) {
+                    totalStockProfit += margin * (qty > 0 ? qty : 1);
+                }
+            }
+
+            if (isItemLowStock) {
+                lowStockCount++;
+            }
+        });
+
+        return {
+            totalItemsCount: totalItems || localItems.length,
+            lowStockCount,
+            totalStockProfit,
+        };
+    }, [localItems, totalItems]);
+
     const targetItemType = activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE");
     const tabFilteredItems = localItems.filter(item => (item.itemType || 'STOCK').toUpperCase() === targetItemType);
 
@@ -391,6 +447,205 @@ const Inventory = ({
         }
     };
 
+    const getItemTaxInfo = (item) => {
+        let percent = item.taxPercent;
+        if (percent === undefined || percent === null) {
+            if (item.taxId && typeof item.taxId === 'object' && item.taxId.percentage !== undefined) {
+                percent = item.taxId.percentage;
+            }
+        }
+        const numPercent = Number(percent) || 0;
+
+        let isExclusive = false;
+        if (item.isExclusiveTax !== undefined && item.isExclusiveTax !== null) {
+            isExclusive = Boolean(item.isExclusiveTax);
+        } else if (item.taxId && typeof item.taxId === 'object' && item.taxId.taxType) {
+            isExclusive = String(item.taxId.taxType).toUpperCase() === 'EXCLUSIVE';
+        }
+
+        const typeLabel = isExclusive ? 'Exclusive' : 'Inclusive';
+        const typeShort = isExclusive ? 'Excl.' : 'Incl.';
+
+        return {
+            percent: numPercent,
+            isExclusive,
+            typeLabel,
+            typeShort,
+            hasTax: numPercent > 0,
+            displayText: `${numPercent}% (${typeShort})`
+        };
+    };
+
+    const taxColumn = {
+        header: "Tax",
+        key: "taxPercent",
+        headerClassName: "text-center",
+        className: "text-center",
+        exportValue: (_, item) => {
+            const info = getItemTaxInfo(item);
+            return info.hasTax ? `${info.percent}% (${info.typeLabel})` : "0% (Exempt)";
+        },
+        render: (_, item) => {
+            const info = getItemTaxInfo(item);
+            if (!info.hasTax) {
+                return (
+                    <div className="flex flex-col items-center gap-0.5">
+                        <span className={`text-xs font-bold opacity-40 ${theme.textSecondary}`}>0%</span>
+                        <span className={`text-[9px] font-semibold uppercase tracking-wider opacity-30 ${theme.textSecondary}`}>Exempt</span>
+                    </div>
+                );
+            }
+            return (
+                <div className="flex flex-col items-center gap-0.5">
+                    <span className={`text-sm font-extrabold ${theme.textHeading}`}>
+                        {info.percent}%
+                    </span>
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${
+                        info.isExclusive 
+                            ? "text-amber-600 dark:text-amber-400" 
+                            : "text-emerald-600 dark:text-emerald-400"
+                    }`}>
+                        {info.typeLabel}
+                    </span>
+                </div>
+            );
+        }
+    };
+
+    // --- Helpers for Portion/Variant Stock & Price ---
+    const getItemPortions = (item) => {
+        if (!item) return null;
+        const portions = (Array.isArray(item.portionPricing) && item.portionPricing.length > 0)
+            ? item.portionPricing
+            : (Array.isArray(item.pricing?.portionPricing) && item.pricing.portionPricing.length > 0)
+                ? item.pricing.portionPricing
+                : (Array.isArray(item.variants) && item.variants.length > 0)
+                    ? item.variants
+                    : null;
+        return portions;
+    };
+
+    const getPortionStockQty = (p) => {
+        if (!p) return 0;
+        const val = p.quantityOnHand ?? p.openingStock ?? p.quantity ?? p.currentStock ?? p.stock ?? p.qty;
+        return Number(val) || 0;
+    };
+
+    const stockColumn = {
+        header: "Stock",
+        key: "_id",
+        headerClassName: "text-center",
+        className: "text-center",
+        exportValue: (_, item) => {
+            const portions = getItemPortions(item);
+            if (portions && portions.length > 0) {
+                return portions.map(p => {
+                    const pQty = getPortionStockQty(p);
+                    return `${p.name || 'Variant'}: ${pQty}`;
+                }).join(' | ');
+            }
+            return item.quantityOnHand ?? 0;
+        },
+        render: (id, item) => {
+            const portions = getItemPortions(item);
+            const damaged = item.damagedQuantity ?? 0;
+            const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
+            const unitName = item.unitId?.name || "";
+
+            const handleStockClick = (e, targetVariant = null) => {
+                e.stopPropagation();
+                if (!canManage) return;
+                setSelectedAdjustmentItem(item);
+                setSelectedAdjustmentVariant(targetVariant || (portions && portions.length > 0 ? portions[0] : null));
+                setIsAdjustmentModalOpen(true);
+            };
+
+            if (portions && portions.length > 0) {
+                return (
+                    <div 
+                        className="flex flex-col items-center gap-1.5 cursor-pointer group/stock"
+                        onClick={(e) => handleStockClick(e)}
+                        title={canManage ? "Click to adjust stock" : ""}
+                    >
+                        <div className="flex flex-col items-center justify-center gap-1.5 min-w-[200px]">
+                            {portions.map((p, idx) => {
+                                const pQty = getPortionStockQty(p);
+                                const isLow = pQty <= min && min > 0;
+                                return (
+                                    <div key={idx} className="flex items-center gap-1.5">
+                                        <div className={`inline-flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-black border transition-all ${isLow
+                                            ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
+                                            : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
+                                            }`}>
+                                            {isLow && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
+                                            <span className={`opacity-70 font-bold ${theme.textSecondary}`}>{p.name || `Var ${idx + 1}`}:</span>
+                                            <span className="font-extrabold">{formatStockQty(pQty)}</span>
+                                            {unitName && <span className="font-medium text-[10px] opacity-60">{unitName}</span>}
+                                        </div>
+                                        {canManage && (
+                                            <button
+                                                onClick={(e) => handleStockClick(e, p)}
+                                                className="w-6 h-6 rounded-full flex items-center justify-center transition-all bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white shadow-sm active:scale-90"
+                                                title={`Adjust ${p.name || 'Variant'} Stock`}
+                                            >
+                                                <Plus size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {damaged > 0 && (
+                            <div className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
+                                {damaged} Damaged
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            const qty = item.quantityOnHand ?? null;
+            const low = qty !== null && qty <= min && min > 0;
+
+            if (qty === null && damaged === 0) {
+                return <span className="text-[11px] text-gray-300 font-bold">-</span>;
+            }
+
+            return (
+                <div 
+                    className="flex flex-col items-center gap-1 cursor-pointer group/stock"
+                    onClick={(e) => handleStockClick(e)}
+                    title={canManage ? "Click to adjust stock" : ""}
+                >
+                    <div className="flex items-center gap-2">
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
+                            ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
+                            }`}>
+                            {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
+                            {formatStockQty(qty)}
+                            <span className="font-medium text-[10px] opacity-60">{unitName}</span>
+                        </div>
+                        {canManage && (
+                            <button
+                                onClick={(e) => handleStockClick(e)}
+                                className="w-7 h-7 rounded-full flex items-center justify-center transition-all bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white shadow-sm active:scale-90"
+                                title="Adjust Stock"
+                            >
+                                <Plus size={14} />
+                            </button>
+                        )}
+                    </div>
+                    {damaged > 0 && (
+                        <div className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
+                            {damaged} Damaged
+                        </div>
+                    )}
+                </div>
+            );
+        }
+    };
+
     // --- Columns Definition ---
 
     // 1. Menu Columns (Existing)
@@ -429,63 +684,7 @@ const Inventory = ({
                 </span>
             )
         },
-        {
-            header: "Stock",
-            key: "_id",
-            headerClassName: "text-center",
-            className: "text-center",
-            render: (id, item) => {
-                const qty = item.quantityOnHand ?? null;
-                const damaged = item.damagedQuantity ?? 0;
-
-                const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
-                const low = qty !== null && qty <= min && min > 0;
-                
-                if (qty === null && damaged === 0) {
-                    return <span className="text-[11px] text-gray-300 font-bold">-</span>;
-                }
-
-                const handleStockClick = (e) => {
-                    e.stopPropagation();
-                    if (!canManage) return;
-                    setSelectedAdjustmentItem(item);
-                    setIsAdjustmentModalOpen(true);
-                };
-
-                return (
-                    <div 
-                        className="flex flex-col items-center gap-1 cursor-pointer group/stock"
-                        onClick={handleStockClick}
-                        title={canManage ? "Click to adjust stock" : ""}
-                    >
-                        <div className="flex items-center gap-2">
-                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
-                                ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
-                                : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
-                                }`}>
-                                {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
-                                {formatStockQty(qty)}
-                                <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
-                            </div>
-                            {canManage && (
-                                <button
-                                    onClick={handleStockClick}
-                                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white shadow-sm active:scale-90`}
-                                    title="Adjust Stock"
-                                >
-                                    <Plus size={14} />
-                                </button>
-                            )}
-                        </div>
-                        {damaged > 0 && (
-                            <div className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
-                                {damaged} Damaged
-                            </div>
-                        )}
-                    </div>
-                );
-            }
-        },
+        stockColumn,
         {
             header: "Price",
             key: "sellingPrice",
@@ -520,9 +719,9 @@ const Inventory = ({
                         <div className="flex flex-col items-center gap-1">
                             <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[220px]">
                                 {portions.map((p, idx) => (
-                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 text-[11px] font-black border border-indigo-100 dark:border-indigo-800 shadow-sm">
-                                        <span className="opacity-60 font-bold">{p.name || `Var ${idx + 1}`}:</span>
-                                        <span>{formatCurrency(p.price || 0)}</span>
+                                    <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border ${theme.borderLight} ${theme.textHeading} text-[11px] font-bold`}>
+                                        <span className={`opacity-60 font-medium ${theme.textSecondary}`}>{p.name || `Var ${idx + 1}`}:</span>
+                                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{formatCurrency(p.price || 0)}</span>
                                     </span>
                                 ))}
                             </div>
@@ -563,6 +762,7 @@ const Inventory = ({
                 );
             }
         },
+        taxColumn,
         {
             header: "Show on Sale",
             key: "isSellable",
@@ -652,63 +852,7 @@ const Inventory = ({
                 </span>
             )
         },
-        {
-            header: "Stock",
-            key: "_id",
-            headerClassName: "text-center",
-            className: "text-center",
-            render: (id, item) => {
-                const qty = item.quantityOnHand ?? null;
-                const damaged = item.damagedQuantity ?? 0;
-
-                const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
-                const low = qty !== null && qty <= min && min > 0;
-                
-                if (qty === null && damaged === 0) {
-                    return <span className="text-[11px] text-gray-300 font-bold">-</span>;
-                }
-
-                const handleStockClick = (e) => {
-                    e.stopPropagation();
-                    if (!canManage) return;
-                    setSelectedAdjustmentItem(item);
-                    setIsAdjustmentModalOpen(true);
-                };
-
-                return (
-                    <div 
-                        className="flex flex-col items-center gap-1 cursor-pointer group/stock"
-                        onClick={handleStockClick}
-                        title={canManage ? "Click to adjust stock" : ""}
-                    >
-                        <div className="flex items-center gap-2">
-                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
-                                ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
-                                : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
-                                }`}>
-                                {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
-                                {formatStockQty(qty)}
-                                <span className="font-medium text-[10px] opacity-60">{item.unitId?.name || ""}</span>
-                            </div>
-                            {canManage && (
-                                <button
-                                    onClick={handleStockClick}
-                                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white shadow-sm active:scale-90`}
-                                    title="Adjust Stock"
-                                >
-                                    <Plus size={14} />
-                                </button>
-                            )}
-                        </div>
-                        {damaged > 0 && (
-                            <div className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
-                                {damaged} Damaged
-                            </div>
-                        )}
-                    </div>
-                );
-            }
-        },
+        stockColumn,
         {
             header: "Price",
             key: "costPerUnit",
@@ -744,9 +888,9 @@ const Inventory = ({
                         <div className="flex flex-col items-end gap-1">
                             <div className="flex flex-wrap items-center justify-end gap-1.5 max-w-[220px]">
                                 {portions.map((p, idx) => (
-                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-orange-50 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 text-[11px] font-black border border-orange-100 dark:border-orange-800 shadow-sm">
-                                        <span className="opacity-60 font-bold">{p.name || `Var ${idx + 1}`}:</span>
-                                        <span>{formatCurrency(p.price || 0)}</span>
+                                    <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border ${theme.borderLight} ${theme.textHeading} text-[11px] font-bold`}>
+                                        <span className={`opacity-60 font-medium ${theme.textSecondary}`}>{p.name || `Var ${idx + 1}`}:</span>
+                                        <span className="font-extrabold text-orange-600 dark:text-orange-400">{formatCurrency(p.price || 0)}</span>
                                     </span>
                                 ))}
                             </div>
@@ -797,6 +941,7 @@ const Inventory = ({
                 );
             }
         },
+        taxColumn,
         {
             header: "Show on Sale",
             key: "isSellable",
@@ -948,12 +1093,33 @@ const Inventory = ({
                         <span className={`inline-block mt-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wide ${categoryBg}`}>
                             {categoryName}
                         </span>
+                        {getItemTaxInfo(item).hasTax && (
+                            <span className={`inline-block mt-1 ml-1 text-[10px] font-bold ${theme.textSecondary}`}>
+                                Tax: <span className="font-extrabold text-purple-600 dark:text-purple-400">{getItemTaxInfo(item).displayText}</span>
+                            </span>
+                        )}
                     </div>
 
                     {/* Right column: Stock badge + Price */}
                     <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                         {/* Stock row */}
-                        {qty !== null ? (
+                        {portions && portions.length > 0 ? (
+                            <div className="flex flex-wrap items-center justify-end gap-1 max-w-[220px]">
+                                {portions.map((p, idx) => {
+                                    const pQty = getPortionStockQty(p);
+                                    const isLow = pQty <= min && min > 0;
+                                    return (
+                                        <div key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black border ${isLow
+                                            ? "bg-red-50 text-red-600 border-red-200"
+                                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                            }`}>
+                                            <span className="opacity-70 font-bold">{p.name || `V${idx + 1}`}:</span>
+                                            <span className="font-extrabold">{formatStockQty(pQty)}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : qty !== null ? (
                             <div className="flex items-center gap-1.5">
                                 <button
                                     onClick={(e) => {
@@ -1010,9 +1176,9 @@ const Inventory = ({
                             {portions && portions.length > 0 ? (
                                 <div className="flex flex-wrap items-center justify-end gap-1 max-w-[180px]">
                                     {portions.map((p, idx) => (
-                                        <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 text-[10px] font-black border border-indigo-100 dark:border-indigo-800">
-                                            <span className="opacity-60">{p.name || `V${idx + 1}`}:</span>
-                                            <span>{formatCurrency(p.price || 0)}</span>
+                                        <span key={idx} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${theme.borderLight} text-[10px] font-bold ${theme.textHeading}`}>
+                                            <span className={`opacity-60 ${theme.textSecondary}`}>{p.name || `V${idx + 1}`}:</span>
+                                            <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{formatCurrency(p.price || 0)}</span>
                                         </span>
                                     ))}
                                 </div>
@@ -1212,6 +1378,57 @@ const Inventory = ({
                 </div>
             </div>
 
+            {/* Top Summary Cards for Active Tab */}
+            <div className="px-4 md:px-6 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* 1. Total Items */}
+                    <div className={`p-4 rounded-2xl border transition-all shadow-sm flex items-center justify-between ${theme.surfaceBg} ${theme.borderLight}`}>
+                        <div className="flex items-center gap-3">
+                            <div className={`p-3 rounded-xl ${activeTab === 'menu' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300' : activeTab === 'raw' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-300' : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-300'}`}>
+                                <Package size={22} />
+                            </div>
+                            <div>
+                                <span className={`text-xs font-bold uppercase tracking-wider block ${theme.textMuted}`}>Total Items</span>
+                                <span className={`text-xl md:text-2xl font-black ${theme.textHeading}`}>{tabStats.totalItemsCount}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 2. Stock Alert */}
+                    <div className={`p-4 rounded-2xl border transition-all shadow-sm flex items-center justify-between ${theme.surfaceBg} ${theme.borderLight}`}>
+                        <div className="flex items-center gap-3">
+                            <div className={`p-3 rounded-xl ${tabStats.lowStockCount > 0 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                                <AlertTriangle size={22} />
+                            </div>
+                            <div>
+                                <span className={`text-xs font-bold uppercase tracking-wider block ${theme.textMuted}`}>Stock Alert</span>
+                                <div className="flex items-center gap-1.5">
+                                    <span className={`text-xl md:text-2xl font-black ${tabStats.lowStockCount > 0 ? 'text-amber-600 dark:text-amber-400' : theme.textHeading}`}>
+                                        {tabStats.lowStockCount}
+                                    </span>
+                                    <span className="text-xs font-bold text-gray-400 uppercase">Alerts</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 3. Profit */}
+                    <div className={`p-4 rounded-2xl border transition-all shadow-sm flex items-center justify-between ${theme.surfaceBg} ${theme.borderLight}`}>
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                <TrendingUp size={22} />
+                            </div>
+                            <div>
+                                <span className={`text-xs font-bold uppercase tracking-wider block ${theme.textMuted}`}>Stock Profit</span>
+                                <span className={`text-xl md:text-2xl font-black ${theme.textHeading}`}>
+                                    {formatCurrency(tabStats.totalStockProfit)}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Tabs + Category Filter */}
             <div className="px-4 md:px-6 mb-6 flex-shrink-0 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                 <div className={`flex flex-row flex-wrap gap-1 p-1.5 rounded-2xl shadow-sm w-full lg:w-fit ${theme.surfaceBg}`}>
@@ -1341,8 +1558,10 @@ const Inventory = ({
                 onClose={() => {
                     setIsAdjustmentModalOpen(false);
                     setSelectedAdjustmentItem(null);
+                    setSelectedAdjustmentVariant(null);
                 }}
                 item={selectedAdjustmentItem}
+                initialVariant={selectedAdjustmentVariant}
                 branchId={branchId}
                 onAdjustmentSuccess={() => setRefreshTrigger(prev => prev + 1)}
                 formatCurrency={formatCurrency}
@@ -1483,6 +1702,11 @@ const Inventory = ({
                                                             <span className={`px-3 py-1 rounded-lg text-[10px] font-black border tracking-wider ${badgeClass}`}>
                                                                 {movement.type}
                                                             </span>
+                                                            {movement.notes && (
+                                                                <div className={`text-[11px] font-semibold mt-1 max-w-xs ${theme.textMuted}`}>
+                                                                    {movement.notes}
+                                                                </div>
+                                                            )}
                                                         </td>
                                                         <td className={`px-6 py-4 text-sm font-bold ${theme.textPrimary}`}>
                                                             {movement.invoiceNumber || movement.orderNumber || movement.purchaseNumber ? `#${movement.invoiceNumber || movement.orderNumber || movement.purchaseNumber}` : "—"}

@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, X, User, Trash2, History, Loader2 } from 'lucide-react';
+import { Plus, X, User, Trash2, History, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { useTakeaway } from '../pages/Takeaway/TakeawayContext';
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { orderService } from '../services/api';
+import { isSoundEnabled, toggleSoundEnabled } from '../utils/soundService';
 import {
     buildHistorySaleOrderState,
     buildTakeawayDraftSignature,
@@ -40,6 +41,26 @@ const PosTabBar = ({ view }) => {
     const historyRef = useRef(null);
     const historyButtonRef = useRef(null);
     const [dropdownStyle, setDropdownStyle] = useState(null);
+    const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
+
+    useEffect(() => {
+        const handleSoundChange = (e) => {
+            if (e?.detail) {
+                setSoundOn(e.detail.enabled);
+            }
+        };
+        window.addEventListener('pos_sound_changed', handleSoundChange);
+        return () => window.removeEventListener('pos_sound_changed', handleSoundChange);
+    }, []);
+
+    const handleToggleSound = () => {
+        const next = toggleSoundEnabled();
+        setSoundOn(next);
+        toast.success(next ? "Voice Announcements Enabled" : "Voice Announcements Muted", {
+            icon: next ? "🔊" : "🔇",
+            duration: 2000,
+        });
+    };
 
     const fetchRecentSales = useCallback(async () => {
         if (!currentShopId) return;
@@ -452,6 +473,17 @@ const PosTabBar = ({ view }) => {
 
                 {/* Fixed action buttons — never scroll */}
                 <div className="flex items-center gap-1.5 px-2 border-l border-white/10 ml-1 shrink-0">
+                    <button
+                        type="button"
+                        onClick={handleToggleSound}
+                        className={`h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl transition-all flex items-center justify-center ${
+                            soundOn ? 'bg-indigo-600 text-white shadow-md' : 'bg-white/20 text-slate-300 hover:bg-white/30'
+                        }`}
+                        title={soundOn ? "Voice Announcements Enabled (Click to Mute)" : "Voice Announcements Muted (Click to Enable)"}
+                    >
+                        {soundOn ? <Volume2 size={18} strokeWidth={2.5} /> : <VolumeX size={18} strokeWidth={2.5} />}
+                    </button>
+
                     <button
                         ref={historyButtonRef}
                         onClick={() => setShowHistory((prev) => !prev)}

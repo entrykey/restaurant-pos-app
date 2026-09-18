@@ -48,20 +48,28 @@ const OperatingExpenseCard = ({
             <div className="flex justify-between items-center">
                 <div>
                     <h3 className={`text-xl font-bold ${theme.textHeading}`}>{category}</h3>
-                    {isDraft && (
-                        <span className="inline-block mt-1 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 rounded">
-                            Draft
-                        </span>
-                    )}
-                    {isPurchase && (
-                        <span className="inline-block mt-1 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded">
-                            Stock Purchase
-                        </span>
-                    )}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                        {isDraft && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 rounded">
+                                Draft
+                            </span>
+                        )}
+                        {isPurchase && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded">
+                                Stock Purchase
+                            </span>
+                        )}
+                        {amount < 0 && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 rounded">
+                                Negative Expense
+                            </span>
+                        )}
+                    </div>
                 </div>
-                {!isDefault && !isPurchase && (
+                {onDelete && (
                     <button
                         onClick={onDelete}
+                        title="Delete Expense"
                         className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
                     >
                         <Trash2 size={18} />
@@ -96,7 +104,7 @@ const OperatingExpenseCard = ({
                         value={amount || ''}
                         onChange={(e) => !isPurchase && onUpdate({ amount: e.target.value === '' ? 0 : Number(e.target.value) })}
                         disabled={isPurchase}
-                        className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all text-xl ${isPurchase ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`w-full p-4 border-2 ${amount < 0 ? 'border-red-400 bg-red-50/20 dark:bg-red-950/20' : 'border-transparent'} ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${amount < 0 ? 'text-red-600 dark:text-red-400' : theme.textPrimary} transition-all text-xl ${isPurchase ? 'opacity-50 cursor-not-allowed' : ''}`}
                         placeholder="0.00"
                     />
                 </div>
@@ -105,7 +113,7 @@ const OperatingExpenseCard = ({
             <div className="pt-4 border-t border-dashed border-gray-200 dark:border-gray-800 flex justify-between items-center">
                 <div className="text-right">
                     <p className={`text-[10px] uppercase font-black tracking-widest ${theme.textMuted}`}>Per Day</p>
-                    <p className={`text-lg font-black ${theme.textPrimary}`}>{formatCurrency(perDay, currency)}</p>
+                    <p className={`text-lg font-black ${perDay < 0 ? 'text-red-600 dark:text-red-400' : theme.textPrimary}`}>{formatCurrency(perDay, currency)}</p>
                 </div>
                 <div className="flex gap-2">
                     {isDraft && onMoveToExpense && (

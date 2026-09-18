@@ -48,11 +48,20 @@ const TaxSettings = () => {
         }
     };
 
+    const isSuperAdmin = Boolean(
+        user?.isSuperAdmin === true ||
+        user?.role === 'superadmin' ||
+        user?.role === 'SUPER_ADMIN' ||
+        user?.role?.name === 'superadmin' ||
+        user?.role?.name === 'SUPER_ADMIN' ||
+        user?.roles?.some(r => ['superadmin', 'super_admin'].includes((r?.name || r || "").toLowerCase()))
+    );
+
     const currentBranch = branches?.find(b => String(b._id || b.id) === String(activeBranchId));
     const branchCountry = currentBranch?.address?.country || organization?.defaultCountry;
     const countryVal = typeof branchCountry === 'object' ? (branchCountry?.code || branchCountry?.name) : branchCountry;
     const branchTaxSystem = currentBranch?.taxProfile?.taxSystem || currentBranch?.taxConfig?.taxSystem || organization?.defaultTaxSystem;
-    const isTaxProfileComplete = Boolean(branchTaxSystem && countryVal);
+    const isTaxProfileComplete = isSuperAdmin || Boolean(branchTaxSystem && countryVal);
 
     const handleOpenDialog = (tax = null) => {
         if (!isTaxProfileComplete && !tax) {
@@ -100,7 +109,15 @@ const TaxSettings = () => {
         setIsLoading(true);
 
         try {
-            const payload = { ...formData };
+            const payload = { 
+                ...formData,
+                percentage: parseFloat(formData.percentage) || 0,
+                components: {
+                    cgst: parseFloat(formData.components?.cgst) || 0,
+                    sgst: parseFloat(formData.components?.sgst) || 0,
+                    igst: parseFloat(formData.components?.igst) || 0
+                }
+            };
             if (editingTax) {
                 await taxService.updateTax(editingTax._id, payload);
                 toast.success("Tax updated successfully");
@@ -283,10 +300,20 @@ const TaxSettings = () => {
                                         min="0"
                                         max="100"
                                         className={`w-full p-4 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText}`}
-                                        value={formData.percentage}
+                                        value={formData.percentage === 0 ? '' : (formData.percentage ?? '')}
                                         placeholder="0"
+                                        onFocus={(e) => e.target.select()}
                                         onChange={(e) => {
-                                            const val = parseFloat(e.target.value) || 0;
+                                            const rawVal = e.target.value;
+                                            if (rawVal === '') {
+                                                setFormData({
+                                                    ...formData,
+                                                    percentage: '',
+                                                    components: { cgst: '', sgst: '', igst: '' }
+                                                });
+                                                return;
+                                            }
+                                            const val = parseFloat(rawVal) || 0;
                                             if (formData.taxSystem === "GST") {
                                                 const split = val / 2;
                                                 setFormData({
@@ -319,10 +346,25 @@ const TaxSettings = () => {
                                                     type="number"
                                                     step="0.01"
                                                     className={`w-full p-3 ${theme.inputBg} border ${theme.inputBorder} rounded-xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText} text-sm`}
-                                                    value={formData.components.cgst}
+                                                    value={formData.components.cgst === 0 ? '' : (formData.components.cgst ?? '')}
+                                                    onFocus={(e) => e.target.select()}
                                                     onChange={(e) => {
-                                                        const val = parseFloat(e.target.value) || 0;
-                                                        const newSgst = formData.components.sgst;
+                                                        const rawVal = e.target.value;
+                                                        if (rawVal === '') {
+                                                            const newSgst = parseFloat(formData.components.sgst) || 0;
+                                                            setFormData({
+                                                                ...formData,
+                                                                percentage: newSgst || '',
+                                                                components: {
+                                                                    ...formData.components,
+                                                                    cgst: '',
+                                                                    igst: newSgst || ''
+                                                                }
+                                                            });
+                                                            return;
+                                                        }
+                                                        const val = parseFloat(rawVal) || 0;
+                                                        const newSgst = parseFloat(formData.components.sgst) || 0;
                                                         setFormData({
                                                             ...formData,
                                                             percentage: val + newSgst,
@@ -341,10 +383,25 @@ const TaxSettings = () => {
                                                     type="number"
                                                     step="0.01"
                                                     className={`w-full p-3 ${theme.inputBg} border ${theme.inputBorder} rounded-xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText} text-sm`}
-                                                    value={formData.components.sgst}
+                                                    value={formData.components.sgst === 0 ? '' : (formData.components.sgst ?? '')}
+                                                    onFocus={(e) => e.target.select()}
                                                     onChange={(e) => {
-                                                        const val = parseFloat(e.target.value) || 0;
-                                                        const newCgst = formData.components.cgst;
+                                                        const rawVal = e.target.value;
+                                                        if (rawVal === '') {
+                                                            const newCgst = parseFloat(formData.components.cgst) || 0;
+                                                            setFormData({
+                                                                ...formData,
+                                                                percentage: newCgst || '',
+                                                                components: {
+                                                                    ...formData.components,
+                                                                    sgst: '',
+                                                                    igst: newCgst || ''
+                                                                }
+                                                            });
+                                                            return;
+                                                        }
+                                                        const val = parseFloat(rawVal) || 0;
+                                                        const newCgst = parseFloat(formData.components.cgst) || 0;
                                                         setFormData({
                                                             ...formData,
                                                             percentage: val + newCgst,
@@ -365,9 +422,21 @@ const TaxSettings = () => {
                                                 type="number"
                                                 step="0.01"
                                                 className={`w-full p-3 ${theme.inputBg} border ${theme.inputBorder} rounded-xl outline-none ${theme.inputFocus} transition-all font-bold ${theme.inputText} text-sm`}
-                                                value={formData.components.igst}
+                                                value={formData.components.igst === 0 ? '' : (formData.components.igst ?? '')}
+                                                onFocus={(e) => e.target.select()}
                                                 onChange={(e) => {
-                                                    const val = parseFloat(e.target.value) || 0;
+                                                    const rawVal = e.target.value;
+                                                    if (rawVal === '') {
+                                                        setFormData({
+                                                            ...formData,
+                                                            components: {
+                                                                ...formData.components,
+                                                                igst: ''
+                                                            }
+                                                        });
+                                                        return;
+                                                    }
+                                                    const val = parseFloat(rawVal) || 0;
                                                     setFormData({
                                                         ...formData,
                                                         components: {

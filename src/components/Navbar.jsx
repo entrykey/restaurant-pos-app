@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight, ChevronDown, X, SlidersHorizontal } from "lucide-react";
+import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight, ChevronDown, X, SlidersHorizontal, Volume2, VolumeX } from "lucide-react";
 import BusinessTypeModal from "./BusinessTypeModal";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
@@ -8,7 +8,9 @@ import { usePermission } from "../auth/usePermission";
 import { MODULES } from "../constants/modules";
 import { ACTIONS } from "../constants/actions";
 import { notificationService } from "../services/notificationService";
+import { isSoundEnabled, toggleSoundEnabled } from "../utils/soundService";
 import { computeUserHasActiveSubscription, isSubscriptionPaymentPending } from "../utils/subscriptionStatus";
+import { toast } from "react-hot-toast";
 
 const Navbar = ({
     currentUser,
@@ -36,7 +38,25 @@ const Navbar = ({
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
     const [isTrialPopoverOpen, setIsTrialPopoverOpen] = useState(false);
     const [isSubNavOpen, setIsSubNavOpen] = useState(false);
+    const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
     const navigate = useNavigate();
+
+    useEffect(() => {
+        const handleSoundChange = (e) => {
+            if (e?.detail) setSoundOn(e.detail.enabled);
+        };
+        window.addEventListener("pos_sound_changed", handleSoundChange);
+        return () => window.removeEventListener("pos_sound_changed", handleSoundChange);
+    }, []);
+
+    const handleToggleSound = () => {
+        const next = toggleSoundEnabled();
+        setSoundOn(next);
+        toast.success(next ? "Voice Announcements Enabled" : "Voice Announcements Muted", {
+            icon: next ? "🔊" : "🔇",
+            duration: 2000,
+        });
+    };
 
     // Close dropdowns when clicking outside
     useEffect(() => {
@@ -315,6 +335,21 @@ const Navbar = ({
                             </>
                         )}
                     </div>
+
+                    {/* Speaker Announcement Toggle */}
+                    <button
+                        type="button"
+                        onClick={handleToggleSound}
+                        className={`flex items-center justify-center w-9 h-9 rounded-xl border transition-all cursor-pointer relative active:scale-95 ${
+                            soundOn 
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' 
+                                : `${theme.sidebarItemHoverBg} ${theme.textMuted} ${theme.borderLight}`
+                        }`}
+                        title={soundOn ? "Voice Announcements Enabled (Click to Mute)" : "Voice Announcements Muted (Click to Enable)"}
+                        aria-label="Toggle Voice Announcements"
+                    >
+                        {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                    </button>
 
                     {/* Notification Bell */}
                     <div className="relative notification-dropdown-container shrink-0">

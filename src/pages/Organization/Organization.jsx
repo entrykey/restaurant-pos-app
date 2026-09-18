@@ -93,7 +93,7 @@ const Organization = ({
     const [isDirty, setIsDirty] = useState(false);
 
     const [isSubscriptionNoticeOpen, setIsSubscriptionNoticeOpen] = useState(false);
-    
+
     const confirmToast = (message, onConfirm, onCancel = () => { }) => {
         toast.custom((t) => (
             <div className={`
@@ -120,8 +120,8 @@ const Organization = ({
                     <div className="flex gap-4">
                         <button
                             className={`flex-1 py-5 rounded-[22px] font-black text-[11px] uppercase tracking-widest transition-all active:scale-90 ${themeName === 'dark'
-                                    ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900'
+                                ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900'
                                 }`}
                             onClick={() => { toast.dismiss(t.id); onCancel(); }}
                         >
@@ -461,9 +461,9 @@ const Organization = ({
         confirmToast(`Start your ${plan.trialDurationDays} day trial for the ${plan.name} plan?`, async () => {
             setTrialLoading(plan.id);
             try {
-                await shopService.updateShop(organization.id, { 
-                    startTrial: true, 
-                    plan_id: plan.id 
+                await shopService.updateShop(organization.id, {
+                    startTrial: true,
+                    plan_id: plan.id
                 });
                 toast.success(`Trial started! Enjoy ${plan.name} for ${plan.trialDurationDays} days.`);
                 localStorage.removeItem("subscription_notified");
@@ -759,7 +759,7 @@ const Organization = ({
                                             <span className="text-rose-600 dark:text-rose-400 font-black">✖</span> {item.label}
                                         </span>
                                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-rose-200 dark:bg-rose-900/60 text-rose-900 dark:text-rose-200 group-hover:bg-amber-500 group-hover:text-white transition-all shrink-0 flex items-center gap-0.5">
-                                            Fix <ArrowRight size={10} />
+                                            Fill <ArrowRight size={10} />
                                         </span>
                                     </button>
                                 );
@@ -978,11 +978,10 @@ const Organization = ({
                 {/* Subscription & Plans — id used by SubscriptionNoticeModal deep-link */}
                 <div
                     id="organization-subscription-plans"
-                    className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border transition-[box-shadow,ring] duration-500 ${theme.borderLight} ${
-                        highlightSubscriptionSection
+                    className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border transition-[box-shadow,ring] duration-500 ${theme.borderLight} ${highlightSubscriptionSection
                             ? 'ring-4 ring-indigo-500 ring-offset-4 ring-offset-slate-950/0 dark:ring-offset-slate-900 shadow-2xl shadow-indigo-500/20'
                             : ''
-                    }`}
+                        }`}
                 >
                     <h3 className={`text-xl font-bold ${theme.textHeading} mb-6 flex items-center gap-2`}>
                         <CreditCard size={20} className="text-indigo-500 dark:text-indigo-400" /> Subscription & Plans
@@ -1056,89 +1055,89 @@ const Organization = ({
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {plans.map((plan) => {
-                            const isCurrent = organization?.subscriptionPlanId === plan.id;
-                            const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
-                            const isPending = (organization?.subscriptionStatus === 'pending_payment' || organization?.subscriptionStatus === 'pending') && isCurrent;
-                            const isTrialPlan = organization?.isTrial;
-                            const isTrialLoading = trialLoading === plan.id;
-                            const showStartTrial = !organization?.subscriptionPlanId && plan.hasTrial;
+                                    const isCurrent = organization?.subscriptionPlanId === plan.id;
+                                    const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
+                                    const isPending = (organization?.subscriptionStatus === 'pending_payment' || organization?.subscriptionStatus === 'pending') && isCurrent;
+                                    const isTrialPlan = organization?.isTrial;
+                                    const isTrialLoading = trialLoading === plan.id;
+                                    const showStartTrial = !organization?.subscriptionPlanId && plan.hasTrial;
 
-                            return (
-                                <div
-                                    key={plan.id}
-                                    className={`relative p-6 rounded-3xl border-2 transition-all ${plan.highlighted
-                                        ? `border-indigo-600 shadow-lg scale-105 z-10 ${themeName === 'dark' ? 'bg-slate-900/80' : 'bg-indigo-50/50'}`
-                                        : `${theme.borderLight} hover:border-indigo-500 hover:shadow-lg ${themeName === 'dark' ? 'bg-slate-800/50' : 'hover:border-indigo-200'}`
-                                        }`}
-                                >
-                                    {plan.highlighted && (
-                                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                                            Most Popular
+                                    return (
+                                        <div
+                                            key={plan.id}
+                                            className={`relative p-6 rounded-3xl border-2 transition-all ${plan.highlighted
+                                                ? `border-indigo-600 shadow-lg scale-105 z-10 ${themeName === 'dark' ? 'bg-slate-900/80' : 'bg-indigo-50/50'}`
+                                                : `${theme.borderLight} hover:border-indigo-500 hover:shadow-lg ${themeName === 'dark' ? 'bg-slate-800/50' : 'hover:border-indigo-200'}`
+                                                }`}
+                                        >
+                                            {plan.highlighted && (
+                                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                                                    Most Popular
+                                                </div>
+                                            )}
+                                            <h4 className={`text-xl font-bold mb-2 ${theme.textHeading}`}>{plan.name}</h4>
+                                            <div className="flex items-baseline gap-1 mb-1">
+                                                <span className={`text-3xl font-black ${theme.primaryIconText}`}>
+                                                    {plan.priceLabel.split(" ")[0]} {plan.price}
+                                                </span>
+                                                <span className={`font-medium ${theme.textSecondary}`}>/mo</span>
+                                            </div>
+                                            <p className={`text-xs font-medium mb-6 ${theme.textSecondary}`}>Up to {plan.branchesLimit === -1 ? "Unlimited" : plan.branchesLimit} branches</p>
+
+                                            <ul className="space-y-3 mb-8">
+                                                {plan.features.map((feature, i) => (
+                                                    <li key={i} className={`flex items-start gap-2 text-sm font-medium ${themeName === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        <Check size={16} className="text-green-500 shrink-0 mt-0.5" />
+                                                        <span>{feature}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+
+                                            {isCurrent && !isExpired && !isTrialPlan && !isPending ? (
+                                                <button
+                                                    disabled
+                                                    className={`w-full py-2.5 rounded-xl font-bold cursor-default ${themeName === 'dark' ? 'bg-slate-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`}
+                                                >
+                                                    Current plan
+                                                </button>
+                                            ) : isPending ? (
+                                                <button
+                                                    disabled
+                                                    className="w-full py-2.5 rounded-xl font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 cursor-default"
+                                                >
+                                                    Request Pending Approval
+                                                </button>
+                                            ) : showStartTrial ? (
+                                                <button
+                                                    onClick={() => canEditOrg && handleStartTrial(plan)}
+                                                    disabled={!canEditOrg || isTrialLoading}
+                                                    className={`w-full py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${plan.highlighted
+                                                        ? `bg-indigo-600 text-white hover:bg-indigo-700 ${themeName === 'dark' ? '' : 'shadow-lg shadow-indigo-200'}`
+                                                        : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
+                                                        }`}
+                                                >
+                                                    {isTrialLoading ? "Starting…" : `Start ${plan.trialDurationDays ?? 0} day trial`}
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => canEditOrg && handlePlanChange(plan)}
+                                                    disabled={!canEditOrg || trialLoading === plan.id}
+                                                    className={`w-full py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${plan.highlighted
+                                                        ? `bg-indigo-600 text-white hover:bg-indigo-700 ${themeName === 'dark' ? '' : 'shadow-lg shadow-indigo-200'}`
+                                                        : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
+                                                        }`}
+                                                >
+                                                    {trialLoading === plan.id
+                                                        ? "Processing…"
+                                                        : (isCurrent && !isTrialPlan
+                                                            ? (isExpired ? "Request Renewal" : "Current Plan")
+                                                            : "Request Subscription")
+                                                    }
+                                                </button>
+                                            )}
                                         </div>
-                                    )}
-                                    <h4 className={`text-xl font-bold mb-2 ${theme.textHeading}`}>{plan.name}</h4>
-                                    <div className="flex items-baseline gap-1 mb-1">
-                                        <span className={`text-3xl font-black ${theme.primaryIconText}`}>
-                                            {plan.priceLabel.split(" ")[0]} {plan.price}
-                                        </span>
-                                        <span className={`font-medium ${theme.textSecondary}`}>/mo</span>
-                                    </div>
-                                    <p className={`text-xs font-medium mb-6 ${theme.textSecondary}`}>Up to {plan.branchesLimit === -1 ? "Unlimited" : plan.branchesLimit} branches</p>
-
-                                    <ul className="space-y-3 mb-8">
-                                        {plan.features.map((feature, i) => (
-                                            <li key={i} className={`flex items-start gap-2 text-sm font-medium ${themeName === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                <Check size={16} className="text-green-500 shrink-0 mt-0.5" />
-                                                <span>{feature}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-
-                                    {isCurrent && !isExpired && !isTrialPlan && !isPending ? (
-                                        <button
-                                            disabled
-                                            className={`w-full py-2.5 rounded-xl font-bold cursor-default ${themeName === 'dark' ? 'bg-slate-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`}
-                                        >
-                                            Current plan
-                                        </button>
-                                    ) : isPending ? (
-                                        <button
-                                            disabled
-                                            className="w-full py-2.5 rounded-xl font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 cursor-default"
-                                        >
-                                            Request Pending Approval
-                                        </button>
-                                    ) : showStartTrial ? (
-                                        <button
-                                            onClick={() => canEditOrg && handleStartTrial(plan)}
-                                            disabled={!canEditOrg || isTrialLoading}
-                                            className={`w-full py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${plan.highlighted
-                                                ? `bg-indigo-600 text-white hover:bg-indigo-700 ${themeName === 'dark' ? '' : 'shadow-lg shadow-indigo-200'}`
-                                                : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
-                                                }`}
-                                        >
-                                            {isTrialLoading ? "Starting…" : `Start ${plan.trialDurationDays ?? 0} day trial`}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            onClick={() => canEditOrg && handlePlanChange(plan)}
-                                            disabled={!canEditOrg || trialLoading === plan.id}
-                                            className={`w-full py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${plan.highlighted
-                                                ? `bg-indigo-600 text-white hover:bg-indigo-700 ${themeName === 'dark' ? '' : 'shadow-lg shadow-indigo-200'}`
-                                                : `${themeName === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-800 hover:bg-gray-700'} text-white`
-                                                }`}
-                                        >
-                                            {trialLoading === plan.id 
-                                                ? "Processing…" 
-                                                : (isCurrent && !isTrialPlan 
-                                                    ? (isExpired ? "Request Renewal" : "Current Plan") 
-                                                    : "Request Subscription")
-                                            }
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
+                                    );
+                                })}
                             </div>
                         </>
                     )}

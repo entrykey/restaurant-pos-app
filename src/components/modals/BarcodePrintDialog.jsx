@@ -13,6 +13,21 @@ import {
     mergeBarcodePrintSettings,
 } from '../../config/barcodePrintSettings';
 
+const resolveBarcodeUrl = (barcodeObj, fallbackCode) => {
+    const rawUrl = barcodeObj?.fullUrl || barcodeObj?.url || barcodeObj?.imageUrl;
+    if (rawUrl) {
+        if (rawUrl.startsWith('http') || rawUrl.startsWith('data:')) return rawUrl;
+        const root = (api.defaults.baseURL || '').replace(/\/api\/?$/, '');
+        return `${root}${rawUrl}`;
+    }
+    const code = barcodeObj?.code || (typeof barcodeObj === 'string' ? barcodeObj : null) || fallbackCode;
+    if (typeof code === 'string' && code.trim()) {
+        const cleanCode = code.trim();
+        return `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(cleanCode)}&scale=2&rotate=N&includetext`;
+    }
+    return null;
+};
+
 const BarcodePrintDialog = ({ 
     isOpen, 
     onClose, 
@@ -164,8 +179,11 @@ const BarcodePrintDialog = ({
                         const logoUrl = organization.logoUrl.startsWith("http") ? organization.logoUrl : `${root}${organization.logoUrl}`;
                         parts.push(`<div class="slot"><img class="logo-img" src="${logoUrl}" alt="Logo" /></div>`);
                     }
-                    if (key === "barcode" && barcode?.fullUrl) {
-                        parts.push(`<div class="slot"><img class="barcode-img" src="${barcode.fullUrl}" alt="Barcode" /></div>`);
+                    if (key === "barcode") {
+                        const barcodeUrl = resolveBarcodeUrl(barcode, item?.itemCode);
+                        if (barcodeUrl) {
+                            parts.push(`<div class="slot"><img class="barcode-img" src="${barcodeUrl}" alt="Barcode" /></div>`);
+                        }
                     }
                     if (key === "name" && includeName && item?.name) {
                         parts.push(`<div class="slot line name">${showNameLabel ? 'Item: ' : ''}${item.name}</div>`);
@@ -656,8 +674,11 @@ const BarcodePrintDialog = ({
                                         const logoUrl = organization.logoUrl.startsWith("http") ? organization.logoUrl : `${root}${organization.logoUrl}`;
                                         return <img key="logo" src={logoUrl} alt="Logo" style={{ maxHeight: "40px", maxWidth: "80%", objectFit: "contain", marginBottom: "4px" }} />;
                                     }
-                                    if (key === "barcode" && dialogState.barcode?.fullUrl) {
-                                        return <img key="barcode" src={dialogState.barcode.fullUrl} alt="Barcode" style={{ maxHeight: `${dialogState.labelHeight * 3 * (dialogState.barcodeHeight / 100)}px`, maxWidth: "95%", height: "auto", marginBottom: "2px" }} />;
+                                    if (key === "barcode") {
+                                        const barcodeUrl = resolveBarcodeUrl(dialogState.barcode, dialogState.item?.itemCode);
+                                        if (barcodeUrl) {
+                                            return <img key="barcode" src={barcodeUrl} alt="Barcode" style={{ maxHeight: `${dialogState.labelHeight * 3 * (dialogState.barcodeHeight / 100)}px`, maxWidth: "95%", height: "auto", marginBottom: "2px" }} />;
+                                        }
                                     }
                                     if (key === "price" && dialogState.includePrice && dialogState.item?.sellingPrice != null) {
                                         return <div key="price" style={{ fontWeight: 800, fontSize: `${dialogState.baseFontSize * 0.9}px`, lineHeight: 1, textAlign: "center", width: "100%" }}>{dialogState.showPriceLabel ? 'Price: ' : ''}{formatCurrency ? formatCurrency(dialogState.item.sellingPrice) : Number(dialogState.item.sellingPrice).toFixed(2)}</div>;

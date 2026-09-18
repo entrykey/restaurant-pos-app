@@ -187,6 +187,7 @@ const AppRoutes = (props) => {
     handlePrintReceipt,
     handleSendToKOT,
     isSubmittingKOT: props.isSubmittingKOT,
+    onFinalizePayment: props.handleFinalizePayment || props.onFinalizePayment,
     setIsPaymentModalOpen,
     setBillingStage,
     initiateAddItem,
