@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { shopService } from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
@@ -24,7 +23,6 @@ import AddShopModal from './AddShopModal';
 const OwnerDashboard = () => {
     const { user, login } = useAuth();
     const { theme } = useTheme();
-    const navigate = useNavigate();
     const [shops, setShops] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -45,7 +43,31 @@ const OwnerDashboard = () => {
             const userId = user?.id || user?._id;
             if (!userId) return;
             const data = await shopService.getShopsByOwner(userId);
-            setShops(data || []);
+            const rawShops = Array.isArray(data) ? data : (data?.data || []);
+
+            const currentUserId = String(userId || '');
+            const currentUserEmail = String(user?.email || '').trim().toLowerCase();
+
+            // Strict owner validation filter to prevent other owners' shops from showing up
+            const myShopsOnly = rawShops.filter(s => {
+                if (!s) return false;
+                const shopOwnerId = String(
+                    s.user_id?._id || s.user_id?.id || s.user_id ||
+                    s.ownerId?._id || s.ownerId?.id || s.ownerId ||
+                    s.owner?._id || s.owner?.id || s.owner || ''
+                );
+                const shopOwnerEmail = String(
+                    s.ownerEmail || s.user_id?.email || s.ownerId?.email || s.owner?.email || ''
+                ).trim().toLowerCase();
+
+                if (currentUserId && shopOwnerId && currentUserId === shopOwnerId) return true;
+                if (currentUserEmail && shopOwnerEmail && currentUserEmail === shopOwnerEmail) return true;
+                // Reject if owner ID or owner email is explicitly present on shop but does not match logged-in owner
+                if (shopOwnerId || shopOwnerEmail) return false;
+                return true;
+            });
+
+            setShops(myShopsOnly);
         } catch (error) {
             console.error("Failed to fetch owner shops:", error);
         } finally {
@@ -55,7 +77,7 @@ const OwnerDashboard = () => {
 
     useEffect(() => {
         fetchShops();
-    }, [user]);
+    }, [user?.id, user?._id, user?.email]);
 
     const handleShopAdded = () => {
         setIsAddModalOpen(false);
@@ -77,19 +99,29 @@ const OwnerDashboard = () => {
 
     const switchAndNavigate = async (shopId, targetPath) => {
         try {
+            setLoading(true);
             const shop = shops.find((s) => String(s._id) === String(shopId));
             const shopSegment = toShopSegment(shop);
             const scopedPath = `/${shopSegment}${targetPath}`;
 
-            if ((user?.shopId || user?.shop_id) === shopId) {
-                navigate(scopedPath);
-                return;
-            }
+            // Clear previous shop-scoped storage items to prevent permission / module bleed
+            localStorage.removeItem("pos_activeBranchId");
+            localStorage.removeItem("permissions");
+            localStorage.removeItem("pos_enabledModules");
+            localStorage.removeItem("pos_businessType");
+            localStorage.removeItem("pos_businessSubtype");
+            localStorage.removeItem("pos_active_tabs");
+            localStorage.removeItem("pos_active_tab_id");
+            localStorage.removeItem("pos_active_tabs_shop");
+            localStorage.removeItem("subscription_notified");
 
+            // Always call switchShop API to get fresh permissions, roles, modules & token for target shop
             const newAuthData = await shopService.switchShop(shopId);
             const newAccessToken = newAuthData.accessToken;
 
-            localStorage.setItem('accessToken', newAccessToken);
+            if (newAccessToken) {
+                localStorage.setItem('accessToken', newAccessToken);
+            }
 
             const storageKey = "restaurant_pos_auth_v1";
             const currentStorageParams = JSON.parse(localStorage.getItem(storageKey) || '{}');
@@ -100,14 +132,13 @@ const OwnerDashboard = () => {
 
             login({ ...newAuthData.user, accessToken: newAccessToken });
 
-            setTimeout(() => {
-                navigate(scopedPath);
-            }, 50);
+            // Hard redirect to target shop URL so all React contexts & permission hooks re-mount cleanly
+            window.location.href = scopedPath;
         } catch (err) {
             console.error("Failed to switch shop context:", err);
             const shop = shops.find((s) => String(s._id) === String(shopId));
             const shopSegment = toShopSegment(shop);
-            navigate(`/${shopSegment}${targetPath}`, { state: { shopId } });
+            window.location.href = `/${shopSegment}${targetPath}`;
         }
     };
 

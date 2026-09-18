@@ -84,7 +84,7 @@ const Layout = ({
                 />
 
                 {/* Main Content */}
-                <div className={`flex-1 min-h-0 ml-0 transition-all duration-300 ${isSidebarExpanded ? 'md:ml-64' : 'md:ml-24'} overflow-hidden relative flex flex-col bg-gray-50/30 dark:bg-transparent`}>
+                <div className={`flex-1 min-h-0 min-w-0 pl-0 transition-all duration-300 ${isSidebarExpanded ? 'md:pl-64' : 'md:pl-24'} overflow-hidden relative flex flex-col bg-gray-50/30 dark:bg-transparent`}>
                     <Navbar
                         currentUser={currentUser}
                         sessionInfo={sessionInfo}

@@ -6,9 +6,10 @@ import { useApp } from '../../context/AppContext';
 import { MODULES } from '../../constants/modules';
 import { customerService, loyaltyService, api } from '../../services/api';
 import CommonTable from '../../components/CommonTable';
+import CommonDialog from '../../components/modals/CommonDialog';
 import Supplier from '../Suppliers/Supplier';
 import { toast } from 'react-hot-toast';
-import { validateEmail, sanitizeEmailInput, sanitizeNameInput, sanitizePhoneInput } from '../../utils/validation';
+import { validateEmail, sanitizeEmailInput, sanitizeNameInput, sanitizePhoneInput, normalizePhoneNumber, arePhoneNumbersEqual } from '../../utils/validation';
 
 const PARTIES_MODULE = MODULES.PARTIES;
 
@@ -27,6 +28,7 @@ const Parties = ({ hasPermissionFor }) => {
     const CUSTOMER_LIMIT = 10;
     const [customerModalOpen, setCustomerModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
+    const [deleteConfirmModal, setDeleteConfirmModal] = useState({ isOpen: false, id: null, name: '' });
     const [customerForm, setCustomerForm] = useState({
         name: '',
         phone: '',
@@ -161,9 +163,9 @@ const Parties = ({ hasPermissionFor }) => {
         if (!customerForm.name || !/[a-zA-Z]/.test(customerForm.name) || customerForm.name.trim().length < 2) {
             errors.name = 'Customer name must contain at least 2 valid letters';
         }
-        const cleanPhone = (customerForm.phone || '').replace(/[^0-9]/g, '');
-        if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 15) {
-            errors.phone = 'Please enter a valid 10-15 digit phone number';
+        const normPhone = normalizePhoneNumber(customerForm.phone);
+        if (!normPhone || normPhone.length !== 10) {
+            errors.phone = 'Please enter a valid 10-digit mobile number (country code like +91 or hyphens allowed)';
         }
         if (customerForm.email && !validateEmail(customerForm.email)) {
             errors.email = 'Please enter a valid email address (e.g. name@domain.com)';
@@ -183,11 +185,24 @@ const Parties = ({ hasPermissionFor }) => {
             return;
         }
 
+        const normalizedPhone = normalizePhoneNumber(customerForm.phone);
+        const isDuplicate = customers.some(c => {
+            const existingId = c._id || c.id;
+            const editingId = editingCustomer ? (editingCustomer._id || editingCustomer.id) : null;
+            if (editingId && existingId === editingId) return false;
+            return arePhoneNumbersEqual(c.phone, customerForm.phone);
+        });
+
+        if (isDuplicate) {
+            toast.error(`A customer with mobile number (${normalizedPhone}) already exists.`);
+            return;
+        }
+
         setCustomerLoading(true);
         try {
             const payload = {
-                name: customerForm.name,
-                phone: customerForm.phone,
+                name: customerForm.name.trim(),
+                phone: normalizedPhone,
                 email: customerForm.email || undefined,
                 taxNumber: customerForm.taxNumber || undefined,
                 status: customerForm.status,
@@ -201,9 +216,10 @@ const Parties = ({ hasPermissionFor }) => {
                 await customerService.createCustomer(payload);
             }
             setCustomerModalOpen(false);
+            toast.success(editingCustomer ? 'Customer updated successfully' : 'Customer created successfully');
             await loadCustomers(customerSearch, customerPage);
         } catch (err) {
-            alert('Failed to save customer: ' + (err?.message || 'Unknown error'));
+            toast.error('Failed to save customer: ' + (err?.message || 'Unknown error'));
         } finally {
             setCustomerLoading(false);
         }
@@ -215,25 +231,34 @@ const Parties = ({ hasPermissionFor }) => {
         try {
             const newStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
             await customerService.updateCustomer(item._id || item.id, { ...item, status: newStatus });
+            toast.success(`Customer status updated to ${newStatus}`);
             await loadCustomers(customerSearch, customerPage);
         } catch (err) {
-            alert('Failed to update status: ' + (err?.message || 'Unknown error'));
+            toast.error('Failed to update status: ' + (err?.message || 'Unknown error'));
         } finally {
             setCustomerLoading(false);
         }
     };
 
-    const deleteCustomer = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this customer?')) return;
+    const openDeleteCustomerDialog = (customer) => {
+        const id = customer?._id || customer?.id || customer;
+        const name = typeof customer === 'object' ? (customer.name || customer.customerName || '') : '';
+        setDeleteConfirmModal({ isOpen: true, id, name });
+    };
+
+    const handleConfirmDeleteCustomer = async () => {
+        if (!deleteConfirmModal.id) return;
         setCustomerLoading(true);
         try {
-            await customerService.deleteCustomer(id);
+            await customerService.deleteCustomer(deleteConfirmModal.id);
+            toast.success(`Customer ${deleteConfirmModal.name ? `"${deleteConfirmModal.name}"` : ''} deleted successfully`);
             const newPage = customers.length === 1 && customerPage > 1 ? customerPage - 1 : customerPage;
             await loadCustomers(customerSearch, newPage);
         } catch (err) {
-            alert('Failed to delete customer: ' + (err?.message || 'Unknown error'));
+            toast.error('Failed to delete customer: ' + (err?.message || 'Unknown error'));
         } finally {
             setCustomerLoading(false);
+            setDeleteConfirmModal({ isOpen: false, id: null, name: '' });
         }
     };
 
@@ -297,7 +322,7 @@ const Parties = ({ hasPermissionFor }) => {
             render: (_, row) => (
                 <div className="flex justify-end gap-2">
                     {canCustomerEdit && <button type="button" onClick={() => openCustomerModal(row)} className={`p-2 rounded-xl ${theme.inputBg} ${theme.primaryIconText} hover:bg-indigo-600 hover:text-white`}><Edit3 size={16} /></button>}
-                    {canCustomerDelete && <button type="button" onClick={() => deleteCustomer(row._id || row.id)} className={`p-2 rounded-xl ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white`}><Trash2 size={16} /></button>}
+                    {canCustomerDelete && <button type="button" onClick={() => openDeleteCustomerDialog(row)} className={`p-2 rounded-xl ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white`}><Trash2 size={16} /></button>}
                 </div>
             )
         });
@@ -672,6 +697,17 @@ const Parties = ({ hasPermissionFor }) => {
                     </div>
                 </div>
             )}
+            {/* Delete Customer Confirmation Modal */}
+            <CommonDialog
+                isOpen={deleteConfirmModal.isOpen}
+                onClose={() => setDeleteConfirmModal({ isOpen: false, id: null, name: '' })}
+                onConfirm={handleConfirmDeleteCustomer}
+                title="Delete Customer"
+                message={`Are you sure you want to delete ${deleteConfirmModal.name ? `customer "${deleteConfirmModal.name}"` : 'this customer'}? This action cannot be undone.`}
+                type="error"
+                confirmText="Delete Customer"
+                cancelText="Cancel"
+            />
         </div>
     );
 };

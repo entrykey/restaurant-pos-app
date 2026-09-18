@@ -12,7 +12,7 @@ export const DEMO_PREVIEW = {
     fssai: '12345678901234',
     upiId: 'demo@upi',
     payeeName: 'Demo Shop',
-    invoiceNumber: 'INV-2026-001',
+    invoiceNumber: 'INV-26/27-001',
     orderNumber: 'ORD-1042',
     customer: 'Walk-in Customer',
     table: 'Takeaway',

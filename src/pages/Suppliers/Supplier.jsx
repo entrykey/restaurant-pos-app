@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
+import CommonDialog from '../../components/modals/CommonDialog';
 import { SupplierService } from './SupplierService';
 import { ROUTE_ACCESS } from '../../config/permissionStructure';
 import { useTheme } from '../../context/ThemeContext';
@@ -19,6 +20,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const [totalCount, setTotalCount] = useState(0);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState(null);
+    const [deleteConfirmModal, setDeleteConfirmModal] = useState({ isOpen: false, id: null, name: '' });
     const [validationErrors, setValidationErrors] = useState({});
     const { theme } = useTheme();
     const { currentShopId } = useApp();
@@ -127,13 +129,15 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         try {
             if (editingSupplier) {
                 await SupplierService.updateSupplier(editingSupplier._id || editingSupplier.id, formData);
+                toast.success('Supplier updated successfully');
             } else {
                 await SupplierService.addSupplier({ ...formData, shopId: currentShopId });
+                toast.success('Supplier created successfully');
             }
             setIsModalOpen(false);
             await loadSuppliers(searchTerm, currentPage);
         } catch (error) {
-            alert("Failed to save supplier: " + (error.message || "Unknown error"));
+            toast.error("Failed to save supplier: " + (error.message || "Unknown error"));
         } finally {
             setLoading(false);
         }
@@ -144,20 +148,32 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         const newStatus = item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
         try {
             await SupplierService.updateSupplier(item._id || item.id, { ...item, status: newStatus });
+            toast.success(`Supplier status updated to ${newStatus}`);
             await loadSuppliers(searchTerm, currentPage);
         } catch (error) {
-            alert("Failed to update status: " + (error.message || "Unknown error"));
+            toast.error("Failed to update status: " + (error.message || "Unknown error"));
         }
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Are you sure you want to delete this supplier?")) {
-            setLoading(true);
-            await SupplierService.deleteSupplier(id);
-            // If last item on page, go back one page
+    const openDeleteDialog = (item) => {
+        const id = item?._id || item?.id || item;
+        const name = typeof item === 'object' ? (item.name || '') : '';
+        setDeleteConfirmModal({ isOpen: true, id, name });
+    };
+
+    const handleConfirmDeleteSupplier = async () => {
+        if (!deleteConfirmModal.id) return;
+        setLoading(true);
+        try {
+            await SupplierService.deleteSupplier(deleteConfirmModal.id);
+            toast.success(`Supplier ${deleteConfirmModal.name ? `"${deleteConfirmModal.name}"` : ''} deleted successfully`);
             const newPage = suppliers.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
             await loadSuppliers(searchTerm, newPage);
+        } catch (error) {
+            toast.error("Failed to delete supplier: " + (error.message || "Unknown error"));
+        } finally {
             setLoading(false);
+            setDeleteConfirmModal({ isOpen: false, id: null, name: '' });
         }
     };
 
@@ -239,7 +255,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                     )}
                     {canDelete && (
                         <button
-                            onClick={() => handleDelete(item._id || item.id)}
+                            onClick={() => openDeleteDialog(item)}
                             className={`p-2 transition-colors rounded-xl ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white`}
                         >
                             <Trash2 size={16} />
@@ -465,6 +481,17 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                     </div>
                 </div>
             )}
+            {/* Delete Supplier Confirmation Modal */}
+            <CommonDialog
+                isOpen={deleteConfirmModal.isOpen}
+                onClose={() => setDeleteConfirmModal({ isOpen: false, id: null, name: '' })}
+                onConfirm={handleConfirmDeleteSupplier}
+                title="Delete Supplier"
+                message={`Are you sure you want to delete ${deleteConfirmModal.name ? `supplier "${deleteConfirmModal.name}"` : 'this supplier'}? This action cannot be undone.`}
+                type="error"
+                confirmText="Delete Supplier"
+                cancelText="Cancel"
+            />
         </>
     );
 

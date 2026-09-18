@@ -1485,10 +1485,24 @@ export const reportsService = {
     },
     getPerformanceReport: async (params = {}) => {
         try {
-            const response = await api.get('/employees/performance-report', { params });
+            const response = await api.get('/reports/staff', { params });
             return response.data;
         } catch (error) {
-            console.error("Error fetching performance report:", error);
+            try {
+                const response = await api.get('/employees/performance-report', { params });
+                return response.data;
+            } catch (err) {
+                console.error("Error fetching performance report:", err);
+                throw err.response ? err.response.data : err;
+            }
+        }
+    },
+    getManufacturingReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/manufacturing', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching manufacturing report:", error);
             throw error.response ? error.response.data : error;
         }
     },

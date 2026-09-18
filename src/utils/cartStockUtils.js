@@ -43,7 +43,13 @@ export const getCartStockReservations = (cartItems = []) => {
             return;
         }
 
-        if (Array.isArray(line?.ingredients) && line.ingredients.length > 0) {
+        const isDirectStockTracked = line?.stockSettings?.stockApplicable !== false && line?.stockApplicable !== false;
+
+        if (isDirectStockTracked) {
+            if (id) {
+                map.set(id, (map.get(id) || 0) + add);
+            }
+        } else if (Array.isArray(line?.ingredients) && line.ingredients.length > 0) {
             line.ingredients.forEach((ing) => {
                 const ingId = String(ing.rawItemId || ing.itemId || ing._id || '');
                 if (!ingId) return;
@@ -54,10 +60,6 @@ export const getCartStockReservations = (cartItems = []) => {
                 }
                 map.set(ingId, (map.get(ingId) || 0) + (add * qtyNeeded));
             });
-        }
-
-        if (id && (line.itemType !== 'MANUFACTURED' || !Array.isArray(line?.ingredients) || line.ingredients.length === 0)) {
-            map.set(id, (map.get(id) || 0) + add);
         }
     });
     return map;
@@ -135,7 +137,13 @@ export const getAvailableStock = (item, cartItems = [], baseStockMap = {}, varia
 
     let available = Infinity;
 
-    if (Array.isArray(item?.ingredients) && item.ingredients.length > 0) {
+    const isDirectStockTracked = item?.stockSettings?.stockApplicable !== false && item?.stockApplicable !== false;
+
+    if (isDirectStockTracked) {
+        const base = baseStockMap[id] ?? Math.max(0, Number(item._baseQuantityOnHand ?? item.quantityOnHand) || 0);
+        const reserved = reservations.get(id) || 0;
+        available = Math.max(0, base - reserved);
+    } else if (Array.isArray(item?.ingredients) && item.ingredients.length > 0) {
         for (const ing of item.ingredients) {
             const ingId = String(ing.rawItemId || ing.itemId || ing._id || '');
             if (!ingId) continue;

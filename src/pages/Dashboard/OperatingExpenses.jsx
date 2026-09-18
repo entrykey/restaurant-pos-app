@@ -5,10 +5,12 @@ import { useTheme } from '../../context/ThemeContext';
 import { shopExpenseService } from '../../services/api/shopExpenses';
 import { dashboardService } from '../../services/api';
 import OperatingExpenseCard from '../../components/cards/OperatingExpenseCard';
-import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, Coins, TrendingDown, FileText, ArrowRightCircle } from 'lucide-react';
+import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, Coins, TrendingDown, FileText, ArrowRightCircle, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import CommonSelect from '../../components/ui/CommonSelect';
+import CommonDialog from '../../components/modals/CommonDialog';
 import { PurchaseService } from '../../services/PurchaseService';
+import { toast } from 'react-hot-toast';
 
 const OperatingExpenses = () => {
     const { user } = useAuth();
@@ -18,6 +20,7 @@ const OperatingExpenses = () => {
 
     const [selectedBranchId, setSelectedBranchId] = useState(activeBranchId || user?.branchId || branches[0]?._id);
     const [expenses, setExpenses] = useState([]);
+    const [deleteModal, setDeleteModal] = useState({ isOpen: false, id: null, title: '', categoryName: '' });
     const [loading, setLoading] = useState(true);
     const [savingId, setSavingId] = useState(null);
     const [newCategoryName, setNewCategoryName] = useState('');
@@ -27,6 +30,7 @@ const OperatingExpenses = () => {
     const [todayProfit, setTodayProfit] = useState(0);
     const [profitTimeline, setProfitTimeline] = useState([]);
     const [expandedDate, setExpandedDate] = useState(null);
+    const [deletedDefaultCategories, setDeletedDefaultCategories] = useState([]);
 
     const defaultCategories = ['Salary', 'Rent', 'Electricity', 'Water'];
 
@@ -77,10 +81,10 @@ const OperatingExpenses = () => {
                 // Show only draft expenses
                 setExpenses(draftExpenses);
             } else if (activeTab === 'expenses') {
-                // Ensure default categories exist in actual expenses
+                // Ensure default categories exist in actual expenses unless deleted
                 const finalExpenses = [...actualExpenses];
                 defaultCategories.forEach(cat => {
-                    if (!finalExpenses.find(e => e.category === cat)) {
+                    if (!deletedDefaultCategories.includes(cat) && !finalExpenses.find(e => e.category === cat)) {
                         finalExpenses.push({
                             category: cat,
                             amount: 0,
@@ -139,7 +143,7 @@ const OperatingExpenses = () => {
         } finally {
             setLoading(false);
         }
-    }, [user?.shopId, user?.shop_id, selectedBranchId, activeTab]);
+    }, [user?.shopId, user?.shop_id, selectedBranchId, activeTab, deletedDefaultCategories]);
 
     useEffect(() => {
         fetchData();
@@ -164,6 +168,7 @@ const OperatingExpenses = () => {
         setSavingId(index);
         try {
             await shopExpenseService.upsertExpense(shopId, branchId, {
+                _id: expense._id,
                 category: expense.category,
                 amount: expense.amount,
                 term: expense.term,
@@ -179,20 +184,48 @@ const OperatingExpenses = () => {
         }
     };
 
-    const handleDelete = async (index) => {
+    const handleDeleteExpense = (index) => {
         const expense = expenses[index];
-        if (expense.isNew) {
+        if (!expense._id || expense.isNew) {
+            if (expense.category) {
+                setDeletedDefaultCategories(prev => [...prev, expense.category]);
+            }
             setExpenses(expenses.filter((_, i) => i !== index));
             return;
         }
 
-        if (window.confirm(`Delete category "${expense.category}"?`)) {
-            try {
-                await shopExpenseService.deleteExpense(expense._id);
-                fetchData();
-            } catch (error) {
-                console.error("Failed to delete expense:", error);
+        setDeleteModal({
+            isOpen: true,
+            id: expense._id,
+            title: `Delete category "${expense.category}"?`,
+            categoryName: expense.category
+        });
+    };
+
+    const handleDeleteExpenseFromAccordion = (expenseId, categoryName) => {
+        if (!expenseId) return;
+        setDeleteModal({
+            isOpen: true,
+            id: expenseId,
+            title: `Delete expense "${categoryName || 'item'}"?`,
+            categoryName: categoryName
+        });
+    };
+
+    const handleConfirmDeleteExpense = async () => {
+        if (!deleteModal.id) return;
+        try {
+            await shopExpenseService.deleteExpense(deleteModal.id);
+            if (deleteModal.categoryName) {
+                setDeletedDefaultCategories(prev => [...prev, deleteModal.categoryName]);
             }
+            toast.success("Expense deleted successfully");
+            fetchData();
+        } catch (error) {
+            console.error("Failed to delete expense:", error);
+            toast.error("Failed to delete expense");
+        } finally {
+            setDeleteModal({ isOpen: false, id: null, title: '', categoryName: '' });
         }
     };
 
@@ -408,7 +441,7 @@ const OperatingExpenses = () => {
                             isDraft={activeTab === 'drafts'}
                             onUpdate={(updates) => handleUpdate(idx, updates)}
                             onSave={() => handleSave(idx)}
-                            onDelete={() => handleDelete(idx)}
+                            onDelete={() => handleDeleteExpense(idx)}
                             onMoveToExpense={activeTab === 'drafts' ? () => handleMoveToExpense(expense) : null}
                         />
                     ))}
@@ -456,8 +489,8 @@ const OperatingExpenses = () => {
                                             <td className="p-6 text-right font-black text-gray-600">
                                                 {formatCurrency(day.grossProfit)}
                                             </td>
-                                            <td className="p-6 text-right text-red-500 font-bold">
-                                                - {formatCurrency(day.dailyExpense)}
+                                            <td className={`p-6 text-right font-bold ${day.dailyExpense < 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                {formatCurrency(day.dailyExpense)}
                                             </td>
                                             <td className="p-6 text-right">
                                                 <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl font-black ${day.netProfit >= 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
@@ -470,39 +503,119 @@ const OperatingExpenses = () => {
                                             <tr>
                                                 <td colSpan={5} className="p-0 bg-gray-50/30 dark:bg-white/2">
                                                     <div className="p-8 border-l-4 border-indigo-600 animate-in slide-in-from-top-4 duration-300">
-                                                        <div className="flex items-center gap-2 mb-6">
-                                                            <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 flex items-center justify-center">
-                                                                <ShoppingBag size={14} />
+                                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                                            {/* Product Breakdown */}
+                                                            <div>
+                                                                <div className="flex items-center gap-2 mb-4">
+                                                                    <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 flex items-center justify-center">
+                                                                        <ShoppingBag size={14} />
+                                                                    </div>
+                                                                    <h3 className={`text-sm font-black uppercase tracking-widest ${theme.textPrimary}`}>Product Breakdown</h3>
+                                                                </div>
+                                                                <div className={`overflow-hidden rounded-2xl border ${theme.borderLight} ${theme.surfaceBg}`}>
+                                                                    <table className="w-full text-left">
+                                                                        <thead>
+                                                                            <tr className="bg-gray-50/50 dark:bg-white/5 text-[9px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 dark:border-white/5">
+                                                                                <th className="p-4">Item Name</th>
+                                                                                <th className="p-4 text-center">Qty</th>
+                                                                                <th className="p-4 text-right">Revenue</th>
+                                                                                <th className="p-4 text-right">Gross Profit</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+                                                                            {(day.itemsSummary || []).map((item, idx) => (
+                                                                                <tr key={idx} className="hover:bg-gray-50/30 dark:hover:bg-white/2 transition-colors">
+                                                                                    <td className={`p-4 font-bold ${theme.textPrimary}`}>{item.name}</td>
+                                                                                    <td className="p-4 text-center">
+                                                                                        <span className={`px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 text-[11px] font-black ${theme.textMuted}`}>
+                                                                                            {item.quantity}
+                                                                                        </span>
+                                                                                    </td>
+                                                                                    <td className={`p-4 text-right font-black ${theme.textPrimary}`}>{formatCurrency(item.revenue)}</td>
+                                                                                    <td className={`p-4 text-right font-black ${item.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                                                        {formatCurrency(item.profit)}
+                                                                                    </td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
                                                             </div>
-                                                            <h3 className={`text-sm font-black uppercase tracking-widest ${theme.textPrimary}`}>Product Breakdown</h3>
-                                                        </div>
-                                                        <div className={`overflow-hidden rounded-2xl border ${theme.borderLight} ${theme.surfaceBg}`}>
-                                                            <table className="w-full text-left">
-                                                                <thead>
-                                                                    <tr className="bg-gray-50/50 dark:bg-white/5 text-[9px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 dark:border-white/5">
-                                                                        <th className="p-4">Item Name</th>
-                                                                        <th className="p-4 text-center">Qty</th>
-                                                                        <th className="p-4 text-right">Revenue</th>
-                                                                        <th className="p-4 text-right">Gross Profit</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-                                                                    {day.itemsSummary.map((item, idx) => (
-                                                                        <tr key={idx} className="hover:bg-gray-50/30 dark:hover:bg-white/2 transition-colors">
-                                                                            <td className={`p-4 font-bold ${theme.textPrimary}`}>{item.name}</td>
-                                                                            <td className="p-4 text-center">
-                                                                                <span className={`px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 text-[11px] font-black ${theme.textMuted}`}>
-                                                                                    {item.quantity}
-                                                                                </span>
-                                                                            </td>
-                                                                            <td className={`p-4 text-right font-black ${theme.textPrimary}`}>{formatCurrency(item.revenue)}</td>
-                                                                            <td className={`p-4 text-right font-black ${item.profit >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                                                                {formatCurrency(item.profit)}
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
+
+                                                            {/* Expense Breakdown */}
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-4">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 flex items-center justify-center">
+                                                                            <Coins size={14} />
+                                                                        </div>
+                                                                        <h3 className={`text-sm font-black uppercase tracking-widest ${theme.textPrimary}`}>Expense Breakdown</h3>
+                                                                    </div>
+                                                                    <span className="text-xs font-black text-gray-500 uppercase tracking-widest">
+                                                                        Daily Expense: <span className={day.dailyExpense < 0 ? 'text-green-600' : 'text-red-500'}>{formatCurrency(day.dailyExpense)}</span>
+                                                                    </span>
+                                                                </div>
+                                                                <div className={`overflow-hidden rounded-2xl border ${theme.borderLight} ${theme.surfaceBg}`}>
+                                                                    <table className="w-full text-left">
+                                                                        <thead>
+                                                                            <tr className="bg-gray-50/50 dark:bg-white/5 text-[9px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100 dark:border-white/5">
+                                                                                <th className="p-4">Category</th>
+                                                                                <th className="p-4 text-center">Term</th>
+                                                                                <th className="p-4 text-right">Daily Cost</th>
+                                                                                <th className="p-4 text-center">Action</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+                                                                            {(day.expensesSummary || []).length > 0 ? (
+                                                                                day.expensesSummary.map((exp, idx) => {
+                                                                                    const isNegative = (exp.dailyCost < 0 || exp.amount < 0);
+                                                                                    return (
+                                                                                        <tr key={exp._id || idx} className="hover:bg-gray-50/30 dark:hover:bg-white/2 transition-colors">
+                                                                                            <td className="p-4">
+                                                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                                                    <span className={`font-bold ${theme.textPrimary}`}>{exp.category}</span>
+                                                                                                    {isNegative && (
+                                                                                                        <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 rounded">
+                                                                                                            Negative Expense
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td className="p-4 text-center">
+                                                                                                <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 text-[10px] font-black uppercase text-gray-500">
+                                                                                                    {exp.term}
+                                                                                                </span>
+                                                                                            </td>
+                                                                                            <td className="p-4 text-right">
+                                                                                                <span className={`font-black ${isNegative ? 'text-red-600 dark:text-red-400' : theme.textPrimary}`}>
+                                                                                                    {formatCurrency(exp.dailyCost)}
+                                                                                                </span>
+                                                                                            </td>
+                                                                                            <td className="p-4 text-center">
+                                                                                                {exp._id && (
+                                                                                                    <button
+                                                                                                        onClick={() => handleDeleteExpenseFromAccordion(exp._id, exp.category)}
+                                                                                                        title="Delete Expense"
+                                                                                                        className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                                                                                    >
+                                                                                                        <Trash2 size={14} />
+                                                                                                    </button>
+                                                                                                )}
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    );
+                                                                                })
+                                                                            ) : (
+                                                                                <tr>
+                                                                                    <td colSpan={4} className="p-8 text-center text-gray-400 text-xs font-bold uppercase tracking-widest">
+                                                                                        No expenses logged
+                                                                                    </td>
+                                                                                </tr>
+                                                                            )}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </td>
@@ -521,6 +634,18 @@ const OperatingExpenses = () => {
                     </div>
                 </div>
             )}
+
+            {/* Delete Confirmation Modal */}
+            <CommonDialog
+                isOpen={deleteModal.isOpen}
+                onClose={() => setDeleteModal({ isOpen: false, id: null, title: '', categoryName: '' })}
+                onConfirm={handleConfirmDeleteExpense}
+                title="Delete Expense"
+                message={deleteModal.title || "Are you sure you want to delete this expense?"}
+                type="error"
+                confirmText="Delete Expense"
+                cancelText="Cancel"
+            />
         </div>
     );
 };

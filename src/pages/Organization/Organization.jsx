@@ -759,7 +759,7 @@ const Organization = ({
                                             <span className="text-rose-600 dark:text-rose-400 font-black">✖</span> {item.label}
                                         </span>
                                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-rose-200 dark:bg-rose-900/60 text-rose-900 dark:text-rose-200 group-hover:bg-amber-500 group-hover:text-white transition-all shrink-0 flex items-center gap-0.5">
-                                            Fix <ArrowRight size={10} />
+                                            Fill <ArrowRight size={10} />
                                         </span>
                                     </button>
                                 );
@@ -978,11 +978,10 @@ const Organization = ({
                 {/* Subscription & Plans — id used by SubscriptionNoticeModal deep-link */}
                 <div
                     id="organization-subscription-plans"
-                    className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border transition-[box-shadow,ring] duration-500 ${theme.borderLight} ${
-                        highlightSubscriptionSection
+                    className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border transition-[box-shadow,ring] duration-500 ${theme.borderLight} ${highlightSubscriptionSection
                             ? 'ring-4 ring-indigo-500 ring-offset-4 ring-offset-slate-950/0 dark:ring-offset-slate-900 shadow-2xl shadow-indigo-500/20'
                             : ''
-                    }`}
+                        }`}
                 >
                     <h3 className={`text-xl font-bold ${theme.textHeading} mb-6 flex items-center gap-2`}>
                         <CreditCard size={20} className="text-indigo-500 dark:text-indigo-400" /> Subscription & Plans
@@ -1063,27 +1062,27 @@ const Organization = ({
                                     const isTrialLoading = trialLoading === plan.id;
                                     const showStartTrial = !organization?.subscriptionPlanId && plan.hasTrial;
 
-                            return (
-                                <div
-                                    key={plan.id}
-                                    className={`relative p-6 rounded-3xl border-2 transition-all ${plan.highlighted
-                                        ? `border-indigo-600 shadow-lg scale-105 z-10 ${themeName === 'dark' ? 'bg-slate-900/80' : 'bg-indigo-50/50'}`
-                                        : `${theme.borderLight} hover:border-indigo-500 hover:shadow-lg ${themeName === 'dark' ? 'bg-slate-800/50' : 'hover:border-indigo-200'}`
-                                        }`}
-                                >
-                                    {plan.highlighted && (
-                                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                                            Most Popular
-                                        </div>
-                                    )}
-                                    <h4 className={`text-xl font-bold mb-2 ${theme.textHeading}`}>{plan.name}</h4>
-                                    <div className="flex items-baseline gap-1 mb-1">
-                                        <span className={`text-3xl font-black ${theme.primaryIconText}`}>
-                                            {plan.priceLabel.split(" ")[0]} {plan.price}
-                                        </span>
-                                        <span className={`font-medium ${theme.textSecondary}`}>/mo</span>
-                                    </div>
-                                    <p className={`text-xs font-medium mb-6 ${theme.textSecondary}`}>Up to {plan.branchesLimit === -1 ? "Unlimited" : plan.branchesLimit} branches</p>
+                                    return (
+                                        <div
+                                            key={plan.id}
+                                            className={`relative p-6 rounded-3xl border-2 transition-all ${plan.highlighted
+                                                ? `border-indigo-600 shadow-lg scale-105 z-10 ${themeName === 'dark' ? 'bg-slate-900/80' : 'bg-indigo-50/50'}`
+                                                : `${theme.borderLight} hover:border-indigo-500 hover:shadow-lg ${themeName === 'dark' ? 'bg-slate-800/50' : 'hover:border-indigo-200'}`
+                                                }`}
+                                        >
+                                            {plan.highlighted && (
+                                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                                                    Most Popular
+                                                </div>
+                                            )}
+                                            <h4 className={`text-xl font-bold mb-2 ${theme.textHeading}`}>{plan.name}</h4>
+                                            <div className="flex items-baseline gap-1 mb-1">
+                                                <span className={`text-3xl font-black ${theme.primaryIconText}`}>
+                                                    {plan.priceLabel.split(" ")[0]} {plan.price}
+                                                </span>
+                                                <span className={`font-medium ${theme.textSecondary}`}>/mo</span>
+                                            </div>
+                                            <p className={`text-xs font-medium mb-6 ${theme.textSecondary}`}>Up to {plan.branchesLimit === -1 ? "Unlimited" : plan.branchesLimit} branches</p>
 
                                             <ul className="space-y-3 mb-8">
                                                 {plan.features.map((feature, i) => (

@@ -459,6 +459,9 @@ const Settings = ({
                                 // Non-superadmin should not see system settings
                                 if (!isSuperAdmin && s.isSystem) return false;
 
+                                // Hide SHOW_AI_IMAGE_IN_SALE from superadmin (only show to other users in General Settings)
+                                if (s.key === 'SHOW_AI_IMAGE_IN_SALE' && isSuperAdmin) return false;
+
                                 // Filter based on business type features
                                 if (s.key === 'ENABLE_STOCK_ITEMS' && businessTypeData?.features?.sellStockItems === false) return false;
                                 if (s.key === 'ENABLE_MANUFACTURED_ITEMS' && businessTypeData?.features?.sellManufacturedItems === false) return false;

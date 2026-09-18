@@ -217,15 +217,37 @@ export const AppProvider = ({ children }) => {
                 try {
                     const { shopService } = await import("../services/api");
                     const userId = user.id || user._id;
-                    const shops = await shopService.getShopsByOwner(userId);
-                    setOwnerShops(shops || []);
+                    const data = await shopService.getShopsByOwner(userId);
+                    const rawShops = Array.isArray(data) ? data : (data?.data || []);
+
+                    const currentUserId = String(userId || '');
+                    const currentUserEmail = String(user?.email || '').trim().toLowerCase();
+
+                    const myShopsOnly = rawShops.filter(s => {
+                        if (!s) return false;
+                        const shopOwnerId = String(
+                            s.user_id?._id || s.user_id?.id || s.user_id ||
+                            s.ownerId?._id || s.ownerId?.id || s.ownerId ||
+                            s.owner?._id || s.owner?.id || s.owner || ''
+                        );
+                        const shopOwnerEmail = String(
+                            s.ownerEmail || s.user_id?.email || s.ownerId?.email || s.owner?.email || ''
+                        ).trim().toLowerCase();
+
+                        if (currentUserId && shopOwnerId && currentUserId === shopOwnerId) return true;
+                        if (currentUserEmail && shopOwnerEmail && currentUserEmail === shopOwnerEmail) return true;
+                        if (shopOwnerId || shopOwnerEmail) return false;
+                        return true;
+                    });
+
+                    setOwnerShops(myShopsOnly);
                 } catch (error) {
                     console.error("Failed to fetch owner shops globally:", error);
                 }
             }
         };
         fetchShops();
-    }, [isAuthenticated, user?.id, user?._id, user?.isOwner, user?.isSuperAdmin]);
+    }, [isAuthenticated, user?.id, user?._id, user?.email, user?.isOwner, user?.isSuperAdmin]);
 
     return (
         <AppContext.Provider

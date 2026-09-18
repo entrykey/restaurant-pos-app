@@ -535,20 +535,42 @@ const Sidebar = ({
         }
 
         const { icon: Icon, label, shortLabel, onClick, isActive, badge } = config;
+        
+        let customItemStyle = '';
+        let indicatorColor = 'bg-orange-400 dark:bg-orange-300';
+
+        if (key === 'DIRECT_SALE') {
+            indicatorColor = 'bg-orange-400 dark:bg-orange-300';
+            customItemStyle = isActive
+                ? 'bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 text-white font-black border border-orange-300/60 shadow-xl shadow-orange-500/30 scale-[1.04]'
+                : 'bg-orange-950/50 text-orange-200 border border-orange-500/35 hover:bg-orange-900/70 hover:border-orange-400 hover:text-white shadow-sm';
+        } else if (key === 'TAKEAWAY') {
+            indicatorColor = 'bg-amber-400 dark:bg-amber-300';
+            customItemStyle = isActive
+                ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 text-white font-black border border-amber-300/60 shadow-xl shadow-amber-500/30 scale-[1.04]'
+                : 'bg-orange-950/40 text-amber-200 border border-amber-500/35 hover:bg-orange-900/60 hover:border-amber-400 hover:text-white shadow-sm';
+        } else if (key === 'WHOLESALE') {
+            indicatorColor = 'bg-orange-400 dark:bg-orange-300';
+            customItemStyle = isActive
+                ? 'bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 text-white font-black border border-orange-300/60 shadow-xl shadow-orange-600/30 scale-[1.04]'
+                : 'bg-orange-950/45 text-orange-200 border border-orange-500/35 hover:bg-orange-900/60 hover:border-orange-400 hover:text-white shadow-sm';
+        } else {
+            customItemStyle = isActive
+                ? `${theme.sidebarItemActiveBg} scale-[1.03] transition-all`
+                : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-md`;
+        }
+
         return (
             <div key={key} className={`relative flex w-full mb-2 ${isExpanded ? 'px-4' : 'px-2 md:px-0 md:justify-center'}`}>
                 {isActive && (
-                    <span className="absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-7 bg-indigo-400 dark:bg-indigo-300 rounded-r-full shadow-[0_0_12px_rgba(129,140,248,0.9)] z-10" />
+                    <span className={`absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-7 ${indicatorColor} rounded-r-full shadow-[0_0_12px_rgba(249,115,22,0.9)] z-10`} />
                 )}
                 <button
                     onClick={onClick}
                     className={`transition-all duration-300 ease-out flex items-center w-full ${isExpanded
                         ? 'p-3 md:p-3.5 gap-3.5 justify-start rounded-xl md:rounded-2xl'
                         : 'py-2 px-1 justify-center gap-0.5 flex-col rounded-2xl w-16 h-16 md:w-16 md:h-16 mx-auto'
-                        } ${isActive
-                            ? `${theme.sidebarItemActiveBg} scale-[1.03] transition-all`
-                            : `${theme.sidebarItemHoverBg} hover:scale-105 hover:shadow-md`
-                        }`}
+                        } ${customItemStyle}`}
                     title={!isExpanded ? label : undefined}
                 >
                     <Icon className={`shrink-0 transition-transform ${isExpanded ? 'w-6 h-6' : 'w-5.5 h-5.5'} ${isActive ? 'scale-110 drop-shadow-md text-white' : ''}`} />

@@ -22,6 +22,10 @@ export const getCurrencySymbol = (currency = "INR") => {
 
 export const formatCurrency = (amount, currency = "INR") => {
     if (isNaN(amount) || amount === null) amount = 0;
+    const numAmount = Number(amount);
+    const isNegative = numAmount < 0;
+    const absAmount = Math.abs(numAmount);
+
     const code = (typeof currency === 'object' && currency !== null) ? (currency.code || currency.id || 'INR') : (currency || 'INR');
     const symbol = getCurrencySymbol(code);
     try {
@@ -29,18 +33,25 @@ export const formatCurrency = (amount, currency = "INR") => {
             style: "decimal",
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
-        }).format(amount);
+        }).format(absAmount);
+        
+        let formatted = numStr;
         if (symbol === '₹' || symbol === '$' || symbol === '€' || symbol === '£' || symbol === '¥') {
-            return symbol + numStr;
+            formatted = symbol + numStr;
+        } else {
+            formatted = numStr + " " + symbol;
         }
-        return numStr + " " + symbol;
+        return isNegative ? `-${formatted}` : formatted;
     } catch (e) {
         console.error("formatCurrency error:", e);
-        const val = Number(amount).toFixed(2);
+        const val = absAmount.toFixed(2);
+        let formatted = val;
         if (symbol === '₹' || symbol === '$' || symbol === '€' || symbol === '£' || symbol === '¥') {
-            return symbol + val;
+            formatted = symbol + val;
+        } else {
+            formatted = val + " " + symbol;
         }
-        return val + " " + symbol;
+        return isNegative ? `-${formatted}` : formatted;
     }
 };
 

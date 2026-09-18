@@ -59,13 +59,17 @@ const INITIAL_TAB_DATA = {
     tableId: null
 };
 
-const createTab = (id, name, tableId = null) => ({
-    id,
-    name: name || `Tab ${id}`,
-    ...JSON.parse(JSON.stringify(INITIAL_TAB_DATA)),
-    tableId: tableId || null,
-    isTakeaway: !tableId // If there's a tableId, it's not a takeaway tab
-});
+const createTab = (id, name, tableId = null) => {
+    const formattedId = String(id).padStart(5, '0');
+    return {
+        id,
+        name: name || `Tab ${id}`,
+        orderName: `ORD-${formattedId}`,
+        ...JSON.parse(JSON.stringify(INITIAL_TAB_DATA)),
+        tableId: tableId || null,
+        isTakeaway: !tableId
+    };
+};
 
 export const TakeawayProvider = ({ children }) => {
     const { user } = useAuth();
@@ -172,7 +176,7 @@ export const TakeawayProvider = ({ children }) => {
     useEffect(() => {
         if (isResettingRef.current) return; // Skip persistence during reset
         
-        const shouldPersistTabs = isTakeaway && !tableId;
+        const shouldPersistTabs = !tableId;
 
         if (!shouldPersistTabs) {
             localStorage.setItem(CART_TAB_ID_KEY, activeTabId.toString());

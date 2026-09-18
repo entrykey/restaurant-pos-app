@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
     Plus, Search, Eye, Edit3, Trash2, ShoppingCart, Calendar,
     CheckCircle, CheckCircle2, Clock, AlertCircle, X, Package,
-    Calculator, ChevronDown, ReceiptText, XCircle, CreditCard,
+    Calculator, ReceiptText, XCircle, CreditCard,
     Printer, Coins, RotateCcw
 } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
@@ -16,6 +16,7 @@ import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
 import { toast } from "react-hot-toast";
 import PurchaseReturnSheet from "../../components/modals/PurchaseReturnSheet";
+import CommonSelect from "../../components/ui/CommonSelect";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -649,18 +650,13 @@ const PaymentModal = ({ purchase, onClose, onSuccess, currency }) => {
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Method</label>
-                                        <div className="relative">
-                                            <select
-                                                value={p.method}
-                                                onChange={e => updateRow(idx, "method", e.target.value)}
-                                                className="w-full appearance-none p-4 bg-white border-2 border-gray-100 focus:border-emerald-400 rounded-xl outline-none font-bold text-gray-700 transition-all pr-10 text-sm"
-                                            >
-                                                {METHODS.map(m => (
-                                                    <option key={m} value={m}>{m.replace("_", " ")}</option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                        </div>
+                                        <CommonSelect
+                                            options={METHODS.map(m => ({ label: m.replace("_", " "), value: m }))}
+                                            value={p.method}
+                                            onChange={val => updateRow(idx, "method", val)}
+                                            placeholder="Select Method"
+                                            triggerClassName="w-full p-3.5 bg-white border-2 border-gray-100 focus:border-emerald-400 rounded-xl outline-none font-bold text-gray-700 transition-all text-sm"
+                                        />
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Ref / Txn No.</label>

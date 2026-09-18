@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { X, Tag, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2, ChevronLeft, Plus, Trash2, Printer, Loader2, Maximize2 } from "lucide-react";
+import { X, Tag, CreditCard, Coins, Smartphone, ReceiptText, CheckCircle2, ChevronLeft, Plus, Trash2, Printer, Loader2, Maximize2, User, Award, Sparkles, Gift } from "lucide-react";
 import ThemeLoader from "../ui/ThemeLoader";
 import { formatCurrency } from "../../utils/format";
+import { normalizePhoneNumber, sanitizePhoneInput } from "../../utils/validation";
 import { useOrder } from "../../context/OrderContext";
-import { customerService, orderService } from "../../services/api";
+import { customerService, orderService, loyaltyService } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { useApp } from "../../context/AppContext";
 import { QRCodeSVG } from "qrcode.react";
@@ -53,7 +54,7 @@ const PaymentModal = ({
         resetExchange
     } = useOrder();
     const { theme } = useTheme();
-    const { activeBranchId, branches, organization } = useApp();
+    const { activeBranchId, branches, organization, user } = useApp();
     const activeBranch = branches.find(b => b._id === activeBranchId);
     const resolvedUpiId = activeBranch?.upiId || organization?.defaultUpiId;
     const branchStateCode = activeBranch?.address?.state?.code;
@@ -72,6 +73,76 @@ const PaymentModal = ({
     const [noCustomerFound, setNoCustomerFound] = useState(false);
     const [customerSearchResult, setCustomerSearchResult] = useState(null); // { found: boolean, customer?: obj, name?: string, phone?: string, creditDue?: number, searchQuery?: string }
 
+    // Loyalty points state
+    const [customerLoyalty, setCustomerLoyalty] = useState({ points: 0, value: 0, settings: null, loading: false });
+    const [appliedLoyaltyDiscount, setAppliedLoyaltyDiscount] = useState({ points: 0, amount: 0 });
+
+    const activeCustomerObj = customerSearchResult?.customer || (selectedCustomer && typeof selectedCustomer === 'object' ? selectedCustomer : null);
+
+    const activeCustomerId = 
+        (activeCustomerObj && (activeCustomerObj._id || activeCustomerObj.id)) ||
+        (typeof selectedCustomer === 'string' ? selectedCustomer : null) ||
+        (typeof existingCustomerId === 'object' ? (existingCustomerId?._id || existingCustomerId?.id) : existingCustomerId) ||
+        (typeof activeOrderCustomerId === 'object' ? (activeOrderCustomerId?._id || activeOrderCustomerId?.id) : activeOrderCustomerId);
+
+    const shopId = activeBranch?.shopId || user?.shopId || user?.shop_id || organization?.shopId || organization?._id;
+
+    useEffect(() => {
+        if (isOpen && activeCustomerId) {
+            const ptsFromObj = Number(activeCustomerObj?.loyaltyPoints ?? activeCustomerObj?.points ?? 0) || 0;
+            setCustomerLoyalty(prev => ({
+                ...prev,
+                points: Math.max(prev.points || 0, ptsFromObj),
+                value: Math.max(prev.points || 0, ptsFromObj) * (prev.settings?.redemptionValue || 1),
+                loading: true
+            }));
+
+            Promise.all([
+                loyaltyService.getCustomerPoints(activeCustomerId).catch(err => {
+                    console.warn("Error fetching customer points:", err);
+                    return null;
+                }),
+                shopId ? loyaltyService.getSettings(shopId).catch(err => {
+                    console.warn("Error fetching loyalty settings:", err);
+                    return null;
+                }) : Promise.resolve(null)
+            ]).then(([ptsRes, settingsRes]) => {
+                const ptsFromResNum = (ptsRes?.loyaltyPoints !== undefined && ptsRes?.loyaltyPoints !== null)
+                    ? Number(ptsRes.loyaltyPoints)
+                    : ((ptsRes?.points !== undefined && ptsRes?.points !== null) ? Number(ptsRes.points) : null);
+
+                const ptsFromObjNum = (activeCustomerObj?.loyaltyPoints !== undefined && activeCustomerObj?.loyaltyPoints !== null)
+                    ? Number(activeCustomerObj.loyaltyPoints)
+                    : ((activeCustomerObj?.points !== undefined && activeCustomerObj?.points !== null) ? Number(activeCustomerObj.points) : null);
+
+                let finalPts = 0;
+                if (ptsFromResNum !== null && ptsFromObjNum !== null) {
+                    finalPts = Math.max(ptsFromResNum, ptsFromObjNum);
+                } else if (ptsFromResNum !== null) {
+                    finalPts = ptsFromResNum;
+                } else if (ptsFromObjNum !== null) {
+                    finalPts = ptsFromObjNum;
+                }
+
+                const pts = Math.max(0, Number(finalPts) || 0);
+                const redemptionVal = Number(settingsRes?.redemptionValue) || 1;
+
+                setCustomerLoyalty({
+                    points: pts,
+                    value: pts * redemptionVal,
+                    settings: settingsRes,
+                    loading: false
+                });
+            }).catch(err => {
+                console.warn("Could not fetch customer loyalty:", err);
+                setCustomerLoyalty(prev => ({ ...prev, loading: false }));
+            });
+        } else if (!activeCustomerId) {
+            setCustomerLoyalty({ points: 0, value: 0, settings: null, loading: false });
+            setAppliedLoyaltyDiscount({ points: 0, amount: 0 });
+        }
+    }, [isOpen, activeCustomerId, shopId, activeCustomerObj]);
+
     useEffect(() => {
         if (isOpen) {
             setLocalCustName(custName || "");
@@ -82,13 +153,14 @@ const PaymentModal = ({
             setPrintFormat("thermal");
             setSelectedPayments([]); // Reset on open
             setIsProcessingPayment(false);
+            setAppliedLoyaltyDiscount({ points: 0, amount: 0 });
         }
     }, [isOpen, custName, custPhone]);
 
     useEffect(() => {
-        const cleanPhone = (localCustPhone || "").replace(/\D/g, "");
+        const normPhone = normalizePhoneNumber(localCustPhone);
         const cleanName = (localCustName || "").trim();
-        const searchQuery = cleanPhone.length === 10 ? cleanPhone : (cleanName.length >= 2 ? cleanName : "");
+        const searchQuery = normPhone.length >= 5 ? normPhone : (cleanName.length >= 2 ? cleanName : "");
 
         if (searchQuery) {
             setIsSearchingCustomer(true);
@@ -98,8 +170,14 @@ const PaymentModal = ({
                     const list = res?.data || res?.customers || (Array.isArray(res) ? res : []);
                     
                     let found = null;
-                    if (cleanPhone.length === 10) {
-                        found = list.find(c => String(c.phone || c.mobile || "").replace(/\D/g, "") === cleanPhone);
+                    if (normPhone.length >= 5) {
+                        found = list.find(c => {
+                            const cPhoneNorm = normalizePhoneNumber(c.phone || c.mobile || "");
+                            const rawPhone = String(c.phone || c.mobile || "").replace(/\D/g, "");
+                            return (cPhoneNorm && cPhoneNorm === normPhone) ||
+                                   (rawPhone && rawPhone.endsWith(normPhone)) ||
+                                   (normPhone.length >= 10 && cPhoneNorm.endsWith(normPhone.slice(-10)));
+                        });
                     }
                     if (!found && cleanName.length >= 2) {
                         found = list.find(c => String(c.name || c.customerName || "").toLowerCase().includes(cleanName.toLowerCase()));
@@ -109,7 +187,6 @@ const PaymentModal = ({
                         const name = found.name || found.customerName || "";
                         const phone = found.phone || found.mobile || "";
                         if (name && !localCustName) setLocalCustName(name);
-                        if (phone && cleanPhone.length !== 10) setLocalCustPhone(String(phone).replace(/\D/g, "").slice(0, 10));
 
                         let creditDue = 0;
                         try {
@@ -181,6 +258,10 @@ const PaymentModal = ({
         return Array.from(itemMap.values());
     }, [orderItems]);
 
+    // Item count metrics
+    const totalItemTypes = deduplicatedItems.length;
+    const totalItemQuantity = (orderItems || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
+
     // Handle early return after hooks
     if (!isOpen) return null;
 
@@ -195,10 +276,12 @@ const PaymentModal = ({
         customerStateCode
     );
 
+    const activeLoyaltyDiscount = appliedLoyaltyDiscount.amount > 0 ? appliedLoyaltyDiscount : loyaltyDiscount;
+
     // Apply loyalty discount to final total
-    const finalBillDetails = loyaltyDiscount.amount > 0 ? {
+    const finalBillDetails = activeLoyaltyDiscount.amount > 0 ? {
         ...billDetails,
-        finalTotal: Math.max(0, billDetails.finalTotal - loyaltyDiscount.amount)
+        finalTotal: Math.max(0, billDetails.finalTotal - activeLoyaltyDiscount.amount)
     } : billDetails;
 
     // Helper: Get remaining balance
@@ -251,30 +334,97 @@ const PaymentModal = ({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-0 sm:p-4">
             <div className={`${theme.surfaceBg} w-full h-full sm:h-auto sm:w-full sm:max-w-lg lg:max-w-4xl xl:max-w-6xl sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col sm:max-h-[95vh] animate-in zoom-in-95 duration-300`}>
                 {/* Header */}
-                <div className={`p-6 ${theme.pageBg} border-b ${theme.borderLight} flex justify-between items-center shrink-0`}>
-                    <div>
-                        <h3 className={`text-2xl font-black ${theme.textHeading}`}>
-                            {selectedPayments.length > 0 ? "Confirm Payment" : (billingStage === "review" ? "Review Bill" : "Payment Method")}
-                        </h3>
-                        <p className={`text-sm ${theme.textMuted}`}>
-                            {isTakeaway ? "Takeaway" : (tableName ? `Table ${tableName}` : `Table ${activeTableId}`)}
-                        </p>
+                <div className={`p-4 sm:p-6 ${theme.pageBg} border-b ${theme.borderLight} flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0`}>
+                    <div className="flex items-center justify-between md:justify-start gap-3">
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <h3 className={`text-xl sm:text-2xl font-black ${theme.textHeading}`}>
+                                    {selectedPayments.length > 0 ? "Confirm Payment" : (billingStage === "review" ? "Review Bill" : "Payment Method")}
+                                </h3>
+                                {billingStage === "review" && (
+                                    <span className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-black tracking-wider hidden sm:inline-block">
+                                        {totalItemTypes} Items • {totalItemQuantity} Qty
+                                    </span>
+                                )}
+                            </div>
+                            <p className={`text-xs sm:text-sm ${theme.textMuted}`}>
+                                {isTakeaway ? "Takeaway" : (tableName ? `Table ${tableName}` : `Table ${activeTableId}`)}
+                            </p>
+                        </div>
                     </div>
-                    {selectedPayments.length > 0 ? (
-                        <button
-                            onClick={() => setSelectedPayments([])}
-                            className="p-2 bg-gray-100 dark:bg-white/10 rounded-full hover:bg-gray-200 transition-colors"
-                        >
-                            <ChevronLeft size={20} />
-                        </button>
-                    ) : (
-                        <button
-                            onClick={onClose}
-                            className={`p-2 ${theme.surfaceBg} rounded-full shadow-sm hover:${theme.pageBg} transition-colors ${theme.textPrimary}`}
-                        >
-                            <X size={20} />
-                        </button>
+
+                    {/* Customer Details Selection in Heading Banner */}
+                    {billingStage === "review" && selectedPayments.length === 0 && (
+                        <div className={`flex flex-wrap items-center gap-2 p-2 rounded-2xl ${theme.surfaceBg} border ${theme.borderLight} shadow-sm max-w-full md:max-w-xl`}>
+                            <div className="flex items-center gap-1.5 px-2 text-indigo-600 dark:text-indigo-400 shrink-0">
+                                <User size={16} />
+                                <span className="text-[10px] font-black uppercase tracking-wider hidden lg:inline">Customer</span>
+                            </div>
+
+                            <div className="flex-1 min-w-[120px] relative">
+                                <input
+                                    type="tel"
+                                    value={localCustPhone}
+                                    onChange={(e) => setLocalCustPhone(sanitizePhoneInput(e.target.value))}
+                                    placeholder="Mobile number..."
+                                    className={`w-full px-2.5 py-1.5 rounded-xl border text-xs font-bold outline-none ${theme.mode === 'dark' ? 'bg-black/30 border-white/10' : 'bg-white border-gray-200'} focus:border-indigo-500`}
+                                />
+                                {isSearchingCustomer && (
+                                    <Loader2 size={12} className="animate-spin text-indigo-500 absolute right-2 top-2.5" />
+                                )}
+                            </div>
+
+                            <div className="flex-1 min-w-[120px]">
+                                <input
+                                    type="text"
+                                    value={localCustName}
+                                    onChange={(e) => setLocalCustName(e.target.value)}
+                                    placeholder="Customer name..."
+                                    className={`w-full px-2.5 py-1.5 rounded-xl border text-xs font-bold outline-none ${theme.mode === 'dark' ? 'bg-black/30 border-white/10' : 'bg-white border-gray-200'} focus:border-indigo-500`}
+                                />
+                            </div>
+
+                            {customerSearchResult?.found && (
+                                <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg text-[10px] font-black shrink-0">
+                                    ✓ Linked
+                                </span>
+                            )}
+
+                            {(localCustName || localCustPhone) && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setLocalCustName("");
+                                        setLocalCustPhone("");
+                                        setCustomerSearchResult(null);
+                                        setAppliedLoyaltyDiscount({ points: 0, amount: 0 });
+                                    }}
+                                    className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors shrink-0"
+                                    title="Clear customer details"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
                     )}
+
+                    <div className="flex items-center gap-2">
+                        {selectedPayments.length > 0 ? (
+                            <button
+                                onClick={() => setSelectedPayments([])}
+                                className="p-2 bg-gray-100 dark:bg-white/10 rounded-full hover:bg-gray-200 transition-colors"
+                            >
+                                <ChevronLeft size={20} />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={onClose}
+                                className={`p-2 ${theme.surfaceBg} rounded-full shadow-sm hover:${theme.pageBg} transition-colors ${theme.textPrimary}`}
+                            >
+                                <X size={20} />
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Content Body */}
@@ -284,9 +434,14 @@ const PaymentModal = ({
                             {/* Left Side: Items (Scrollable) */}
                             <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5 space-y-3 sm:space-y-4 custom-scrollbar lg:border-r lg:border-dashed lg:border-gray-200 dark:lg:border-white/10">
                                 <section className="space-y-3 sm:space-y-4">
-                                    <p className={`text-[10px] sm:text-xs font-black ${theme.textMuted} uppercase tracking-[0.2em]`}>
-                                        Items to Bill
-                                    </p>
+                                    <div className="flex justify-between items-center">
+                                        <p className={`text-[10px] sm:text-xs font-black ${theme.textMuted} uppercase tracking-[0.2em]`}>
+                                            Items to Bill
+                                        </p>
+                                        <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2.5 py-0.5 rounded-full">
+                                            {totalItemTypes} Items • {totalItemQuantity} Total Qty
+                                        </span>
+                                    </div>
                                     <div className="space-y-2 sm:space-y-2.5">
                                         {deduplicatedItems.map((item, i) => (
                                             <div
@@ -328,8 +483,112 @@ const PaymentModal = ({
                                 </section>
                             </div>
 
-                            {/* Right Side: Discounts & Summary (Fixed height or smaller scroll) */}
+                            {/* Right Side: Customer, Discounts & Summary */}
                             <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col p-3 sm:p-4 lg:p-5 space-y-3 sm:space-y-4 shrink-0 bg-gray-50/30 dark:bg-white/2 lg:overflow-y-auto custom-scrollbar">
+                                {/* Customer Selection & Loyalty Section */}
+                                {(localCustName || localCustPhone || customerSearchResult?.found || activeCustomerId) && (
+                                    <section className={`${theme.surfaceBg} p-4 md:p-5 rounded-2xl md:rounded-[32px] border ${theme.borderLight} shadow-xl shadow-black/5 space-y-3`}>
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-black text-indigo-600 dark:text-indigo-400 text-xs flex items-center gap-2 uppercase tracking-widest">
+                                                <User size={16} /> Customer Details
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setLocalCustName("");
+                                                    setLocalCustPhone("");
+                                                    setCustomerSearchResult(null);
+                                                    setAppliedLoyaltyDiscount({ points: 0, amount: 0 });
+                                                }}
+                                                className="text-[10px] font-black text-red-500 hover:text-red-700 uppercase tracking-wider"
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+
+                                        {/* Customer Search Status */}
+                                        {customerSearchResult?.found ? (
+                                            <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 text-xs font-bold text-emerald-700 dark:text-emerald-400 space-y-1">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-black">✓ {customerSearchResult.name}</span>
+                                                    {customerSearchResult.phone && <span className="text-[11px]">📞 {customerSearchResult.phone}</span>}
+                                                </div>
+                                                {customerSearchResult.creditDue > 0 && (
+                                                    <div className="text-[10px] text-amber-600 dark:text-amber-400 font-black pt-1 border-t border-emerald-500/20">
+                                                        Outstanding Ledger Due: {formatCurrency(customerSearchResult.creditDue)}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : customerSearchResult?.found === false && (localCustPhone || localCustName) ? (
+                                            <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-xl border border-amber-200 dark:border-amber-800">
+                                                ⚠ New customer linked to order.
+                                            </div>
+                                        ) : null}
+
+                                        {/* Loyalty Points Redemption Box */}
+                                        {activeCustomerId && (
+                                            <div className="pt-2 border-t border-dashed border-gray-200 dark:border-white/10 space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs font-black text-amber-600 dark:text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                                        <Sparkles size={14} /> Loyalty Points
+                                                    </span>
+                                                    {customerLoyalty.loading ? (
+                                                        <Loader2 size={12} className="animate-spin text-amber-500" />
+                                                    ) : (
+                                                        <span className="text-xs font-black text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-lg">
+                                                            {customerLoyalty.points} Pts Available ({formatCurrency(customerLoyalty.value)})
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {customerLoyalty.points > 0 && appliedLoyaltyDiscount.amount === 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const settings = customerLoyalty.settings;
+                                                            const minPoints = settings?.minPointsToRedeem || 0;
+                                                            if (minPoints > 0 && customerLoyalty.points < minPoints) {
+                                                                alert(`Minimum ${minPoints} points required to redeem.`);
+                                                                return;
+                                                            }
+                                                            const redemptionVal = settings?.redemptionValue || 1;
+                                                            let maxAmount = billDetails.finalTotal;
+                                                            if (settings?.maxRedemptionPercentage > 0) {
+                                                                maxAmount = (billDetails.finalTotal * settings.maxRedemptionPercentage) / 100;
+                                                            }
+                                                            const maxPointsByBill = Math.floor(maxAmount / redemptionVal);
+                                                            const pointsToRedeem = Math.min(customerLoyalty.points, maxPointsByBill);
+                                                            const discountAmt = pointsToRedeem * redemptionVal;
+                                                            if (discountAmt > 0) {
+                                                                setAppliedLoyaltyDiscount({ points: pointsToRedeem, amount: discountAmt });
+                                                            }
+                                                        }}
+                                                        className="w-full py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl font-black text-xs shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 uppercase tracking-wider"
+                                                    >
+                                                        <Gift size={14} /> Redeem {customerLoyalty.points} Points for {formatCurrency(customerLoyalty.value)} OFF
+                                                    </button>
+                                                )}
+
+                                                {appliedLoyaltyDiscount.amount > 0 && (
+                                                    <div className="flex justify-between items-center text-xs font-black text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 p-2 rounded-xl border border-amber-300 dark:border-amber-800">
+                                                        <span className="flex items-center gap-1.5">
+                                                            <Gift size={14} /> Redeemed {appliedLoyaltyDiscount.points} Pts (-{formatCurrency(appliedLoyaltyDiscount.amount)})
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setAppliedLoyaltyDiscount({ points: 0, amount: 0 })}
+                                                            className="p-1 hover:bg-amber-200 dark:hover:bg-amber-800/50 rounded-lg text-amber-800 dark:text-amber-200"
+                                                            title="Remove loyalty redemption"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </section>
+                                )}
+
                                 {/* Coupon Code Section */}
                                 {(hasPermissionFor?.("pos", "order", "apply_discount") || (hasPermission && hasPermission("APPLY_DISCOUNTS"))) && (
                                     <section className={`${theme.mode === 'dark' ? 'bg-orange-900/10' : 'bg-orange-50'} p-4 md:p-5 rounded-2xl md:rounded-[32px] border ${theme.mode === 'dark' ? 'border-orange-900/40' : 'border-orange-100'} space-y-3 md:space-y-4`}>
@@ -452,13 +711,13 @@ const PaymentModal = ({
                                             </div>
                                         )}
 
-                                        {loyaltyDiscount.amount > 0 && (
+                                        {activeLoyaltyDiscount.amount > 0 && (
                                             <div className="flex justify-between text-amber-600 text-[11px] sm:text-xs lg:text-sm font-black bg-amber-50 dark:bg-amber-900/20 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl border border-amber-200 dark:border-amber-800">
                                                 <div className="flex flex-col">
                                                     <span>Loyalty Points Redeemed</span>
-                                                    <span className="text-[9px] sm:text-[10px] opacity-70 uppercase tracking-wider">{loyaltyDiscount.points} pts</span>
+                                                    <span className="text-[9px] sm:text-[10px] opacity-70 uppercase tracking-wider">{activeLoyaltyDiscount.points} pts</span>
                                                 </div>
-                                                <span>-{formatCurrency(loyaltyDiscount.amount)}</span>
+                                                <span>-{formatCurrency(activeLoyaltyDiscount.amount)}</span>
                                             </div>
                                         )}
                                     </div>
@@ -725,9 +984,14 @@ const PaymentModal = ({
 
                                                         setIsProcessingPayment(true);
                                                         try {
+                                                            const finalBillDetailsWithCustomer = {
+                                                                ...finalBillDetails,
+                                                                customerId: activeCustomerId,
+                                                                appliedLoyaltyDiscount
+                                                            };
                                                             await onFinalizePayment(
                                                                 selectedPayments[0].method.id, 
-                                                                billDetails, 
+                                                                finalBillDetailsWithCustomer, 
                                                                 totalPaidAmount, 
                                                                 localCustName, 
                                                                 cleanPhone,

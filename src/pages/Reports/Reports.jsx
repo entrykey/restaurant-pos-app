@@ -21,7 +21,8 @@ import {
     Landmark,
     ShoppingBag,
     ArrowUpRight,
-    ArrowDownRight
+    ArrowDownRight,
+    Factory
 } from 'lucide-react';
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from '../../components/CommonTable';
@@ -30,7 +31,7 @@ import CommonSelect from "../../components/ui/CommonSelect";
 
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { usePermission } from "../../auth/usePermission";
-import api, { reportsService } from "../../services/api";
+import api, { reportsService, itemService, categoryService } from "../../services/api";
 import { PurchaseService } from "../../services/PurchaseService";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
@@ -45,8 +46,9 @@ const toAbsoluteLogoUrl = (logoUrl) => {
     return `${base}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
 };
 
-const reportCategories = [
+const baseReportCategories = [
     { id: "sales", label: "Sales Reports", icon: <TrendingUp size={16} />, permission: "SALES_REPORTS" },
+    { id: "manufacturing", label: "Manufacturing Report", icon: <Factory size={16} />, permission: "MANUFACTURING_REPORT", manufacturedOnly: true },
     { id: "items", label: "Item-wise Sales", icon: <Utensils size={16} />, permission: "ITEM_WISE_SALES" },
     { id: "category", label: "Category-wise", icon: <Package size={16} />, permission: "CATEGORY_WISE" },
     { id: "payments", label: "Payment Modes", icon: <CreditCard size={16} />, permission: "PAYMENT_MODES" },
@@ -93,13 +95,125 @@ const Reports = ({
     const [profitLossReport, setProfitLossReport] = useState(null);
     const [balanceSheetReport, setBalanceSheetReport] = useState(null);
     const [expandedPlSections, setExpandedPlSections] = useState({});
+    const [manufacturingReport, setManufacturingReport] = useState({ summary: {}, data: [] });
+    const [itemList, setItemList] = useState([]);
+    const [categoryList, setCategoryList] = useState([]);
     const [loading, setLoading] = useState(false);
     const [showExportPicker, setShowExportPicker] = useState(false);
     const resolvedShopId = shopId || currentShopId;
-    
+
+    const { user } = useAuth();
+
+    const isManufacturedEnabled = Boolean(
+        organization?.sellManufacturedItems ||
+        organization?.businessType?.sellManufacturedItems ||
+        settings?.sellManufacturedItems ||
+        ['restaurant', 'cafe', 'fine_dining', 'casual', 'bakery'].includes(String(organization?.businessType?.code || organization?.businessType?.name || organization?.businessType || '').toLowerCase())
+    );
+
+    const isTableEnabled = Boolean(
+        (tables && tables.length > 0) ||
+        organization?.enableDining === true ||
+        organization?.businessType?.enableTables === true ||
+        ['restaurant', 'cafe', 'fine_dining', 'casual', 'bar', 'hotel', 'resort'].includes(String(organization?.businessType?.code || organization?.businessType?.name || organization?.businessType || '').toLowerCase())
+    );
+
+    const isOnlineOrdersEnabled = Boolean(
+        (onlineOrders && onlineOrders.length > 0) ||
+        organization?.enableOnlineOrders === true ||
+        organization?.businessType?.enableOnlineOrders === true
+    );
+
+    const hasReportPermission = React.useCallback((permKey, catId) => {
+        if (!permKey) return true;
+
+        // SuperAdmin bypasses permission checks
+        if (user?.isSuperAdmin) {
+            return true;
+        }
+
+        // If user has no permissions object attached at all, default to allowed
+        if (!user?.permissions || typeof user.permissions !== 'object') {
+            return true;
+        }
+
+        // Standard RBAC check via usePermission hook
+        if (can("reports", permKey)) return true;
+
+        const lowerKey = String(permKey).toLowerCase();
+        const upperKey = String(permKey).toUpperCase();
+        const categoryId = String(catId || '').toLowerCase();
+        const categoryUpper = String(catId || '').toUpperCase();
+
+        if (can("reports", lowerKey)) return true;
+        if (can("reports", `reports.${lowerKey}`)) return true;
+        if (can("reports", `reports.${lowerKey.replace(/_/g, '.')}`)) return true;
+        if (can("reports", lowerKey.replace(/_/g, '.'))) return true;
+
+        if (categoryId) {
+            if (can("reports", categoryId)) return true;
+            if (can("reports", `reports.${categoryId}`)) return true;
+            if (can("reports", `REPORTS.${categoryUpper}`)) return true;
+        }
+
+        // Check user.permissions.reports array with exact normalized candidate matching
+        const reportsPerms = user?.permissions?.reports || user?.permissions?.REPORTS;
+        if (Array.isArray(reportsPerms)) {
+            const candidates = new Set([
+                permKey,
+                lowerKey,
+                upperKey,
+                `reports.${lowerKey}`,
+                `REPORTS.${upperKey}`,
+                lowerKey.replace(/_/g, '.'),
+                upperKey.replace(/_/g, '.'),
+                categoryId,
+                categoryUpper,
+                `reports.${categoryId}`,
+                `REPORTS.${categoryUpper}`
+            ].filter(Boolean));
+
+            const found = reportsPerms.some(p => {
+                const str = String(p).trim();
+                const strLower = str.toLowerCase();
+                const strUpper = str.toUpperCase();
+                return (
+                    candidates.has(str) ||
+                    candidates.has(strLower) ||
+                    candidates.has(strUpper) ||
+                    candidates.has(strUpper.replace('REPORTS.', '')) ||
+                    candidates.has(strLower.replace('reports.', ''))
+                );
+            });
+            if (found) return true;
+        }
+
+        return false;
+    }, [user, can]);
+
     const allowedCategories = React.useMemo(() => {
-        return reportCategories.filter(item => can("reports", item.permission));
-    }, [can]);
+        return baseReportCategories.filter(item => {
+            const hasPerm = hasReportPermission(item.permission, item.id);
+
+            // 1. Manufacturing Report: show if user HAS permission OR if sellManufacturedItems is enabled
+            if (item.id === "manufacturing") {
+                return hasPerm || isManufacturedEnabled;
+            }
+
+            // 2. Table Revenue Report: show ONLY if table/dining enabled AND permitted
+            if (item.id === "table_report") {
+                return isTableEnabled && hasPerm;
+            }
+
+            // 3. Online Orders Report: show ONLY if online orders enabled AND permitted
+            if (item.id === "online_report") {
+                return isOnlineOrdersEnabled && hasPerm;
+            }
+
+            // 4. Standard Reports: check permission
+            return hasPerm;
+        });
+    }, [hasReportPermission, isManufacturedEnabled, isTableEnabled, isOnlineOrdersEnabled]);
 
     useEffect(() => {
         if (allowedCategories.length > 0 && !allowedCategories.some(c => c.id === reportCategory)) {
@@ -107,7 +221,6 @@ const Reports = ({
         }
     }, [allowedCategories, reportCategory]);
     
-    const { user } = useAuth();
     const isGlobalUser = user?.allBranches || user?.isOwner || user?.isSuperAdmin || user?.roles?.some(r => r.name === 'shop_user' || r.name === 'owner');
     const permittedBranchIds = user?.branchIds || [];
     const availableBranches = isGlobalUser 
@@ -129,7 +242,7 @@ const Reports = ({
                 setReportBranchFilter(prev => prev === onlyBranchId ? prev : onlyBranchId);
             }
         }
-        // Do NOT auto-reset to 'all' if branches list grows â€” user may have chosen a branch
+        // Do NOT auto-reset to 'all' if branches list grows — user may have chosen a branch
     }, [availableBranches.length]);
 
     const fetchData = React.useCallback(async () => {
@@ -147,7 +260,7 @@ const Reports = ({
                 endDate: filterEndDate
             };
 
-            const [salesRes, expensesRes, perfRes, custRes, suppRes, plRes, bsRes, purchasesRes] = await Promise.all([
+            const [salesRes, expensesRes, perfRes, custRes, suppRes, plRes, bsRes, purchasesRes, mfgRes, itemsRes, catRes] = await Promise.all([
                 reportsService.getSalesReport(params),
                 reportsService.getExpensesReport(params),
                 reportsService.getPerformanceReport(params),
@@ -156,13 +269,17 @@ const Reports = ({
                 reportsService.getProfitLossReport(params),
                 reportsService.getBalanceSheetReport(params),
                 PurchaseService.getPurchases(params).catch(() => []),
+                reportsService.getManufacturingReport(params).catch(() => ({ summary: {}, data: [] })),
+                itemService.getItems({ page: 1, limit: 1000, search: "", filters: { shopId: resolvedShopId, branchId: reportBranchFilter } }).catch(() => ({ data: [] })),
+                categoryService.getCategories({ shopId: resolvedShopId }).catch(() => ([]))
             ]);
             console.log("DEBUG_REPORTS_DATA_RESPONSES:", {
                 sales: salesRes.data,
                 expenses: expensesRes.data,
                 customers: custRes.data,
                 suppliers: suppRes.data,
-                purchases: purchasesRes
+                purchases: purchasesRes,
+                mfg: mfgRes
             });
 
             setSalesHistory(unwrapApiData(salesRes));
@@ -173,6 +290,9 @@ const Reports = ({
             setProfitLossReport(plRes?.data || plRes || null);
             setBalanceSheetReport(bsRes?.data || bsRes || null);
             setPurchasesHistory(unwrapApiData(purchasesRes));
+            setManufacturingReport(mfgRes?.data ? mfgRes : { summary: mfgRes?.summary || {}, data: unwrapApiData(mfgRes) });
+            setItemList(unwrapApiData(itemsRes));
+            setCategoryList(unwrapApiData(catRes));
         } catch (error) {
             console.error("Failed to fetch report data:", error);
         } finally {
@@ -333,58 +453,135 @@ const Reports = ({
         let rows = [];
 
         if (reportCategory === "sales") {
-            columns = ["Sales Invoice", "Date", "Time", "Type", "Payment Mode", "Amount"];
+            columns = ["Invoice #", "Date & Time", "Customer", "Billed By", "Type", "Payment Mode", "Status", "Paid Amount", "Due Amount", "Total Amount"];
             rows = salesHistory
                 .filter((s) => isWithinRange(s.date))
                 .map((s) => [
                     `#${s.invoiceNumber}`,
-                    s.date,
-                    new Date(s.timestamp).toLocaleTimeString(),
-                    s.type,
-                    s.method,
-                    s.amount
+                    `${s.date} ${s.time || new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+                    s.customerName || 'Walk-in Customer',
+                    s.staffName || 'Admin / Staff',
+                    s.type || 'Direct',
+                    s.method || 'Cash',
+                    s.paymentStatus || 'FULLY PAID',
+                    formatCurrency(s.paidAmount !== undefined ? s.paidAmount : s.amount, currency),
+                    formatCurrency(s.dueAmount || 0, currency),
+                    formatCurrency(s.amount, currency)
                 ]);
+        } else if (reportCategory === "manufacturing") {
+            columns = ["Production No.", "Date", "Batch No.", "Finished Product", "Qty Produced", "RM Cost", "Labour Cost", "Other Cost", "Wastage Cost", "Total Cost", "Cost/Unit", "Status"];
+            rows = (manufacturingReport?.data || []).map(r => [
+                r.productionNo,
+                r.date,
+                r.batchNo,
+                r.finishedProduct,
+                r.qtyProduced,
+                formatCurrency(r.rawMaterialCost, currency),
+                formatCurrency(r.labourCost, currency),
+                formatCurrency(r.otherCost, currency),
+                formatCurrency(r.wastageCost, currency),
+                formatCurrency(r.totalProductionCost, currency),
+                formatCurrency(r.costPerUnit, currency),
+                r.status || 'Completed'
+            ]);
         } else if (reportCategory === "items") {
+            const itemMap = new Map();
+            itemList.forEach(i => {
+                itemMap.set(String(i.name || '').toLowerCase(), i);
+                if (i.itemCode) itemMap.set(String(i.itemCode).toLowerCase(), i);
+            });
+
             const itemStats = {};
             salesHistory
                 .filter((s) => isWithinRange(s.date))
                 .forEach((sale) => {
                     if (sale.items) {
                         sale.items.forEach((item) => {
-                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
-                            if (!itemStats[itemName])
-                                itemStats[itemName] = { qty: 0, revenue: 0, profit: 0 };
-                            itemStats[itemName].qty += (item.quantity || 0);
-                            // Use totalAmount (after discount) as actual revenue
-                            const lineRevenue = item.totalAmount || ((item.price || 0) * (item.quantity || 0));
-                            const lineCost = (item.purchasePrice || 0) * (item.quantity || 0);
-                            itemStats[itemName].revenue += lineRevenue;
-                            itemStats[itemName].profit += lineRevenue - lineCost;
+                            const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || "Uncategorized Item";
+                            const key = itemName.toLowerCase();
+                            if (!itemStats[key]) {
+                                const masterItem = itemMap.get(key);
+                                itemStats[key] = {
+                                    sku: masterItem?.itemCode || item.itemCode || 'ITM-N/A',
+                                    name: itemName,
+                                    category: masterItem?.categoryId?.name || item.category || 'General',
+                                    taxPercent: item.taxPercent !== undefined ? item.taxPercent : (masterItem?.taxPercent || settings?.defaultTaxPercent || 0),
+                                    stock: masterItem?.quantityOnHand !== undefined ? masterItem.quantityOnHand : (item.quantityOnHand || 0),
+                                    qty: 0,
+                                    revenue: 0,
+                                    cost: 0,
+                                    profit: 0
+                                };
+                            }
+                            const q = item.quantity || 0;
+                            itemStats[key].qty += q;
+                            const lineRevenue = item.totalAmount || ((item.price || 0) * q);
+                            const lineCost = (item.purchasePrice || 0) * q;
+                            itemStats[key].revenue += lineRevenue;
+                            itemStats[key].cost += lineCost;
+                            itemStats[key].profit += (lineRevenue - lineCost);
                         });
                     }
                 });
-            columns = ["Item Name", "Qty Sold", "Revenue", "Profit"];
-            rows = Object.entries(itemStats).map(([name, stats]) => [
-                name,
-                stats.qty,
-                stats.revenue,
-                stats.profit
-            ]);
+            columns = ["Item SKU", "Item Name", "Category", "Tax %", "Balance Stock", "Qty Sold", "Avg Price", "Revenue", "Cost Value", "Net Profit", "Margin %"];
+            rows = Object.values(itemStats).map(s => {
+                const avgPrice = s.qty > 0 ? s.revenue / s.qty : 0;
+                const margin = s.revenue > 0 ? (s.profit / s.revenue) * 100 : 0;
+                return [
+                    s.sku,
+                    s.name,
+                    s.category,
+                    `${s.taxPercent}%`,
+                    `${s.stock} Qty`,
+                    s.qty,
+                    formatCurrency(avgPrice, currency),
+                    formatCurrency(s.revenue, currency),
+                    formatCurrency(s.cost, currency),
+                    formatCurrency(s.profit, currency),
+                    `${margin.toFixed(1)}%`
+                ];
+            });
         } else if (reportCategory === "category") {
             const catStats = {};
+            const catProductsMap = {};
+            itemList.forEach(i => {
+                const cName = i.categoryId?.name || "Others";
+                if (!catProductsMap[cName]) catProductsMap[cName] = 0;
+                catProductsMap[cName] += 1;
+            });
+
             salesHistory
                 .filter((s) => isWithinRange(s.date))
                 .forEach((sale) => {
                     if (sale.items) {
                         sale.items.forEach((item) => {
                             const cat = item.category || "Others";
-                            if (!catStats[cat]) catStats[cat] = 0;
-                            catStats[cat] += item.price * item.quantity;
+                            if (!catStats[cat]) {
+                                catStats[cat] = { category: cat, productsCount: catProductsMap[cat] || 0, qtySold: 0, revenue: 0, cost: 0, profit: 0 };
+                            }
+                            const q = item.quantity || 0;
+                            const lineRev = item.totalAmount || ((item.price || 0) * q);
+                            const lineCost = (item.purchasePrice || 0) * q;
+                            catStats[cat].qtySold += q;
+                            catStats[cat].revenue += lineRev;
+                            catStats[cat].cost += lineCost;
+                            catStats[cat].profit += (lineRev - lineCost);
                         });
                     }
                 });
-            columns = ["Category", "Revenue"];
-            rows = Object.entries(catStats).map(([cat, revenue]) => [cat, revenue]);
+            columns = ["Category Name", "Products Count", "Qty Sold", "Total Revenue", "Total Cost", "Net Profit", "Margin %"];
+            rows = Object.values(catStats).map(s => {
+                const margin = s.revenue > 0 ? (s.profit / s.revenue) * 100 : 0;
+                return [
+                    s.category,
+                    s.productsCount,
+                    s.qtySold,
+                    formatCurrency(s.revenue, currency),
+                    formatCurrency(s.cost, currency),
+                    formatCurrency(s.profit, currency),
+                    `${margin.toFixed(1)}%`
+                ];
+            });
         } else if (reportCategory === "payments") {
             const methods = ["Cash", "UPI", "Card"];
             columns = ["Payment Method", "Transactions", "Total Amount"];
@@ -398,15 +595,15 @@ const Reports = ({
                 return [method, count, total];
             });
         } else if (reportCategory === "staff_report") {
-            columns = ["Staff Name", "Orders", "Sales Collect", "KOTs", "Served", "Cash", "Purchases"];
+            columns = ["Staff Name", "Role", "Sales Orders", "Sales Value", "Cash Collected", "Purchases Entered", "Purchase Value"];
             rows = performanceReport.map((p) => [
                 p.employeeName,
-                p.stats.orders,
-                formatCurrency(p.stats.sales, currency),
-                p.stats.kots,
-                p.stats.served,
-                formatCurrency(p.stats.cash, currency),
-                p.stats.purchases
+                p.role || 'Staff',
+                p.stats.orders || 0,
+                formatCurrency(p.stats.sales || 0, currency),
+                formatCurrency(p.stats.cash || 0, currency),
+                p.stats.purchases || 0,
+                formatCurrency(p.stats.purchaseValue || 0, currency)
             ]);
         } else if (reportCategory === "table_report") {
             columns = ["Table", "Orders", "Revenue"];
@@ -557,48 +754,94 @@ const Reports = ({
         const { columns, rows } = buildReportData();
         if (!columns.length) return;
 
-        const headerLines = [
-            escapeHtml(headerShopName),
-            escapeHtml(headerBranchName),
-        ];
+        const reportTitle = baseReportCategories.find(r => r.id === reportCategory)?.label || "Analytics Report";
+        const totalRecords = rows.length;
 
         const html = `
-          <div style="font-family: Inter, -apple-system, system-ui, sans-serif; padding: 24px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; border-bottom:1px solid #eee; padding-bottom:10px;">
-              <div style="display: flex; gap: 16px; align-items: flex-start;">
-                ${headerLogoUrl ? `<img src="${headerLogoUrl}" style="max-height: 60px; max-width: 120px; object-fit: contain;" />` : ""}
-                <div>
-                  <div style="font-size:20px; font-weight:900; margin-bottom:4px;">${escapeHtml(headerShopName)}</div>
-                  <div style="font-size:12px; font-weight:600; color:#111;">${escapeHtml(headerBranchName)}</div>
-                  ${headerContact ? `<div style="font-size:11px; color:#555; margin-top:2px;">Ph: ${escapeHtml(headerContact)}</div>` : ""}
-                  ${addressLines.length > 0 ? `<div style="font-size:10px; color:#777; margin-top:2px; line-height:1.4;">${addressLines.map(escapeHtml).join("<br/>")}</div>` : ""}
-                  <div style="font-size:11px; color:#777; margin-top:8px; font-weight: 600;">${escapeHtml(rangeLabel)}</div>
+          <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 28px; color: #1e293b; background: #ffffff;">
+            <!-- Top Branding Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #4f46e5; padding-bottom: 12px; margin-bottom: 20px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #ffffff; font-weight: 900; font-size: 14px; padding: 4px 10px; border-radius: 8px; letter-spacing: -0.5px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);">
+                  file<span style="color: #c084fc;">pe</span>
                 </div>
+                <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; tracking-wider; color: #64748b;">Modern POS Reports</span>
               </div>
-              <div style="text-align:right; font-size:11px; color:#777;">
-                <div style="font-weight:700; text-transform:uppercase; letter-spacing:1px; color: #111;">${escapeHtml(reportCategories.find(r => r.id === reportCategory)?.label || "Report")}</div>
-                <div>Generated at ${escapeHtml(new Date().toLocaleString())}</div>
+              <div style="font-size: 11px; font-weight: 600; color: #64748b;">
+                Date Range: <strong style="color: #1e293b;">${escapeHtml(rangeLabel)}</strong>
               </div>
             </div>
-            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+
+            <!-- Shop Info & Report Title Block -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+              <div style="display: flex; gap: 16px; align-items: flex-start; max-width: 65%;">
+                ${headerLogoUrl ? `<img src="${headerLogoUrl}" style="max-height: 65px; max-width: 140px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0; padding: 4px;" />` : ""}
+                <div>
+                  <h1 style="font-size: 22px; font-weight: 900; color: #0f172a; margin: 0 0 4px 0; tracking: -0.5px;">${escapeHtml(headerShopName)}</h1>
+                  <div style="font-size: 13px; font-weight: 700; color: #4f46e5; margin-bottom: 4px;">${escapeHtml(headerBranchName)}</div>
+                  ${headerContact ? `<div style="font-size: 11px; color: #475569; font-weight: 500;">Phone: <strong>${escapeHtml(headerContact)}</strong></div>` : ""}
+                  ${addressLines.length > 0 ? `<div style="font-size: 10px; color: #64748b; margin-top: 3px; line-height: 1.4;">${addressLines.map(escapeHtml).join("<br/>")}</div>` : ""}
+                </div>
+              </div>
+
+              <!-- Report Metadata Box -->
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 12px; text-align: right; min-w: 180px;">
+                <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #4f46e5; letter-spacing: 0.8px;">${escapeHtml(reportTitle)}</div>
+                <div style="font-size: 18px; font-weight: 900; color: #0f172a; margin: 4px 0;">${totalRecords} <span style="font-size: 11px; font-weight: 600; color: #64748b;">Entries</span></div>
+                <div style="font-size: 10px; color: #94a3b8; font-weight: 500;">Generated: ${escapeHtml(new Date().toLocaleString())}</div>
+              </div>
+            </div>
+
+            <!-- Styled Table -->
+            <table style="width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
               <thead>
-                <tr>
-                  ${columns.map(h => `<th style="text-align:left; padding:8px 6px; border-bottom:2px solid #111; background:#fafafa; font-size:11px; text-transform:uppercase; letter-spacing:0.8px;">${escapeHtml(h)}</th>`).join("")}
+                <tr style="background: #0f172a; color: #ffffff;">
+                  ${columns.map((h, i) => `
+                    <th style="padding: 10px 12px; text-align: ${i >= columns.length - 3 ? 'right' : 'left'}; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid #334155;">
+                      ${escapeHtml(h)}
+                    </th>
+                  `).join("")}
                 </tr>
               </thead>
               <tbody>
-                ${rows.map(row => `
-                  <tr>
-                    ${row.map(cell => `<td style="padding:6px; border-bottom:1px solid #eee;">${escapeHtml(String(cell ?? ""))}</td>`).join("")}
+                ${rows.map((row, idx) => `
+                  <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                    ${row.map((cell, cIdx) => {
+                      const cellStr = String(cell ?? "");
+                      const isStatus = cellStr === 'FULLY PAID' || cellStr === 'PARTIALLY PAID' || cellStr.includes('UNPAID');
+                      let statusBadge = cellStr;
+                      if (isStatus) {
+                        const bg = cellStr === 'FULLY PAID' ? '#dcfce7' : cellStr === 'PARTIALLY PAID' ? '#fef3c7' : '#fee2e2';
+                        const fg = cellStr === 'FULLY PAID' ? '#15803d' : cellStr === 'PARTIALLY PAID' ? '#b45309' : '#b91c1c';
+                        statusBadge = `<span style="background:${bg}; color:${fg}; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:800; display:inline-block;">${escapeHtml(cellStr)}</span>`;
+                      } else {
+                        statusBadge = escapeHtml(cellStr);
+                      }
+
+                      return `
+                        <td style="padding: 9px 12px; border-bottom: 1px solid #f1f5f9; text-align: ${cIdx >= columns.length - 3 && !isStatus ? 'right' : 'left'}; font-weight: ${cIdx === 0 || cIdx === columns.length - 1 ? '700' : '500'}; color: ${cIdx === columns.length - 1 ? '#4f46e5' : '#334155'};">
+                          ${statusBadge}
+                        </td>
+                      `;
+                    }).join("")}
                   </tr>
                 `).join("")}
               </tbody>
             </table>
+
+            <!-- Professional Footer -->
+            <div style="margin-top: 28px; padding-top: 12px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8;">
+              <div>This report is computer generated by <strong>${escapeHtml(headerShopName)}</strong>.</div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span>Powered by</span>
+                <strong style="color: #4f46e5;">FilePe Modern POS</strong>
+              </div>
+            </div>
           </div>
         `;
 
         printCustomHtml({
-            title: `${headerShopName} - ${reportCategories.find(r => r.id === reportCategory)?.label || "Report"}`,
+            title: `${headerShopName} - ${reportTitle}`,
             bodyHtml: html,
         });
     };
@@ -620,7 +863,7 @@ const Reports = ({
         const { columns, rows } = buildReportData();
         if (!columns.length) return;
 
-        const reportLabel = reportCategories.find(r => r.id === reportCategory)?.label || "Report";
+        const reportLabel = baseReportCategories.find(r => r.id === reportCategory)?.label || "Report";
 
         // Build CSV content (Excel opens .csv natively)
         const escape = (val) => {
@@ -948,17 +1191,28 @@ const Reports = ({
                                     {
                                         header: "Sales Invoice",
                                         key: "invoiceNumber",
-                                        render: (value) => <span className="font-mono text-xs font-bold">#{value}</span>
+                                        render: (value, row) => (
+                                            <div className="flex flex-col">
+                                                <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400">#{value}</span>
+                                                <span className="text-[10px] text-gray-400 font-medium">{row.date} • {row.time || (row.timestamp ? new Date(row.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}</span>
+                                            </div>
+                                        )
                                     },
                                     {
-                                        header: "Time",
-                                        key: "timestamp",
-                                        headerClassName: "text-center",
-                                        className: "text-center",
+                                        header: "Customer",
+                                        key: "customerName",
+                                        render: (value, row) => (
+                                            <div className="flex flex-col">
+                                                <span className={`text-xs font-bold ${theme.textHeading}`}>{value || 'Walk-in Customer'}</span>
+                                                {row.customerPhone && <span className="text-[10px] text-gray-400 font-medium">{row.customerPhone}</span>}
+                                            </div>
+                                        )
+                                    },
+                                    {
+                                        header: "Billed By",
+                                        key: "staffName",
                                         render: (value) => (
-                                            <span className="text-sm font-medium">
-                                                {new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
+                                            <span className={`text-xs font-semibold ${theme.textSecondary}`}>{value || 'Admin / Staff'}</span>
                                         )
                                     },
                                     {
@@ -968,20 +1222,62 @@ const Reports = ({
                                         className: "text-center",
                                         render: (value) => (
                                             <span
-                                                className={`px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${value === "Dine-in"
-                                                    ? (themeName === 'dark' ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-100 text-indigo-600")
-                                                    : (themeName === 'dark' ? "bg-orange-900/40 text-orange-400" : "bg-orange-100 text-orange-600")
+                                                className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${value === "Dine-in"
+                                                    ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
+                                                    : value === "Online"
+                                                        ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+                                                        : value === "Takeaway"
+                                                            ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                                                            : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
                                                     }`}
                                             >
-                                                {value}
+                                                {value || 'Direct'}
                                             </span>
                                         )
+                                    },
+                                    {
+                                        header: "Payment Method",
+                                        key: "method",
+                                        headerClassName: "text-center",
+                                        className: "text-center",
+                                        render: (value) => (
+                                            <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                                {value || 'Cash'}
+                                            </span>
+                                        )
+                                    },
+                                    {
+                                        header: "Status",
+                                        key: "paymentStatus",
+                                        headerClassName: "text-center",
+                                        className: "text-center",
+                                        render: (value, row) => {
+                                            const status = value || (row.dueAmount > 0 ? (row.paidAmount > 0 ? "PARTIALLY PAID" : "UNPAID / CREDIT") : "FULLY PAID");
+                                            const isFull = status === "FULLY PAID";
+                                            const isPartial = status === "PARTIALLY PAID";
+                                            return (
+                                                <div className="flex flex-col items-center">
+                                                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                        isFull
+                                                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200"
+                                                            : isPartial
+                                                                ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200"
+                                                                : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 border border-red-200"
+                                                    }`}>
+                                                        {status}
+                                                    </span>
+                                                    {!isFull && row.dueAmount > 0 && (
+                                                        <span className="text-[9px] font-bold text-red-500 mt-0.5">Due: {formatCurrency(row.dueAmount, currency)}</span>
+                                                    )}
+                                                </div>
+                                            );
+                                        }
                                     },
                                     {
                                         header: "Amount",
                                         key: "amount",
                                         headerClassName: "text-right",
-                                        className: "text-right font-black text-indigo-600",
+                                        className: "text-right font-black text-indigo-600 dark:text-indigo-400 text-sm",
                                         render: (value) => formatCurrency(value, currency)
                                     }
                                 ]}
@@ -991,62 +1287,235 @@ const Reports = ({
                         </div>
                     )}
 
+                    {/* MANUFACTURING REPORT */}
+                    {reportCategory === "manufacturing" && (
+                        <div className="space-y-6">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-4 gap-2">
+                                <div>
+                                    <h3 className={`text-2xl font-black tracking-tight ${theme.textHeading}`}>
+                                        MANUFACTURING REPORT
+                                    </h3>
+                                    <p className={`text-xs font-bold ${theme.textMuted} mt-1`}>
+                                        Period: {filterStartDate} to {filterEndDate}
+                                    </p>
+                                </div>
+                                <span className="px-3 py-1 bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-bold text-xs rounded-full">
+                                    BOM Enabled
+                                </span>
+                            </div>
+
+                            {/* 4 Summary Cards matching Attached Image 1 */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className={`p-4 rounded-xl border-2 text-center ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-gray-100 border-gray-300'}`}>
+                                    <p className={`text-xs font-bold uppercase ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>Total Production</p>
+                                    <p className={`text-xl font-black ${isDark ? 'text-white' : 'text-gray-900'} mt-1`}>
+                                        {manufacturingReport?.summary?.totalProductionQty || 0} PCS
+                                    </p>
+                                </div>
+                                <div className={`p-4 rounded-xl border-2 text-center ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-gray-100 border-gray-300'}`}>
+                                    <p className={`text-xs font-bold uppercase ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>Raw Material Consumed</p>
+                                    <p className={`text-xl font-black ${isDark ? 'text-white' : 'text-gray-900'} mt-1`}>
+                                        {formatCurrency(manufacturingReport?.summary?.totalRawMaterialCost || 0, currency)}
+                                    </p>
+                                </div>
+                                <div className={`p-4 rounded-xl border-2 text-center ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-gray-100 border-gray-300'}`}>
+                                    <p className={`text-xs font-bold uppercase ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>Wastage</p>
+                                    <p className={`text-xl font-black ${isDark ? 'text-white' : 'text-gray-900'} mt-1`}>
+                                        {formatCurrency(manufacturingReport?.summary?.totalWastageCost || 0, currency)}
+                                    </p>
+                                </div>
+                                <div className={`p-4 rounded-xl border-2 text-center ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-gray-100 border-gray-300'}`}>
+                                    <p className={`text-xs font-bold uppercase ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>Production Cost</p>
+                                    <p className={`text-xl font-black ${isDark ? 'text-white' : 'text-gray-900'} mt-1`}>
+                                        {formatCurrency(manufacturingReport?.summary?.totalProductionCost || 0, currency)}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Table 1: Production Batches */}
+                            <div className="space-y-3">
+                                <h4 className={`text-sm font-black uppercase tracking-wider ${theme.textSecondary}`}>
+                                    Production Runs & Cost Breakdown
+                                </h4>
+                                <CommonTable
+                                    selectable={false}
+                                    showExport={false}
+                                    columns={[
+                                        { header: "Production No.", key: "productionNo", className: "font-mono font-bold text-xs text-indigo-600" },
+                                        { header: "Date", key: "date", className: "text-xs font-medium" },
+                                        { header: "Batch No.", key: "batchNo", className: "font-mono text-xs" },
+                                        { header: "Finished Product", key: "finishedProduct", className: "font-bold text-xs" },
+                                        { header: "Qty Produced", key: "qtyProduced", headerClassName: "text-center", className: "text-center font-bold" },
+                                        { header: "Raw Material Cost", key: "rawMaterialCost", headerClassName: "text-right", className: "text-right font-semibold", render: (v) => formatCurrency(v, currency) },
+                                        { header: "Labour Cost", key: "labourCost", headerClassName: "text-right", className: "text-right font-semibold", render: (v) => formatCurrency(v, currency) },
+                                        { header: "Other Cost", key: "otherCost", headerClassName: "text-right", className: "text-right font-semibold", render: (v) => formatCurrency(v, currency) },
+                                        { header: "Wastage Cost", key: "wastageCost", headerClassName: "text-right", className: "text-right font-semibold text-amber-600", render: (v) => formatCurrency(v, currency) },
+                                        { header: "Total Cost", key: "totalProductionCost", headerClassName: "text-right", className: "text-right font-black text-indigo-600", render: (v) => formatCurrency(v, currency) },
+                                        { header: "Cost / Unit", key: "costPerUnit", headerClassName: "text-right", className: "text-right font-bold text-emerald-600", render: (v) => formatCurrency(v, currency) },
+                                        { header: "Status", key: "status", headerClassName: "text-center", className: "text-center", render: (v) => <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-700 uppercase">{v || 'Completed'}</span> }
+                                    ]}
+                                    data={manufacturingReport?.data || []}
+                                />
+                            </div>
+
+                            {/* Table 2: Material Consumption Breakdown (BOM Table matching Image 1) */}
+                            <div className="space-y-3 pt-4 border-t border-dashed">
+                                <h4 className={`text-base font-black ${theme.textHeading}`}>
+                                    Material Consumption – Production Breakdown (Bill of Materials)
+                                </h4>
+                                <CommonTable
+                                    selectable={false}
+                                    showExport={false}
+                                    columns={[
+                                        { header: "Production No.", key: "productionNo", className: "font-mono font-bold text-xs text-indigo-600" },
+                                        { header: "Finished Product", key: "finishedProduct", className: "font-bold text-xs" },
+                                        { header: "Raw Material", key: "rawMaterial", className: "font-bold text-xs text-slate-800 dark:text-slate-200" },
+                                        { header: "Required Qty", key: "requiredQty", headerClassName: "text-center", className: "text-center font-semibold" },
+                                        { header: "Actual Qty", key: "actualQty", headerClassName: "text-center", className: "text-center font-bold text-indigo-600" },
+                                        { header: "Unit", key: "unit", headerClassName: "text-center", className: "text-center text-xs font-mono" },
+                                        { header: "Rate", key: "rate", headerClassName: "text-right", className: "text-right font-medium", render: (v) => formatCurrency(v, currency) },
+                                        { header: "Amount", key: "amount", headerClassName: "text-right", className: "text-right font-black text-emerald-600", render: (v) => formatCurrency(v, currency) }
+                                    ]}
+                                    data={(manufacturingReport?.data || []).flatMap(run => run.bomMaterials || [])}
+                                />
+                            </div>
+                        </div>
+                    )}
+
                     {/* 2. ITEM-WISE REPORT */}
                     {reportCategory === "items" && (
                         <div className="space-y-6">
                             <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
-                                Item-wise Sales
+                                Detailed Item-wise Sales ({rangeLabel})
                             </h3>
                             <CommonTable
                                 selectable={false}
                                 showExport={false}
                                 columns={[
                                     { 
+                                        header: "Item SKU", 
+                                        key: "sku", 
+                                        className: "font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400" 
+                                    },
+                                    { 
                                         header: "Item Name", 
                                         key: "name", 
-                                        width: "40%",
                                         className: `font-bold ${theme.textPrimary}` 
+                                    },
+                                    { 
+                                        header: "Category", 
+                                        key: "category",
+                                        render: (v) => (
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                                {v}
+                                            </span>
+                                        )
+                                    },
+                                    { 
+                                        header: "Tax %", 
+                                        key: "taxPercent", 
+                                        headerClassName: "text-center",
+                                        className: "text-center text-xs font-semibold",
+                                        render: (v) => `${v}%`
+                                    },
+                                    { 
+                                        header: "Balance Stock", 
+                                        key: "stock", 
+                                        headerClassName: "text-center",
+                                        className: "text-center font-bold",
+                                        render: (v) => (
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${v <= 5 ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}>
+                                                {v} Qty
+                                            </span>
+                                        )
                                     },
                                     { 
                                         header: "Qty Sold", 
                                         key: "qty", 
                                         headerClassName: "text-center",
-                                        className: "text-center font-bold" 
+                                        className: "text-center font-black text-indigo-600" 
+                                    },
+                                    { 
+                                        header: "Avg Price", 
+                                        key: "avgPrice", 
+                                        headerClassName: "text-right",
+                                        className: "text-right font-medium text-xs",
+                                        render: (v) => formatCurrency(v, currency)
                                     },
                                     {
                                         header: "Revenue",
                                         key: "revenue",
                                         headerClassName: "text-right",
-                                        className: "text-right font-bold text-indigo-600",
-                                        render: (value) => formatCurrency(value, currency)
+                                        className: "text-right font-black text-indigo-600",
+                                        render: (v) => formatCurrency(v, currency)
                                     },
                                     {
-                                        header: "Profit",
+                                        header: "Cost Value",
+                                        key: "cost",
+                                        headerClassName: "text-right",
+                                        className: "text-right font-semibold text-slate-500",
+                                        render: (v) => formatCurrency(v, currency)
+                                    },
+                                    {
+                                        header: "Net Profit",
                                         key: "profit",
                                         headerClassName: "text-right",
+                                        className: "text-right font-black text-emerald-600",
+                                        render: (v) => formatCurrency(v, currency)
+                                    },
+                                    {
+                                        header: "Margin %",
+                                        key: "margin",
+                                        headerClassName: "text-right",
                                         className: "text-right font-bold text-emerald-600",
-                                        render: (value) => formatCurrency(value, currency)
+                                        render: (v) => `${v.toFixed(1)}%`
                                     }
                                 ]}
                                 data={(() => {
+                                    const itemMap = new Map();
+                                    itemList.forEach(i => {
+                                        itemMap.set(String(i.name || '').toLowerCase(), i);
+                                        if (i.itemCode) itemMap.set(String(i.itemCode).toLowerCase(), i);
+                                    });
+
                                     const itemStats = {};
                                     salesHistory
                                         .filter((s) => isWithinRange(s.date))
                                         .forEach((sale) => {
                                             if (sale.items) {
                                                 sale.items.forEach((item) => {
-                                                    const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || (item.category ? `[${item.category}]` : "—");
-                                                    if (!itemStats[itemName])
-                                                        itemStats[itemName] = { qty: 0, revenue: 0, profit: 0 };
-                                                    itemStats[itemName].qty += (item.quantity || 0);
-                                                    const lineRevenue = item.totalAmount || ((item.price || 0) * (item.quantity || 0));
-                                                    const lineCost = (item.purchasePrice || 0) * (item.quantity || 0);
-                                                    itemStats[itemName].revenue += lineRevenue;
-                                                    itemStats[itemName].profit += lineRevenue - lineCost;
+                                                    const itemName = item.name || item.itemName || item.title || item.itemId?.name || item.productId?.name || "Uncategorized Item";
+                                                    const key = itemName.toLowerCase();
+                                                    if (!itemStats[key]) {
+                                                        const masterItem = itemMap.get(key);
+                                                        itemStats[key] = {
+                                                            sku: masterItem?.itemCode || item.itemCode || 'ITM-N/A',
+                                                            name: itemName,
+                                                            category: masterItem?.categoryId?.name || item.category || 'General',
+                                                            taxPercent: item.taxPercent !== undefined ? item.taxPercent : (masterItem?.taxPercent || settings?.defaultTaxPercent || 0),
+                                                            stock: masterItem?.quantityOnHand !== undefined ? masterItem.quantityOnHand : (item.quantityOnHand || 0),
+                                                            qty: 0,
+                                                            revenue: 0,
+                                                            cost: 0,
+                                                            profit: 0
+                                                        };
+                                                    }
+                                                    const q = item.quantity || 0;
+                                                    itemStats[key].qty += q;
+                                                    const lineRevenue = item.totalAmount || ((item.price || 0) * q);
+                                                    const lineCost = (item.purchasePrice || 0) * q;
+                                                    itemStats[key].revenue += lineRevenue;
+                                                    itemStats[key].cost += lineCost;
+                                                    itemStats[key].profit += (lineRevenue - lineCost);
                                                 });
                                             }
                                         });
-                                    return Object.entries(itemStats).map(([name, stats]) => ({ name, ...stats }));
+
+                                    return Object.values(itemStats).map(stat => ({
+                                        ...stat,
+                                        avgPrice: stat.qty > 0 ? stat.revenue / stat.qty : 0,
+                                        margin: stat.revenue > 0 ? (stat.profit / stat.revenue) * 100 : 0
+                                    }));
                                 })()}
                             />
                         </div>
@@ -1056,30 +1525,55 @@ const Reports = ({
                     {reportCategory === "category" && (
                         <div className="space-y-6">
                             <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
-                                Category Performance
+                                Category Performance & Profitability ({rangeLabel})
                             </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {(() => {
+                            <CommonTable
+                                selectable={false}
+                                showExport={false}
+                                columns={[
+                                    { header: "Category Name", key: "category", className: `font-bold text-sm ${theme.textPrimary}` },
+                                    { header: "Products Count", key: "productsCount", headerClassName: "text-center", className: "text-center font-bold text-xs" },
+                                    { header: "Qty Sold", key: "qtySold", headerClassName: "text-center", className: "text-center font-black text-indigo-600" },
+                                    { header: "Total Revenue", key: "revenue", headerClassName: "text-right", className: "text-right font-black text-indigo-600", render: (v) => formatCurrency(v, currency) },
+                                    { header: "Total Cost", key: "cost", headerClassName: "text-right", className: "text-right font-semibold text-slate-500", render: (v) => formatCurrency(v, currency) },
+                                    { header: "Net Profit", key: "profit", headerClassName: "text-right", className: "text-right font-black text-emerald-600", render: (v) => formatCurrency(v, currency) },
+                                    { header: "Margin %", key: "margin", headerClassName: "text-right", className: "text-right font-bold text-emerald-600", render: (v) => `${v.toFixed(1)}%` }
+                                ]}
+                                data={(() => {
                                     const catStats = {};
+                                    const catProductsMap = {};
+                                    itemList.forEach(i => {
+                                        const cName = i.categoryId?.name || "Others";
+                                        if (!catProductsMap[cName]) catProductsMap[cName] = 0;
+                                        catProductsMap[cName] += 1;
+                                    });
+
                                     salesHistory
                                         .filter((s) => isWithinRange(s.date))
                                         .forEach((sale) => {
                                             if (sale.items) {
                                                 sale.items.forEach((item) => {
                                                     const cat = item.category || "Others";
-                                                    if (!catStats[cat]) catStats[cat] = 0;
-                                                    catStats[cat] += item.price * item.quantity;
+                                                    if (!catStats[cat]) {
+                                                        catStats[cat] = { category: cat, productsCount: catProductsMap[cat] || 0, qtySold: 0, revenue: 0, cost: 0, profit: 0 };
+                                                    }
+                                                    const q = item.quantity || 0;
+                                                    const lineRev = item.totalAmount || ((item.price || 0) * q);
+                                                    const lineCost = (item.purchasePrice || 0) * q;
+                                                    catStats[cat].qtySold += q;
+                                                    catStats[cat].revenue += lineRev;
+                                                    catStats[cat].cost += lineCost;
+                                                    catStats[cat].profit += (lineRev - lineCost);
                                                 });
                                             }
                                         });
-                                    return Object.entries(catStats).map(([cat, revenue]) => (
-                                        <div key={cat} className={`p-4 border ${theme.borderLight} rounded-2xl flex justify-between items-center hover:shadow-md transition-all`}>
-                                            <span className={`font-bold ${theme.textSecondary}`}>{cat}</span>
-                                            <span className="font-black text-indigo-600 text-lg">{formatCurrency(revenue, currency)}</span>
-                                        </div>
-                                    ));
+
+                                    return Object.values(catStats).map(stat => ({
+                                        ...stat,
+                                        margin: stat.revenue > 0 ? (stat.profit / stat.revenue) * 100 : 0
+                                    }));
                                 })()}
-                            </div>
+                            />
                         </div>
                     )}
 
@@ -1512,54 +2006,68 @@ const Reports = ({
                     {reportCategory === "staff_report" && (
                         <div className="space-y-6">
                             <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
-                                Staff Performance ({rangeLabel})
+                                Staff & Performing Users Performance ({rangeLabel})
                             </h3>
                             <CommonTable
                                 selectable={false}
                                 showExport={false}
                                 columns={[
-                                    { header: "Staff Name", key: "employeeName", className: `font-bold ${theme.textPrimary}` },
                                     { 
-                                        header: "Orders", 
+                                        header: "Staff Name", 
+                                        key: "employeeName", 
+                                        className: `font-bold ${theme.textPrimary}`,
+                                        render: (val, row) => (
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-xs">{val}</span>
+                                                {row.role === 'Owner' && (
+                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                                                        OWNER
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )
+                                    },
+                                    { 
+                                        header: "Role / Designation", 
+                                        key: "role", 
+                                        headerClassName: "text-center",
+                                        className: "text-center text-xs font-semibold text-slate-500",
+                                        render: (v) => v || 'Staff'
+                                    },
+                                    { 
+                                        header: "Sales Orders", 
                                         key: "stats.orders", 
                                         headerClassName: "text-center",
                                         className: "text-center font-bold",
-                                        render: (_, row) => row.stats.orders
+                                        render: (_, row) => row.stats.orders || 0
                                     },
                                     {
-                                        header: "Orders Value",
+                                        header: "Sales Value",
                                         key: "stats.sales",
                                         headerClassName: "text-right",
-                                        className: `text-right font-bold text-indigo-600`,
-                                        render: (_, row) => formatCurrency(row.stats.sales, currency)
-                                    },
-                                    { 
-                                        header: "KOTs", 
-                                        key: "stats.kots", 
-                                        headerClassName: "text-center",
-                                        className: "text-center font-bold",
-                                        render: (_, row) => row.stats.kots
-                                    },
-                                    { 
-                                        header: "Served", 
-                                        key: "stats.served", 
-                                        headerClassName: "text-center",
-                                        className: "text-center font-bold",
-                                        render: (_, row) => row.stats.served
+                                        className: "text-right font-black text-indigo-600",
+                                        render: (_, row) => formatCurrency(row.stats.sales || 0, currency)
                                     },
                                     {
-                                        header: "Cash Coll.",
+                                        header: "Cash Collected",
                                         key: "stats.cash",
                                         headerClassName: "text-right",
-                                        className: `text-right font-bold text-emerald-600`,
-                                        render: (_, row) => formatCurrency(row.stats.cash)
+                                        className: "text-right font-bold text-emerald-600",
+                                        render: (_, row) => formatCurrency(row.stats.cash || 0, currency)
                                     },
                                     { 
-                                        header: "Purchases", 
+                                        header: "Purchases Entered", 
                                         key: "stats.purchases", 
                                         headerClassName: "text-center",
                                         className: "text-center font-bold",
-                                        render: (_, row) => row.stats.purchases
+                                        render: (_, row) => row.stats.purchases || 0
+                                    },
+                                    {
+                                        header: "Purchase Value",
+                                        key: "stats.purchaseValue",
+                                        headerClassName: "text-right",
+                                        className: "text-right font-bold text-amber-600",
+                                        render: (_, row) => formatCurrency(row.stats.purchaseValue || 0, currency)
                                     }
                                 ]}
                                 data={performanceReport}

@@ -71,83 +71,41 @@ export const MODULE_LABELS = {
  */
 export const BUSINESS_FEATURES = {
   [BUSINESS_TYPES.RESTAURANT]: {
-    inventory: true,
-    purchase: true,
-    sales: true,
-    dining: true,
-    production: true, 
-    reservation: true,
-    serialTracking: false,
-    serviceManagement: false,
     sellStockItems: false,
     sellManufacturedItems: true,
-    sellTradeItems: true
+    sellTradeItems: true,
+    serialTracking: false,
   },
   [BUSINESS_TYPES.RETAIL]: {
-    inventory: true,
-    purchase: true,
-    sales: true,
-    dining: false,
-    production: false,
-    reservation: false,
-    serialTracking: true,
-    serviceManagement: false,
     sellStockItems: true,
     sellManufacturedItems: false,
-    sellTradeItems: true
+    sellTradeItems: true,
+    serialTracking: true,
   },
   [BUSINESS_TYPES.SALON]: {
-    inventory: true,
-    purchase: true,
-    sales: true,
-    dining: false,
-    production: false,
-    reservation: true,
-    serialTracking: false,
-    serviceManagement: false,
     sellStockItems: true,
     sellManufacturedItems: false,
-    sellTradeItems: true
+    sellTradeItems: true,
+    serialTracking: false,
   },
   [BUSINESS_TYPES.CAFE]: {
-    inventory: true,
-    purchase: true,
-    sales: true,
-    dining: true,
-    production: true,
-    reservation: false,
-    serialTracking: false,
-    serviceManagement: false,
     sellStockItems: false,
     sellManufacturedItems: true,
-    sellTradeItems: true
+    sellTradeItems: true,
+    serialTracking: false,
   },
   [BUSINESS_TYPES.HOTEL]: {
-    inventory: true,
-    purchase: true,
-    sales: true,
-    dining: true,
-    production: true,
-    reservation: true,
-    serialTracking: false,
-    serviceManagement: false,
     sellStockItems: false,
     sellManufacturedItems: true,
-    sellTradeItems: true
+    sellTradeItems: true,
+    serialTracking: false,
   },
   [BUSINESS_TYPES.PHARMACY]: {
-    inventory: true,
-    purchase: true,
-    sales: true,
-    dining: false,
-    production: false,
-    reservation: false,
-    serialTracking: false,
-    serviceManagement: false,
     sellStockItems: true,
     sellManufacturedItems: false,
-    sellTradeItems: true
-  }
+    sellTradeItems: true,
+    serialTracking: true,
+  },
 };
 
 /**

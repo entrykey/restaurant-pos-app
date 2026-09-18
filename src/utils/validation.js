@@ -97,18 +97,51 @@ export const sanitizeNameInput = (value) => {
 };
 
 /**
+ * Normalizes phone numbers by stripping non-digit characters and removing
+ * country code prefixes (e.g. +91, 91-, 91, 0) to extract the core 10-digit national number.
+ * e.g., "91-9898989898", "919898989898", "+91 9898989898", "09898989898", "9898989898" => "9898989898"
+ */
+export const normalizePhoneNumber = (phone) => {
+    if (!phone) return "";
+    const digits = String(phone).replace(/\D/g, "");
+    if (!digits) return "";
+    
+    if (digits.length > 10) {
+        // Handle 12-digit numbers starting with 91 (India country code)
+        if (digits.length === 12 && digits.startsWith("91")) {
+            return digits.slice(2);
+        }
+        // Handle 11-digit numbers starting with 0
+        if (digits.length === 11 && digits.startsWith("0")) {
+            return digits.slice(1);
+        }
+        // Fallback: take the last 10 digits
+        return digits.slice(-10);
+    }
+    return digits;
+};
+
+/**
+ * Checks if two phone numbers match after normalization.
+ */
+export const arePhoneNumbersEqual = (phone1, phone2) => {
+    const p1 = normalizePhoneNumber(phone1);
+    const p2 = normalizePhoneNumber(phone2);
+    return Boolean(p1 && p2 && p1 === p2);
+};
+
+/**
  * Sanitizes input typed into phone fields:
- * - Allows optional leading '+' and digits only
- * - Strips non-digits
- * - Max length: 15 digits
+ * - Allows optional leading '+', digits, hyphens, and spaces
+ * - Max length: 18 chars
  */
 export const sanitizePhoneInput = (value) => {
     if (!value) return '';
     const trimmed = value.trim();
     const hasPlus = trimmed.startsWith('+');
-    let digits = trimmed.replace(/[^0-9]/g, '');
-    if (digits.length > 15) digits = digits.slice(0, 15);
-    return hasPlus ? '+' + digits : digits;
+    let cleaned = trimmed.replace(/[^0-9\s-]/g, '').replace(/\s+/g, ' ');
+    if (cleaned.length > 18) cleaned = cleaned.slice(0, 18);
+    return hasPlus ? '+' + cleaned : cleaned;
 };
 
 /**
