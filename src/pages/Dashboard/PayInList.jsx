@@ -512,7 +512,8 @@ const PayInList = () => {
                                                                     const events = [];
                                                                     const ordersToProcess = activeTab === 'pending' ? group.orders : [group];
                                                                     ordersToProcess.forEach(order => {
-                                                                        const calcBalance = order.balanceAmount !== undefined ? order.balanceAmount : Math.max(0, order.grandTotal - (order.totalPaid || 0));
+                                                                        const rawB = order.balanceAmount !== undefined ? order.balanceAmount : Math.max(0, order.grandTotal - (order.totalPaid || 0));
+                                                                        const calcBalance = rawB <= 0.01 ? 0 : rawB;
                                                                         events.push({ id: `purchase-${order.id}`, type: 'PURCHASE', date: order.date, orderNumber: order.orderNumber, amount: order.grandTotal, balance: calcBalance, paymentStatus: order.paymentStatus, order: order });
                                                                         (order.payments || []).forEach(p => { events.push({ id: `payment-${p.id}`, type: 'PAYMENT', date: p.date, orderNumber: order.orderNumber, amount: p.amount, method: p.method }); });
                                                                     });
@@ -684,7 +685,8 @@ const PayInList = () => {
                                                         const events = [];
                                                         const ordersToProcess = activeTab === 'pending' ? group.orders : [group];
                                                         ordersToProcess.forEach(order => {
-                                                            const calcBalance = order.balanceAmount !== undefined ? order.balanceAmount : Math.max(0, order.grandTotal - (order.totalPaid || 0));
+                                                             const rawB = order.balanceAmount !== undefined ? order.balanceAmount : Math.max(0, order.grandTotal - (order.totalPaid || 0));
+                                                             const calcBalance = rawB <= 0.01 ? 0 : rawB;
                                                             events.push({ id: `purchase-${order.id}`, type: 'PURCHASE', date: order.date, orderNumber: order.orderNumber, amount: order.grandTotal, balance: calcBalance, paymentStatus: order.paymentStatus, order: order });
                                                             (order.payments || []).forEach(p => { events.push({ id: `payment-${p.id}`, type: 'PAYMENT', date: p.date, orderNumber: order.orderNumber, amount: p.amount, method: p.method }); });
                                                         });

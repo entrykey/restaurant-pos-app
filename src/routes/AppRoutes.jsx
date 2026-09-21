@@ -51,6 +51,7 @@ import ReturnPage from "../pages/Sales/ReturnPage";
 import SalesReturnsPage from "../pages/Sales/SalesReturnsPage";
 import PurchaseReturnsPage from "../pages/Purchases/PurchaseReturnsPage";
 import PurchaseReturnPage from "../pages/Purchases/PurchaseReturnPage";
+import ProfileSettings from "../pages/Profile/ProfileSettings";
 
 const DeliveryManagement = lazy(() => import("../pages/DeliveryManagement/DeliveryManagement"));
 const DeliverySettlement = lazy(() => import("../pages/DeliveryManagement/DeliverySettlement"));
@@ -252,10 +253,18 @@ const AppRoutes = (props) => {
         <Route
           path={`${prefix}/dashboard/operating-expenses`}
           element={
-            <ProtectedRoute routeKey="DASHBOARD">
+            <ProtectedRoute routeKey="OPERATING_EXPENSES">
               <OperatingExpenses />
             </ProtectedRoute>
           }
+        />
+        <Route
+          path={`${prefix}/profile`}
+          element={<ProfileSettings />}
+        />
+        <Route
+          path="/profile"
+          element={<ProfileSettings />}
         />
 
         {/* New specific route for dining hall */}

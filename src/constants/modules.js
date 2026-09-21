@@ -16,6 +16,7 @@ export const MODULES = Object.freeze({
   SUPPLIER: "supplier",
   PARTIES: "PARTIES", // Module for Suppliers + Customers (backend key)
   PURCHASE: "purchase",
+  EXPENSE_LEDGER: "EXPENSE_LEDGER",
 
   // Superadmin Only Modules
   BUSINESS_TYPES: "business_types",

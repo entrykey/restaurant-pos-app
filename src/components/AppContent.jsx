@@ -80,6 +80,7 @@ const ROOT_PATH_SEGMENTS = new Set([
     "sale-marking",
     "sales-history",
     "login",
+    "profile",
 ]);
 
 const AppContent = () => {
@@ -1059,6 +1060,7 @@ const AppContent = () => {
         offerDiscountTotal: billDetails.offerDiscountTotal || 0,
         appliedOffers: mapAppliedOffersForApi(billDetails.appliedOffers),
         taxTotal: billDetails.taxAmount || 0,
+        roundOff: billDetails.roundOff || 0,
         grandTotal: billDetails.finalTotal ?? billDetails.total ?? 0,
         taxBreakdown: billDetails.taxBreakdown,
     });

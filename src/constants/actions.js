@@ -78,6 +78,9 @@ export const REPORTS_VIEW = "VIEW.REPORTS";
 export const MANAGE_DELIVERY_REQUESTS = "MANAGE.DELIVERY.REQUESTS";
 export const DELIVERY_COLLECTION = "DELIVERY.COLLECTION";
 
+// Expense module
+export const MANAGE_EXPENSE = "MANAGE.EXPENSE";
+
 /** Single object for use in components: ACTIONS.ORGANIZATION_VIEW, etc. */
 export const ACTIONS = Object.freeze({
   ORGANIZATION_VIEW,
@@ -128,4 +131,5 @@ export const ACTIONS = Object.freeze({
   ATTENDANCE_MANAGE,
   MANAGE_DELIVERY_REQUESTS,
   DELIVERY_COLLECTION,
+  MANAGE_EXPENSE,
 });
