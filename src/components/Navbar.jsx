@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight, ChevronDown, X, SlidersHorizontal, Volume2, VolumeX } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { DEFAULT_CARTOON_AVATAR } from "../constants/cartoonAvatars";
+import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight, ChevronDown, X, SlidersHorizontal, Volume2, VolumeX, User, LogOut } from "lucide-react";
 import BusinessTypeModal from "./BusinessTypeModal";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
@@ -28,6 +30,7 @@ const Navbar = ({
     const { activeBranchId, setActiveBranchId, branches, currentShopId, organization } = useApp();
     const { theme } = useTheme();
     const { can } = usePermission();
+    const { logout } = useAuth();
     const subscriptionOk = computeUserHasActiveSubscription(currentUser, organization);
     const paymentPendingNav = isSubscriptionPaymentPending(organization);
     const showSubscriptionBadge =
@@ -36,6 +39,7 @@ const Navbar = ({
     const [notifications, setNotifications] = useState([]);
     const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+    const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
     const [isTrialPopoverOpen, setIsTrialPopoverOpen] = useState(false);
     const [isSubNavOpen, setIsSubNavOpen] = useState(false);
     const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
@@ -61,9 +65,10 @@ const Navbar = ({
     // Close dropdowns when clicking outside
     useEffect(() => {
         const handleClickOutside = (e) => {
-            if (!e.target.closest('.branch-dropdown-container') && !e.target.closest('.notification-dropdown-container')) {
+            if (!e.target.closest('.branch-dropdown-container') && !e.target.closest('.notification-dropdown-container') && !e.target.closest('.profile-dropdown-container')) {
                 setIsBranchDropdownOpen(false);
                 setIsNotificationsOpen(false);
+                setIsProfileDropdownOpen(false);
             }
         };
         document.addEventListener('click', handleClickOutside);
@@ -453,6 +458,80 @@ const Navbar = ({
                                 <div className={`mt-4 pt-3 border-t ${theme.borderLight} flex justify-center`}>
                                     <button className={`w-full py-2 text-[10px] font-black uppercase tracking-widest ${theme.textMuted} hover:${theme.textPrimary} transition-colors`}>
                                         View Activity History
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* User Profile Avatar & Dropdown Menu */}
+                    <div className="relative profile-dropdown-container shrink-0">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsProfileDropdownOpen(prev => !prev);
+                                setIsNotificationsOpen(false);
+                                setIsBranchDropdownOpen(false);
+                            }}
+                            className={`flex items-center gap-1.5 p-1 md:pr-2.5 rounded-full ${theme.sidebarItemHoverBg} border ${theme.borderLight} transition-all cursor-pointer relative active:scale-95 group`}
+                            aria-label="User Profile"
+                        >
+                            <div className="relative">
+                                <img
+                                    src={currentUser?.avatar || DEFAULT_CARTOON_AVATAR}
+                                    alt={currentUser?.name || "User Avatar"}
+                                    className="w-8 h-8 rounded-full object-cover border-2 border-indigo-500/40 shadow-xs"
+                                />
+                                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900"></span>
+                            </div>
+                            <span className={`hidden md:inline text-xs font-black ${theme.textPrimary} max-w-[90px] truncate`}>
+                                {currentUser?.name || currentUser?.username || 'Profile'}
+                            </span>
+                            <ChevronDown size={14} className={`hidden md:inline ${theme.textMuted} transition-transform ${isProfileDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {/* Profile Dropdown Popup Menu */}
+                        {isProfileDropdownOpen && (
+                            <div className={`absolute top-full right-0 mt-2 w-64 ${theme.surfaceBg} rounded-3xl shadow-2xl border ${theme.borderLight} p-2 z-[150] animate-in fade-in-50 zoom-in-95 duration-150`}>
+                                {/* Header */}
+                                <div className={`p-3 rounded-2xl ${theme.mode === 'light' ? 'bg-indigo-50/70' : 'bg-white/5'} border ${theme.borderLight} mb-2 flex items-center gap-3`}>
+                                    <img
+                                        src={currentUser?.avatar || DEFAULT_CARTOON_AVATAR}
+                                        alt="Avatar"
+                                        className="w-11 h-11 rounded-2xl object-cover border-2 border-indigo-500/40 shadow-sm shrink-0"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                        <h4 className={`text-xs font-black ${theme.textHeading} truncate`}>{currentUser?.name || currentUser?.username || 'User Account'}</h4>
+                                        <p className={`text-[10px] font-bold ${theme.textMuted} truncate`}>{currentUser?.email || 'admin@filepe.com'}</p>
+                                        <span className="inline-block mt-1 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-500">
+                                            {currentUser?.isSuperAdmin ? 'Super Admin' : currentUser?.isOwner ? 'Shop Owner' : 'User'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Menu Items */}
+                                <div className="space-y-1">
+                                    <button
+                                        onClick={() => {
+                                            setIsProfileDropdownOpen(false);
+                                            navigate('/profile');
+                                        }}
+                                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all ${theme.textPrimary} hover:bg-indigo-50 dark:hover:bg-white/5 hover:text-indigo-600 dark:hover:text-indigo-400`}
+                                    >
+                                        <User className="w-4 h-4 text-indigo-500" />
+                                        <span>Profile Settings</span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            setIsProfileDropdownOpen(false);
+                                            logout();
+                                        }}
+                                        className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all"
+                                    >
+                                        <LogOut className="w-4 h-4 text-red-500" />
+                                        <span>Logout</span>
                                     </button>
                                 </div>
                             </div>

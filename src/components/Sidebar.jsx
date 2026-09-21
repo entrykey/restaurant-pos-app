@@ -34,6 +34,7 @@ import {
     RotateCcw,
     Receipt,
     Coins,
+    Calculator,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
@@ -150,6 +151,7 @@ const Sidebar = ({
             "staff-dashboard",
             "sale-marking",
             "sales-history",
+            "operating-expenses",
         ]);
         return ROOTS.has(first) ? "" : `/${first}`;
     };
@@ -321,6 +323,11 @@ const Sidebar = ({
             icon: Boxes, label: "Stock Items", shortLabel: "Stock",
             onClick: () => { setView("inventory"); navigate("/inventory"); closeMobile(); },
             isActive: checkActive(view, "inventory", "INVENTORY")
+        },
+        OPERATING_EXPENSES: {
+            icon: Calculator, label: "Operating Expenses", shortLabel: "Expenses",
+            onClick: () => { setView("operating-expenses"); navigate("/dashboard/operating-expenses"); closeMobile(); },
+            isActive: checkActive(view, "operating-expenses", "OPERATING_EXPENSES") || location.pathname.includes("/dashboard/operating-expenses")
         },
         SALE_MARKING: {
             icon: CalendarCheck, label: "Sale Marking", shortLabel: "Marking",
@@ -600,7 +607,7 @@ const Sidebar = ({
             <div
                 className={`
                     fixed top-0 left-0
-                    h-screen
+                    h-screen h-[100dvh] max-h-[100dvh]
                     w-64
                     ${theme.sidebarBg} ${theme.sidebarText}
                     flex flex-col
@@ -622,7 +629,7 @@ const Sidebar = ({
                 </button>
 
                 {/* Mobile header (close + logo) */}
-                <div className="md:hidden w-full px-4 flex items-center justify-between mb-6">
+                <div className="md:hidden w-full px-4 flex items-center justify-between mb-6 shrink-0">
                     <div className="flex items-center gap-3">
                         {getLogoSrc() ? (
                             <img
@@ -652,7 +659,7 @@ const Sidebar = ({
                 {/* Desktop logo */}
                 <div
                     onClick={() => { setView("dashboard"); goDashboard(); }}
-                    className={`hidden md:flex items-center cursor-pointer hover:opacity-80 transition-all active:scale-95 ${isExpanded ? 'justify-start px-8 gap-4' : 'justify-center'} w-full mb-8`}
+                    className={`hidden md:flex items-center cursor-pointer hover:opacity-80 transition-all active:scale-95 shrink-0 ${isExpanded ? 'justify-start px-8 gap-4' : 'justify-center'} w-full mb-8`}
                 >
                     {getLogoSrc() ? (
                         <img
@@ -671,14 +678,14 @@ const Sidebar = ({
                 </div>
 
                 {/* Scrollable Container for Buttons, Subscription, and Logout */}
-                <div className="flex-1 w-full overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col items-center pb-4">
-                    <div className="w-full flex flex-col items-center flex-1">
+                <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col items-center pb-8">
+                    <div className="w-full flex flex-col items-center shrink-0">
                         {moduleList.map(moduleKey => renderNavButton(MODULE_CONFIG[moduleKey], moduleKey))}
                     </div>
 
                     {/* Subscription Status Block */}
                     {!user?.isSuperAdmin && (user?.shopId || user?.shop_id) && (
-                        <div className={`mt-4 w-full px-4 mb-4 transition-all duration-300 ${isExpanded ? 'opacity-100 h-auto' : 'opacity-0 h-0 overflow-hidden'}`}>
+                        <div className={`mt-4 w-full px-4 mb-4 transition-all duration-300 shrink-0 ${isExpanded ? 'opacity-100 h-auto' : 'block opacity-100 h-auto md:opacity-0 md:h-0 md:overflow-hidden'}`}>
 
                             <div className={`p-4 rounded-3xl border ${
                                 paymentPending
@@ -738,18 +745,18 @@ const Sidebar = ({
                     )}
 
                     {/* Footer (Logout) */}
-                    <div className={`mt-auto w-full flex flex-col pt-4 shrink-0 ${isExpanded ? 'px-4' : 'px-4 md:px-0 md:items-center'}`}>
+                    <div className={`mt-auto w-full flex flex-col pt-4 shrink-0 px-4 ${isExpanded ? 'md:px-4' : 'md:px-0 md:items-center'}`}>
                         <button
                             onClick={() => {
                                 handleLogout();
                                 closeMobile();
                             }}
-                            className={`w-full p-3 md:p-4 rounded-xl md:rounded-2xl transition-all flex items-center ${isExpanded ? 'gap-4 justify-start' : 'justify-start md:justify-center gap-4 md:gap-0'
+                            className={`w-full p-3 md:p-4 rounded-xl md:rounded-2xl transition-all flex items-center gap-4 justify-start ${isExpanded ? 'md:justify-start md:gap-4' : 'md:justify-center md:gap-0'
                                 } ${theme.sidebarLogoutText} ${theme.sidebarLogoutHoverBg} hover:scale-105 md:hover:scale-110`}
                             title={!isExpanded ? "Logout" : undefined}
                         >
                             <LogOut className="w-6 h-6 md:w-7 md:h-7 shrink-0" />
-                            <span className={`font-bold text-sm whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? 'max-w-[150px] opacity-100' : 'max-w-[150px] opacity-100 md:max-w-0 md:opacity-0'}`}>
+                            <span className={`font-bold text-sm whitespace-nowrap overflow-hidden transition-all duration-300 max-w-[150px] opacity-100 ${isExpanded ? 'md:max-w-[150px] md:opacity-100' : 'md:max-w-0 md:opacity-0'}`}>
                                 Logout
                             </span>
                         </button>

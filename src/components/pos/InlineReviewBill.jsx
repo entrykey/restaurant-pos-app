@@ -274,14 +274,16 @@ const InlineReviewBill = ({
     }, [orderItems]);
 
     const totalItemTypes = deduplicatedItems.length;
-    const totalItemQuantity = (orderItems || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
+    const totalItemQuantity = (orderItems || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+
+    const [isAutoRoundOff, setIsAutoRoundOff] = useState(true);
 
     // Bill Calculations
     const rawBillDetails = typeof calculateBillDetails === "function" ? calculateBillDetails(
         orderItems,
         activeBillDiscount,
         settings?.defaultTaxPercent || 5,
-        true,
+        isAutoRoundOff,
         exchangeCredit || 0,
         branchStateCode,
         null
@@ -795,7 +797,7 @@ const InlineReviewBill = ({
                                                     <div className={`flex items-center gap-0.5 ${theme.pageBg} p-0.5 rounded-lg border ${theme.borderLight}`}>
                                                         <button
                                                             type="button"
-                                                            onClick={() => updateItemQuantity && updateItemQuantity(primaryIndex, item.quantity - 1)}
+                                                            onClick={() => updateItemQuantity && updateItemQuantity(primaryIndex, -1)}
                                                             className={`w-6 h-6 rounded ${theme.surfaceBg} ${theme.textPrimary} flex items-center justify-center font-black shadow-2xs hover:bg-indigo-50 hover:text-indigo-600 transition-colors`}
                                                         >
                                                             <Minus size={11} />
@@ -805,7 +807,7 @@ const InlineReviewBill = ({
                                                         </span>
                                                         <button
                                                             type="button"
-                                                            onClick={() => updateItemQuantity && updateItemQuantity(primaryIndex, item.quantity + 1)}
+                                                            onClick={() => updateItemQuantity && updateItemQuantity(primaryIndex, 1)}
                                                             className="w-6 h-6 rounded bg-indigo-600 text-white flex items-center justify-center font-black shadow-2xs hover:bg-indigo-700 transition-colors"
                                                         >
                                                             <Plus size={11} />
@@ -954,9 +956,11 @@ const InlineReviewBill = ({
 
                                     <input
                                         type="number"
-                                        value={activeBillDiscount.value || ""}
+                                        value={activeBillDiscount.value === 0 ? "" : (activeBillDiscount.value || "")}
+                                        onFocus={e => e.target.select()}
                                         onChange={(e) => {
-                                            const val = parseFloat(e.target.value) || 0;
+                                            const raw = e.target.value;
+                                            const val = raw === "" ? 0 : (parseFloat(raw) || 0);
                                             activeSetBillDiscount({ ...activeBillDiscount, value: val });
                                         }}
                                         placeholder="Enter discount amount..."
@@ -968,6 +972,24 @@ const InlineReviewBill = ({
                                 <div className="flex justify-between font-bold">
                                     <span className={theme.textMuted}>Tax</span>
                                     <span className={theme.textPrimary}>{formatCurrency(billDetails.taxAmount)}</span>
+                                </div>
+
+                                {/* Round Off Toggle */}
+                                <div className="flex items-center justify-between font-bold text-xs py-0.5">
+                                    <label className={`flex items-center gap-2 cursor-pointer select-none ${theme.textPrimary}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={isAutoRoundOff}
+                                            onChange={(e) => setIsAutoRoundOff(e.target.checked)}
+                                            className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                                        />
+                                        <span>Round Off</span>
+                                    </label>
+                                    <span className={billDetails.roundOff !== 0 ? (billDetails.roundOff > 0 ? 'text-emerald-600' : 'text-amber-600') : theme.textMuted}>
+                                        {isAutoRoundOff && billDetails.roundOff !== 0
+                                            ? `${billDetails.roundOff > 0 ? '+' : ''}${formatCurrency(billDetails.roundOff)}`
+                                            : (isAutoRoundOff ? '₹0.00' : 'Off')}
+                                    </span>
                                 </div>
 
                                 {/* Exchange Credit Deduction */}

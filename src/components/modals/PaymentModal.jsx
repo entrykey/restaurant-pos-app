@@ -262,6 +262,12 @@ const PaymentModal = ({
     const totalItemTypes = deduplicatedItems.length;
     const totalItemQuantity = (orderItems || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
 
+    const [autoRoundState, setAutoRoundState] = useState(isAutoRoundOff);
+
+    useEffect(() => {
+        setAutoRoundState(isAutoRoundOff);
+    }, [isAutoRoundOff]);
+
     // Handle early return after hooks
     if (!isOpen) return null;
 
@@ -270,7 +276,7 @@ const PaymentModal = ({
         orderItems,
         billDiscount,
         settings?.defaultTaxPercent || 5,
-        isAutoRoundOff,
+        autoRoundState,
         exchangeCredit,
         branchStateCode,
         customerStateCode
@@ -697,12 +703,22 @@ const PaymentModal = ({
                                             )}
                                         </div>
                                         
-                                        {billDetails.roundOff !== 0 && (
-                                            <div className={`flex justify-between ${theme.textMuted} text-[10px] sm:text-xs font-bold italic`}>
+                                        <div className={`flex justify-between items-center ${theme.textMuted} text-[10px] sm:text-xs font-bold py-0.5`}>
+                                            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={autoRoundState}
+                                                    onChange={(e) => setAutoRoundState(e.target.checked)}
+                                                    className="w-3.5 h-3.5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                                                />
                                                 <span>Round Off</span>
-                                                <span>{formatCurrency(billDetails.roundOff)}</span>
-                                            </div>
-                                        )}
+                                            </label>
+                                            <span className={billDetails.roundOff !== 0 ? (billDetails.roundOff > 0 ? 'text-emerald-600' : 'text-amber-600') : theme.textMuted}>
+                                                {autoRoundState && billDetails.roundOff !== 0
+                                                    ? `${billDetails.roundOff > 0 ? '+' : ''}${formatCurrency(billDetails.roundOff)}`
+                                                    : (autoRoundState ? '₹0.00' : 'Off')}
+                                            </span>
+                                        </div>
 
                                         {exchangeCredit > 0 && (
                                             <div className="flex justify-between text-orange-600 text-[11px] sm:text-xs lg:text-sm font-black border-t border-dashed mt-1.5 pt-1.5 sm:pt-2">
@@ -771,6 +787,7 @@ const PaymentModal = ({
                                                                         <input
                                                                             type="number"
                                                                             value={p.amount}
+                                                                            onFocus={e => e.target.select()}
                                                                             onChange={(e) => updatePaymentAmount(idx, e.target.value)}
                                                                             className={`w-full pl-8 pr-4 py-3 ${theme.pageBg} rounded-2xl border-2 border-transparent focus:border-indigo-500 outline-none font-black text-xl text-indigo-600`}
                                                                         />

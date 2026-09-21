@@ -1742,3 +1742,33 @@ export const contactService = {
     }
 };
 
+export const userService = {
+    updateProfile: async (userId, payload) => {
+        try {
+            const response = await api.put(`/users/${userId}`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error updating user profile:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    sendEmailOtp: async (userId, email) => {
+        try {
+            const response = await api.post(`/users/${userId}/send-email-otp`, { email });
+            return response.data;
+        } catch (error) {
+            console.error("Error sending email OTP:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    verifyEmailOtp: async (userId, email, otp) => {
+        try {
+            const response = await api.put(`/users/${userId}/verify-email-otp`, { email, otp });
+            return response.data;
+        } catch (error) {
+            console.error("Error verifying email OTP:", error);
+            throw error.response ? error.response.data : error;
+        }
+    }
+};
+

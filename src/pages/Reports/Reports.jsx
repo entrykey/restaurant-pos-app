@@ -1348,6 +1348,7 @@ const Reports = ({
                                         { header: "Qty Produced", key: "qtyProduced", headerClassName: "text-center", className: "text-center font-bold" },
                                         { header: "Raw Material Cost", key: "rawMaterialCost", headerClassName: "text-right", className: "text-right font-semibold", render: (v) => formatCurrency(v, currency) },
                                         { header: "Labour Cost", key: "labourCost", headerClassName: "text-right", className: "text-right font-semibold", render: (v) => formatCurrency(v, currency) },
+                                        { header: "Travel Expense", key: "travelExpense", headerClassName: "text-right", className: "text-right font-semibold", render: (v) => formatCurrency(v, currency) },
                                         { header: "Other Cost", key: "otherCost", headerClassName: "text-right", className: "text-right font-semibold", render: (v) => formatCurrency(v, currency) },
                                         { header: "Wastage Cost", key: "wastageCost", headerClassName: "text-right", className: "text-right font-semibold text-amber-600", render: (v) => formatCurrency(v, currency) },
                                         { header: "Total Cost", key: "totalProductionCost", headerClassName: "text-right", className: "text-right font-black text-indigo-600", render: (v) => formatCurrency(v, currency) },

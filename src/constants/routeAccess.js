@@ -43,6 +43,7 @@ export const ROUTE_ACCESS = Object.freeze({
   DELIVERY_SETTINGS: { module: 'settings', action: 'DELIVERY.SETTINGS' },
   DELIVERY_MANAGEMENT: { module: MODULES.DELIVERY_MANAGEMENT, action: ACTIONS.MANAGE_DELIVERY_REQUESTS },
   DELIVERY_SETTLEMENT: { module: MODULES.DELIVERY_SETTLEMENT, action: ACTIONS.DELIVERY_COLLECTION },
+  OPERATING_EXPENSES: { module: MODULES.EXPENSE_LEDGER, action: ACTIONS.MANAGE_EXPENSE },
 });
 
 // Define order in sidebar
@@ -62,6 +63,7 @@ export const ROUTE_KEYS_ORDER = [
   'SALES_HISTORY',
   'PAY_IN',
   'INVENTORY',
+  'OPERATING_EXPENSES',
   'PURCHASES',
   'PAY_OUT',
   'PARTIES',
@@ -99,6 +101,7 @@ export const ROUTE_KEY_TO_PATH = Object.freeze({
   KDS: "/kds",
   RESERVATIONS: "/reservations",
   INVENTORY: "/inventory",
+  OPERATING_EXPENSES: "/dashboard/operating-expenses",
   REPORTS: "/reports",
   SETTINGS: "/settings",
   STAFF: "/staff",

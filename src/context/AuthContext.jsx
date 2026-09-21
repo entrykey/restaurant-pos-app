@@ -136,6 +136,10 @@ export const AuthProvider = ({ children }) => {
     setAuthLogs((prev) => [log, ...prev]);
   };
 
+  const updateUser = (updatedFields) => {
+    setUser((prev) => (prev ? { ...prev, ...updatedFields } : prev));
+  };
+
   const value = useMemo(
     () => ({
       user,
@@ -145,6 +149,7 @@ export const AuthProvider = ({ children }) => {
       customTexts,
       login,
       logout,
+      updateUser,
       addAuthLog,
       setAuthLogs, // intentionally exposed for admin tooling (e.g., clear logs)
     }),

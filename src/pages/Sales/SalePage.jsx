@@ -68,6 +68,7 @@ const SalePage = () => {
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [productPrefillData, setProductPrefillData] = useState(null);
     const [discountType, setDiscountType] = useState('flat'); // 'flat' | 'percent'
+    const [isAutoRoundOff, setIsAutoRoundOff] = useState(true);
     const [printInvoice, setPrintInvoice] = useState(true);
     const [billPrintSettings, setBillPrintSettings] = useState(null);
 
@@ -252,13 +253,21 @@ const SalePage = () => {
                 }
             }
             if (field === "quantity") {
-                const newPaid = Number(value) || 1;
                 const row = updatedItems[index];
-                const itemId = row.itemId || row._id || row.id;
-                const withBogo = applyBogoQuantity(newPaid, itemId, offers);
-                row.paidQuantity = newPaid;
-                row.freeQuantity = withBogo - newPaid;
-                row.quantity = withBogo;
+                const rawVal = value;
+                const numVal = parseFloat(rawVal);
+                if (rawVal === "" || rawVal === null || rawVal === undefined || isNaN(numVal)) {
+                    row.paidQuantity = rawVal;
+                    row.freeQuantity = 0;
+                    row.quantity = rawVal;
+                } else {
+                    const newPaid = numVal;
+                    const itemId = row.itemId || row._id || row.id;
+                    const withBogo = applyBogoQuantity(newPaid, itemId, offers);
+                    row.paidQuantity = rawVal;
+                    row.freeQuantity = withBogo - newPaid;
+                    row.quantity = withBogo > newPaid ? withBogo : rawVal;
+                }
             } else {
                 updatedItems[index][field] = value;
             }
@@ -275,7 +284,10 @@ const SalePage = () => {
             const taxObj = findTaxForItem(row, taxList);
             const isExclusiveTax = resolveIsExclusiveTax(row, taxObj);
             row.isExclusiveTax = isExclusiveTax;
-            row.taxAmount = calcLineTax(row.sellingPrice, row.quantity, row.taxPercent, isExclusiveTax);
+            const q = parseFloat(row.quantity) || 0;
+            const sp = parseFloat(row.sellingPrice) || 0;
+            const tp = parseFloat(row.taxPercent) || 0;
+            row.taxAmount = calcLineTax(sp, q, tp, isExclusiveTax);
         }
 
         setFormData((prev) => ({
@@ -311,11 +323,12 @@ const SalePage = () => {
             ...it,
             id: it.itemId,
             _id: it.itemId,
-            price: it.sellingPrice,
-            sellingPrice: it.sellingPrice,
+            quantity: parseFloat(it.quantity) || 0,
+            price: parseFloat(it.sellingPrice) || 0,
+            sellingPrice: parseFloat(it.sellingPrice) || 0,
             categoryId: it.categoryId,
             category_id: it.category_id,
-            taxPercent: it.taxPercent || 0,
+            taxPercent: parseFloat(it.taxPercent) || 0,
             isExclusiveTax: it.isExclusiveTax,
         })),
     [formData.items]);
@@ -325,9 +338,9 @@ const SalePage = () => {
             orderItemsForBill,
             { type: "flat", value: Number(formData.discountTotal) || 0 },
             0,
-            false
+            isAutoRoundOff
         ),
-    [orderItemsForBill, formData.discountTotal, calculateBillDetails]);
+    [orderItemsForBill, formData.discountTotal, isAutoRoundOff, calculateBillDetails]);
 
     const filteredCustomers = useMemo(() => {
         const q = customerSearch.trim().toLowerCase();
@@ -386,21 +399,28 @@ const SalePage = () => {
 
         setLoading(true);
         try {
-            const payloadItems = formData.items.map((it) => ({
-                itemId: it.itemId,
-                itemName: it.name,
-                price: Number(it.sellingPrice),
-                quantity: Number(it.quantity),
-                totalAmount: it.isExclusiveTax
-                    ? Number(it.quantity) * Number(it.sellingPrice) + (Number(it.taxAmount) || 0) - (Number(it.discountAmount) || 0)
-                    : Number(it.quantity) * Number(it.sellingPrice) - (Number(it.discountAmount) || 0),
-                taxPercent: it.taxPercent || 0,
-                taxAmount: it.taxAmount || 0,
-                discountAmount: it.discountAmount || 0,
-                selectedUnit: it.selectedUnit || "PRIMARY",
-                conversionFactor: it.conversionFactor || 1,
-                notes: "",
-            }));
+            const payloadItems = formData.items.map((it) => {
+                const qty = parseFloat(it.quantity) || 1;
+                const price = parseFloat(it.sellingPrice) || 0;
+                const taxP = parseFloat(it.taxPercent) || 0;
+                const taxA = parseFloat(it.taxAmount) || 0;
+                const discA = parseFloat(it.discountAmount) || 0;
+                return {
+                    itemId: it.itemId,
+                    itemName: it.name,
+                    price,
+                    quantity: qty,
+                    totalAmount: it.isExclusiveTax
+                        ? qty * price + taxA - discA
+                        : qty * price - discA,
+                    taxPercent: taxP,
+                    taxAmount: taxA,
+                    discountAmount: discA,
+                    selectedUnit: it.selectedUnit || "PRIMARY",
+                    conversionFactor: it.conversionFactor || 1,
+                    notes: "",
+                };
+            });
 
             const orderPayload = {
                 shopId: currentShopId,
@@ -420,6 +440,7 @@ const SalePage = () => {
                     discountAmount: o.discount || 0,
                 })),
                 taxTotal: billDetails.taxAmount,
+                roundOff: billDetails.roundOff || 0,
                 grandTotal: billDetails.finalTotal,
                 notes: formData.notes || "Manual sale entry",
                 createdBy: user?._id || user?.id,
@@ -691,9 +712,13 @@ const SalePage = () => {
                                         </thead>
                                         <tbody className={`divide-y ${theme.borderLight}`}>
                                             {formData.items.map((row, idx) => {
+                                                const q = parseFloat(row.quantity) || 0;
+                                                const sp = parseFloat(row.sellingPrice) || 0;
+                                                const ta = parseFloat(row.taxAmount) || 0;
+                                                const da = parseFloat(row.discountAmount) || 0;
                                                 const lineTotal = row.isExclusiveTax
-                                                    ? row.quantity * row.sellingPrice + (row.taxAmount || 0) - (row.discountAmount || 0)
-                                                    : row.quantity * row.sellingPrice - (row.discountAmount || 0);
+                                                    ? q * sp + ta - da
+                                                    : q * sp - da;
                                                 const freeItemInfo = billDetails.freeItems?.find(
                                                     (fi) => String(fi.itemId) === String(row.itemId)
                                                 );
@@ -729,25 +754,45 @@ const SalePage = () => {
                                                         </td>
                                                         <td className="py-4 px-2">
                                                             <input type="number" min="0.01" step="any" value={row.quantity}
-                                                                onChange={(e) => handleItemChange(idx, "quantity", parseFloat(e.target.value) || 0)}
+                                                                onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
+                                                                onBlur={(e) => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    if (e.target.value === "" || isNaN(val) || val <= 0) {
+                                                                        handleItemChange(idx, "quantity", 1);
+                                                                    }
+                                                                }}
                                                                 className={`w-full p-2 rounded-xl font-black text-center ${theme.inputBg} border ${theme.borderLight}`} />
                                                         </td>
                                                         <td className="py-4 px-2">
                                                             <input type="number" min="0" step="any" value={row.sellingPrice}
-                                                                onChange={(e) => handleItemChange(idx, "sellingPrice", parseFloat(e.target.value) || 0)}
+                                                                onChange={(e) => handleItemChange(idx, "sellingPrice", e.target.value)}
+                                                                onBlur={(e) => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                                        handleItemChange(idx, "sellingPrice", 0);
+                                                                    }
+                                                                }}
                                                                 className={`w-full p-2 rounded-xl font-black text-right ${theme.inputBg} border ${theme.borderLight}`} />
                                                         </td>
                                                         <td className="py-4 px-2">
                                                             <input type="number" min="0" value={row.taxPercent}
-                                                                onChange={(e) => handleItemChange(idx, "taxPercent", parseFloat(e.target.value) || 0)}
+                                                                onChange={(e) => handleItemChange(idx, "taxPercent", e.target.value)}
+                                                                onBlur={(e) => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                                        handleItemChange(idx, "taxPercent", 0);
+                                                                    }
+                                                                }}
                                                                 className={`w-full p-2 rounded-xl font-black text-center ${theme.inputBg} border ${theme.borderLight}`} />
                                                         </td>
                                                         <td className="py-4 px-2">
-                                                            <input type="number" min="0" step="any" value={row.discountAmount || ""}
-                                                                onChange={(e) => {
-                                                                    let val = parseFloat(e.target.value) || 0;
-                                                                    if (val < 0) val = 0;
-                                                                    handleItemChange(idx, "discountAmount", val);
+                                                            <input type="number" min="0" step="any" value={row.discountAmount}
+                                                                onChange={(e) => handleItemChange(idx, "discountAmount", e.target.value)}
+                                                                onBlur={(e) => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                                        handleItemChange(idx, "discountAmount", 0);
+                                                                    }
                                                                 }}
                                                                 placeholder="0"
                                                                 className={`w-full p-2 rounded-xl font-black text-center text-emerald-600 ${theme.inputBg} border ${theme.borderLight}`} />
@@ -768,9 +813,13 @@ const SalePage = () => {
                                 {/* Mobile/Tablet cards below lg */}
                                 <div className={`lg:hidden divide-y ${theme.borderLight}`}>
                                     {formData.items.map((row, idx) => {
+                                        const q = parseFloat(row.quantity) || 0;
+                                        const sp = parseFloat(row.sellingPrice) || 0;
+                                        const ta = parseFloat(row.taxAmount) || 0;
+                                        const da = parseFloat(row.discountAmount) || 0;
                                         const lineTotal = row.isExclusiveTax
-                                            ? row.quantity * row.sellingPrice + (row.taxAmount || 0) - (row.discountAmount || 0)
-                                            : row.quantity * row.sellingPrice - (row.discountAmount || 0);
+                                            ? q * sp + ta - da
+                                            : q * sp - da;
                                         const freeItemInfo = billDetails.freeItems?.find(
                                             (fi) => String(fi.itemId) === String(row.itemId)
                                         );
@@ -804,30 +853,50 @@ const SalePage = () => {
                                                     <div>
                                                         <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Qty</p>
                                                         <input type="number" min="0.01" step="any" value={row.quantity}
-                                                            onChange={(e) => handleItemChange(idx, "quantity", parseFloat(e.target.value) || 0)}
+                                                            onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
+                                                            onBlur={(e) => {
+                                                                const val = parseFloat(e.target.value);
+                                                                if (e.target.value === "" || isNaN(val) || val <= 0) {
+                                                                    handleItemChange(idx, "quantity", 1);
+                                                                }
+                                                            }}
                                                             className={`w-full p-2 rounded-xl font-black text-center text-sm ${theme.inputBg} border ${theme.borderLight}`} />
                                                     </div>
                                                     <div>
                                                         <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Price</p>
                                                         <input type="number" min="0" step="any" value={row.sellingPrice}
-                                                            onChange={(e) => handleItemChange(idx, "sellingPrice", parseFloat(e.target.value) || 0)}
+                                                            onChange={(e) => handleItemChange(idx, "sellingPrice", e.target.value)}
+                                                            onBlur={(e) => {
+                                                                const val = parseFloat(e.target.value);
+                                                                if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                                    handleItemChange(idx, "sellingPrice", 0);
+                                                                }
+                                                            }}
                                                             className={`w-full p-2 rounded-xl font-black text-right text-sm ${theme.inputBg} border ${theme.borderLight}`} />
                                                     </div>
                                                     <div>
                                                         <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Tax %</p>
                                                         <input type="number" min="0" value={row.taxPercent}
-                                                            onChange={(e) => handleItemChange(idx, "taxPercent", parseFloat(e.target.value) || 0)}
+                                                            onChange={(e) => handleItemChange(idx, "taxPercent", e.target.value)}
+                                                            onBlur={(e) => {
+                                                                const val = parseFloat(e.target.value);
+                                                                if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                                    handleItemChange(idx, "taxPercent", 0);
+                                                                }
+                                                            }}
                                                             className={`w-full p-2 rounded-xl font-black text-center text-sm ${theme.inputBg} border ${theme.borderLight}`} />
                                                     </div>
                                                     <div>
                                                         <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Disc {currencySymbol || '₹'}</p>
-                                                        <input type="number" min="0" step="any" value={row.discountAmount || ""}
-                                                             onChange={(e) => {
-                                                                 let val = parseFloat(e.target.value) || 0;
-                                                                 if (val < 0) val = 0;
-                                                                 handleItemChange(idx, "discountAmount", val);
-                                                             }}
-                                                             placeholder="0"
+                                                        <input type="number" min="0" step="any" value={row.discountAmount}
+                                                            onChange={(e) => handleItemChange(idx, "discountAmount", e.target.value)}
+                                                            onBlur={(e) => {
+                                                                const val = parseFloat(e.target.value);
+                                                                if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                                    handleItemChange(idx, "discountAmount", 0);
+                                                                }
+                                                            }}
+                                                            placeholder="0"
                                                             className={`w-full p-2 rounded-xl font-black text-center text-sm text-emerald-600 ${theme.inputBg} border ${theme.borderLight}`} />
                                                     </div>
                                                 </div>
@@ -885,10 +954,16 @@ const SalePage = () => {
                                             type="number"
                                             min="0"
                                             max={discountType === 'percent' ? "100" : undefined}
-                                            value={formData.discountTotal}
+                                            value={formData.discountTotal === 0 ? "" : formData.discountTotal}
+                                            onFocus={e => e.target.select()}
                                             onChange={(e) => {
-                                                let raw = parseFloat(e.target.value) || 0;
-                                                if (raw < 0) raw = 0;
+                                                const rawVal = e.target.value;
+                                                if (rawVal === "") {
+                                                    setFormData((prev) => ({ ...prev, discountTotal: 0 }));
+                                                    return;
+                                                }
+                                                let raw = parseFloat(rawVal);
+                                                if (isNaN(raw) || raw < 0) raw = 0;
                                                 if (discountType === 'percent' && raw > 100) {
                                                     raw = 100;
                                                     toast.error("Percentage discount cannot exceed 100%");
@@ -947,6 +1022,22 @@ const SalePage = () => {
                                         <span>-{formatCurrency(formData.discountTotal)}</span>
                                     </div>
                                 )}
+                                <div className="flex justify-between items-center text-sm font-bold pt-1">
+                                    <label className={`flex items-center gap-2 cursor-pointer select-none ${theme.textMuted}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={isAutoRoundOff}
+                                            onChange={(e) => setIsAutoRoundOff(e.target.checked)}
+                                            className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                                        />
+                                        <span>Round Off</span>
+                                    </label>
+                                    <span className={billDetails.roundOff !== 0 ? (billDetails.roundOff > 0 ? 'text-emerald-600 font-black' : 'text-amber-600 font-black') : theme.textMuted}>
+                                        {isAutoRoundOff && billDetails.roundOff !== 0
+                                            ? `${billDetails.roundOff > 0 ? '+' : ''}${formatCurrency(billDetails.roundOff)}`
+                                            : (isAutoRoundOff ? '₹0.00' : 'Off')}
+                                    </span>
+                                </div>
                                 <div className={`flex justify-between items-center pt-4 border-t ${theme.borderLight}`}>
                                     <span className={`text-base md:text-lg font-black ${theme.textHeading}`}>Grand total</span>
                                     <span className="text-xl md:text-3xl font-black text-indigo-600">

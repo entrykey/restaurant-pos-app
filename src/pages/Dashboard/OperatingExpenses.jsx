@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -6,7 +6,7 @@ import { shopExpenseService } from '../../services/api/shopExpenses';
 import { dashboardService } from '../../services/api';
 import OperatingExpenseCard from '../../components/cards/OperatingExpenseCard';
 import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, Coins, TrendingDown, FileText, ArrowRightCircle, Trash2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import CommonSelect from '../../components/ui/CommonSelect';
 import CommonDialog from '../../components/modals/CommonDialog';
 import { PurchaseService } from '../../services/PurchaseService';
@@ -17,6 +17,12 @@ const OperatingExpenses = () => {
     const { activeBranchId, branches, organization, formatCurrency } = useApp();
     const { theme } = useTheme();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+    const urlTab = queryParams.get('tab');
+    const urlStartDate = queryParams.get('startDate');
+    const urlEndDate = queryParams.get('endDate');
 
     const [selectedBranchId, setSelectedBranchId] = useState(activeBranchId || user?.branchId || branches[0]?._id);
     const [expenses, setExpenses] = useState([]);
@@ -26,11 +32,23 @@ const OperatingExpenses = () => {
     const [newCategoryName, setNewCategoryName] = useState('');
     const [showAddInput, setShowAddInput] = useState(false);
     const [showBranchDropdown, setShowBranchDropdown] = useState(false);
-    const [activeTab, setActiveTab] = useState('expenses'); // 'expenses', 'drafts', or 'timeline'
+    const [activeTab, setActiveTab] = useState(() => urlTab || 'expenses'); // 'expenses', 'drafts', or 'timeline'
     const [todayProfit, setTodayProfit] = useState(0);
     const [profitTimeline, setProfitTimeline] = useState([]);
     const [expandedDate, setExpandedDate] = useState(null);
     const [deletedDefaultCategories, setDeletedDefaultCategories] = useState([]);
+
+    useEffect(() => {
+        if (urlTab) {
+            setActiveTab(urlTab);
+        }
+    }, [urlTab]);
+
+    useEffect(() => {
+        if (urlStartDate) {
+            setExpandedDate(urlStartDate);
+        }
+    }, [urlStartDate]);
 
     const defaultCategories = ['Salary', 'Rent', 'Electricity', 'Water'];
 
@@ -161,7 +179,7 @@ const OperatingExpenses = () => {
         const branchId = selectedBranchId;
 
         if (!branchId) {
-            alert("Please select a branch first");
+            toast.error("Please select a branch first");
             return;
         }
 
@@ -175,10 +193,11 @@ const OperatingExpenses = () => {
                 isDefault: expense.isDefault || false,
                 isDraft: activeTab === 'drafts'
             });
+            toast.success(activeTab === 'drafts' ? "Draft expense saved successfully" : "Expense saved successfully");
             fetchData();
         } catch (error) {
             console.error("Failed to save expense:", error);
-            alert("Failed to save expense");
+            toast.error(error?.response?.data?.message || error?.message || "Failed to save expense");
         } finally {
             setSavingId(null);
         }
@@ -233,7 +252,7 @@ const OperatingExpenses = () => {
         if (!newCategoryName.trim()) return;
 
         if (expenses.find(e => e.category.toLowerCase() === newCategoryName.trim().toLowerCase())) {
-            alert("Category already exists");
+            toast.error("Category already exists");
             return;
         }
 
@@ -260,10 +279,11 @@ const OperatingExpenses = () => {
                 ...expense,
                 isDraft: true
             });
-            fetchData();
+            toast.success("Expense moved to Draft Expenses");
+            setActiveTab('drafts');
         } catch (error) {
             console.error("Failed to move to draft:", error);
-            alert("Failed to move to draft");
+            toast.error(error?.response?.data?.message || error?.message || "Failed to move to draft");
         } finally {
             setSavingId(null);
         }
@@ -271,21 +291,36 @@ const OperatingExpenses = () => {
 
     const handleMoveToExpense = async (expense) => {
         if (!expense._id) {
-            alert("Please save the draft first");
+            toast.error("Please save the draft first");
             return;
         }
 
         setSavingId(expense._id);
         try {
             await shopExpenseService.moveDraftToExpense(expense._id);
-            fetchData();
+            toast.success("Expense moved to Manage Expenses");
+            setActiveTab('expenses');
         } catch (error) {
             console.error("Failed to move to expenses:", error);
-            alert("Failed to move to expenses");
+            toast.error(error?.response?.data?.message || error?.message || "Failed to move to expenses");
         } finally {
             setSavingId(null);
         }
     };
+
+    const filteredTimeline = useMemo(() => {
+        if (!urlStartDate && !urlEndDate) return profitTimeline;
+        return profitTimeline.filter(day => {
+            if (urlStartDate && urlEndDate) {
+                return day.date >= urlStartDate && day.date <= urlEndDate;
+            } else if (urlStartDate) {
+                return day.date >= urlStartDate;
+            } else if (urlEndDate) {
+                return day.date <= urlEndDate;
+            }
+            return true;
+        });
+    }, [profitTimeline, urlStartDate, urlEndDate]);
 
     const totalDailyExpense = expenses.reduce((sum, exp) => {
         if (exp.term === 'one time' || exp.isDraft) return sum;
@@ -447,20 +482,34 @@ const OperatingExpenses = () => {
                     ))}
                 </div>
             ) : (
-                <div className={`overflow-hidden rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg} shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-500`}>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-gray-50/50 dark:bg-white/5 text-gray-400 text-[10px] uppercase font-black border-b border-gray-100 dark:border-white/5 tracking-widest">
-                                    <th className="p-6">Date</th>
-                                    <th className="p-6 text-right">Revenue</th>
-                                    <th className="p-6 text-right">Gross Profit</th>
-                                    <th className="p-6 text-right">Daily Expense</th>
-                                    <th className="p-6 text-right">Net Profit</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-                                {profitTimeline.length > 0 ? profitTimeline.map((day) => (
+                <div className="space-y-4">
+                    {(urlStartDate || urlEndDate) && (
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 text-[11px] font-black uppercase tracking-widest">
+                            <Calendar size={12} />
+                            {urlStartDate === urlEndDate ? `Showing Today: ${urlStartDate}` : `${urlStartDate || '—'} → ${urlEndDate || '—'}`}
+                            <button
+                                onClick={() => navigate('/dashboard/operating-expenses?tab=timeline')}
+                                className="ml-1 hover:text-red-500 transition-colors"
+                                title="Show full 30 days history"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    )}
+                    <div className={`overflow-hidden rounded-[32px] border ${theme.borderLight} ${theme.surfaceBg} shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-500`}>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-50/50 dark:bg-white/5 text-gray-400 text-[10px] uppercase font-black border-b border-gray-100 dark:border-white/5 tracking-widest">
+                                        <th className="p-6">Date</th>
+                                        <th className="p-6 text-right">Revenue</th>
+                                        <th className="p-6 text-right">Gross Profit</th>
+                                        <th className="p-6 text-right">Daily Expense</th>
+                                        <th className="p-6 text-right">Net Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+                                    {filteredTimeline.length > 0 ? filteredTimeline.map((day) => (
                                     <React.Fragment key={day.date}>
                                         <tr
                                             onClick={() => setExpandedDate(expandedDate === day.date ? null : day.date)}
@@ -633,7 +682,8 @@ const OperatingExpenses = () => {
                         </table>
                     </div>
                 </div>
-            )}
+            </div>
+        )}
 
             {/* Delete Confirmation Modal */}
             <CommonDialog
