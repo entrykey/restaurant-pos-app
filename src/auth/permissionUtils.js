@@ -13,20 +13,40 @@ const SUPER_ADMIN_MODULES = [
   "settings",
   "client_management",
   "DASHBOARD",
+  "EXPENSE_LEDGER",
+  "expense ledger",
+  "6ab12a46fd8bac0f2fbd186e",
+  "OPERATING_EXPENSES",
 ];
+
+const MODULE_ALIASES = {
+  "EXPENSE_LEDGER": ["EXPENSE_LEDGER", "expense ledger", "6ab12a46fd8bac0f2fbd186e", "OPERATING_EXPENSES"],
+  "expense ledger": ["EXPENSE_LEDGER", "expense ledger", "6ab12a46fd8bac0f2fbd186e", "OPERATING_EXPENSES"],
+  "6ab12a46fd8bac0f2fbd186e": ["EXPENSE_LEDGER", "expense ledger", "6ab12a46fd8bac0f2fbd186e", "OPERATING_EXPENSES"],
+  "OPERATING_EXPENSES": ["EXPENSE_LEDGER", "expense ledger", "6ab12a46fd8bac0f2fbd186e", "OPERATING_EXPENSES"]
+};
+
+const ACTION_ALIASES = {
+  "MANAGE.EXPENSE": ["MANAGE.EXPENSE", "manage.expense", "6ab12a75fd8bac0f2fbd1ad8"],
+  "manage.expense": ["MANAGE.EXPENSE", "manage.expense", "6ab12a75fd8bac0f2fbd1ad8"],
+  "6ab12a75fd8bac0f2fbd1ad8": ["MANAGE.EXPENSE", "manage.expense", "6ab12a75fd8bac0f2fbd1ad8"]
+};
 
 export const hasPermission = (user, module, action) => {
   if (!user) return false;
   if (user.isSuperAdmin === true) {
-    return SUPER_ADMIN_MODULES.includes(module);
+    const modTargets = (MODULE_ALIASES[module] || [module]).map(m => String(m).toLowerCase());
+    return SUPER_ADMIN_MODULES.some(m => modTargets.includes(m.toLowerCase()));
   }
 
   const permissions = user.permissions;
   if (!permissions || typeof permissions !== "object") return false;
 
+  const moduleTargets = (MODULE_ALIASES[module] || [module]).map(m => String(m).toLowerCase());
+
   // Case-insensitive module matching
   const matchedModuleKey = Object.keys(permissions).find(
-    (k) => k.toLowerCase() === String(module || "").toLowerCase()
+    (k) => moduleTargets.includes(String(k).toLowerCase())
   );
   if (!matchedModuleKey) return false;
 
@@ -37,9 +57,11 @@ export const hasPermission = (user, module, action) => {
     return modulePermissions.length > 0;
   }
 
+  const actionTargets = (ACTION_ALIASES[action] || [action]).map(a => String(a).toLowerCase());
+
   // Case-insensitive action matching
   return modulePermissions.some(
-    (p) => typeof p === "string" && p.toLowerCase() === String(action).toLowerCase()
+    (p) => typeof p === "string" && actionTargets.includes(p.toLowerCase())
   );
 };
 
@@ -52,13 +74,16 @@ export const hasPermission = (user, module, action) => {
 export const hasModuleAccess = (user, moduleId) => {
   if (!user) return false;
   if (user.isSuperAdmin === true) {
-    return SUPER_ADMIN_MODULES.includes(moduleId);
+    const modTargets = (MODULE_ALIASES[moduleId] || [moduleId]).map(m => String(m).toLowerCase());
+    return SUPER_ADMIN_MODULES.some(m => modTargets.includes(m.toLowerCase()));
   }
   const permissions = user.permissions;
   if (!permissions || typeof permissions !== "object") return false;
 
+  const moduleTargets = (MODULE_ALIASES[moduleId] || [moduleId]).map(m => String(m).toLowerCase());
+
   const matchedModuleKey = Object.keys(permissions).find(
-    (k) => k.toLowerCase() === String(moduleId || "").toLowerCase()
+    (k) => moduleTargets.includes(String(k).toLowerCase())
   );
   if (!matchedModuleKey) return false;
 

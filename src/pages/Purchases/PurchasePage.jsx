@@ -59,6 +59,7 @@ const PurchasePage = () => {
     const [shopTaxes, setShopTaxes] = useState([]);
     const [units, setUnits] = useState([]);
     const [purchaseInvoiceSettings, setPurchaseInvoiceSettings] = useState(null);
+    const [isAutoRoundOff, setIsAutoRoundOff] = useState(true);
 
     const [formData, setFormData] = useState({
         supplierId: "",
@@ -453,16 +454,23 @@ const PurchasePage = () => {
 
     useEffect(() => {
         setFormData(prev => {
-            const grand = subtotal + taxTotal + (Number(prev.otherCharges) || 0) - (Number(prev.discountTotal) || 0);
+            const rawGrand = subtotal + taxTotal + (Number(prev.otherCharges) || 0) - (Number(prev.discountTotal) || 0);
+            let grand = rawGrand;
+            let roundOff = 0;
+            if (isAutoRoundOff) {
+                grand = Math.round(rawGrand);
+                roundOff = parseFloat((grand - rawGrand).toFixed(4));
+            }
             return {
                 ...prev,
                 subtotal: parseFloat(subtotal.toFixed(4)),
                 taxTotal: parseFloat(taxTotal.toFixed(4)),
+                roundOff: roundOff,
                 grandTotal: parseFloat(grand.toFixed(4)),
                 balanceAmount: parseFloat((grand - (Number(prev.paidAmount) || 0)).toFixed(4))
             };
         });
-    }, [subtotal, taxTotal, formData.otherCharges, formData.discountTotal, formData.paidAmount]);
+    }, [subtotal, taxTotal, formData.otherCharges, formData.discountTotal, formData.paidAmount, isAutoRoundOff]);
 
     // --- Handlers ---
 
@@ -703,9 +711,9 @@ const PurchasePage = () => {
         // Recalculate taxAmount if price or taxPercent changes
         if (needsRecalc) {
             const row = updatedItems[index];
-            const p = row.purchasePrice || 0;
-            const r = row.taxPercent || 0;
-            const q = row.quantity || 0;
+            const p = parseFloat(row.purchasePrice) || 0;
+            const r = parseFloat(row.taxPercent) || 0;
+            const q = parseFloat(row.quantity) || 0;
             const lineTotal = p * q;
             if (!r) {
                 row.taxAmount = 0;
@@ -1906,7 +1914,13 @@ const PurchasePage = () => {
                                                     <input
                                                         type="number"
                                                         value={it.quantity}
-                                                        onChange={e => handleItemChange(idx, 'quantity', parseFloat(e.target.value || 0))}
+                                                        onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
+                                                        onBlur={e => {
+                                                            const val = parseFloat(e.target.value);
+                                                            if (e.target.value === "" || isNaN(val) || val <= 0) {
+                                                                handleItemChange(idx, 'quantity', 1);
+                                                            }
+                                                        }}
                                                         className={`w-full p-2 rounded-xl font-black text-indigo-600 border border-transparent focus:border-indigo-500 outline-none text-center transition-all ${theme.inputBg} text-sm shadow-sm`}
                                                     />
                                                 </div>
@@ -1942,23 +1956,41 @@ const PurchasePage = () => {
                                                 <input
                                                     type="number"
                                                     value={it.purchasePrice}
-                                                    onChange={e => handleItemChange(idx, 'purchasePrice', parseFloat(e.target.value || 0))}
+                                                    onChange={e => handleItemChange(idx, 'purchasePrice', e.target.value)}
+                                                    onBlur={e => {
+                                                        const val = parseFloat(e.target.value);
+                                                        if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                            handleItemChange(idx, 'purchasePrice', 0);
+                                                        }
+                                                    }}
                                                     className={`w-full p-2 rounded-xl font-black border border-transparent focus:border-indigo-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
                                                 />
                                             </td>
                                             <td className="py-3 px-2">
                                                 <input
                                                     type="number"
-                                                    value={it.sellingPrice || ""}
-                                                    onChange={e => handleItemChange(idx, 'sellingPrice', parseFloat(e.target.value || 0))}
+                                                    value={it.sellingPrice}
+                                                    onChange={e => handleItemChange(idx, 'sellingPrice', e.target.value)}
+                                                    onBlur={e => {
+                                                        const val = parseFloat(e.target.value);
+                                                        if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                            handleItemChange(idx, 'sellingPrice', 0);
+                                                        }
+                                                    }}
                                                     className={`w-full p-2 rounded-xl font-black border border-transparent focus:border-emerald-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
                                                 />
                                             </td>
                                             <td className="py-3 px-2">
                                                 <input
                                                     type="number"
-                                                    value={it.mrp || ""}
-                                                    onChange={e => handleItemChange(idx, 'mrp', parseFloat(e.target.value || 0))}
+                                                    value={it.mrp}
+                                                    onChange={e => handleItemChange(idx, 'mrp', e.target.value)}
+                                                    onBlur={e => {
+                                                        const val = parseFloat(e.target.value);
+                                                        if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                            handleItemChange(idx, 'mrp', 0);
+                                                        }
+                                                    }}
                                                     className={`w-full p-2 rounded-xl font-black border border-transparent focus:border-blue-500 outline-none transition-all text-center ${theme.inputBg} ${theme.textPrimary} text-sm shadow-sm`}
                                                 />
                                             </td>
@@ -2139,7 +2171,18 @@ const PurchasePage = () => {
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div>
                                                     <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Qty</label>
-                                                    <input type="number" value={it.quantity} onChange={e => handleItemChange(idx, 'quantity', parseFloat(e.target.value || 0))} className={`w-full p-3 rounded-2xl font-black text-indigo-600 border-2 border-transparent focus:border-indigo-500 outline-none text-center ${theme.inputBg} text-sm`} />
+                                                    <input
+                                                        type="number"
+                                                        value={it.quantity}
+                                                        onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
+                                                        onBlur={e => {
+                                                            const val = parseFloat(e.target.value);
+                                                            if (e.target.value === "" || isNaN(val) || val <= 0) {
+                                                                handleItemChange(idx, 'quantity', 1);
+                                                            }
+                                                        }}
+                                                        className={`w-full p-3 rounded-2xl font-black text-indigo-600 border-2 border-transparent focus:border-indigo-500 outline-none text-center ${theme.inputBg} text-sm`}
+                                                    />
                                                 </div>
                                                 <div>
                                                     <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Unit</label>
@@ -2154,15 +2197,48 @@ const PurchasePage = () => {
                                             <div className="grid grid-cols-3 gap-2">
                                                 <div>
                                                     <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Buy Price</label>
-                                                    <input type="number" value={it.purchasePrice} onChange={e => handleItemChange(idx, 'purchasePrice', parseFloat(e.target.value || 0))} className={`w-full p-2.5 rounded-xl font-black border-2 border-transparent focus:border-indigo-500 outline-none text-center ${theme.inputBg} ${theme.textPrimary} text-sm`} />
+                                                    <input
+                                                        type="number"
+                                                        value={it.purchasePrice}
+                                                        onChange={e => handleItemChange(idx, 'purchasePrice', e.target.value)}
+                                                        onBlur={e => {
+                                                            const val = parseFloat(e.target.value);
+                                                            if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                                handleItemChange(idx, 'purchasePrice', 0);
+                                                            }
+                                                        }}
+                                                        className={`w-full p-2.5 rounded-xl font-black border-2 border-transparent focus:border-indigo-500 outline-none text-center ${theme.inputBg} ${theme.textPrimary} text-sm`}
+                                                    />
                                                 </div>
                                                 <div>
                                                     <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Sell Price</label>
-                                                    <input type="number" value={it.sellingPrice || ""} onChange={e => handleItemChange(idx, 'sellingPrice', parseFloat(e.target.value || 0))} className={`w-full p-2.5 rounded-xl font-black border-2 border-transparent focus:border-emerald-500 outline-none text-center ${theme.inputBg} ${theme.textPrimary} text-sm`} />
+                                                    <input
+                                                        type="number"
+                                                        value={it.sellingPrice}
+                                                        onChange={e => handleItemChange(idx, 'sellingPrice', e.target.value)}
+                                                        onBlur={e => {
+                                                            const val = parseFloat(e.target.value);
+                                                            if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                                handleItemChange(idx, 'sellingPrice', 0);
+                                                            }
+                                                        }}
+                                                        className={`w-full p-2.5 rounded-xl font-black border-2 border-transparent focus:border-emerald-500 outline-none text-center ${theme.inputBg} ${theme.textPrimary} text-sm`}
+                                                    />
                                                 </div>
                                                 <div>
                                                     <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>MRP</label>
-                                                    <input type="number" value={it.mrp || ""} onChange={e => handleItemChange(idx, 'mrp', parseFloat(e.target.value || 0))} className={`w-full p-2.5 rounded-xl font-black border-2 border-transparent focus:border-blue-500 outline-none text-center ${theme.inputBg} ${theme.textPrimary} text-sm`} />
+                                                    <input
+                                                        type="number"
+                                                        value={it.mrp}
+                                                        onChange={e => handleItemChange(idx, 'mrp', e.target.value)}
+                                                        onBlur={e => {
+                                                            const val = parseFloat(e.target.value);
+                                                            if (e.target.value === "" || isNaN(val) || val < 0) {
+                                                                handleItemChange(idx, 'mrp', 0);
+                                                            }
+                                                        }}
+                                                        className={`w-full p-2.5 rounded-xl font-black border-2 border-transparent focus:border-blue-500 outline-none text-center ${theme.inputBg} ${theme.textPrimary} text-sm`}
+                                                    />
                                                 </div>
                                             </div>
 
@@ -2311,14 +2387,35 @@ const PurchasePage = () => {
                                             type="number"
                                             min="0"
                                             step="any"
-                                            value={formData.paidAmount ?? 0}
+                                            value={formData.paidAmount}
+                                            onFocus={e => e.target.select()}
                                             onChange={e => {
-                                                const val = parseFloat(e.target.value || 0);
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    paidAmount: val,
-                                                    balanceAmount: Math.max(0, parseFloat((prev.grandTotal - val).toFixed(4)))
-                                                }));
+                                                const raw = e.target.value;
+                                                setFormData(prev => {
+                                                    if (raw === "") {
+                                                        return {
+                                                            ...prev,
+                                                            paidAmount: "",
+                                                            balanceAmount: prev.grandTotal
+                                                        };
+                                                    }
+                                                    const val = parseFloat(raw);
+                                                    const numVal = isNaN(val) ? "" : val;
+                                                    return {
+                                                        ...prev,
+                                                        paidAmount: numVal,
+                                                        balanceAmount: Math.max(0, parseFloat((prev.grandTotal - (isNaN(val) ? 0 : val)).toFixed(4)))
+                                                    };
+                                                });
+                                            }}
+                                            onBlur={e => {
+                                                if (formData.paidAmount === "" || isNaN(formData.paidAmount)) {
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        paidAmount: 0,
+                                                        balanceAmount: prev.grandTotal
+                                                    }));
+                                                }
                                             }}
                                             className={`w-full p-3 rounded-2xl border ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} font-black text-base outline-none focus:border-emerald-500`}
                                         />
@@ -2399,7 +2496,21 @@ const PurchasePage = () => {
                                     type="number"
                                     step="0.0001"
                                     value={formData.taxTotal}
-                                    onChange={e => setFormData({ ...formData, taxTotal: parseFloat(parseFloat(e.target.value || 0).toFixed(4)) })}
+                                    onFocus={e => e.target.select()}
+                                    onChange={e => {
+                                        const raw = e.target.value;
+                                        if (raw === "") {
+                                            setFormData(prev => ({ ...prev, taxTotal: "" }));
+                                            return;
+                                        }
+                                        const val = parseFloat(raw);
+                                        setFormData(prev => ({ ...prev, taxTotal: isNaN(val) ? "" : val }));
+                                    }}
+                                    onBlur={e => {
+                                        if (formData.taxTotal === "" || isNaN(formData.taxTotal)) {
+                                            setFormData(prev => ({ ...prev, taxTotal: 0 }));
+                                        }
+                                    }}
                                     className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} w-full sm:w-28 p-2.5 rounded-xl outline-none border ${theme.borderLight}`}
                                 />
                             </div>
@@ -2408,7 +2519,21 @@ const PurchasePage = () => {
                                 <input
                                     type="number"
                                     value={formData.otherCharges}
-                                    onChange={e => setFormData({ ...formData, otherCharges: parseFloat(e.target.value || 0) })}
+                                    onFocus={e => e.target.select()}
+                                    onChange={e => {
+                                        const raw = e.target.value;
+                                        if (raw === "") {
+                                            setFormData(prev => ({ ...prev, otherCharges: "" }));
+                                            return;
+                                        }
+                                        const val = parseFloat(raw);
+                                        setFormData(prev => ({ ...prev, otherCharges: isNaN(val) ? "" : val }));
+                                    }}
+                                    onBlur={e => {
+                                        if (formData.otherCharges === "" || isNaN(formData.otherCharges)) {
+                                            setFormData(prev => ({ ...prev, otherCharges: 0 }));
+                                        }
+                                    }}
                                     className={`text-right font-black ${theme.mode === 'dark' ? 'text-gray-200 bg-gray-800' : 'text-gray-800 bg-gray-50'} w-full sm:w-28 p-2.5 rounded-xl outline-none border ${theme.borderLight}`}
                                 />
                             </div>
@@ -2418,9 +2543,41 @@ const PurchasePage = () => {
                                     type="number"
                                     min="0"
                                     value={formData.discountTotal}
-                                    onChange={e => setFormData({ ...formData, discountTotal: Math.max(0, parseFloat(e.target.value || 0)) })}
+                                    onFocus={e => e.target.select()}
+                                    onChange={e => {
+                                        const raw = e.target.value;
+                                        if (raw === "") {
+                                            setFormData(prev => ({ ...prev, discountTotal: "" }));
+                                            return;
+                                        }
+                                        const val = parseFloat(raw);
+                                        setFormData(prev => ({ ...prev, discountTotal: isNaN(val) ? "" : Math.max(0, val) }));
+                                    }}
+                                    onBlur={e => {
+                                        if (formData.discountTotal === "" || isNaN(formData.discountTotal)) {
+                                            setFormData(prev => ({ ...prev, discountTotal: 0 }));
+                                        }
+                                    }}
                                     className={`text-right font-black ${theme.mode === 'dark' ? 'text-indigo-400 bg-indigo-900/40' : 'text-indigo-600 bg-indigo-50'} w-full sm:w-28 p-2.5 rounded-xl outline-none border ${theme.mode === 'dark' ? 'border-indigo-800' : 'border-indigo-100'}`}
                                 />
+                            </div>
+
+                            {/* Round Off Toggle */}
+                            <div className="flex justify-between items-center px-2 py-1">
+                                <label className={`flex items-center gap-2 cursor-pointer select-none text-xs font-bold ${theme.textMuted}`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={isAutoRoundOff}
+                                        onChange={e => setIsAutoRoundOff(e.target.checked)}
+                                        className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <span>ROUND OFF</span>
+                                </label>
+                                <span className={`font-black text-xs ${formData.roundOff !== 0 ? (formData.roundOff > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400") : theme.textMuted}`}>
+                                    {isAutoRoundOff && formData.roundOff !== 0
+                                        ? `${formData.roundOff > 0 ? '+' : ''}${formatCurrency ? formatCurrency(formData.roundOff) : formData.roundOff.toFixed(2)}`
+                                        : (isAutoRoundOff ? '₹0.00' : 'Off')}
+                                </span>
                             </div>
 
                             <div className="flex justify-between items-center bg-gray-900 rounded-3xl p-5 md:p-6 text-white shadow-2xl">

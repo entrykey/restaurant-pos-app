@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -42,7 +42,7 @@ import OrderEditSheet from '../../components/modals/OrderEditSheet';
 import PayInSheet from '../../components/modals/PayInSheet';
 import CommonTable from '../../components/CommonTable';
 import CommonDialog from '../../components/modals/CommonDialog';
-import { printBill } from '../../utils/print';
+import { printBillA4 } from '../../utils/print';
 import { loadBillPrintSettings, buildPrintHeader, buildBillExtraInfo } from '../../utils/printSettingsUtils';
 
 const PAY_PILL = {
@@ -67,14 +67,17 @@ const getPaymentDetails = (order) => {
         paid = total;
     }
 
-    const balance = order.balanceAmount !== undefined && order.balanceAmount !== null
+    const rawBal = order.balanceAmount !== undefined && order.balanceAmount !== null
         ? Math.max(0, Number(order.balanceAmount))
         : Math.max(0, total - paid);
 
+    const balance = rawBal <= 0.01 ? 0 : rawBal;
+
     let status = order.paymentStatus;
-    if (!status) {
-        if (balance <= 0.01) status = 'PAID';
-        else if (paid > 0) status = 'PARTIAL';
+    if (balance === 0) {
+        status = 'PAID';
+    } else if (!status) {
+        if (paid > 0) status = 'PARTIAL';
         else status = 'UNPAID';
     }
 
@@ -388,23 +391,43 @@ const OrderDetailModal = ({ isOpen, onClose, order, theme, formatCurrency, forma
 
 const SalesList = ({ initialTab, hideTabs = false } = {}) => {
     const navigate = useNavigate();
+    const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
     const { user } = useAuth();
     const { theme } = useTheme();
     const { formatCurrency: appFormatCurrency } = useApp();
     const fmt = appFormatCurrency || formatCurrency;
 
+    const todayStr = useMemo(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }, []);
+
+    const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+
+    const urlStartDate = useMemo(() => {
+        const param = queryParams.get('startDate');
+        if (param === null) return todayStr;
+        return param;
+    }, [queryParams, todayStr]);
+
+    const urlEndDate = useMemo(() => {
+        const param = queryParams.get('endDate');
+        if (param === null) return todayStr;
+        return param;
+    }, [queryParams, todayStr]);
+
     const [activeTab, setActiveTab] = useState(() => {
         if (initialTab === 'returns' || initialTab === 'history') return initialTab;
-        return searchParams.get('tab') === 'returns' ? 'returns' : 'history';
+        return queryParams.get('tab') === 'returns' ? 'returns' : 'history';
     });
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);
         // Preserve date filters when switching tabs
         const preserved = {};
-        if (searchParams.get('startDate')) preserved.startDate = searchParams.get('startDate');
-        if (searchParams.get('endDate')) preserved.endDate = searchParams.get('endDate');
+        if (queryParams.get('startDate') !== null) preserved.startDate = queryParams.get('startDate');
+        if (queryParams.get('endDate') !== null) preserved.endDate = queryParams.get('endDate');
         if (tab === 'returns') {
             setSearchParams({ ...preserved, tab: 'returns' });
         } else {
@@ -429,20 +452,18 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
     const [totalItems, setTotalItems] = useState(0);
     const [pageSize, setPageSize] = useState(10);
 
-    // Filters — pre-populated from URL query params (e.g. navigating from dashboard)
+    // Filters — pre-populated from URL query params (e.g. navigating from dashboard or default today)
     const [showFilter, setShowFilter] = useState(false);
     const [sortBy, setSortBy] = useState('createdAt');
     const [sortOrder, setSortOrder] = useState('desc');
-    const [startDate, setStartDate] = useState(() => searchParams.get('startDate') || '');
-    const [endDate, setEndDate] = useState(() => searchParams.get('endDate') || '');
+    const [startDate, setStartDate] = useState(urlStartDate);
+    const [endDate, setEndDate] = useState(urlEndDate);
 
-    // When URL params change (e.g. user navigates back with different dates), sync state
+    // When URL query params change (e.g. user navigates from dashboard or clicks cards), sync state
     useEffect(() => {
-        const urlStart = searchParams.get('startDate') || '';
-        const urlEnd = searchParams.get('endDate') || '';
-        setStartDate(prev => prev !== urlStart ? urlStart : prev);
-        setEndDate(prev => prev !== urlEnd ? urlEnd : prev);
-    }, [searchParams]);
+        setStartDate(urlStartDate);
+        setEndDate(urlEndDate);
+    }, [urlStartDate, urlEndDate]);
 
     const { branches, organization } = useApp();
     const [selectedOrder, setSelectedOrder] = useState(null);
@@ -493,7 +514,7 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 printedAt: formatDate(new Date()),
             };
 
-            printBill({
+            printBillA4({
                 header,
                 meta,
                 items,
@@ -556,6 +577,15 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
         setExpandedOrders(prev => ({ ...prev, [orderId]: !prev[orderId] }));
     };
 
+    const [summaryData, setSummaryData] = useState({ totalSale: 0, totalProfit: 0, count: 0, hasPurchaseData: false });
+
+    const isTodayFilter = useMemo(() => {
+        if (!startDate && !endDate) return false;
+        const s = startDate || todayStr;
+        const e = endDate || todayStr;
+        return s === todayStr && e === todayStr;
+    }, [startDate, endDate, todayStr]);
+
     const fetchSales = useCallback(async () => {
         const resolvedShopId = user?.shopId || user?.shop_id;
         if (!resolvedShopId) return;
@@ -578,6 +608,26 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                     setSales(response.data);
                     setTotalPages(response.pagination?.totalPages || 1);
                     setTotalItems(response.pagination?.total || 0);
+                    if (response.summary) {
+                        setSummaryData(response.summary);
+                    } else {
+                        let totalSale = 0;
+                        let totalCost = 0;
+                        let hasPurchaseData = false;
+                        response.data.forEach(order => {
+                            totalSale += order.grandTotal || 0;
+                            if (order.items?.length) {
+                                order.items.forEach(item => {
+                                    const pp = item.itemId?.pricing?.purchasePrice;
+                                    if (pp !== undefined && pp !== null) {
+                                        hasPurchaseData = true;
+                                        totalCost += pp * (item.quantity || 1);
+                                    }
+                                });
+                            }
+                        });
+                        setSummaryData({ totalSale, totalProfit: totalSale - totalCost, count: response.pagination?.total || response.data.length, hasPurchaseData });
+                    }
                 } else {
                     // legacy fallback if server not yet updated
                     setSales(Array.isArray(response) ? response : []);
@@ -617,6 +667,7 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
         setStartDate('');
         setEndDate('');
         setCurrentPage(1);
+        setSearchParams({ startDate: '', endDate: '' });
     };
 
     const activeFilterCount = [
@@ -640,27 +691,7 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
         setIsEditSheetOpen(true);
     };
 
-    // Compute summary totals from loaded sales (current page)
-    const summary = useMemo(() => {
-        if (!sales.length) return { totalSale: 0, totalProfit: 0, count: totalItems, hasPurchaseData: false };
-        let totalSale = 0;
-        let totalCost = 0;
-        let hasPurchaseData = false;
-        sales.forEach(order => {
-            totalSale += order.grandTotal || 0;
-            if (order.items?.length) {
-                order.items.forEach(item => {
-                    const pp = item.itemId?.pricing?.purchasePrice;
-                    if (pp !== undefined && pp !== null) {
-                        hasPurchaseData = true;
-                        totalCost += pp * (item.quantity || 1);
-                    }
-                });
-            }
-        });
-        // If no purchase price data available, fall back to 0 cost (just show gross)
-        return { totalSale, totalProfit: totalSale - totalCost, count: totalItems, hasPurchaseData };
-    }, [sales, totalItems]);
+    const summary = summaryData;
 
     return (
         <div className="p-4 md:p-8 space-y-6 md:space-y-8 min-h-full animate-in fade-in duration-500">
@@ -679,7 +710,7 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                             <Calendar size={12} />
                             {startDate === endDate ? `Showing: ${startDate}` : `${startDate || '—'} → ${endDate || '—'}`}
                             <button
-                                onClick={() => { setStartDate(''); setEndDate(''); setSearchParams({}); }}
+                                onClick={() => { setStartDate(''); setEndDate(''); setSearchParams({ startDate: '', endDate: '' }); }}
                                 className="ml-1 hover:text-red-500 transition-colors"
                                 title="Clear date filter"
                             >
@@ -821,7 +852,9 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                             <Receipt size={20} className="text-indigo-500" />
                         </div>
                         <div className="min-w-0">
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Total Sales</p>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                {isTodayFilter ? "Today's Sales" : "Total Sales"}
+                            </p>
                             <p className={`text-xl font-black ${theme.textHeading}`}>{fmt(summary.totalSale)}</p>
                             <p className={`text-[11px] font-bold ${theme.textMuted}`}>{summary.count} invoice{summary.count !== 1 ? 's' : ''}</p>
                         </div>
@@ -838,7 +871,9 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                             }
                         </div>
                         <div className="min-w-0">
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Est. Profit</p>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                {isTodayFilter ? "Today Profit" : "Est. Profit"}
+                            </p>
                             {summary.hasPurchaseData ? (
                                 <>
                                     <p className={`text-xl font-black ${summary.totalProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { ALL_FIELDS } from '../../config/itemFields';
-import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft, ClipboardList, ChevronDown, Package, FilePlus, Barcode, Scan, Printer, Tag, Layers, Settings, Building2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft, ClipboardList, ChevronDown, Package, FilePlus, Barcode, Scan, Printer, Tag, Layers, Settings, Building2, AlertTriangle, ArrowRight, Calculator, UserCheck, Truck, Coins, DollarSign } from 'lucide-react';
 import { api, attributeService, unitService, shopService, categoryService, itemService, branchService, taxService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
@@ -486,7 +486,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         isExclusiveTax: full.isExclusiveTax ?? false,
                         isSellable: full.isSellable ?? true,
                         portionPricing: full.portionPricing || [],
-                        inventoryMode: full.inventoryMode || "shared"
+                        inventoryMode: full.inventoryMode || "shared",
+                        labourCost: full.labourCost ?? 0,
+                        travelExpense: full.travelExpense ?? 0,
+                        otherCost: full.otherCost ?? 0,
+                        wastageCost: full.wastageCost ?? 0
                     };
                     setFormData(flat);
                     setHasVariants((full.portionPricing || []).length > 0);
@@ -1245,7 +1249,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             portionPricing: sanitizedPortionPricing,
             conversionFactor: parseFloat(formData.conversionFactor) || 1,
             defaultPurchaseUnit: formData.defaultPurchaseUnit || "PRIMARY",
-            defaultSalesUnit: formData.defaultSalesUnit || "PRIMARY"
+            defaultSalesUnit: formData.defaultSalesUnit || "PRIMARY",
+            labourCost: parseFloat(formData.labourCost || 0),
+            travelExpense: parseFloat(formData.travelExpense || 0),
+            otherCost: parseFloat(formData.otherCost || 0),
+            wastageCost: parseFloat(formData.wastageCost || 0)
         };
 
         try {
@@ -2567,6 +2575,80 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                     </table>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* Manufacturing Overhead & Additional Expenses (for Manufactured items) */}
+                    {showRecipe && (
+                        <div className="mt-8">
+                            <div className="flex items-center gap-4 mb-2">
+                                <Calculator className="text-indigo-500" size={24} />
+                                <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Manufacturing & Overhead Expenses</h4>
+                                <div className={`flex-1 h-px ${theme.borderLight}`}></div>
+                            </div>
+                            <p className={`text-sm ${theme.textMuted} mb-6`}>Enter additional direct expenses incurred when producing this manufactured product.</p>
+
+                            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-5 rounded-2xl border ${theme.borderLight} ${theme.surfaceBg}`}>
+                                {/* Labour Charge */}
+                                <div>
+                                    <label className={`text-[11px] font-black ${theme.textSecondary} uppercase tracking-wider mb-2 flex items-center gap-1.5`}>
+                                        <UserCheck size={14} className="text-blue-500" /> Labour Charge (₹)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        onWheel={(e) => e.target.blur()}
+                                        value={formData.labourCost ?? ''}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, labourCost: e.target.value }))}
+                                        placeholder="0.00"
+                                        className={`w-full h-11 px-3.5 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500 text-sm`}
+                                    />
+                                </div>
+
+                                {/* Travel Expense */}
+                                <div>
+                                    <label className={`text-[11px] font-black ${theme.textSecondary} uppercase tracking-wider mb-2 flex items-center gap-1.5`}>
+                                        <Truck size={14} className="text-indigo-500" /> Travel Expense (₹)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        onWheel={(e) => e.target.blur()}
+                                        value={formData.travelExpense ?? ''}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, travelExpense: e.target.value }))}
+                                        placeholder="0.00"
+                                        className={`w-full h-11 px-3.5 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500 text-sm`}
+                                    />
+                                </div>
+
+                                {/* Other Expense */}
+                                <div>
+                                    <label className={`text-[11px] font-black ${theme.textSecondary} uppercase tracking-wider mb-2 flex items-center gap-1.5`}>
+                                        <DollarSign size={14} className="text-amber-500" /> Other Expense (₹)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        onWheel={(e) => e.target.blur()}
+                                        value={formData.otherCost ?? ''}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, otherCost: e.target.value }))}
+                                        placeholder="0.00"
+                                        className={`w-full h-11 px-3.5 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500 text-sm`}
+                                    />
+                                </div>
+
+                                {/* Material Usage Wastage */}
+                                <div>
+                                    <label className={`text-[11px] font-black ${theme.textSecondary} uppercase tracking-wider mb-2 flex items-center gap-1.5`}>
+                                        <Trash2 size={14} className="text-rose-500" /> Material Wastage Cost (₹)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        onWheel={(e) => e.target.blur()}
+                                        value={formData.wastageCost ?? ''}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, wastageCost: e.target.value }))}
+                                        placeholder="0.00"
+                                        className={`w-full h-11 px-3.5 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500 text-sm`}
+                                    />
+                                </div>
+                            </div>
                         </div>
                     )}
 
