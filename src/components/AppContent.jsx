@@ -28,6 +28,8 @@ import api, { itemService, orderService, settingService, tableService, employeeS
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
 import { announceItemAdded, playCoinDropSound } from "../utils/soundService";
 import { TextProvider } from "../context/TextContext";
+import { TutorialProvider } from "../context/TutorialContext";
+import { TutorialOverlay } from "./tutorial/TutorialOverlay";
 import { useTheme } from "../context/ThemeContext";
 import { BUSINESS_TYPES, BUSINESS_FEATURES } from "../config/businessTypes";
 import { AlertTriangle, X } from "lucide-react";
@@ -2298,8 +2300,10 @@ const AppContent = () => {
             </div>
 
             <TextProvider>
-                <Layout
-                    view={view}
+                <TutorialProvider>
+                    <TutorialOverlay />
+                    <Layout
+                        view={view}
                     setView={setView}
                     currentUser={currentUser}
                     handleLogout={handleLogout}
@@ -2403,7 +2407,8 @@ const AppContent = () => {
                         refreshData={refreshData}
                     />
                 </Layout>
-            </TextProvider>
+            </TutorialProvider>
+        </TextProvider>
 
             {/* Modals */}
             <CustomizationModal

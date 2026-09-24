@@ -184,6 +184,7 @@ const DiningHall = ({
           ) : (
             <button
               onClick={toggleJoinMode}
+              data-tour="dining-jointables"
               className={`${theme.surfaceBg} border-2 ${theme.borderLight} ${theme.linkText} px-4 py-2 rounded-2xl font-bold ${theme.sidebarItemHoverBg} transition-colors flex-1 md:flex-none text-center`}
             >
               Join Tables

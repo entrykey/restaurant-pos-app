@@ -1363,6 +1363,7 @@ const Inventory = ({
                                 </button>
                                 <button
                                     onClick={handleOpenAddModal}
+                                    data-tour="inventory-add-btn"
                                     className={`px-3 md:px-5 py-3 rounded-xl font-black text-sm shadow-lg text-white transition-all flex items-center justify-center gap-2
                                     ${activeTab === "menu" ? "bg-indigo-600 hover:bg-indigo-700" : (activeTab === "raw" ? "bg-orange-500 hover:bg-orange-600" : "bg-emerald-600 hover:bg-emerald-700")}
                                 `}
