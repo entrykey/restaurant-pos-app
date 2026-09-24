@@ -495,6 +495,7 @@ const Sidebar = ({
                         )}
                         <button
                             onClick={config.isGroup ? toggle : config.onClick}
+                            data-tour={`sidebar-${key.toLowerCase()}`}
                             className={`transition-all duration-300 ease-out flex items-center w-full ${isExpanded
                                 ? 'p-3 md:p-3.5 gap-3.5 justify-start rounded-xl md:rounded-2xl'
                                 : 'py-2 px-1 justify-center gap-0.5 flex-col rounded-2xl w-16 h-16 md:w-16 md:h-16 mx-auto'
@@ -525,6 +526,7 @@ const Sidebar = ({
                                     <button
                                         key={childKey}
                                         onClick={onClick}
+                                        data-tour={`sidebar-${childKey.toLowerCase()}`}
                                         className={`relative mx-4 md:mx-6 px-3.5 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-3 ${isActive ? `${theme.sidebarItemActiveBg} shadow-md scale-[1.02]` : `${theme.sidebarItemHoverBg} opacity-80 hover:opacity-100`}`}
                                     >
                                         {isActive && (
@@ -574,6 +576,7 @@ const Sidebar = ({
                 )}
                 <button
                     onClick={onClick}
+                    data-tour={`sidebar-${key.toLowerCase()}`}
                     className={`transition-all duration-300 ease-out flex items-center w-full ${isExpanded
                         ? 'p-3 md:p-3.5 gap-3.5 justify-start rounded-xl md:rounded-2xl'
                         : 'py-2 px-1 justify-center gap-0.5 flex-col rounded-2xl w-16 h-16 md:w-16 md:h-16 mx-auto'

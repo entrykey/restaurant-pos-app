@@ -1960,6 +1960,7 @@ const TakeawayOrder = ({
                             {(hasPermission("orders.ORDERS.KOS") || hasPermission("orders.kos")) && (
                                 <button
                                     type="button"
+                                    data-tour="pos-kot-btn"
                                     onClick={handleSendToKOT}
                                     disabled={currentOrder.items.length === 0 || !hasPendingKitchenItems || isSubmittingKOT}
                                     title={
@@ -2001,6 +2002,7 @@ const TakeawayOrder = ({
                                 </button>
                             )}
                             <button
+                                data-tour="pos-pay-btn"
                                 onClick={() => {
                                     const zeroPriceItem = deduplicatedOrderItems.find(item => {
                                         const lineTotal = calculateItemTotal(item);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ShieldCheck, Plus, X, ChevronDown, ChevronUp, Clock, AlertCircle, Calendar, RefreshCw, Wallet } from "lucide-react";
+import { ShieldCheck, Plus, X, ChevronDown, ChevronUp, Clock, AlertCircle, Calendar, RefreshCw, Wallet, Sliders, Code, MapPin, Check } from "lucide-react";
 import ThemeLoader from "../../components/ui/ThemeLoader";
 import toast from "react-hot-toast";
 import CommonTable from "../../components/CommonTable";
@@ -65,26 +65,169 @@ const Staff = ({
     const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
     const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
 
+    const DEFAULT_POLICY_RULES = {
+        shiftStartLocal: "09:00",
+        shiftEndLocal: "18:00",
+        graceMinutes: 10,
+        halfDayMinutes: 240,
+        fullDayMinutes: 480,
+        weeklyOffDays: [0], // 0 = Sunday
+        overtimeAfterMinutes: 480,
+        overtimeRequiresApproval: false,
+        gpsRequired: false,
+        geoFenceMeters: 100,
+        minVisits: 0,
+        minTasks: 0,
+    };
+
+    const parseRulesToStructured = (rawRules = {}) => {
+        return {
+            shiftStartLocal: rawRules.shiftStartLocal || rawRules.shiftStartTime || "09:00",
+            shiftEndLocal: rawRules.shiftEndLocal || rawRules.shiftEndTime || "18:00",
+            graceMinutes: rawRules.graceMinutes !== undefined ? Number(rawRules.graceMinutes) : 10,
+            halfDayMinutes: rawRules.halfDayMinutes !== undefined ? Number(rawRules.halfDayMinutes) : (rawRules.halfDayHours ? Number(rawRules.halfDayHours) * 60 : 240),
+            fullDayMinutes: rawRules.fullDayMinutes !== undefined ? Number(rawRules.fullDayMinutes) : (rawRules.fullDayHours ? Number(rawRules.fullDayHours) * 60 : 480),
+            weeklyOffDays: Array.isArray(rawRules.weeklyOffDays) ? rawRules.weeklyOffDays : [0],
+            overtimeAfterMinutes: rawRules.overtimeAfterMinutes !== undefined ? Number(rawRules.overtimeAfterMinutes) : (rawRules.overtimeAfterHours ? Number(rawRules.overtimeAfterHours) * 60 : 480),
+            overtimeRequiresApproval: Boolean(rawRules.overtimeRequiresApproval),
+            gpsRequired: Boolean(rawRules.gpsRequired),
+            geoFenceMeters: rawRules.geoFenceMeters !== undefined ? Number(rawRules.geoFenceMeters) : 100,
+            minVisits: rawRules.minVisits !== undefined ? Number(rawRules.minVisits) : 0,
+            minTasks: rawRules.minTasks !== undefined ? Number(rawRules.minTasks) : 0,
+        };
+    };
+
+    const convertStructuredToRules = (struct) => {
+        return {
+            shiftStartLocal: struct.shiftStartLocal || "09:00",
+            shiftEndLocal: struct.shiftEndLocal || "18:00",
+            graceMinutes: Number(struct.graceMinutes) || 0,
+            halfDayMinutes: Number(struct.halfDayMinutes) || 240,
+            fullDayMinutes: Number(struct.fullDayMinutes) || 480,
+            weeklyOffDays: Array.isArray(struct.weeklyOffDays) ? struct.weeklyOffDays : [0],
+            overtimeAfterMinutes: Number(struct.overtimeAfterMinutes) || 480,
+            overtimeRequiresApproval: Boolean(struct.overtimeRequiresApproval),
+            gpsRequired: Boolean(struct.gpsRequired),
+            geoFenceMeters: Number(struct.geoFenceMeters) || 100,
+            minVisits: Number(struct.minVisits) || 0,
+            minTasks: Number(struct.minTasks) || 0,
+        };
+    };
+
     const [isCreatePolicyOpen, setIsCreatePolicyOpen] = useState(false);
+    const [editingPolicy, setEditingPolicy] = useState(null);
+    const [ruleEditorMode, setRuleEditorMode] = useState("FORM"); // "FORM" or "JSON"
+    const [structuredRules, setStructuredRules] = useState(DEFAULT_POLICY_RULES);
     const [policyForm, setPolicyForm] = useState({
         branchId: "",
         name: "",
         description: "",
         status: "ACTIVE",
         isDefault: false,
-        policyType: "SHIFT",
-        rules: {
-            shiftStartLocal: "09:00",
-            shiftEndLocal: "18:00",
-            graceMinutes: 10,
-            halfDayMinutes: 240,
-            fullDayMinutes: 480,
-            weeklyOffDays: [0],
-            overtimeAfterMinutes: 480,
-            overtimeRequiresApproval: false
-        }
+        policyType: "SHIFT"
     });
     const [rulesJsonText, setRulesJsonText] = useState("");
+
+    const updateStructuredRule = (key, value) => {
+        setStructuredRules((prev) => {
+            const next = { ...prev, [key]: value };
+            setRulesJsonText(JSON.stringify(convertStructuredToRules(next), null, 2));
+            return next;
+        });
+    };
+
+    const toggleWeeklyOffDay = (dayId) => {
+        setStructuredRules((prev) => {
+            const current = Array.isArray(prev.weeklyOffDays) ? prev.weeklyOffDays : [];
+            const nextDays = current.includes(dayId)
+                ? current.filter((d) => d !== dayId)
+                : [...current, dayId].sort((a, b) => a - b);
+            const next = { ...prev, weeklyOffDays: nextDays };
+            setRulesJsonText(JSON.stringify(convertStructuredToRules(next), null, 2));
+            return next;
+        });
+    };
+
+    const openCreatePolicy = () => {
+        setEditingPolicy(null);
+        setPolicyForm({
+            branchId: attendanceBranchId || "",
+            name: "",
+            description: "",
+            status: "ACTIVE",
+            isDefault: false,
+            policyType: "SHIFT"
+        });
+        const defaultStruct = { ...DEFAULT_POLICY_RULES };
+        setStructuredRules(defaultStruct);
+        setRulesJsonText(JSON.stringify(convertStructuredToRules(defaultStruct), null, 2));
+        setRuleEditorMode("FORM");
+        setIsCreatePolicyOpen(true);
+    };
+
+    const openEditPolicy = (policy) => {
+        setEditingPolicy(policy);
+        setPolicyForm({
+            branchId: policy.branchId?._id || policy.branchId || "",
+            name: policy.name || "",
+            description: policy.description || "",
+            status: policy.status || "ACTIVE",
+            isDefault: !!policy.isDefault,
+            policyType: policy.policyType || "SHIFT"
+        });
+        const parsedStruct = parseRulesToStructured(policy.rules || {});
+        setStructuredRules(parsedStruct);
+        setRulesJsonText(JSON.stringify(policy.rules || convertStructuredToRules(parsedStruct), null, 2));
+        setRuleEditorMode("FORM");
+        setIsCreatePolicyOpen(true);
+    };
+
+    const handleSavePolicy = async () => {
+        if (!policyForm.name?.trim()) {
+            toast.error("Policy name is required");
+            return;
+        }
+
+        let finalRules = {};
+        if (ruleEditorMode === "JSON") {
+            try {
+                finalRules = rulesJsonText ? JSON.parse(rulesJsonText) : {};
+            } catch (e) {
+                toast.error("Invalid Rules JSON syntax. Please check syntax or switch to Form view.");
+                return;
+            }
+        } else {
+            finalRules = convertStructuredToRules(structuredRules);
+        }
+
+        const payload = {
+            branchId: policyForm.branchId || null,
+            name: policyForm.name.trim(),
+            description: policyForm.description,
+            status: policyForm.status,
+            isDefault: policyForm.isDefault,
+            policyType: policyForm.policyType,
+            rules: finalRules
+        };
+
+        try {
+            if (editingPolicy) {
+                const policyId = editingPolicy._id || editingPolicy.id;
+                await attendanceService.updatePolicy(policyId, payload);
+                toast.success("Attendance Policy updated successfully!");
+            } else {
+                await attendanceService.createPolicy(payload);
+                toast.success("Attendance Policy created successfully!");
+            }
+            setIsCreatePolicyOpen(false);
+            setEditingPolicy(null);
+            await refreshAttendanceData();
+        } catch (err) {
+            console.error("Failed to save attendance policy:", err);
+            const errMsg = typeof err === "string" ? err : (err.message || err.response?.data?.message || "Failed to save attendance policy");
+            toast.error(errMsg);
+        }
+    };
 
     const [isAssignPolicyOpen, setIsAssignPolicyOpen] = useState(false);
     const [assignForm, setAssignForm] = useState({
@@ -448,10 +591,7 @@ const Staff = ({
         }
     }, [activeStaffTab, refreshAttendanceData, refreshAttendanceLogs]);
 
-    useEffect(() => {
-        if (!isCreatePolicyOpen) return;
-        setRulesJsonText(JSON.stringify(policyForm.rules || {}, null, 2));
-    }, [isCreatePolicyOpen]);
+
 
     // Fetch Permissions only for Role Dialog
     useEffect(() => {
@@ -1173,6 +1313,7 @@ const Staff = ({
                 <div className="flex gap-3 w-full md:w-auto">
                     {activeStaffTab === "staff" ? (
                         <button
+                            data-tour="staff-add-btn"
                             onClick={() => checkSubscriptionAndOpen(() => {
                                 // Reset employee data safely so salary structure is preserved
                                 setNewEmpData({ name: "", email: "", phone: "", password: "", roleId: "", designation: "", reportingTo: "", attendancePolicyId: "", salary: { amount: "", period: "monthly" }, address: { line1: "", city: "", state: "", pincode: "" } });
@@ -1216,18 +1357,7 @@ const Staff = ({
                         </div>
                     ) : activeStaffTab === "attendance_policies" ? (
                         <button
-                            onClick={() => {
-                                setPolicyForm((prev) => ({
-                                    ...prev,
-                                    branchId: attendanceBranchId || "",
-                                    name: "",
-                                    description: "",
-                                    status: "ACTIVE",
-                                    isDefault: false,
-                                    policyType: "SHIFT",
-                                }));
-                                setIsCreatePolicyOpen(true);
-                            }}
+                            onClick={openCreatePolicy}
                             className={`${theme.buttonBg} ${theme.buttonText} w-full md:w-auto justify-center px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg ${theme.buttonHoverBg} transition-all`}
                         >
                             <Plus size={20} /> Add Policy
@@ -1240,12 +1370,14 @@ const Staff = ({
                 <div className={`flex gap-2 sm:gap-4 p-2 rounded-2xl shadow-sm w-full max-w-full overflow-x-auto hide-scrollbar whitespace-nowrap ${theme.surfaceBg}`}>
                     <button
                         onClick={() => setActiveStaffTab("staff")}
+                        data-tour="staff-tab-members"
                         className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 flex-shrink-0 ${activeStaffTab === "staff" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                     >
                         <ShieldCheck size={18} /> Staff Members
                     </button>
                     <button
                         onClick={() => setActiveStaffTab("roles")}
+                        data-tour="staff-tab-roles"
                         className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 flex-shrink-0 ${activeStaffTab === "roles" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                     >
                         <ShieldCheck size={18} /> Roles
@@ -1253,6 +1385,7 @@ const Staff = ({
                     {canViewPolicies && (
                         <button
                             onClick={() => setActiveStaffTab("attendance_policies")}
+                            data-tour="staff-tab-policies"
                             className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 flex-shrink-0 ${activeStaffTab === "attendance_policies" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                         >
                             <ShieldCheck size={18} /> Attendance Policies
@@ -1261,6 +1394,7 @@ const Staff = ({
                     {canViewLogs && (
                         <button
                             onClick={() => setActiveStaffTab("attendance_logs")}
+                            data-tour="staff-tab-logs"
                             className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative flex-shrink-0 ${activeStaffTab === "attendance_logs" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                         >
                             <ShieldCheck size={18} /> Attendance Logs
@@ -1274,6 +1408,7 @@ const Staff = ({
                     {canManageLeaves && (
                         <button
                             onClick={() => setActiveStaffTab("employee_leaves")}
+                            data-tour="staff-tab-leaves"
                             className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative flex-shrink-0 ${activeStaffTab === "employee_leaves" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                         >
                             <Calendar size={18} /> Employee Leaves
@@ -1287,6 +1422,7 @@ const Staff = ({
                     {canManageSalary && (
                         <button
                             onClick={() => setActiveStaffTab("payroll")}
+                            data-tour="staff-tab-payroll"
                             className={`px-4 sm:px-6 py-3 rounded-xl font-black transition-all flex items-center gap-2 relative flex-shrink-0 ${activeStaffTab === "payroll" ? `${theme.primaryIconBg} ${theme.primaryIconText}` : `${theme.textSecondary} hover:opacity-80`}`}
                         >
                             <Wallet size={18} /> Payroll
@@ -1698,6 +1834,13 @@ const Staff = ({
                                         <div className="flex justify-end gap-3">
                                             <button
                                                 type="button"
+                                                onClick={() => openEditPolicy(p)}
+                                                className={`font-bold text-sm text-indigo-600 dark:text-indigo-400 hover:underline`}
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                type="button"
                                                 onClick={() => {
                                                     setAssignForm((prev) => ({
                                                         ...prev,
@@ -1718,8 +1861,9 @@ const Staff = ({
                                                         const nextStatus = p.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
                                                         await attendanceService.updatePolicyStatus(p._id, nextStatus);
                                                         await refreshAttendanceData();
+                                                        toast.success(`Policy ${nextStatus === "ACTIVE" ? "enabled" : "disabled"}`);
                                                     } catch (err) {
-                                                        alert("Failed to update status");
+                                                        toast.error("Failed to update status");
                                                     }
                                                 }}
                                                 className="font-bold text-sm text-gray-500 hover:underline"
@@ -2139,17 +2283,19 @@ const Staff = ({
             ) : null}
 
 
-            {/* Create Policy Modal */}
+            {/* Create / Edit Policy Modal */}
             {isCreatePolicyOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                     <div className={`${theme.surfaceBg} rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border ${theme.borderLight}`}>
                         <div className={`p-4 border-b ${theme.borderLight} flex justify-between items-center ${theme.inputBg}`}>
-                            <h3 className={`text-xl font-bold ${theme.textHeading}`}>Create Attendance Policy</h3>
-                            <button onClick={() => setIsCreatePolicyOpen(false)} className={`${theme.textSecondary} hover:text-red-500`}>
+                            <h3 className={`text-xl font-bold ${theme.textHeading}`}>
+                                {editingPolicy ? "Edit Attendance Policy" : "Create Attendance Policy"}
+                            </h3>
+                            <button onClick={() => { setIsCreatePolicyOpen(false); setEditingPolicy(null); }} className={`${theme.textSecondary} hover:text-red-500`}>
                                 <X size={24} />
                             </button>
                         </div>
-                        <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                        <div className="p-6 overflow-y-auto flex-1 space-y-5">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Branch</label>
@@ -2179,7 +2325,7 @@ const Staff = ({
                                     />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Name *</label>
+                                    <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Policy Name *</label>
                                     <input
                                         value={policyForm.name}
                                         onChange={(e) => setPolicyForm((p) => ({ ...p, name: e.target.value }))}
@@ -2193,7 +2339,7 @@ const Staff = ({
                                         value={policyForm.description}
                                         onChange={(e) => setPolicyForm((p) => ({ ...p, description: e.target.value }))}
                                         className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus}`}
-                                        placeholder="Optional"
+                                        placeholder="Optional policy summary"
                                     />
                                 </div>
                             </div>
@@ -2202,59 +2348,285 @@ const Staff = ({
                                 <div className="flex items-start gap-3">
                                     <input
                                         type="checkbox"
+                                        id="makeDefaultToggle"
                                         checked={policyForm.isDefault}
                                         onChange={(e) => setPolicyForm((p) => ({ ...p, isDefault: e.target.checked }))}
                                         className={`w-5 h-5 mt-0.5 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
                                     />
                                     <div>
-                                        <div className={`font-bold ${theme.textPrimary}`}>Make Default</div>
-                                        <div className={`text-xs ${theme.textSecondary}`}>Default policy is used when no assignment matches an employee.</div>
+                                        <label htmlFor="makeDefaultToggle" className={`font-bold ${theme.textPrimary} cursor-pointer`}>Make Default</label>
+                                        <div className={`text-xs ${theme.textSecondary}`}>Default policy is used when no explicit assignment matches an employee.</div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div>
-                                <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Rules JSON</label>
-                                <textarea
-                                    value={rulesJsonText}
-                                    onChange={(e) => setRulesJsonText(e.target.value)}
-                                    className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-mono text-xs`}
-                                    rows={10}
-                                />
-                                <div className={`text-xs ${theme.textSecondary} mt-2`}>
-                                    Keys supported: `shiftStartLocal`, `shiftEndLocal`, `graceMinutes`, `weeklyOffDays`, `overtimeAfterMinutes`, `gpsRequired`, `geoFenceMeters`, `minVisits`, `minTasks`, etc.
+                            {/* Rules Configuration Header & Mode Switch */}
+                            <div className={`p-4 rounded-xl border ${theme.borderLight} ${theme.surfaceBg} space-y-4`}>
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-gray-200 dark:border-gray-700">
+                                    <div>
+                                        <h4 className={`text-base font-black ${theme.textHeading} flex items-center gap-2`}>
+                                            <Sliders size={18} className={theme.primaryIconText} /> Policy Rules Configuration
+                                        </h4>
+                                        <p className={`text-xs ${theme.textSecondary}`}>
+                                            Configure shift timings, work hours, overtime, and weekly off days.
+                                        </p>
+                                    </div>
+                                    <div className="flex bg-black/5 dark:bg-white/10 p-1 rounded-xl gap-1 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (ruleEditorMode === "JSON") {
+                                                    try {
+                                                        const parsed = rulesJsonText ? JSON.parse(rulesJsonText) : {};
+                                                        setStructuredRules(parseRulesToStructured(parsed));
+                                                    } catch (e) {
+                                                        toast.error("Invalid JSON syntax. Fix syntax errors before switching to Visual Form.");
+                                                        return;
+                                                    }
+                                                }
+                                                setRuleEditorMode("FORM");
+                                            }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                                ruleEditorMode === "FORM"
+                                                    ? `${theme.buttonBg} ${theme.buttonText} shadow-sm`
+                                                    : `${theme.textSecondary} hover:${theme.textPrimary}`
+                                            }`}
+                                        >
+                                            <Sliders size={14} /> Visual Form
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const currentStruct = { ...structuredRules };
+                                                setRulesJsonText(JSON.stringify(convertStructuredToRules(currentStruct), null, 2));
+                                                setRuleEditorMode("JSON");
+                                            }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                                ruleEditorMode === "JSON"
+                                                    ? `${theme.buttonBg} ${theme.buttonText} shadow-sm`
+                                                    : `${theme.textSecondary} hover:${theme.textPrimary}`
+                                            }`}
+                                        >
+                                            <Code size={14} /> JSON (Advanced)
+                                        </button>
+                                    </div>
                                 </div>
+
+                                {ruleEditorMode === "FORM" ? (
+                                    <div className="space-y-5">
+                                        {/* Shift Timings & Grace */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <Clock size={16} className={theme.primaryIconText} />
+                                                <span className={`text-xs font-black uppercase tracking-wider ${theme.textHeading}`}>Shift Schedule & Grace</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                <div>
+                                                    <label className={`block text-xs font-bold ${theme.textSecondary} mb-1`}>Shift Start Time</label>
+                                                    <input
+                                                        type="time"
+                                                        value={structuredRules.shiftStartLocal || "09:00"}
+                                                        onChange={(e) => updateStructuredRule("shiftStartLocal", e.target.value)}
+                                                        className={`w-full p-2.5 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl text-sm font-semibold outline-none ${theme.inputFocus}`}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className={`block text-xs font-bold ${theme.textSecondary} mb-1`}>Shift End Time</label>
+                                                    <input
+                                                        type="time"
+                                                        value={structuredRules.shiftEndLocal || "18:00"}
+                                                        onChange={(e) => updateStructuredRule("shiftEndLocal", e.target.value)}
+                                                        className={`w-full p-2.5 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl text-sm font-semibold outline-none ${theme.inputFocus}`}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className={`block text-xs font-bold ${theme.textSecondary} mb-1`}>Grace Period (Mins)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        value={structuredRules.graceMinutes}
+                                                        onChange={(e) => updateStructuredRule("graceMinutes", Math.max(0, parseInt(e.target.value) || 0))}
+                                                        className={`w-full p-2.5 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl text-sm font-semibold outline-none ${theme.inputFocus}`}
+                                                        placeholder="e.g. 10"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Work Hours & Overtime */}
+                                        <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700/60">
+                                            <div className="flex items-center gap-2">
+                                                <Clock size={16} className={theme.primaryIconText} />
+                                                <span className={`text-xs font-black uppercase tracking-wider ${theme.textHeading}`}>Work Hours & Overtime</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                <div>
+                                                    <label className={`block text-xs font-bold ${theme.textSecondary} mb-1`}>Full Day Duration (Hours)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.5"
+                                                        min="0.5"
+                                                        max="24"
+                                                        value={(structuredRules.fullDayMinutes / 60) || 8}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value) || 0;
+                                                            updateStructuredRule("fullDayMinutes", Math.round(val * 60));
+                                                        }}
+                                                        className={`w-full p-2.5 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl text-sm font-semibold outline-none ${theme.inputFocus}`}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className={`block text-xs font-bold ${theme.textSecondary} mb-1`}>Half Day Duration (Hours)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.5"
+                                                        min="0.5"
+                                                        max="24"
+                                                        value={(structuredRules.halfDayMinutes / 60) || 4}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value) || 0;
+                                                            updateStructuredRule("halfDayMinutes", Math.round(val * 60));
+                                                        }}
+                                                        className={`w-full p-2.5 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl text-sm font-semibold outline-none ${theme.inputFocus}`}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className={`block text-xs font-bold ${theme.textSecondary} mb-1`}>Overtime Threshold (Hours)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.5"
+                                                        min="0"
+                                                        max="24"
+                                                        value={(structuredRules.overtimeAfterMinutes / 60) || 8}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value) || 0;
+                                                            updateStructuredRule("overtimeAfterMinutes", Math.round(val * 60));
+                                                        }}
+                                                        className={`w-full p-2.5 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl text-sm font-semibold outline-none ${theme.inputFocus}`}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2.5 pt-1">
+                                                <input
+                                                    type="checkbox"
+                                                    id="overtimeRequiresApproval"
+                                                    checked={structuredRules.overtimeRequiresApproval}
+                                                    onChange={(e) => updateStructuredRule("overtimeRequiresApproval", e.target.checked)}
+                                                    className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
+                                                />
+                                                <label htmlFor="overtimeRequiresApproval" className={`text-xs font-bold ${theme.textPrimary} cursor-pointer`}>
+                                                    Require Reporting Staff / Manager Approval for Overtime
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {/* Weekly Off Days */}
+                                        <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700/60">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Calendar size={16} className={theme.primaryIconText} />
+                                                    <span className={`text-xs font-black uppercase tracking-wider ${theme.textHeading}`}>Weekly Off Days</span>
+                                                </div>
+                                                <span className={`text-[10px] font-bold ${theme.textSecondary}`}>
+                                                    {structuredRules.weeklyOffDays.length === 0
+                                                        ? "No Weekly Off"
+                                                        : `${structuredRules.weeklyOffDays.length} Day(s) Selected`}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {[
+                                                    { id: 0, name: "Sun" },
+                                                    { id: 1, name: "Mon" },
+                                                    { id: 2, name: "Tue" },
+                                                    { id: 3, name: "Wed" },
+                                                    { id: 4, name: "Thu" },
+                                                    { id: 5, name: "Fri" },
+                                                    { id: 6, name: "Sat" },
+                                                ].map((day) => {
+                                                    const isOff = structuredRules.weeklyOffDays.includes(day.id);
+                                                    return (
+                                                        <button
+                                                            key={day.id}
+                                                            type="button"
+                                                            onClick={() => toggleWeeklyOffDay(day.id)}
+                                                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                                                isOff
+                                                                    ? "bg-indigo-600 text-white shadow-md scale-105"
+                                                                    : `${theme.inputBg} ${theme.textSecondary} border ${theme.inputBorder} hover:border-indigo-400`
+                                                            }`}
+                                                        >
+                                                            {day.name}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Location & Security Settings */}
+                                        <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700/60">
+                                            <div className="flex items-center gap-2">
+                                                <MapPin size={16} className={theme.primaryIconText} />
+                                                <span className={`text-xs font-black uppercase tracking-wider ${theme.textHeading}`}>Location & Security Settings</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                <div className="sm:col-span-3 flex items-center gap-2.5">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="gpsRequired"
+                                                        checked={structuredRules.gpsRequired}
+                                                        onChange={(e) => updateStructuredRule("gpsRequired", e.target.checked)}
+                                                        className={`w-4 h-4 ${theme.primaryIconText.replace('text-', 'text-')} rounded ${theme.inputFocus}`}
+                                                    />
+                                                    <label htmlFor="gpsRequired" className={`text-xs font-bold ${theme.textPrimary} cursor-pointer`}>
+                                                        Require GPS / Location Verification on Punch
+                                                    </label>
+                                                </div>
+                                                {structuredRules.gpsRequired && (
+                                                    <div>
+                                                        <label className={`block text-xs font-bold ${theme.textSecondary} mb-1`}>Geofence Radius (Meters)</label>
+                                                        <input
+                                                            type="number"
+                                                            min="10"
+                                                            value={structuredRules.geoFenceMeters}
+                                                            onChange={(e) => updateStructuredRule("geoFenceMeters", parseInt(e.target.value) || 0)}
+                                                            className={`w-full p-2.5 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl text-sm font-semibold outline-none ${theme.inputFocus}`}
+                                                            placeholder="100"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <textarea
+                                            value={rulesJsonText}
+                                            onChange={(e) => {
+                                                setRulesJsonText(e.target.value);
+                                                try {
+                                                    const parsed = JSON.parse(e.target.value);
+                                                    setStructuredRules(parseRulesToStructured(parsed));
+                                                } catch (err) {
+                                                    // ignore syntax errors while typing
+                                                }
+                                            }}
+                                            className={`w-full p-3 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-xl outline-none ${theme.inputFocus} font-mono text-xs`}
+                                            rows={10}
+                                        />
+                                        <p className={`text-[11px] ${theme.textSecondary}`}>
+                                            Advanced JSON editor mode for power users. Standard fields like <code>shiftStartLocal</code>, <code>weeklyOffDays</code>, <code>graceMinutes</code> are synced automatically with the form view.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div className={`p-4 border-t ${theme.borderLight} flex justify-end gap-3 ${theme.inputBg}`}>
-                            <button onClick={() => setIsCreatePolicyOpen(false)} className={`px-4 py-2 rounded-lg font-bold ${theme.textSecondary}`}>Cancel</button>
+                            <button onClick={() => { setIsCreatePolicyOpen(false); setEditingPolicy(null); }} className={`px-4 py-2 rounded-lg font-bold ${theme.textSecondary}`}>Cancel</button>
                             <button
-                                onClick={async () => {
-                                    try {
-                                        const parsedRules = rulesJsonText ? JSON.parse(rulesJsonText) : {};
-                                        const payload = {
-                                            branchId: policyForm.branchId || null,
-                                            name: policyForm.name,
-                                            description: policyForm.description,
-                                            status: policyForm.status,
-                                            isDefault: policyForm.isDefault,
-                                            policyType: policyForm.policyType,
-                                            rules: parsedRules
-                                        };
-                                        if (!payload.name?.trim()) {
-                                            alert("Policy name is required");
-                                            return;
-                                        }
-                                        await attendanceService.createPolicy(payload);
-                                        setIsCreatePolicyOpen(false);
-                                        await refreshAttendanceData();
-                                    } catch (err) {
-                                        alert("Failed to create policy. Ensure Rules JSON is valid.");
-                                    }
-                                }}
+                                onClick={handleSavePolicy}
                                 className={`px-6 py-2 rounded-lg font-bold ${theme.buttonBg} ${theme.buttonText} ${theme.buttonHoverBg} shadow`}
                             >
-                                Create Policy
+                                {editingPolicy ? "Save Changes" : "Create Policy"}
                             </button>
                         </div>
                     </div>
