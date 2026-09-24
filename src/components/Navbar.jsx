@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { DEFAULT_CARTOON_AVATAR } from "../constants/cartoonAvatars";
-import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight, ChevronDown, X, SlidersHorizontal, Volume2, VolumeX, User, LogOut } from "lucide-react";
+import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight, ChevronDown, X, SlidersHorizontal, Volume2, VolumeX, User, LogOut, HelpCircle } from "lucide-react";
 import BusinessTypeModal from "./BusinessTypeModal";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
+import { useTutorial } from "../context/TutorialContext";
 import { usePermission } from "../auth/usePermission";
 import { MODULES } from "../constants/modules";
 import { ACTIONS } from "../constants/actions";
@@ -31,6 +32,7 @@ const Navbar = ({
     const { theme } = useTheme();
     const { can } = usePermission();
     const { logout } = useAuth();
+    const { restartTour } = useTutorial();
     const subscriptionOk = computeUserHasActiveSubscription(currentUser, organization);
     const paymentPendingNav = isSubscriptionPaymentPending(organization);
     const showSubscriptionBadge =
@@ -354,6 +356,17 @@ const Navbar = ({
                         aria-label="Toggle Voice Announcements"
                     >
                         {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                    </button>
+
+                    {/* Start Interactive Tour Button */}
+                    <button
+                        type="button"
+                        onClick={restartTour}
+                        className={`flex items-center justify-center w-9 h-9 rounded-xl border ${theme.sidebarItemHoverBg} ${theme.borderLight} transition-all cursor-pointer relative active:scale-95`}
+                        title="Start Interactive Guided Tour"
+                        aria-label="Start Tour"
+                    >
+                        <HelpCircle size={18} className="text-indigo-600 dark:text-indigo-400" />
                     </button>
 
                     {/* Notification Bell */}
