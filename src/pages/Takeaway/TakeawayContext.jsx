@@ -48,7 +48,7 @@ const INITIAL_TAB_DATA = {
     takeawayOrder: {
         items: [],
         isSentToKOT: false,
-        orderType: 'TAKEAWAY',
+        orderType: (typeof localStorage !== 'undefined' && localStorage.getItem("activePosOrderType")) || 'DIRECT_SALE',
     },
     takeawayCustName: "",
     takeawayCustPhone: "",
@@ -61,11 +61,14 @@ const INITIAL_TAB_DATA = {
 
 const createTab = (id, name, tableId = null) => {
     const formattedId = String(id).padStart(5, '0');
+    const defaultType = (typeof localStorage !== 'undefined' && localStorage.getItem("activePosOrderType")) || 'DIRECT_SALE';
+    const tabData = JSON.parse(JSON.stringify(INITIAL_TAB_DATA));
+    tabData.takeawayOrder.orderType = defaultType;
     return {
         id,
         name: name || `Tab ${id}`,
         orderName: `ORD-${formattedId}`,
-        ...JSON.parse(JSON.stringify(INITIAL_TAB_DATA)),
+        ...tabData,
         tableId: tableId || null,
         isTakeaway: !tableId
     };

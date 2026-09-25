@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { CARTOON_AVATARS, DEFAULT_CARTOON_AVATAR } from '../../constants/cartoonAvatars';
 import { userService } from '../../services/api';
-import { User, Mail, Lock, ShieldCheck, Check, ArrowLeft, RefreshCw, Sparkles, KeyRound, Send } from 'lucide-react';
+import { User, Mail, Lock, ShieldCheck, Check, ArrowLeft, RefreshCw, Sparkles, KeyRound, Send, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 
@@ -33,6 +33,9 @@ const ProfileSettings = () => {
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [changingPassword, setChangingPassword] = useState(false);
 
     // OTP Countdown Timer
@@ -445,13 +448,20 @@ const ProfileSettings = () => {
                         </label>
                         <div className="relative">
                             <input
-                                type="password"
+                                type={showCurrentPassword ? "text" : "password"}
                                 value={currentPassword}
                                 onChange={(e) => setCurrentPassword(e.target.value)}
                                 placeholder="••••••••"
-                                className={`w-full p-4 ${theme.pageBg} rounded-2xl outline-none border-2 border-transparent focus:border-purple-500 font-bold ${theme.textPrimary} transition-all`}
+                                className={`w-full p-4 pr-12 ${theme.pageBg} rounded-2xl outline-none border-2 border-transparent focus:border-purple-500 font-bold ${theme.textPrimary} transition-all`}
                             />
-                            <Lock className={`absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 ${theme.textMuted}`} />
+                            <button
+                                type="button"
+                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                className={`absolute right-4 top-1/2 -translate-y-1/2 ${theme.textMuted} hover:${theme.textPrimary} transition-colors focus:outline-none`}
+                                tabIndex={-1}
+                            >
+                                {showCurrentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            </button>
                         </div>
                     </div>
 
@@ -461,13 +471,20 @@ const ProfileSettings = () => {
                         </label>
                         <div className="relative">
                             <input
-                                type="password"
+                                type={showNewPassword ? "text" : "password"}
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
                                 placeholder="••••••••"
-                                className={`w-full p-4 ${theme.pageBg} rounded-2xl outline-none border-2 border-transparent focus:border-purple-500 font-bold ${theme.textPrimary} transition-all`}
+                                className={`w-full p-4 pr-12 ${theme.pageBg} rounded-2xl outline-none border-2 border-transparent focus:border-purple-500 font-bold ${theme.textPrimary} transition-all`}
                             />
-                            <Lock className={`absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 ${theme.textMuted}`} />
+                            <button
+                                type="button"
+                                onClick={() => setShowNewPassword(!showNewPassword)}
+                                className={`absolute right-4 top-1/2 -translate-y-1/2 ${theme.textMuted} hover:${theme.textPrimary} transition-colors focus:outline-none`}
+                                tabIndex={-1}
+                            >
+                                {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            </button>
                         </div>
                     </div>
 
@@ -477,13 +494,20 @@ const ProfileSettings = () => {
                         </label>
                         <div className="relative">
                             <input
-                                type="password"
+                                type={showConfirmPassword ? "text" : "password"}
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 placeholder="••••••••"
-                                className={`w-full p-4 ${theme.pageBg} rounded-2xl outline-none border-2 border-transparent focus:border-purple-500 font-bold ${theme.textPrimary} transition-all`}
+                                className={`w-full p-4 pr-12 ${theme.pageBg} rounded-2xl outline-none border-2 border-transparent focus:border-purple-500 font-bold ${theme.textPrimary} transition-all`}
                             />
-                            <Lock className={`absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 ${theme.textMuted}`} />
+                            <button
+                                type="button"
+                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                className={`absolute right-4 top-1/2 -translate-y-1/2 ${theme.textMuted} hover:${theme.textPrimary} transition-colors focus:outline-none`}
+                                tabIndex={-1}
+                            >
+                                {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            </button>
                         </div>
                     </div>
 

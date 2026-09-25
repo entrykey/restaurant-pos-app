@@ -359,7 +359,7 @@ const TakeawayOrder = ({
     const [isLoadingLoyalty, setIsLoadingLoyalty] = useState(false);
 
     const handleCustomerSearch = async (term, type) => {
-        if (!term || term.length < 2) {
+        if (!term || term.trim().length < 1) {
             setCustomerSearchResults([]);
             return;
         }
@@ -833,31 +833,17 @@ const TakeawayOrder = ({
 
     const billDetails = calculateBillDetails(
         currentOrder.items,
-        // Combine customer discount and loyalty discount
-        {
-            type: 'flat',
-            value: (billDiscount.type === 'flat' ? billDiscount.value : 0) + loyaltyDiscount.amount
-        },
-        settings?.defaultTaxPercent || 0,
-        false,
-        isTakeaway ? exchangeCredit : 0
-    );
-
-    // Recalculate with percentage discount if needed
-    const actualBillDetails = billDiscount.type === 'percent' ? calculateBillDetails(
-        currentOrder.items,
         billDiscount,
         settings?.defaultTaxPercent || 0,
         false,
         isTakeaway ? exchangeCredit : 0
-    ) : billDetails;
+    );
+    const actualBillDetails = billDetails;
 
-    // Add loyalty discount to the final calculation
     const finalBillDetails = loyaltyDiscount.amount > 0 ? {
-        ...actualBillDetails,
-        discountAmount: actualBillDetails.discountAmount + loyaltyDiscount.amount,
-        finalTotal: Math.max(0, actualBillDetails.finalTotal - loyaltyDiscount.amount)
-    } : actualBillDetails;
+        ...billDetails,
+        finalTotal: Math.max(0, billDetails.finalTotal - loyaltyDiscount.amount)
+    } : billDetails;
 
     const appliedOfferIds = (finalBillDetails.appliedOffers || []).map(o => String(o.offerId || o.id));
     const availableUnappliedOffers = (offers || []).filter(o => {
@@ -1028,7 +1014,7 @@ const TakeawayOrder = ({
                                                     setTakeawayCustName(v);
                                                     handleCustomerSearch(v, "name");
                                                 }}
-                                                onFocus={() => { if (custSearchTerm.length >= 2) setShowCustomerDropdown(true); }}
+                                                onFocus={() => { if (custSearchTerm.length >= 1) setShowCustomerDropdown(true); }}
                                                 onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
                                                 placeholder="Search customer by name or phone…"
                                                 className={`w-full pl-9 pr-4 py-2.5 border ${theme.borderLight} rounded-xl outline-none text-sm ${theme.inputBg} ${theme.textPrimary}`}
@@ -1100,7 +1086,7 @@ const TakeawayOrder = ({
                                                     </button>
                                                 </div>
                                             </div>
-                                        ) : custSearchTerm.length >= 2 ? (
+                                        ) : custSearchTerm.length >= 1 ? (
                                             <div className="p-3">
                                                 <p className={`text-xs font-bold ${theme.textMuted} mb-2`}>No customer found for "{custSearchTerm}"</p>
                                                 <button
@@ -1684,6 +1670,7 @@ const TakeawayOrder = ({
                                                     <input
                                                         type="number"
                                                         min="0"
+                                                        onWheel={e => e.target.blur()}
                                                         max={(item.itemDiscountType || 'percent') === 'percent' ? "100" : undefined}
                                                         value={item.itemDiscount !== undefined && item.itemDiscount !== null ? item.itemDiscount : ""}
                                                         onChange={e => {

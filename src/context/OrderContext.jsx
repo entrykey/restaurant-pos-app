@@ -403,39 +403,13 @@ export const OrderProvider = ({ children }) => {
             });
         }
 
-        let discountAmount = 0;
-        const netSubtotal = Math.max(0, subtotal - offerDiscountTotal);
-        const rawDiscVal = Math.max(0, Number(discount.value || 0));
-        if (discount.type === "flat") {
-            discountAmount = Math.min(netSubtotal, rawDiscVal);
-        } else {
-            const discPercent = Math.min(100, rawDiscVal);
-            discountAmount = parseFloat(((netSubtotal * discPercent) / 100).toFixed(4));
-        }
-
-        const totalDiscount = discountAmount + offerDiscountTotal;
-        let finalDiscount = totalDiscount;
-        if (finalDiscount > subtotal) finalDiscount = subtotal;
-
-        const taxableAmount = subtotal - finalDiscount;
-
         // GST Logic: Compare states
         const isIntraState = !branchStateCode || !customerStateCode || branchStateCode === customerStateCode;
 
         const taxBreakdown = { cgst: 0, sgst: 0, igst: 0 };
 
-        const discountFactor = subtotal > 0 ? (1 - finalDiscount / subtotal) : 1;
-        
         const totalTaxAmount = parseFloat(orderItems.reduce((acc, item) => {
             const originalLineTotal = calculateItemTotal(item);
-            // Proportional tax reduction based on total discount
-            const lineTotal = parseFloat((originalLineTotal * discountFactor).toFixed(4));
-            
-            // Debugging log to verify tax calculation on discounted items
-            if (finalDiscount > 0) {
-                console.log(`Tax Calc for ${item.name}: Original=${originalLineTotal}, Factor=${discountFactor}, TaxableLine=${lineTotal}`);
-            }
-
             const lineRate = (item.taxPercent !== undefined && item.taxPercent !== null)
                 ? Number(item.taxPercent)
                 : taxPercent;
@@ -443,10 +417,10 @@ export const OrderProvider = ({ children }) => {
 
             let itemTax = 0;
             if (isExclusive) {
-                itemTax = (lineTotal * lineRate) / 100;
+                itemTax = (originalLineTotal * lineRate) / 100;
             } else {
-                const baseLine = lineTotal / (1 + lineRate / 100);
-                itemTax = (lineTotal - baseLine);
+                const baseLine = originalLineTotal / (1 + lineRate / 100);
+                itemTax = (originalLineTotal - baseLine);
             }
 
             // Split tax based on components if taxSystem is GST
@@ -471,8 +445,28 @@ export const OrderProvider = ({ children }) => {
             return acc + itemTax;
         }, 0).toFixed(4));
 
+        const grossTotal = subtotal + totalTaxAmount;
+        const netGross = Math.max(0, grossTotal - offerDiscountTotal);
+        const rawDiscVal = Math.max(0, Number(discount?.value !== undefined ? discount.value : (typeof discount === 'number' ? discount : 0)));
+        const discType = String(discount?.type || 'flat').toLowerCase();
+        const isFlat = discType === 'flat';
+
+        let discountAmount = 0;
+        if (isFlat) {
+            discountAmount = Math.min(netGross, rawDiscVal);
+        } else {
+            const discPercent = Math.min(100, rawDiscVal);
+            discountAmount = parseFloat(((netGross * discPercent) / 100).toFixed(4));
+        }
+
+        const totalDiscount = discountAmount + offerDiscountTotal;
+        let finalDiscount = totalDiscount;
+        if (finalDiscount > grossTotal) finalDiscount = grossTotal;
+
+        const taxableAmount = Math.max(0, subtotal - finalDiscount);
+
         // Deduct exchange credit from total
-        const totalBeforeCredit = parseFloat((taxableAmount + totalTaxAmount).toFixed(4));
+        const totalBeforeCredit = parseFloat((grossTotal - finalDiscount).toFixed(4));
         const total = parseFloat((totalBeforeCredit - exchangeCredit).toFixed(4));
 
         let roundOff = 0;
