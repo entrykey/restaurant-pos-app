@@ -1914,6 +1914,7 @@ const PurchasePage = () => {
                                                     <input
                                                         type="number"
                                                         value={it.quantity}
+                                                        onWheel={e => e.target.blur()}
                                                         onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
                                                         onBlur={e => {
                                                             const val = parseFloat(e.target.value);
@@ -1956,6 +1957,7 @@ const PurchasePage = () => {
                                                 <input
                                                     type="number"
                                                     value={it.purchasePrice}
+                                                    onWheel={e => e.target.blur()}
                                                     onChange={e => handleItemChange(idx, 'purchasePrice', e.target.value)}
                                                     onBlur={e => {
                                                         const val = parseFloat(e.target.value);
@@ -1970,6 +1972,7 @@ const PurchasePage = () => {
                                                 <input
                                                     type="number"
                                                     value={it.sellingPrice}
+                                                    onWheel={e => e.target.blur()}
                                                     onChange={e => handleItemChange(idx, 'sellingPrice', e.target.value)}
                                                     onBlur={e => {
                                                         const val = parseFloat(e.target.value);
@@ -1984,6 +1987,7 @@ const PurchasePage = () => {
                                                 <input
                                                     type="number"
                                                     value={it.mrp}
+                                                    onWheel={e => e.target.blur()}
                                                     onChange={e => handleItemChange(idx, 'mrp', e.target.value)}
                                                     onBlur={e => {
                                                         const val = parseFloat(e.target.value);
@@ -2389,6 +2393,7 @@ const PurchasePage = () => {
                                             step="any"
                                             value={formData.paidAmount}
                                             onFocus={e => e.target.select()}
+                                            onWheel={e => e.target.blur()}
                                             onChange={e => {
                                                 const raw = e.target.value;
                                                 setFormData(prev => {
@@ -2497,6 +2502,7 @@ const PurchasePage = () => {
                                     step="0.0001"
                                     value={formData.taxTotal}
                                     onFocus={e => e.target.select()}
+                                    onWheel={e => e.target.blur()}
                                     onChange={e => {
                                         const raw = e.target.value;
                                         if (raw === "") {
@@ -2520,6 +2526,7 @@ const PurchasePage = () => {
                                     type="number"
                                     value={formData.otherCharges}
                                     onFocus={e => e.target.select()}
+                                    onWheel={e => e.target.blur()}
                                     onChange={e => {
                                         const raw = e.target.value;
                                         if (raw === "") {
@@ -2544,6 +2551,7 @@ const PurchasePage = () => {
                                     min="0"
                                     value={formData.discountTotal}
                                     onFocus={e => e.target.select()}
+                                    onWheel={e => e.target.blur()}
                                     onChange={e => {
                                         const raw = e.target.value;
                                         if (raw === "") {

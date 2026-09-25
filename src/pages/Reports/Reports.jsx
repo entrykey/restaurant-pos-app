@@ -1038,9 +1038,20 @@ const Reports = ({
                         isDark ? 'text-white' : 'text-gray-900'
                     }`}>
                         {formatCurrency(
-                            expensesHistory
-                                .filter((e) => isWithinRange(e.date))
-                                .reduce((a, b) => a + b.amount, 0),
+                            (() => {
+                                if (profitLossReport?.operatingExpenses?.total !== undefined) {
+                                    return profitLossReport.operatingExpenses.total;
+                                }
+                                if (profitLossReport?.summary?.totalExpenses !== undefined) {
+                                    return profitLossReport.summary.totalExpenses;
+                                }
+                                if (profitLossReport?.expenses?.total !== undefined) {
+                                    return profitLossReport.expenses.total;
+                                }
+                                return expensesHistory
+                                    .filter((e) => isWithinRange(e.date))
+                                    .reduce((a, b) => a + (Number(b.amount) || 0), 0);
+                            })(),
                             currency
                         )}
                     </p>
@@ -1062,12 +1073,38 @@ const Reports = ({
                         isDark ? 'text-white' : 'text-gray-900'
                     }`}>
                         {formatCurrency(
-                            salesHistory
-                                .filter((s) => isWithinRange(s.date))
-                                .reduce((a, b) => a + b.amount, 0) -
-                            expensesHistory
-                                .filter((e) => isWithinRange(e.date))
-                                .reduce((a, b) => a + b.amount, 0),
+                            (() => {
+                                if (profitLossReport) {
+                                    if (typeof profitLossReport.netProfit === 'object' && profitLossReport.netProfit?.amount !== undefined) {
+                                        return profitLossReport.netProfit.amount;
+                                    }
+                                    if (typeof profitLossReport.netProfit === 'number') {
+                                        return profitLossReport.netProfit;
+                                    }
+                                    if (profitLossReport.summary?.netProfit !== undefined) {
+                                        return profitLossReport.summary.netProfit;
+                                    }
+                                    if (profitLossReport.netProfitAmount !== undefined) {
+                                        return profitLossReport.netProfitAmount;
+                                    }
+                                }
+                                const rangeSales = salesHistory.filter((s) => isWithinRange(s.date));
+                                let totalRev = 0;
+                                let totalCogs = 0;
+                                rangeSales.forEach((s) => {
+                                    totalRev += (s.amount || 0);
+                                    if (s.items && Array.isArray(s.items)) {
+                                        s.items.forEach((item) => {
+                                            const q = item.quantity || 0;
+                                            totalCogs += ((item.purchasePrice || 0) * q);
+                                        });
+                                    }
+                                });
+                                const totalExp = expensesHistory
+                                    .filter((e) => isWithinRange(e.date))
+                                    .reduce((a, b) => a + (b.amount || 0), 0);
+                                return totalRev - totalCogs - totalExp;
+                            })(),
                             currency
                         )}
                     </p>
@@ -2252,56 +2289,70 @@ const Reports = ({
                                     ))}
                                     
                                     {/* Gross Profit */}
-                                    {profitLossReport.grossProfit !== undefined && (
-                                        <div className="border-t-4 border-double border-gray-400 dark:border-gray-600 pt-4">
-                                            <div className="flex justify-between items-center py-2">
-                                                <span className={`text-base font-black uppercase ${theme.textHeading}`}>
-                                                    Gross Profit
-                                                </span>
-                                                <span className={`text-xl font-black tabular-nums ${
-                                                    profitLossReport.grossProfit >= 0 
-                                                        ? 'text-blue-600 dark:text-blue-400' 
-                                                        : 'text-orange-600 dark:text-orange-400'
-                                                }`}>
-                                                    {formatCurrency(profitLossReport.grossProfit, currency)}
-                                                </span>
+                                    {(() => {
+                                        const gpVal = typeof profitLossReport.grossProfit === 'object'
+                                            ? profitLossReport.grossProfit?.amount
+                                            : (profitLossReport.grossProfit ?? profitLossReport.grossProfitAmount ?? profitLossReport.summary?.grossProfit);
+                                        const gpMargin = profitLossReport.grossMarginPercent ?? profitLossReport.grossProfit?.percentage ?? profitLossReport.summary?.grossMargin;
+                                        if (gpVal === undefined || gpVal === null) return null;
+                                        return (
+                                            <div className="border-t-4 border-double border-gray-400 dark:border-gray-600 pt-4">
+                                                <div className="flex justify-between items-center py-2">
+                                                    <span className={`text-base font-black uppercase ${theme.textHeading}`}>
+                                                        Gross Profit
+                                                    </span>
+                                                    <span className={`text-xl font-black tabular-nums ${
+                                                        gpVal >= 0 
+                                                            ? 'text-blue-600 dark:text-blue-400' 
+                                                            : 'text-orange-600 dark:text-orange-400'
+                                                    }`}>
+                                                        {formatCurrency(gpVal, currency)}
+                                                    </span>
+                                                </div>
+                                                {gpMargin !== undefined && (
+                                                    <p className={`text-xs font-bold ${theme.textMuted} text-right`}>
+                                                        {Number(gpMargin).toFixed(2)}% margin
+                                                    </p>
+                                                )}
                                             </div>
-                                            {profitLossReport.grossMarginPercent !== undefined && (
-                                                <p className={`text-xs font-bold ${theme.textMuted} text-right`}>
-                                                    {profitLossReport.grossMarginPercent.toFixed(2)}% margin
-                                                </p>
-                                            )}
-                                        </div>
-                                    )}
+                                        );
+                                    })()}
                                     
                                     {/* Net Profit */}
-                                    {profitLossReport.netProfit !== undefined && (
-                                        <div className="border-t-4 border-double border-black dark:border-white pt-4 mt-6">
-                                            <div className="flex justify-between items-center py-3 px-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700">
-                                                <span className={`text-xl font-black uppercase tracking-wide ${theme.textHeading}`}>
-                                                    Net Profit
-                                                </span>
-                                                <div className="text-right">
-                                                    <span className={`text-3xl font-black tabular-nums ${
-                                                        profitLossReport.netProfit >= 0 
-                                                            ? 'text-emerald-600 dark:text-emerald-400' 
-                                                            : 'text-red-600 dark:text-red-400'
-                                                    }`}>
-                                                        {formatCurrency(profitLossReport.netProfit, currency)}
+                                    {(() => {
+                                        const npVal = typeof profitLossReport.netProfit === 'object'
+                                            ? profitLossReport.netProfit?.amount
+                                            : (profitLossReport.netProfit ?? profitLossReport.netProfitAmount ?? profitLossReport.summary?.netProfit);
+                                        const npMargin = profitLossReport.netMarginPercent ?? profitLossReport.netProfit?.percentage ?? profitLossReport.summary?.netMargin;
+                                        if (npVal === undefined || npVal === null) return null;
+                                        return (
+                                            <div className="border-t-4 border-double border-black dark:border-white pt-4 mt-6">
+                                                <div className="flex justify-between items-center py-3 px-4 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700">
+                                                    <span className={`text-xl font-black uppercase tracking-wide ${theme.textHeading}`}>
+                                                        Net Profit
                                                     </span>
-                                                    {profitLossReport.netMarginPercent !== undefined && (
-                                                        <p className={`text-xs font-bold mt-1 ${
-                                                            profitLossReport.netProfit >= 0 
-                                                                ? 'text-emerald-700 dark:text-emerald-500' 
-                                                                : 'text-red-700 dark:text-red-500'
+                                                    <div className="text-right">
+                                                        <span className={`text-3xl font-black tabular-nums ${
+                                                            npVal >= 0 
+                                                                ? 'text-emerald-600 dark:text-emerald-400' 
+                                                                : 'text-red-600 dark:text-red-400'
                                                         }`}>
-                                                            {profitLossReport.netMarginPercent.toFixed(2)}% margin
-                                                        </p>
-                                                    )}
+                                                            {formatCurrency(npVal, currency)}
+                                                        </span>
+                                                        {npMargin !== undefined && (
+                                                            <p className={`text-xs font-bold mt-1 ${
+                                                                npVal >= 0 
+                                                                    ? 'text-emerald-700 dark:text-emerald-500' 
+                                                                    : 'text-red-700 dark:text-red-500'
+                                                            }`}>
+                                                                {Number(npMargin).toFixed(2)}% margin
+                                                            </p>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        );
+                                    })()}
                                 </div>
                             ) : (
                                 <p className={`text-sm font-bold ${theme.textMuted}`}>No profit & loss data for this period.</p>

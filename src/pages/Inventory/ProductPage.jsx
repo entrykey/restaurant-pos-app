@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { ALL_FIELDS } from '../../config/itemFields';
-import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft, ClipboardList, ChevronDown, Package, FilePlus, Barcode, Scan, Printer, Tag, Layers, Settings, Building2, AlertTriangle, ArrowRight, Calculator, UserCheck, Truck, Coins, DollarSign } from 'lucide-react';
-import { api, attributeService, unitService, shopService, categoryService, itemService, branchService, taxService } from '../../services/api';
+import { ChevronRight, Save, X, Plus, Trash2, ArrowLeft, ClipboardList, ChevronDown, Package, FilePlus, Barcode, Scan, Printer, Tag, Layers, Settings, Building2, AlertTriangle, ArrowRight, Calculator, UserCheck, Truck, Coins, DollarSign, Sliders, ArrowUp, ArrowDown, RotateCcw, Move, GripVertical, LayoutGrid } from 'lucide-react';
+import { api, attributeService, unitService, shopService, categoryService, itemService, branchService, taxService, userFormLayoutService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -58,6 +58,199 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
     const [newCategoryName, setNewCategoryName] = useState("");
     const [isCategorySaving, setIsCategorySaving] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(location.state?.showAdvanced || false);
+
+    // Custom Layout State & Drag and Drop
+    const [customLayouts, setCustomLayouts] = useState({});
+    const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
+    const [adjustingFields, setAdjustingFields] = useState([]);
+    const [isSavingLayout, setIsSavingLayout] = useState(false);
+    const [draggedIndex, setDraggedIndex] = useState(null);
+    const [dragOverIndex, setDragOverIndex] = useState(null);
+    const [hoveredFieldKey, setHoveredFieldKey] = useState(null);
+
+    const handleDragStart = (e, index) => {
+        setDraggedIndex(index);
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", index);
+    };
+
+    const handleDragOver = (e, index) => {
+        e.preventDefault();
+        if (dragOverIndex !== index) {
+            setDragOverIndex(index);
+        }
+    };
+
+    const handleDragLeave = () => {
+        setDragOverIndex(null);
+    };
+
+    const handleDrop = (e, targetIndex) => {
+        e.preventDefault();
+        if (draggedIndex === null || draggedIndex === targetIndex) {
+            setDraggedIndex(null);
+            setDragOverIndex(null);
+            return;
+        }
+        const updated = [...adjustingFields];
+        const [moved] = updated.splice(draggedIndex, 1);
+        updated.splice(targetIndex, 0, moved);
+        updated.forEach((item, idx) => {
+            item.position = idx;
+        });
+        setAdjustingFields(updated);
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+    };
+
+    const activeFormName = currentTab === 'menu' ? 'MANUFACTURED' : (currentTab === 'raw' ? 'STOCK' : 'TRADE');
+
+    useEffect(() => {
+        let isMounted = true;
+        userFormLayoutService.getLayout(activeFormName).then(data => {
+            if (isMounted && data && Array.isArray(data) && data.length > 0) {
+                setCustomLayouts(prev => ({ ...prev, [activeFormName]: data }));
+            }
+        }).catch(err => {
+            console.error("Error loading layout for", activeFormName, err);
+        });
+        return () => { isMounted = false; };
+    }, [activeFormName]);
+
+    const getDefaultFieldKeysForForm = (formName) => {
+        let fields = [];
+        if (formName === "MANUFACTURED") {
+            fields = [
+                "barcode", "item_code", "name", "description", "category_id",
+                "unit_id", "secondary_unit_id", "conversion_factor", "selling_price", "mrp", "tax_percent", "hsn_sac_code", "stock_applicable",
+                "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking"
+            ];
+        } else if (formName === "STOCK") {
+            fields = [
+                "barcode", "item_code", "name", "description", "category_id",
+                "unit_id", "secondary_unit_id", "conversion_factor", "purchase_price", "selling_price", "mrp", "tax_percent", "hsn_sac_code",
+                "stock_applicable", "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking"
+            ];
+        } else {
+            fields = [
+                "barcode", "item_code", "name", "description", "category_id",
+                "unit_id", "secondary_unit_id", "conversion_factor", "purchase_price", "selling_price", "mrp", "tax_percent", "hsn_sac_code",
+                "stock_applicable", "min_stock_alert", "weight_based", "batch_tracking", "expiry_tracking", "serial_tracking", "status"
+            ];
+        }
+
+        fields.push("default_purchase_unit", "default_sales_unit", "opening_stock");
+
+        const inventoryMode = formData.inventoryMode || "shared";
+        if (hasVariants && inventoryMode === "separate") {
+            fields = fields.filter(f => f !== "opening_stock");
+        }
+
+        if (!isGSTApplicable) {
+            fields = fields.filter(f => f !== 'hsn_sac_code');
+        }
+
+        // Separate core fields so they appear first matching default view layout
+        const baseCoreFields = ["barcode", "name", "category_id", "unit_id", "purchase_price", "selling_price", "mrp", "tax_percent", "weight_based", "opening_stock"];
+        const coreKeys = fields.filter(f => baseCoreFields.includes(f));
+        const advKeys = fields.filter(f => !baseCoreFields.includes(f));
+
+        return [...coreKeys, ...advKeys].filter(f => ALL_FIELDS[f]);
+    };
+
+    const handleOpenAdjustModal = () => {
+        const defaultKeys = getDefaultFieldKeysForForm(activeFormName);
+        const savedLayout = customLayouts[activeFormName] || [];
+
+        if (savedLayout.length > 0) {
+            const map = new Map(savedLayout.map(item => [item.field_name || item.fieldName, item]));
+            let combined = defaultKeys.map((key, idx) => {
+                const saved = map.get(key);
+                return {
+                    fieldName: key,
+                    label: ALL_FIELDS[key]?.label || key,
+                    position: saved ? saved.position : idx,
+                    rowNumber: saved ? (saved.row_number || saved.rowNumber || 1) : 1,
+                    columnNumber: saved ? (saved.column_number || saved.columnNumber || 1) : (ALL_FIELDS[key]?.type === 'textarea' ? 3 : 1)
+                };
+            });
+            combined.sort((a, b) => a.position - b.position);
+            setAdjustingFields(combined);
+        } else {
+            const initial = defaultKeys.map((key, idx) => ({
+                fieldName: key,
+                label: ALL_FIELDS[key]?.label || key,
+                position: idx,
+                rowNumber: 1,
+                columnNumber: ALL_FIELDS[key]?.type === 'textarea' ? 3 : 1
+            }));
+            setAdjustingFields(initial);
+        }
+        setIsAdjustModalOpen(true);
+    };
+
+    const handleMoveField = (index, direction) => {
+        const updated = [...adjustingFields];
+        const targetIdx = index + direction;
+        if (targetIdx < 0 || targetIdx >= updated.length) return;
+        const temp = updated[index];
+        updated[index] = updated[targetIdx];
+        updated[targetIdx] = temp;
+        updated.forEach((item, idx) => {
+            item.position = idx;
+        });
+        setAdjustingFields(updated);
+    };
+
+    const handleColChange = (index, colSpan) => {
+        const updated = [...adjustingFields];
+        updated[index].columnNumber = colSpan;
+        setAdjustingFields(updated);
+    };
+
+    const handleSaveLayout = async () => {
+        try {
+            setIsSavingLayout(true);
+            const payload = adjustingFields.map((item, idx) => ({
+                fieldName: item.fieldName,
+                position: idx,
+                rowNumber: item.rowNumber || 1,
+                columnNumber: item.columnNumber || 1
+            }));
+
+            await userFormLayoutService.saveLayout(activeFormName, payload);
+            setCustomLayouts(prev => ({ ...prev, [activeFormName]: payload }));
+            toast.success(`Custom layout saved for ${activeFormName} items!`);
+            setIsAdjustModalOpen(false);
+        } catch (err) {
+            toast.error("Failed to save layout: " + (err.message || "Unknown error"));
+        } finally {
+            setIsSavingLayout(false);
+        }
+    };
+
+    const handleResetLayout = async () => {
+        try {
+            setIsSavingLayout(true);
+            await userFormLayoutService.resetLayout(activeFormName);
+            setCustomLayouts(prev => {
+                const next = { ...prev };
+                delete next[activeFormName];
+                return next;
+            });
+            toast.success(`Layout reset to default for ${activeFormName} items!`);
+            setIsAdjustModalOpen(false);
+        } catch (err) {
+            toast.error("Failed to reset layout");
+        } finally {
+            setIsSavingLayout(false);
+        }
+    };
 
     const [currentBusinessType, setCurrentBusinessType] = useState(null);
     const [currentBusinessSubType, setCurrentBusinessSubType] = useState(null);
@@ -1403,6 +1596,255 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         }
     };
 
+    const renderSingleField = (fieldKey, customColSpan = null) => {
+        const field = ALL_FIELDS[fieldKey];
+        if (!field) return null;
+        const isRequired = field.required;
+
+        let options = field.options || [];
+        if (fieldKey === 'category_id') {
+            options = categories.map(c => ({ label: c.name, value: c._id }));
+        } else if (fieldKey === 'unit_id' || fieldKey === 'secondary_unit_id') {
+            options = units.map(u => ({ label: u.name, value: u._id }));
+        } else if (fieldKey === 'default_purchase_unit' || fieldKey === 'default_sales_unit') {
+            const priUnit = units.find(u => u._id === formData.unitId)?.name;
+            const secUnit = units.find(u => u._id === formData.secondaryUnitId)?.name;
+            options = [
+                { label: priUnit ? `Primary Unit (${priUnit})` : "Primary Unit (Main / Bigger)", value: "PRIMARY" },
+                { label: secUnit ? `Secondary Unit (${secUnit})` : "Secondary Unit (Sub / Smaller)", value: "SECONDARY" }
+            ];
+        } else if (fieldKey === 'tax_percent') {
+            const filteredTaxes = selectedTaxType 
+                ? shopTaxes.filter(t => (t.taxType || 'INCLUSIVE').toUpperCase() === selectedTaxType)
+                : [];
+            options = filteredTaxes.map(t => ({
+                label: `${t.name} (${t.percentage}%)`,
+                value: t._id
+            }));
+        } else if (fieldKey === 'item_type') {
+            options = field.options || ["STOCK", "SERVICE", "MANUFACTURED"];
+        }
+
+        if (hasVariants && isSeparateStock && fieldKey === 'opening_stock') {
+            return (
+                <div key={fieldKey} className={`flex flex-col justify-center p-4 rounded-2xl border-2 border-dashed ${theme.borderLight} ${theme.sectionBg} ${customColSpan || ''}`}>
+                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-1 block`}>
+                        {field.label}
+                    </label>
+                    <p className={`text-xs font-bold ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                        Managed per variant in the Variants section below.
+                    </p>
+                </div>
+            );
+        }
+
+        // Special rendering for tax_percent
+        if (fieldKey === 'tax_percent') {
+            const isSuperAdminUser = Boolean(
+                user?.isSuperAdmin === true ||
+                user?.role === 'superadmin' ||
+                user?.role === 'SUPER_ADMIN' ||
+                user?.role?.name === 'superadmin' ||
+                user?.role?.name === 'SUPER_ADMIN' ||
+                user?.roles?.some(r => ['superadmin', 'super_admin'].includes((r?.name || r || "").toLowerCase()))
+            );
+            const effectiveBranch = currentBranchData || branches?.find(b => String(b._id || b.id) === String(activeBranchId || fixedBranchId));
+            const branchCountry = effectiveBranch?.address?.country || organization?.defaultCountry;
+            const countryVal = typeof branchCountry === 'object' ? (branchCountry?.code || branchCountry?.name) : branchCountry;
+            const effectiveTaxSystem = branchTaxSystem || effectiveBranch?.taxProfile?.taxSystem || effectiveBranch?.taxConfig?.taxSystem || organization?.defaultTaxSystem;
+            const isTaxProfileComplete = isSuperAdminUser || Boolean(effectiveTaxSystem && countryVal);
+
+            if (!isTaxProfileComplete) {
+                return (
+                    <div key={fieldKey} className={`col-span-1 md:col-span-2 lg:col-span-2 p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${customColSpan || ''}`}>
+                        <div className="flex items-start gap-3">
+                            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 mt-0.5 shrink-0">
+                                <Building2 size={20} />
+                            </div>
+                            <div>
+                                <h5 className={`text-sm font-black ${theme.textHeading}`}>
+                                    Complete profile to add tax data
+                                </h5>
+                                <p className={`text-xs ${theme.textMuted} mt-0.5`}>
+                                    Country tax profile is not configured yet. Complete your profile in Organization settings to select your country and tax system before assigning taxes to items.
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (asDialog && onClose) onClose();
+                                navigate('/organization');
+                            }}
+                            className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-amber-500 text-slate-950 hover:bg-amber-400 transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm hover:shadow active:scale-95 cursor-pointer shrink-0"
+                        >
+                            <span>Complete Profile</span>
+                            <ArrowRight size={14} />
+                        </button>
+                    </div>
+                );
+            }
+
+            return (
+                <React.Fragment key={fieldKey}>
+                    <div className={customColSpan || ''}>
+                        <div className="flex items-center justify-between mb-2 ml-1">
+                            <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest block`}>
+                                Tax Type
+                            </label>
+                            {effectiveTaxSystem && (
+                                <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md">
+                                    {effectiveTaxSystem} {countryVal ? `(${countryVal})` : ''}
+                                </span>
+                            )}
+                        </div>
+                        <CommonSelect
+                            options={[
+                                { label: "None (No Tax)", value: "NONE" },
+                                { label: "Inclusive", value: "INCLUSIVE" },
+                                { label: "Exclusive", value: "EXCLUSIVE" }
+                            ]}
+                            value={selectedTaxType || "NONE"}
+                            onChange={(val) => {
+                                const targetType = val === "NONE" ? "" : val;
+                                if (targetType !== selectedTaxType) {
+                                    setSelectedTaxType(targetType);
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        taxId: "",
+                                        taxPercent: 0,
+                                        isExclusiveTax: targetType === "EXCLUSIVE"
+                                    }));
+                                }
+                            }}
+                            placeholder="Select Tax Type (Optional)..."
+                            className="w-full"
+                        />
+                    </div>
+                    {selectedTaxType && (
+                        <div className={customColSpan || ''}>
+                            <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
+                                {field.label} {isRequired && <span className="text-red-500">*</span>}
+                            </label>
+                            <CommonSelect
+                                options={options}
+                                value={formData.taxId || ""}
+                                onChange={(val) => handleChange(fieldKey, val)}
+                                placeholder={options.length === 0 ? `No ${selectedTaxType.toLowerCase()} taxes available` : `Select ${field.label}...`}
+                                className="w-full"
+                                disabled={options.length === 0}
+                            />
+                        </div>
+                    )}
+                </React.Fragment>
+            );
+        }
+
+        return (
+            <div key={fieldKey} className={customColSpan || (field.type === 'textarea' ? 'md:col-span-3' : '')}>
+                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
+                    {field.label} {isRequired && <span className="text-red-500">*</span>}
+                </label>
+                
+                {field.type === 'select' ? (
+                    <CommonSelect
+                        options={options}
+                        value={fieldKey === 'tax_percent' ? (formData.taxId || (formData.taxPercent ? shopTaxes.find(t => t.percentage === formData.taxPercent)?._id : "")) : (formData[field.key] || field.defaultValue || "")}
+                        onChange={(val) => handleChange(fieldKey, val)}
+                        placeholder={`Select ${field.label}...`}
+                        className="w-full"
+                        extraAction={fieldKey === 'category_id' ? (
+                            <button
+                                type="button"
+                                onClick={() => setIsCategoryModalOpen(true)}
+                                className={`w-full p-4 text-left ${theme.mode === 'dark' ? 'hover:bg-indigo-900/20' : 'hover:bg-indigo-50'} flex items-center justify-between group transition-colors border-t ${theme.borderLight}`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`${theme.mode === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-100 text-indigo-600'} p-2 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-colors`}>
+                                        <Plus size={18} />
+                                    </div>
+                                    <div className={`font-black ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>Add New Category</div>
+                                </div>
+                                <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
+                            </button>
+                        ) : null}
+                    />
+                ) : fieldKey === 'barcode' ? (
+                    <div className="relative group">
+                        <input
+                            id="field-input-barcode"
+                            type="text"
+                            value={formData[field.key] !== undefined ? formData[field.key] : ""}
+                            onChange={(e) => handleChange(fieldKey, e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            className={`w-full p-4 pr-24 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                            placeholder="Scan or enter barcode..."
+                        />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={() => handleBarcodeScan(false)}
+                                className={`p-2 text-indigo-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-indigo-900/40' : 'hover:bg-indigo-50'}`}
+                                title="Scan with Scanner"
+                            >
+                                <Scan size={18} />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={generateItemBarcode}
+                                className={`p-2 text-emerald-600 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-emerald-900/40' : 'hover:bg-emerald-50'}`}
+                                title="Generate Internal Barcode"
+                            >
+                                <Barcode size={18} />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handlePrintBarcode}
+                                className={`p-2 text-orange-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-orange-900/40' : 'hover:bg-orange-50'}`}
+                                title="Print Barcode"
+                            >
+                                <Printer size={18} />
+                            </button>
+                        </div>
+                    </div>
+                ) : field.type === 'boolean' ? (
+                    <div className={`w-full p-4 border-2 rounded-2xl flex items-center justify-between transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : theme.inputBorder} ${theme.inputBg}`}>
+                        <span className={`text-sm font-bold ${formData[field.key] ? 'text-indigo-600' : theme.textSecondary}`}>
+                            {formData[field.key] ? 'Yes' : 'No'}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); handleChange(fieldKey, !formData[field.key]); }}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${formData[field.key] ? 'bg-indigo-600' : (theme.mode === 'dark' ? 'bg-slate-700' : 'bg-gray-300')}`}
+                        >
+                            <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData[field.key] ? 'translate-x-6' : 'translate-x-1'}`}
+                            />
+                        </button>
+                    </div>
+                ) : field.type === 'textarea' ? (
+                    <textarea
+                        rows={3}
+                        value={formData[field.key] !== undefined ? formData[field.key] : ""}
+                        onChange={(e) => handleChange(fieldKey, e.target.value)}
+                        className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                        placeholder={field.placeholder || field.label}
+                    />
+                ) : (
+                    <input
+                        type={field.type}
+                        onWheel={(e) => field.type === 'number' ? e.target.blur() : null}
+                        onFocus={(e) => field.type === 'number' ? e.target.select() : null}
+                        value={formData[field.key] !== undefined ? formData[field.key] : ""}
+                        onChange={(e) => handleChange(fieldKey, e.target.value)}
+                        className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
+                        placeholder={field.placeholder || field.label}
+                    />
+                )}
+            </div>
+        );
+    };
+
     return (
         <div 
             className={`flex flex-col flex-1 min-h-0 ${asDialog ? "" : "h-full"} ${theme.pageBg} overflow-hidden`}
@@ -1430,284 +1872,107 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                         </p>
                     </div>
 
-                    {/* ITEM TYPE SWITCHER */}
-                    {!isEditing && (asDialog || sourcePage === 'purchase') && (
-                        <div className={`flex flex-wrap gap-1 p-1 rounded-2xl shadow-sm border ${theme.borderLight} ${theme.surfaceBg} w-full sm:w-auto`}>
-                            {businessTypeData?.features?.sellManufacturedItems !== false && sourcePage !== 'purchase' && canViewMenu !== false && (
-                                <button
-                                    onClick={() => setCurrentTab('menu')}
-                                    className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'menu' 
-                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
-                                        : `${theme.textMuted} hover:opacity-70`}`}
-                                >
-                                    <Layers size={13} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured')}
-                                </button>
+                    {/* ITEM TYPE SWITCHER & ADJUST BUTTON */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {!isEditing && (asDialog || sourcePage === 'purchase') && (
+                            <div className={`flex flex-wrap gap-1 p-1 rounded-2xl shadow-sm border ${theme.borderLight} ${theme.surfaceBg} w-full sm:w-auto`}>
+                                {businessTypeData?.features?.sellManufacturedItems !== false && sourcePage !== 'purchase' && canViewMenu !== false && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentTab('menu')}
+                                        className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'menu' 
+                                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
+                                            : `${theme.textMuted} hover:opacity-70`}`}
+                                    >
+                                        <Layers size={13} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured')}
+                                    </button>
+                                )}
+                                {canViewItems !== false && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentTab('raw')}
+                                        className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'raw' 
+                                            ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
+                                            : `${theme.textMuted} hover:opacity-70`}`}
+                                    >
+                                        <Plus size={13} /> Stock
+                                    </button>
+                                )}
+                                {businessTypeData?.features?.sellTradeItems !== false && canViewTradeItems !== false && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentTab('trade')}
+                                        className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'trade' 
+                                            ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' 
+                                            : `${theme.textMuted} hover:opacity-70`}`}
+                                    >
+                                        <Package size={13} /> Trade
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Adjust Fields Button */}
+                        <button
+                            type="button"
+                            onClick={handleOpenAdjustModal}
+                            className={`px-3.5 py-2.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 border shadow-sm ${customLayouts[activeFormName]?.length > 0 ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-amber-500/20' : `${theme.borderLight} ${theme.surfaceBg} ${theme.textPrimary} hover:border-indigo-500 hover:text-indigo-600`}`}
+                            title={`Adjust field positions for ${activeFormName} items`}
+                        >
+                            <Sliders size={13} />
+                            <span>Adjust</span>
+                            {customLayouts[activeFormName]?.length > 0 && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-pulse" />
                             )}
-                            {canViewItems !== false && (
-                                <button
-                                    onClick={() => setCurrentTab('raw')}
-                                    className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'raw' 
-                                        ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' 
-                                        : `${theme.textMuted} hover:opacity-70`}`}
-                                >
-                                    <Plus size={13} /> Stock
-                                </button>
-                            )}
-                            {businessTypeData?.features?.sellTradeItems !== false && canViewTradeItems !== false && (
-                                <button
-                                    onClick={() => setCurrentTab('trade')}
-                                    className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'trade' 
-                                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' 
-                                        : `${theme.textMuted} hover:opacity-70`}`}
-                                >
-                                    <Package size={13} /> Trade
-                                </button>
-                            )}
-                        </div>
-                    )}
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar min-h-0">
                 <div className="space-y-12">
-                    {/* CORE FIELDS SECTION */}
-                    <div>
-                        <div className="flex items-center gap-4 mb-8">
-                            <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Core Details</h4>
-                            <div className={`flex-1 h-px ${theme.borderLight}`}></div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            {visibleFields.filter(fk => CORE_FIELD_KEYS.includes(fk)).map(fieldKey => {
-                                const field = ALL_FIELDS[fieldKey];
-                                if (!field) return null;
-                                
-                                const isRequired = field.required;
-
-                                // Helper to get options for standard selects
-                                let options = field.options || [];
-                                if (fieldKey === 'category_id') {
-                                    options = categories.map(c => ({ label: c.name, value: c._id }));
-                                } else if (fieldKey === 'unit_id' || fieldKey === 'secondary_unit_id') {
-                                    options = units.map(u => ({ label: u.name, value: u._id }));
-                                } else if (fieldKey === 'tax_percent') {
-                                    // Filter taxes based on selected tax type
-                                    const filteredTaxes = selectedTaxType 
-                                        ? shopTaxes.filter(t => (t.taxType || 'INCLUSIVE').toUpperCase() === selectedTaxType)
-                                        : [];
-                                    
-                                    options = filteredTaxes.map(t => ({
-                                        label: `${t.name} (${t.percentage}%)`,
-                                        value: t._id
-                                    }));
-                                } else if (fieldKey === 'item_type') {
-                                    options = field.options || ["STOCK", "SERVICE", "MANUFACTURED"];
+                    {customLayouts[activeFormName]?.length > 0 ? (
+                        <div>
+                            <div className="flex items-center justify-between gap-4 mb-8">
+                                <div className="flex items-center gap-3">
+                                    <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Form Fields ({activeFormName})</h4>
+                                    <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-xl bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                                        Custom Layout
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleOpenAdjustModal}
+                                    className="text-xs font-black text-indigo-600 hover:underline flex items-center gap-1"
+                                >
+                                    <Sliders size={13} /> Adjust Layout
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                {customLayouts[activeFormName]
+                                    .filter(item => visibleFields.includes(item.field_name || item.fieldName))
+                                    .map(item => {
+                                        const fk = item.field_name || item.fieldName;
+                                        const colSpanNum = item.column_number || item.columnNumber || 1;
+                                        const colClass = colSpanNum === 3 ? "col-span-1 md:col-span-2 lg:col-span-3" : (colSpanNum === 2 ? "col-span-1 md:col-span-2 lg:col-span-2" : "col-span-1");
+                                        return renderSingleField(fk, colClass);
+                                    })
                                 }
-
-                                // Special rendering for tax_percent - show tax type selector first
-                                if (fieldKey === 'tax_percent') {
-                                    const isSuperAdminUser = Boolean(
-                                        user?.isSuperAdmin === true ||
-                                        user?.role === 'superadmin' ||
-                                        user?.role === 'SUPER_ADMIN' ||
-                                        user?.role?.name === 'superadmin' ||
-                                        user?.role?.name === 'SUPER_ADMIN' ||
-                                        user?.roles?.some(r => ['superadmin', 'super_admin'].includes((r?.name || r || "").toLowerCase()))
-                                    );
-                                    const effectiveBranch = currentBranchData || branches?.find(b => String(b._id || b.id) === String(activeBranchId || fixedBranchId));
-                                    const branchCountry = effectiveBranch?.address?.country || organization?.defaultCountry;
-                                    const countryVal = typeof branchCountry === 'object' ? (branchCountry?.code || branchCountry?.name) : branchCountry;
-                                    const effectiveTaxSystem = branchTaxSystem || effectiveBranch?.taxProfile?.taxSystem || effectiveBranch?.taxConfig?.taxSystem || organization?.defaultTaxSystem;
-                                    const isTaxProfileComplete = isSuperAdminUser || Boolean(effectiveTaxSystem && countryVal);
-
-                                    if (!isTaxProfileComplete) {
-                                        return (
-                                            <div key={fieldKey} className="col-span-1 md:col-span-2 lg:col-span-2 p-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                                                <div className="flex items-start gap-3">
-                                                    <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 mt-0.5 shrink-0">
-                                                        <Building2 size={20} />
-                                                    </div>
-                                                    <div>
-                                                        <h5 className={`text-sm font-black ${theme.textHeading}`}>
-                                                            Complete profile to add tax data
-                                                        </h5>
-                                                        <p className={`text-xs ${theme.textMuted} mt-0.5`}>
-                                                            Country tax profile is not configured yet. Complete your profile in Organization settings to select your country and tax system before assigning taxes to items.
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (asDialog && onClose) onClose();
-                                                        navigate('/organization');
-                                                    }}
-                                                    className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-amber-500 text-slate-950 hover:bg-amber-400 transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm hover:shadow active:scale-95 cursor-pointer shrink-0"
-                                                >
-                                                    <span>Complete Profile</span>
-                                                    <ArrowRight size={14} />
-                                                </button>
-                                            </div>
-                                        );
-                                    }
-
-                                    return (
-                                        <React.Fragment key={fieldKey}>
-                                             {/* Tax Type Selector (Optional) */}
-                                            <div>
-                                                <div className="flex items-center justify-between mb-2 ml-1">
-                                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest block`}>
-                                                        Tax Type
-                                                    </label>
-                                                    {effectiveTaxSystem && (
-                                                        <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md">
-                                                            {effectiveTaxSystem} {countryVal ? `(${countryVal})` : ''}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <CommonSelect
-                                                    options={[
-                                                        { label: "None (No Tax)", value: "NONE" },
-                                                        { label: "Inclusive", value: "INCLUSIVE" },
-                                                        { label: "Exclusive", value: "EXCLUSIVE" }
-                                                    ]}
-                                                    value={selectedTaxType || "NONE"}
-                                                    onChange={(val) => {
-                                                        const targetType = val === "NONE" ? "" : val;
-                                                        if (targetType !== selectedTaxType) {
-                                                            setSelectedTaxType(targetType);
-                                                            // Reset tax selection when type changes
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                taxId: "",
-                                                                taxPercent: 0,
-                                                                isExclusiveTax: targetType === "EXCLUSIVE"
-                                                            }));
-                                                        }
-                                                    }}
-                                                    placeholder="Select Tax Type (Optional)..."
-                                                    className="w-full"
-                                                />
-                                            </div>
-                                            
-                                            {/* Tax Percentage Selector - only show if tax type is selected */}
-                                            {selectedTaxType && (
-                                                <div>
-                                                    <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
-                                                        {field.label} {isRequired && <span className="text-red-500">*</span>}
-                                                    </label>
-                                                    <CommonSelect
-                                                        options={options}
-                                                        value={formData.taxId || ""}
-                                                        onChange={(val) => handleChange(fieldKey, val)}
-                                                        placeholder={options.length === 0 ? `No ${selectedTaxType.toLowerCase()} taxes available` : `Select ${field.label}...`}
-                                                        className="w-full"
-                                                        disabled={options.length === 0}
-                                                    />
-                                                </div>
-                                            )}
-                                        </React.Fragment>
-                                    );
-                                }
-
-                                return (
-                                    <div key={fieldKey}>
-                                        <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
-                                            {field.label} {isRequired && <span className="text-red-500">*</span>}
-                                        </label>
-                                        
-                                        {field.type === 'select' ? (
-                                            <CommonSelect
-                                                options={options}
-                                                value={fieldKey === 'tax_percent' ? (formData.taxId || (formData.taxPercent ? shopTaxes.find(t => t.percentage === formData.taxPercent)?._id : "")) : (formData[field.key] || field.defaultValue || "")}
-                                                onChange={(val) => handleChange(fieldKey, val)}
-                                                placeholder={`Select ${field.label}...`}
-                                                className="w-full"
-                                                extraAction={fieldKey === 'category_id' ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setIsCategoryModalOpen(true)}
-                                                        className={`w-full p-4 text-left ${theme.mode === 'dark' ? 'hover:bg-indigo-900/20' : 'hover:bg-indigo-50'} flex items-center justify-between group transition-colors border-t ${theme.borderLight}`}
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <div className={`${theme.mode === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-100 text-indigo-600'} p-2 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-colors`}>
-                                                                <Plus size={18} />
-                                                            </div>
-                                                            <div className={`font-black ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>Add New Category</div>
-                                                        </div>
-                                                        <ChevronRight size={18} className="text-indigo-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-4 group-hover:translate-x-0" />
-                                                    </button>
-                                                ) : null}
-                                            />
-                                        ) : fieldKey === 'barcode' ? (
-                                            <div className="relative group">
-                                                <input
-                                                    id="field-input-barcode"
-                                                    type="text"
-                                                    value={formData[field.key] !== undefined ? formData[field.key] : ""}
-                                                    onChange={(e) => handleChange(fieldKey, e.target.value)}
-                                                    onFocus={(e) => e.target.select()}
-                                                    className={`w-full p-4 pr-24 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                    placeholder="Scan or enter barcode..."
-                                                />
-                                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleBarcodeScan(false)}
-                                                        className={`p-2 text-indigo-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-indigo-900/40' : 'hover:bg-indigo-50'}`}
-                                                        title="Scan with Scanner"
-                                                    >
-                                                        <Scan size={18} />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={generateItemBarcode}
-                                                        className={`p-2 text-emerald-600 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-emerald-900/40' : 'hover:bg-emerald-50'}`}
-                                                        title="Generate Internal Barcode"
-                                                    >
-                                                        <Barcode size={18} />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={handlePrintBarcode}
-                                                        className={`p-2 text-orange-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-orange-900/40' : 'hover:bg-orange-50'}`}
-                                                        title="Print Barcode"
-                                                    >
-                                                        <Printer size={18} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ) : field.type === 'boolean' ? (
-                                            <div className={`w-full p-4 border-2 rounded-2xl flex items-center justify-between transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : theme.inputBorder} ${theme.inputBg}`}>
-                                                <span className={`text-sm font-bold ${formData[field.key] ? 'text-indigo-600' : theme.textSecondary}`}>
-                                                    {formData[field.key] ? 'Yes' : 'No'}
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => { e.preventDefault(); handleChange(fieldKey, !formData[field.key]); }}
-                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${formData[field.key] ? 'bg-indigo-600' : (theme.mode === 'dark' ? 'bg-slate-700' : 'bg-gray-300')}`}
-                                                >
-                                                    <span
-                                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData[field.key] ? 'translate-x-6' : 'translate-x-1'}`}
-                                                    />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <input
-                                                type={field.type}
-                                                onWheel={(e) => field.type === 'number' ? e.target.blur() : null}
-                                                onFocus={(e) => field.type === 'number' ? e.target.select() : null}
-                                                value={formData[field.key] !== undefined ? formData[field.key] : ""}
-                                                onChange={(e) => handleChange(fieldKey, e.target.value)}
-                                                className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[fieldKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                placeholder={field.placeholder || field.label}
-                                            />
-                                        )}
-                                    </div>
-                                );
-                            })}
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <React.Fragment>
+                            {/* CORE FIELDS SECTION */}
+                            <div>
+                                <div className="flex items-center gap-4 mb-8">
+                                    <h4 className={`text-xl font-black ${theme.textHeading} uppercase tracking-tight`}>Core Details</h4>
+                                    <div className={`flex-1 h-px ${theme.borderLight}`}></div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                    {visibleFields.filter(fk => CORE_FIELD_KEYS.includes(fk)).map(fieldKey => renderSingleField(fieldKey))}
+                                </div>
+                            </div>
 
                     {/* ADVANCED FIELDS TOGGLE */}
                     <div className="flex flex-col gap-8">
@@ -1757,150 +2022,16 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                 <div className={`flex-1 h-px ${theme.borderLight}`}></div>
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                                {advancedFieldsInSection.map(field => {
-                                                    // Helper to get options for standard selects
-                                                    let options = field.options || [];
-                                                    if (field.originalKey === 'category_id') {
-                                                        options = categories.map(c => ({ label: c.name, value: c._id }));
-                                                    } else if (field.originalKey === 'unit_id' || field.originalKey === 'secondary_unit_id') {
-                                                        options = units.map(u => ({ label: u.name, value: u._id }));
-                                                    } else if (field.originalKey === 'default_purchase_unit' || field.originalKey === 'default_sales_unit') {
-                                                        const priUnit = units.find(u => u._id === formData.unitId)?.name;
-                                                        const secUnit = units.find(u => u._id === formData.secondaryUnitId)?.name;
-                                                        options = [
-                                                            { label: priUnit ? `Primary Unit (${priUnit})` : "Primary Unit (Main / Bigger)", value: "PRIMARY" },
-                                                            { label: secUnit ? `Secondary Unit (${secUnit})` : "Secondary Unit (Sub / Smaller)", value: "SECONDARY" }
-                                                        ];
-                                                    } else if (field.originalKey === 'tax_id') {
-                                                        options = shopTaxes.map(t => {
-                                                            const typeStr = (t.taxType || 'INCLUSIVE').charAt(0).toUpperCase() + (t.taxType || 'INCLUSIVE').slice(1).toLowerCase();
-                                                            return { label: `${t.name} (${t.percentage}% - ${typeStr})`, value: t._id || t.name };
-                                                        });
-                                                    } else if (field.originalKey === 'item_type') {
-                                                        options = field.options || ["STOCK", "SERVICE", "MANUFACTURED"];
-                                                    }
-
-                                                    if (hasVariants && isSeparateStock && field.originalKey === 'opening_stock') {
-                                                        return (
-                                                            <div key={field.originalKey} className={`flex flex-col justify-center p-4 rounded-2xl border-2 border-dashed ${theme.borderLight} ${theme.sectionBg}`}>
-                                                                <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-1 block`}>
-                                                                    {field.label}
-                                                                </label>
-                                                                <p className={`text-xs font-bold ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>
-                                                                    Managed per variant in the Variants section below.
-                                                                </p>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    return (
-                                                        <div key={field.originalKey} className={field.type === 'textarea' ? 'md:col-span-3' : ''}>
-                                                            <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block ml-1`}>
-                                                                {field.label} {field.required && <span className="text-red-500">*</span>}
-                                                            </label>
-
-                                                            {field.type === 'select' ? (
-                                                                <CommonSelect
-                                                                    options={options}
-                                                                    value={field.originalKey === 'tax_percent' ? (formData.taxId || (formData.taxPercent ? shopTaxes.find(t => t.percentage === formData.taxPercent)?._id : "")) : (formData[field.key] || field.defaultValue || "")}
-                                                                    onChange={(val) => handleChange(field.originalKey, val)}
-                                                                    placeholder={`Select ${field.label}...`}
-                                                                    className="w-full"
-                                                                />
-                                                            ) : field.originalKey === 'barcode' ? (
-                                                                <div className="relative group">
-                                                                    <input
-                                                                        id="field-input-barcode-adv"
-                                                                        type="text"
-                                                                        value={formData[field.key] !== undefined ? formData[field.key] : ""}
-                                                                        onChange={(e) => handleChange(field.originalKey, e.target.value)}
-                                                                        onFocus={(e) => e.target.select()}
-                                                                        className={`w-full p-4 pr-24 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                                        placeholder="Scan or enter barcode..."
-                                                                    />
-                                                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                const inp = document.getElementById('field-input-barcode-adv');
-                                                                                if (inp) { inp.focus(); toast("Scanner ready."); }
-                                                                            }}
-                                                                            className={`p-2 text-indigo-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-indigo-900/40' : 'hover:bg-indigo-50'}`}
-                                                                            title="Scan with Scanner"
-                                                                        >
-                                                                            <Scan size={18} />
-                                                                        </button>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={generateItemBarcode}
-                                                                            className={`p-2 text-emerald-600 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-emerald-900/40' : 'hover:bg-emerald-50'}`}
-                                                                            title="Generate Internal Barcode"
-                                                                        >
-                                                                            <Barcode size={18} />
-                                                                        </button>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={handlePrintBarcode}
-                                                                            className={`p-2 text-orange-500 rounded-xl transition-all ${theme.mode === 'dark' ? 'hover:bg-orange-900/40' : 'hover:bg-orange-50'}`}
-                                                                            title="Print Barcode"
-                                                                        >
-                                                                            <Printer size={18} />
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            ) : field.type === 'textarea' ? (
-                                                                <textarea
-                                                                    value={formData[field.key] || ""}
-                                                                    onChange={(e) => handleChange(field.originalKey, e.target.value)}
-                                                                    rows={3}
-                                                                    className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                                />
-                                                            ) : field.type === 'boolean' ? (
-                                                                <div className={`w-full p-4 border-2 rounded-2xl flex items-center justify-between transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : theme.inputBorder} ${theme.inputBg}`}>
-                                                                    <span className={`text-sm font-bold ${formData[field.key] ? 'text-indigo-600' : theme.textSecondary}`}>
-                                                                        {formData[field.key] ? 'Yes' : 'No'}
-                                                                    </span>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(e) => { e.preventDefault(); handleChange(field.originalKey, !formData[field.key]); }}
-                                                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${formData[field.key] ? 'bg-indigo-600' : (theme.mode === 'dark' ? 'bg-slate-700' : 'bg-gray-300')}`}
-                                                                    >
-                                                                        <span
-                                                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData[field.key] ? 'translate-x-6' : 'translate-x-1'}`}
-                                                                        />
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <div>
-                                                                    <input
-                                                                        type={field.type}
-                                                                        onWheel={(e) => field.type === 'number' ? e.target.blur() : null}
-                                                                        value={formData[field.key] !== undefined ? formData[field.key] : ""}
-                                                                        onChange={(e) => handleChange(field.originalKey, e.target.value)}
-                                                                        placeholder={field.placeholder || `Enter ${field.label}...`}
-                                                                        className={`w-full p-4 border-2 rounded-2xl outline-none font-bold ${theme.inputBg} ${theme.textPrimary} transition-all ${errors[field.originalKey] ? 'border-red-400 focus:border-red-500' : `${theme.inputBorder} focus:border-indigo-500`}`}
-                                                                    />
-                                                                    {field.originalKey === 'conversion_factor' && formData.conversionFactor && formData.unitId && formData.secondaryUnitId && (
-                                                                        <div className={`mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold w-fit ${
-                                                                            theme.mode === 'dark' ? 'bg-indigo-900/40 text-indigo-300 border border-indigo-700/50' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                                                        }`}>
-                                                                            <span>📦 1 {units.find(u => u._id === formData.unitId)?.name || 'Primary'} = {formData.conversionFactor} {units.find(u => u._id === formData.secondaryUnitId)?.name || 'Secondary'}</span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                            {errors[field.originalKey] && (
-                                                                <p className="text-red-500 text-xs mt-1 font-bold">{errors[field.originalKey]}</p>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
+                                                {advancedFieldsInSection.map(field => renderSingleField(field.originalKey))}
                                             </div>
                                         </div>
                                     );
                                 })}
                             </div>
                         )}
+                    </div>
+                    </React.Fragment>
+                    )}
 
                     {/* DYNAMIC ATTRIBUTES SECTION */}
                     {(() => {
@@ -2654,7 +2785,6 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
 
                 </div>
             </div>
-        </div>
 
             {/* Sticky Footer */}
             <div className={`flex flex-row gap-2 p-3 sm:p-6 md:px-8 border-t ${theme.borderLight} ${theme.surfaceBg} shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] z-10 shrink-0`}>
@@ -2732,6 +2862,271 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                 setDialogState={setBarcodePrintDialog}
                 onConfirmPrint={handleConfirmBarcodePrint}
             />
+
+            {/* ADJUST FORM LAYOUT MODAL WITH COMPACT CARDS & LIVE MINIATURE PREVIEW */}
+            {isAdjustModalOpen && (
+                <Modal
+                    isOpen={isAdjustModalOpen}
+                    onClose={() => setIsAdjustModalOpen(false)}
+                    title={`Adjust Form Layout — ${activeFormName} Items`}
+                    maxWidth="max-w-6xl"
+                >
+                    <div className="space-y-5">
+                        {/* Information Header Banner */}
+                        <div className={`p-4 rounded-2xl border ${theme.borderLight} bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-amber-500/10 text-indigo-950 dark:text-indigo-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm`}>
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/20 shrink-0">
+                                    <Sliders size={20} />
+                                </div>
+                                <div>
+                                    <p className="font-black text-sm tracking-tight">Custom Field Layout Builder — {activeFormName} Form</p>
+                                    <p className="opacity-80 text-[11px] font-medium">Drag & drop small cards or use arrow buttons to reorder fields. Toggle column spans (1 Col, 2 Cols, Full Width). Watch the live miniature preview update instantly on the right!</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white/60 dark:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/50 shrink-0">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Live Preview Sync</span>
+                            </div>
+                        </div>
+
+                        {/* Split Workspace Layout */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                            
+                            {/* LEFT PANE: SMALL COMPACT FIELD CARDS DRAG & DROP ZONE (7 COLS) */}
+                            <div className="lg:col-span-7 flex flex-col gap-3">
+                                <div className="flex items-center justify-between px-1">
+                                    <div className="flex items-center gap-2">
+                                        <Move size={15} className="text-indigo-500" />
+                                        <h5 className={`font-black text-xs uppercase tracking-wider ${theme.textHeading}`}>
+                                            Reorder Fields ({adjustingFields.length})
+                                        </h5>
+                                    </div>
+                                    <span className={`text-[10px] font-bold ${theme.textMuted}`}>
+                                        💡 Drag cards or use ↑ ↓ buttons
+                                    </span>
+                                </div>
+
+                                <div className="max-h-[520px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                    {adjustingFields.map((item, index) => {
+                                        const fieldDef = ALL_FIELDS[item.fieldName];
+                                        const isDragging = draggedIndex === index;
+                                        const isOver = dragOverIndex === index;
+                                        const isHovered = hoveredFieldKey === item.fieldName;
+
+                                        return (
+                                            <div 
+                                                key={item.fieldName}
+                                                draggable
+                                                onDragStart={(e) => handleDragStart(e, index)}
+                                                onDragOver={(e) => handleDragOver(e, index)}
+                                                onDragLeave={handleDragLeave}
+                                                onDrop={(e) => handleDrop(e, index)}
+                                                onDragEnd={handleDragEnd}
+                                                onMouseEnter={() => setHoveredFieldKey(item.fieldName)}
+                                                onMouseLeave={() => setHoveredFieldKey(null)}
+                                                className={`p-2.5 rounded-2xl border transition-all cursor-grab active:cursor-grabbing select-none flex items-center justify-between gap-2.5 ${
+                                                    isDragging 
+                                                        ? 'opacity-30 scale-95 border-dashed border-indigo-500 bg-indigo-500/10' 
+                                                        : isOver 
+                                                        ? 'border-2 border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 shadow-lg scale-[1.01]' 
+                                                        : isHovered
+                                                        ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-md'
+                                                        : `${theme.borderLight} ${theme.surfaceBg} shadow-sm hover:shadow`
+                                                }`}
+                                            >
+                                                {/* Left Drag & Info Handle */}
+                                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                    <div className={`p-1.5 rounded-xl ${theme.mode === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'} group-hover:text-indigo-500 transition-colors shrink-0`}>
+                                                        <GripVertical size={16} />
+                                                    </div>
+                                                    <span className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-[11px] shrink-0 ${theme.mode === 'dark' ? 'bg-slate-800 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                                                        {index + 1}
+                                                    </span>
+                                                    <div className="min-w-0 flex-1">
+                                                        <h6 className={`font-black text-xs ${theme.textHeading} truncate`}>
+                                                            {fieldDef?.label || item.label || item.fieldName}
+                                                        </h6>
+                                                        <p className={`text-[9px] font-bold ${theme.textMuted} uppercase tracking-wider truncate`}>
+                                                            {fieldDef?.section || 'General'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Right Controls: Col Selector + Reorder Buttons */}
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    {/* Column Span Selector Pill */}
+                                                    <div className="flex items-center border rounded-xl overflow-hidden p-0.5 bg-slate-100 dark:bg-slate-800/80 text-[10px] font-black">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleColChange(index, 1)}
+                                                            className={`px-2 py-0.5 rounded-lg transition-all ${item.columnNumber === 1 ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'}`}
+                                                            title="1 Column (1/3 width)"
+                                                        >
+                                                            1 Col
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleColChange(index, 2)}
+                                                            className={`px-2 py-0.5 rounded-lg transition-all ${item.columnNumber === 2 ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'}`}
+                                                            title="2 Columns (2/3 width)"
+                                                        >
+                                                            2 Cols
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleColChange(index, 3)}
+                                                            className={`px-2 py-0.5 rounded-lg transition-all ${item.columnNumber === 3 ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'}`}
+                                                            title="Full Width (3 Columns)"
+                                                        >
+                                                            Full
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Up / Down Arrows */}
+                                                    <div className="flex items-center gap-0.5">
+                                                        <button
+                                                            type="button"
+                                                            disabled={index === 0}
+                                                            onClick={() => handleMoveField(index, -1)}
+                                                            className={`p-1.5 rounded-lg border ${theme.borderLight} transition-all ${index === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-600'}`}
+                                                            title="Move Up"
+                                                        >
+                                                            <ArrowUp size={13} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={index === adjustingFields.length - 1}
+                                                            onClick={() => handleMoveField(index, 1)}
+                                                            className={`p-1.5 rounded-lg border ${theme.borderLight} transition-all ${index === adjustingFields.length - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-600'}`}
+                                                            title="Move Down"
+                                                        >
+                                                            <ArrowDown size={13} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* RIGHT PANE: LIVE MINIATURE SCREEN PREVIEW (5 COLS) */}
+                            <div className="lg:col-span-5 flex flex-col gap-3">
+                                <div className="flex items-center justify-between px-1">
+                                    <div className="flex items-center gap-2">
+                                        <LayoutGrid size={15} className="text-amber-500" />
+                                        <h5 className={`font-black text-xs uppercase tracking-wider ${theme.textHeading}`}>
+                                            Miniature Form Preview
+                                        </h5>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md">
+                                        3-Column Screen Scale
+                                    </span>
+                                </div>
+
+                                {/* Desktop Device Window Frame */}
+                                <div className={`rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} shadow-xl overflow-hidden flex flex-col`}>
+                                    {/* Mock Window Title Bar */}
+                                    <div className="bg-slate-200 dark:bg-slate-800 px-3 py-2 flex items-center justify-between border-b border-slate-300 dark:border-slate-700">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" />
+                                            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />
+                                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />
+                                        </div>
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+                                            Product Form ({activeFormName})
+                                        </span>
+                                        <span className="text-[9px] font-bold text-slate-400">100% Fit</span>
+                                    </div>
+
+                                    {/* Mock Tab Selector */}
+                                    <div className="p-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex gap-1">
+                                        <div className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${activeFormName === 'MANUFACTURED' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>
+                                            Manufactured
+                                        </div>
+                                        <div className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${activeFormName === 'STOCK' ? 'bg-orange-500 text-white' : 'text-slate-400'}`}>
+                                            Stock
+                                        </div>
+                                        <div className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${activeFormName === 'TRADE' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>
+                                            Trade
+                                        </div>
+                                    </div>
+
+                                    {/* Live 3-Column Miniature Form Grid */}
+                                    <div className="p-3 max-h-[420px] overflow-y-auto custom-scrollbar bg-slate-100/70 dark:bg-slate-900/80">
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {adjustingFields.map((item, index) => {
+                                                const fieldDef = ALL_FIELDS[item.fieldName];
+                                                const colSpanNum = item.columnNumber || 1;
+                                                const colClass = colSpanNum === 3 ? "col-span-3" : (colSpanNum === 2 ? "col-span-2" : "col-span-1");
+                                                const isHovered = hoveredFieldKey === item.fieldName;
+
+                                                return (
+                                                    <div 
+                                                        key={item.fieldName}
+                                                        onMouseEnter={() => setHoveredFieldKey(item.fieldName)}
+                                                        onMouseLeave={() => setHoveredFieldKey(null)}
+                                                        className={`${colClass} p-2 rounded-xl border transition-all ${
+                                                            isHovered 
+                                                                ? 'border-2 border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 shadow-md scale-[1.02]' 
+                                                                : 'border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 shadow-2xs'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <span className="text-[9px] font-black text-slate-700 dark:text-slate-300 truncate max-w-[80%]">
+                                                                {fieldDef?.label || item.label || item.fieldName}
+                                                            </span>
+                                                            <span className="text-[8px] font-bold text-slate-400">
+                                                                #{index + 1}
+                                                            </span>
+                                                        </div>
+                                                        {/* Simulated Input slot */}
+                                                        <div className={`h-5 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center px-1.5 text-[8px] text-slate-400 font-medium ${fieldDef?.type === 'textarea' ? 'h-9 items-start pt-1' : ''}`}>
+                                                            {fieldDef?.type === 'select' ? '▾ Select...' : `Enter ${fieldDef?.label || item.fieldName}...`}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Action Footer */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                            <button
+                                type="button"
+                                onClick={handleResetLayout}
+                                disabled={isSavingLayout}
+                                className="w-full sm:w-auto px-4 py-2 rounded-xl border border-red-500/30 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                            >
+                                <RotateCcw size={14} />
+                                <span>Reset Default View</span>
+                            </button>
+
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAdjustModalOpen(false)}
+                                    className={`flex-1 sm:flex-none px-4 py-2 rounded-xl border ${theme.borderLight} ${theme.textSecondary} text-xs font-black uppercase tracking-wider`}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveLayout}
+                                    disabled={isSavingLayout}
+                                    className="flex-1 sm:flex-none px-6 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-1.5"
+                                >
+                                    <Save size={14} />
+                                    <span>{isSavingLayout ? "Saving..." : "Save Layout"}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };
