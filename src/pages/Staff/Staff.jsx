@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ShieldCheck, Plus, X, ChevronDown, ChevronUp, Clock, AlertCircle, Calendar, RefreshCw, Wallet, Sliders, Code, MapPin, Check } from "lucide-react";
+import { ShieldCheck, Plus, X, ChevronDown, ChevronUp, Clock, AlertCircle, Calendar, RefreshCw, Wallet, Sliders, Code, MapPin, Check, Eye, EyeOff } from "lucide-react";
 import ThemeLoader from "../../components/ui/ThemeLoader";
 import toast from "react-hot-toast";
 import CommonTable from "../../components/CommonTable";
@@ -279,6 +279,7 @@ const Staff = ({
 
     // Create Employee Dialog State
     const [isCreateEmployeeOpen, setIsCreateEmployeeOpen] = useState(false);
+    const [showCreatePassword, setShowCreatePassword] = useState(false);
     const [createValidationErrors, setCreateValidationErrors] = useState({});
     const [newEmpData, setNewEmpData] = useState({
         name: "",
@@ -3126,15 +3127,26 @@ const Staff = ({
                                 </div>
                                 <div>
                                     <label className={`block text-sm font-bold ${theme.textSecondary} mb-1`}>Password</label>
-                                    <input
-                                        type="password"
-                                        value={newEmpData.password}
-                                        onChange={(e) => handleEmpDataChange("password", e.target.value)}
-                                        className={`w-full p-3 border ${theme.inputBg} ${theme.inputText} rounded-xl outline-none transition-all ${
-                                            createValidationErrors.password ? 'border-rose-500 focus:border-rose-500' : `${theme.inputBorder} ${theme.inputFocus}`
-                                        }`}
-                                        placeholder="Enter password (min 6 characters)"
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type={showCreatePassword ? "text" : "password"}
+                                            value={newEmpData.password}
+                                            onChange={(e) => handleEmpDataChange("password", e.target.value)}
+                                            className={`w-full p-3 pr-10 border ${theme.inputBg} ${theme.inputText} rounded-xl outline-none transition-all ${
+                                                createValidationErrors.password ? 'border-rose-500 focus:border-rose-500' : `${theme.inputBorder} ${theme.inputFocus}`
+                                            }`}
+                                            placeholder="Enter password (min 6 characters)"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCreatePassword(!showCreatePassword)}
+                                            className={`absolute right-3 top-1/2 -translate-y-1/2 ${theme.textSecondary} hover:${theme.textPrimary} transition-colors p-1 focus:outline-none`}
+                                            tabIndex={-1}
+                                            title={showCreatePassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showCreatePassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
                                     {createValidationErrors.password && (
                                         <p className="text-rose-500 text-xs font-bold mt-1.5">{createValidationErrors.password}</p>
                                     )}

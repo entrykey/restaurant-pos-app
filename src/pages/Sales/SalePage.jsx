@@ -754,6 +754,7 @@ const SalePage = () => {
                                                         </td>
                                                         <td className="py-4 px-2">
                                                             <input type="number" min="0.01" step="any" value={row.quantity}
+                                                                onWheel={(e) => e.target.blur()}
                                                                 onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
                                                                 onBlur={(e) => {
                                                                     const val = parseFloat(e.target.value);
@@ -765,6 +766,7 @@ const SalePage = () => {
                                                         </td>
                                                         <td className="py-4 px-2">
                                                             <input type="number" min="0" step="any" value={row.sellingPrice}
+                                                                onWheel={(e) => e.target.blur()}
                                                                 onChange={(e) => handleItemChange(idx, "sellingPrice", e.target.value)}
                                                                 onBlur={(e) => {
                                                                     const val = parseFloat(e.target.value);
@@ -776,6 +778,7 @@ const SalePage = () => {
                                                         </td>
                                                         <td className="py-4 px-2">
                                                             <input type="number" min="0" value={row.taxPercent}
+                                                                onWheel={(e) => e.target.blur()}
                                                                 onChange={(e) => handleItemChange(idx, "taxPercent", e.target.value)}
                                                                 onBlur={(e) => {
                                                                     const val = parseFloat(e.target.value);
@@ -787,6 +790,7 @@ const SalePage = () => {
                                                         </td>
                                                         <td className="py-4 px-2">
                                                             <input type="number" min="0" step="any" value={row.discountAmount}
+                                                                onWheel={(e) => e.target.blur()}
                                                                 onChange={(e) => handleItemChange(idx, "discountAmount", e.target.value)}
                                                                 onBlur={(e) => {
                                                                     const val = parseFloat(e.target.value);
@@ -956,6 +960,7 @@ const SalePage = () => {
                                             max={discountType === 'percent' ? "100" : undefined}
                                             value={formData.discountTotal === 0 ? "" : formData.discountTotal}
                                             onFocus={e => e.target.select()}
+                                            onWheel={e => e.target.blur()}
                                             onChange={(e) => {
                                                 const rawVal = e.target.value;
                                                 if (rawVal === "") {

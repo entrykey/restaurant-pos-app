@@ -126,7 +126,7 @@ const InlineReviewBill = ({
     useEffect(() => {
         const normPhone = normalizePhoneNumber(localCustPhone);
         const cleanName = (localCustName || "").trim();
-        const searchQuery = normPhone.length >= 5 ? normPhone : (cleanName.length >= 2 ? cleanName : "");
+        const searchQuery = normPhone.length >= 5 ? normPhone : (cleanName.length >= 1 ? cleanName : "");
 
         if (searchQuery) {
             setIsSearchingCustomer(true);
@@ -145,7 +145,7 @@ const InlineReviewBill = ({
                                 (normPhone.length >= 10 && cPhoneNorm.endsWith(normPhone.slice(-10)));
                         });
                     }
-                    if (!found && cleanName.length >= 2) {
+                    if (!found && cleanName.length >= 1) {
                         found = list.find(c => String(c.name || c.customerName || "").toLowerCase().includes(cleanName.toLowerCase()));
                     }
 
@@ -933,7 +933,7 @@ const InlineReviewBill = ({
                                                 type="button"
                                                 onClick={() => activeSetBillDiscount({ ...activeBillDiscount, type: "flat" })}
                                                 className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase transition-all ${
-                                                    activeBillDiscount.type === 'flat'
+                                                    (activeBillDiscount.type || 'flat') === 'flat'
                                                         ? 'bg-indigo-600 text-white shadow-xs'
                                                         : `${theme.textMuted}`
                                                 }`}
@@ -942,9 +942,9 @@ const InlineReviewBill = ({
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => activeSetBillDiscount({ ...activeBillDiscount, type: "percentage" })}
+                                                onClick={() => activeSetBillDiscount({ ...activeBillDiscount, type: "percent" })}
                                                 className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase transition-all ${
-                                                    activeBillDiscount.type === 'percentage'
+                                                    activeBillDiscount.type === 'percent' || activeBillDiscount.type === 'percentage'
                                                         ? 'bg-indigo-600 text-white shadow-xs'
                                                         : `${theme.textMuted}`
                                                 }`}
@@ -958,6 +958,7 @@ const InlineReviewBill = ({
                                         type="number"
                                         value={activeBillDiscount.value === 0 ? "" : (activeBillDiscount.value || "")}
                                         onFocus={e => e.target.select()}
+                                        onWheel={e => e.target.blur()}
                                         onChange={(e) => {
                                             const raw = e.target.value;
                                             const val = raw === "" ? 0 : (parseFloat(raw) || 0);

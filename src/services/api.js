@@ -1772,3 +1772,43 @@ export const userService = {
     }
 };
 
+export const userFormLayoutService = {
+    getLayout: async (formName) => {
+        try {
+            const response = await api.get('/user-form-layouts', { params: { formName } });
+            if (response.data && response.data.success && Array.isArray(response.data.data) && response.data.data.length > 0) {
+                localStorage.setItem(`user_layout_${formName}`, JSON.stringify(response.data.data));
+                return response.data.data;
+            }
+            const cached = localStorage.getItem(`user_layout_${formName}`);
+            return cached ? JSON.parse(cached) : [];
+        } catch (error) {
+            console.warn(`[userFormLayoutService] API error fetching layout for ${formName}, falling back to localStorage cache:`, error);
+            const cached = localStorage.getItem(`user_layout_${formName}`);
+            return cached ? JSON.parse(cached) : [];
+        }
+    },
+    saveLayout: async (formName, layouts) => {
+        try {
+            localStorage.setItem(`user_layout_${formName}`, JSON.stringify(layouts));
+            const response = await api.post('/user-form-layouts', { formName, layouts });
+            return response.data;
+        } catch (error) {
+            console.warn(`[userFormLayoutService] API error saving layout for ${formName}, saved locally:`, error);
+            return { success: true, localOnly: true, data: layouts };
+        }
+    },
+    resetLayout: async (formName) => {
+        try {
+            localStorage.removeItem(`user_layout_${formName}`);
+            const response = await api.delete('/user-form-layouts', { params: { formName } });
+            return response.data;
+        } catch (error) {
+            console.warn(`[userFormLayoutService] API error resetting layout for ${formName}:`, error);
+            localStorage.removeItem(`user_layout_${formName}`);
+            return { success: true };
+        }
+    }
+};
+
+
