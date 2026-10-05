@@ -422,26 +422,26 @@ const PayInList = () => {
                                                                 </p>
                                                                 {activeTab === 'pending' && (
                                                                     group.totalPaid > 0 && group.totalBalance > 0 ? (
-                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                                        <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider bg-blue-600 text-white shadow-sm dark:bg-blue-600 dark:text-white">
                                                                             Partially Paid
                                                                         </span>
                                                                     ) : group.totalBalance > 0 ? (
-                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400">
+                                                                        <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider bg-amber-600 text-white shadow-sm dark:bg-amber-600 dark:text-white">
                                                                             Unpaid
                                                                         </span>
                                                                     ) : (
-                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                                                        <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider bg-emerald-600 text-white shadow-sm dark:bg-emerald-600 dark:text-white">
                                                                             Fully Paid
                                                                         </span>
                                                                     )
                                                                 )}
                                                                 {activeTab === 'history' && (
                                                                     group.balanceAmount > 0 ? (
-                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                                        <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider bg-blue-600 text-white shadow-sm dark:bg-blue-600 dark:text-white">
                                                                             Partially Paid (Due: {formatCurrency(group.balanceAmount)})
                                                                         </span>
                                                                     ) : (
-                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                                                        <span className="px-2.5 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider bg-emerald-600 text-white shadow-sm dark:bg-emerald-600 dark:text-white">
                                                                             Fully Paid
                                                                         </span>
                                                                     )
@@ -583,26 +583,26 @@ const PayInList = () => {
                                                             <p className={`font-black text-sm truncate ${theme.textHeading}`}>{group.customerName || 'Walk-in Customer'}</p>
                                                             {activeTab === 'pending' && (
                                                                 group.totalPaid > 0 && group.totalBalance > 0 ? (
-                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                                    <span className="px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase bg-blue-600 text-white shadow-sm dark:bg-blue-600 dark:text-white">
                                                                         Partial
                                                                     </span>
                                                                 ) : group.totalBalance > 0 ? (
-                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400">
+                                                                    <span className="px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase bg-amber-600 text-white shadow-sm dark:bg-amber-600 dark:text-white">
                                                                         Unpaid
                                                                     </span>
                                                                 ) : (
-                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                                                    <span className="px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase bg-emerald-600 text-white shadow-sm dark:bg-emerald-600 dark:text-white">
                                                                         Paid
                                                                     </span>
                                                                 )
                                                             )}
                                                             {activeTab === 'history' && (
                                                                 group.balanceAmount > 0 ? (
-                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                                    <span className="px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase bg-blue-600 text-white shadow-sm dark:bg-blue-600 dark:text-white">
                                                                         Partial
                                                                     </span>
                                                                 ) : (
-                                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                                                    <span className="px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase bg-emerald-600 text-white shadow-sm dark:bg-emerald-600 dark:text-white">
                                                                         Paid
                                                                     </span>
                                                                 )

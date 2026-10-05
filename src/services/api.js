@@ -1542,6 +1542,15 @@ export const reportsService = {
             throw error.response ? error.response.data : error;
         }
     },
+    getStockWiseReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/stock-wise', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching stock-wise report:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
     getProfitLossReport: async (params = {}) => {
         try {
             const response = await api.get('/reports/profit-loss', { params });

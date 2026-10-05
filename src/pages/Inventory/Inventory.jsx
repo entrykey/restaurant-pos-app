@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen, ShoppingBag, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Upload, Package, Search, Plus, Edit3, Trash2, Globe, Layers, Boxes, X, History, PackagePlus, PackageOpen, ShoppingBag, AlertTriangle, TrendingUp, Filter } from 'lucide-react';
 import ThemeLoader from '../../components/ui/ThemeLoader';
 import { BUSINESS_FEATURES } from '../../config/businessTypes';
 import CommonTable from '../../components/CommonTable';
@@ -150,12 +150,14 @@ const Inventory = ({
     const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
     const [historyData, setHistoryData] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
+    const [showLowStockOnly, setShowLowStockOnly] = useState(false);
 
-    // Reset page, category, and local items on tab change
+    // Reset page, category, local items, and stock alert filter on tab change
     useEffect(() => {
         setLocalItems([]);
         setCurrentPage(1);
         setSelectedCategory("ALL");
+        setShowLowStockOnly(false);
     }, [activeTab]);
 
     // Reset page on search change
@@ -275,13 +277,36 @@ const Inventory = ({
         return () => window.removeEventListener('inventoryFieldsUpdated', handleUpdates);
     }, []);
 
+    // Helper to check if an item exceeds its stock alert limit
+    const checkItemIsLowStock = useCallback((item) => {
+        if (!item) return false;
+        const minAlert = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
+        const qty = item.quantityOnHand ?? 0;
+
+        const portions = (Array.isArray(item.portionPricing) && item.portionPricing.length > 0)
+            ? item.portionPricing
+            : (Array.isArray(item.pricing?.portionPricing) && item.pricing.portionPricing.length > 0)
+                ? item.pricing.portionPricing
+                : (Array.isArray(item.variants) && item.variants.length > 0)
+                    ? item.variants
+                    : null;
+
+        if (portions && portions.length > 0) {
+            return portions.some((p) => {
+                const pQty = Number(p.quantityOnHand ?? p.openingStock ?? p.quantity ?? p.currentStock ?? p.stock ?? p.qty) || 0;
+                return minAlert > 0 ? pQty <= minAlert : (item.minStockAlert != null || item.stockSettings?.minStockAlert != null ? pQty <= minAlert : false);
+            });
+        } else {
+            return minAlert > 0 ? qty <= minAlert : (item.minStockAlert != null || item.stockSettings?.minStockAlert != null ? qty <= minAlert : false);
+        }
+    }, []);
+
     // Calculate summary statistics for active tab
     const tabStats = useMemo(() => {
         let lowStockCount = 0;
         let totalStockProfit = 0;
 
         localItems.forEach((item) => {
-            const minAlert = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
             const qty = item.quantityOnHand ?? 0;
 
             const portions = (Array.isArray(item.portionPricing) && item.portionPricing.length > 0)
@@ -292,13 +317,13 @@ const Inventory = ({
                         ? item.variants
                         : null;
 
-            let isItemLowStock = false;
+            if (checkItemIsLowStock(item)) {
+                lowStockCount++;
+            }
+
             if (portions && portions.length > 0) {
                 portions.forEach((p) => {
                     const pQty = Number(p.quantityOnHand ?? p.openingStock ?? p.quantity ?? p.currentStock ?? p.stock ?? p.qty) || 0;
-                    if (pQty <= minAlert) {
-                        isItemLowStock = true;
-                    }
                     const pSalePrice = Number(p.price || item.pricing?.sellingPrice || item.sellingPrice) || 0;
                     const pPurchasePrice = Number(p.costPrice || item.pricing?.purchasePrice || item.purchasePrice || item.costPerUnit) || 0;
                     const margin = pSalePrice - pPurchasePrice;
@@ -307,19 +332,12 @@ const Inventory = ({
                     }
                 });
             } else {
-                if (qty <= minAlert) {
-                    isItemLowStock = true;
-                }
                 const salePrice = Number(item.pricing?.sellingPrice ?? item.sellingPrice) || 0;
                 const purchasePrice = Number(item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit) || 0;
                 const margin = salePrice - purchasePrice;
                 if (margin > 0) {
                     totalStockProfit += margin * (qty > 0 ? qty : 1);
                 }
-            }
-
-            if (isItemLowStock) {
-                lowStockCount++;
             }
         });
 
@@ -328,23 +346,33 @@ const Inventory = ({
             lowStockCount,
             totalStockProfit,
         };
-    }, [localItems, totalItems]);
+    }, [localItems, totalItems, checkItemIsLowStock]);
 
     const targetItemType = activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE");
-    const tabFilteredItems = localItems.filter(item => (item.itemType || 'STOCK').toUpperCase() === targetItemType);
+    const tabFilteredItems = useMemo(() => {
+        return localItems.filter(item => (item.itemType || 'STOCK').toUpperCase() === targetItemType);
+    }, [localItems, targetItemType]);
+
+    // Filter items by stock alert if showLowStockOnly is active
+    const lowStockFilteredItems = useMemo(() => {
+        if (!showLowStockOnly) return tabFilteredItems;
+        return tabFilteredItems.filter(item => checkItemIsLowStock(item));
+    }, [tabFilteredItems, showLowStockOnly, checkItemIsLowStock]);
 
     // Sort items so out of stock items are pushed to the end
-    const filteredData = [...tabFilteredItems].sort((a, b) => {
-        const qtyA = a.quantityOnHand ?? 0;
-        const qtyB = b.quantityOnHand ?? 0;
+    const filteredData = useMemo(() => {
+        return [...lowStockFilteredItems].sort((a, b) => {
+            const qtyA = a.quantityOnHand ?? 0;
+            const qtyB = b.quantityOnHand ?? 0;
 
-        const aHasStock = qtyA > 0;
-        const bHasStock = qtyB > 0;
+            const aHasStock = qtyA > 0;
+            const bHasStock = qtyB > 0;
 
-        if (aHasStock && !bHasStock) return -1;
-        if (!aHasStock && bHasStock) return 1;
-        return 0;
-    });
+            if (aHasStock && !bHasStock) return -1;
+            if (!aHasStock && bHasStock) return 1;
+            return 0;
+        });
+    }, [lowStockFilteredItems]);
 
     const canView = activeTab === "menu" ? canViewMenu : (activeTab === "raw" ? canViewItems : canViewTradeItems);
     const canManage = activeTab === "menu" ? canManageMenu : (activeTab === "raw" ? canManageItems : canManageTradeItems);
@@ -1395,21 +1423,80 @@ const Inventory = ({
                         </div>
                     </div>
 
-                    {/* 2. Stock Alert */}
-                    <div className={`p-4 rounded-2xl border transition-all shadow-sm flex items-center justify-between ${theme.surfaceBg} ${theme.borderLight}`}>
+                    {/* 2. Stock Alert Card */}
+                    <div
+                        onClick={() => {
+                            setShowLowStockOnly(prev => !prev);
+                            setCurrentPage(1);
+                        }}
+                        className={`p-4 rounded-2xl border transition-all shadow-sm flex items-center justify-between cursor-pointer group select-none ${
+                            showLowStockOnly
+                                ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-500 dark:border-amber-500 ring-2 ring-amber-400/40 shadow-md'
+                                : `${theme.surfaceBg} ${theme.borderLight} hover:border-amber-400/70 hover:shadow-md`
+                        }`}
+                        title={showLowStockOnly ? "Click to clear stock alert filter" : "Click to view alert items"}
+                    >
                         <div className="flex items-center gap-3">
-                            <div className={`p-3 rounded-xl ${tabStats.lowStockCount > 0 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                            <div className={`p-3 rounded-xl transition-all ${
+                                showLowStockOnly
+                                    ? 'bg-amber-500 text-white shadow-sm'
+                                    : tabStats.lowStockCount > 0
+                                        ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-300 group-hover:bg-amber-200 dark:group-hover:bg-amber-900/80'
+                                        : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                            }`}>
                                 <AlertTriangle size={22} />
                             </div>
                             <div>
-                                <span className={`text-xs font-bold uppercase tracking-wider block ${theme.textMuted}`}>Stock Alert</span>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-xs font-bold uppercase tracking-wider block ${theme.textMuted}`}>
+                                        Stock Alert
+                                    </span>
+                                    {showLowStockOnly && (
+                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500 text-white animate-pulse">
+                                            Filter Active
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-0.5">
                                     <span className={`text-xl md:text-2xl font-black ${tabStats.lowStockCount > 0 ? 'text-amber-600 dark:text-amber-400' : theme.textHeading}`}>
                                         {tabStats.lowStockCount}
                                     </span>
                                     <span className="text-xs font-bold text-gray-400 uppercase">Alerts</span>
                                 </div>
+                                <p className="text-[11px] font-semibold text-amber-600/90 dark:text-amber-400/90 mt-1 flex items-center gap-1">
+                                    {showLowStockOnly ? (
+                                        <>
+                                            <span className="underline font-bold">Filtering alert items</span>
+                                            <span className="text-gray-400 font-normal">• Click to clear</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span>Click to view alert items</span>
+                                        </>
+                                    )}
+                                </p>
                             </div>
+                        </div>
+                        <div className="flex items-center ml-2">
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowLowStockOnly(prev => !prev);
+                                    setCurrentPage(1);
+                                }}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 shadow-sm ${
+                                    showLowStockOnly
+                                        ? 'bg-amber-500 text-white hover:bg-amber-600'
+                                        : 'bg-amber-100/90 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:hover:bg-amber-900/80'
+                                }`}
+                            >
+                                {showLowStockOnly ? (
+                                    <>Clear Filter <X size={14} /></>
+                                ) : (
+                                    <>View Alerts <Filter size={13} /></>
+                                )}
+                            </button>
                         </div>
                     </div>
 
@@ -1429,6 +1516,29 @@ const Inventory = ({
                     </div>
                 </div>
             </div>
+
+            {/* Active Alert Filter Banner Notice */}
+            {showLowStockOnly && (
+                <div className="px-4 md:px-6 mb-4">
+                    <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-2xl px-4 py-2.5 shadow-sm">
+                        <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-200">
+                            <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                            <span>
+                                Showing <strong>{filteredData.length}</strong> stock alert items (limit reached or low stock) for <strong>{activeTab === 'menu' ? menuHeading : activeTab === 'raw' ? itemsHeading : tradeHeading}</strong>.
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => {
+                                setShowLowStockOnly(false);
+                                setCurrentPage(1);
+                            }}
+                            className="text-xs font-extrabold text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 underline flex items-center gap-1 ml-3 shrink-0"
+                        >
+                            Show All Items <X size={14} />
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Tabs + Category Filter */}
             <div className="px-4 md:px-6 mb-6 flex-shrink-0 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -1468,7 +1578,7 @@ const Inventory = ({
                     )}
                 </div>
 
-                {/* Category Filter � same line as tabs on desktop, below on mobile/tablet */}
+                {/* Category Filter */}
                 <div className="w-full lg:w-56">
                     <CommonSelect
                         options={categoryOptions}
@@ -1489,8 +1599,8 @@ const Inventory = ({
                     data={filteredData}
                     isLoading={loadingItems}
                     currentPage={currentPage}
-                    totalPages={totalPages}
-                    totalItems={totalItems}
+                    totalPages={showLowStockOnly ? Math.max(1, Math.ceil(filteredData.length / pageSize)) : totalPages}
+                    totalItems={showLowStockOnly ? filteredData.length : totalItems}
                     pageSize={pageSize}
                     onPageSizeChange={handlePageSizeChange}
                     onPageChange={setCurrentPage}
