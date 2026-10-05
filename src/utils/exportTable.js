@@ -66,11 +66,36 @@ function buildMatrix(columns, rows) {
     return { headers, body, exportCols };
 }
 
-export function exportToXLSX(columns, rows, filename = 'export') {
+export function exportToXLSX(columns, rows, filename = 'export', headerTitle = '') {
     const { headers, body } = buildMatrix(columns, rows);
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
+    
+    const displayTitle = headerTitle || (filename !== 'export' ? filename.replace(/_/g, ' ') : '');
+    
+    const metaRows = [];
+    if (displayTitle) {
+        metaRows.push([displayTitle.toUpperCase()]);
+        metaRows.push([`Generated: ${new Date().toLocaleString()}`]);
+        metaRows.push([`Total Records: ${rows.length}`]);
+        metaRows.push([]); // blank line separator
+    }
+
+    const wsData = metaRows.length > 0 ? [...metaRows, headers, ...body] : [headers, ...body];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Auto-calculate column widths
+    const colWidths = headers.map((h, i) => {
+        let maxLen = String(h || '').length;
+        body.forEach(r => {
+            const cellLen = String(r[i] ?? '').length;
+            if (cellLen > maxLen) maxLen = cellLen;
+        });
+        return { wch: Math.max(maxLen + 4, 12) };
+    });
+    ws['!cols'] = colWidths;
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const sheetName = (displayTitle || 'Sheet1').replace(/[\/\\?*\[\]]/g, "").slice(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Sheet1');
     XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 

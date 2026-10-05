@@ -13,10 +13,6 @@ const SUPER_ADMIN_MODULES = [
   "settings",
   "client_management",
   "DASHBOARD",
-  "EXPENSE_LEDGER",
-  "expense ledger",
-  "6ab12a46fd8bac0f2fbd186e",
-  "OPERATING_EXPENSES",
 ];
 
 const MODULE_ALIASES = {
@@ -34,35 +30,94 @@ const ACTION_ALIASES = {
 
 export const hasPermission = (user, module, action) => {
   if (!user) return false;
+  
+  const moduleTargets = (MODULE_ALIASES[module] || [module]).map(m => String(m).toLowerCase());
+  const actionTargets = action ? (ACTION_ALIASES[action] || [action]).map(a => String(a).toLowerCase()) : null;
+
   if (user.isSuperAdmin === true) {
-    const modTargets = (MODULE_ALIASES[module] || [module]).map(m => String(m).toLowerCase());
-    return SUPER_ADMIN_MODULES.some(m => modTargets.includes(m.toLowerCase()));
+    const isAutoGranted = SUPER_ADMIN_MODULES.some(m => moduleTargets.includes(m.toLowerCase()));
+    if (isAutoGranted) return true;
   }
 
   const permissions = user.permissions;
-  if (!permissions || typeof permissions !== "object") return false;
+  if (!permissions) return false;
 
-  const moduleTargets = (MODULE_ALIASES[module] || [module]).map(m => String(m).toLowerCase());
+  // Case A: permissions is an Array
+  if (Array.isArray(permissions)) {
+    return permissions.some((p) => {
+      if (typeof p === "string") {
+        const lower = p.toLowerCase();
+        if (actionTargets) return actionTargets.includes(lower);
+        return moduleTargets.includes(lower);
+      }
+      if (p && typeof p === "object") {
+        const pMod = p.module ? String(p.module).toLowerCase() : "";
+        const pId = p._id ? String(p._id).toLowerCase() : "";
+        const pName = p.name ? String(p.name).toLowerCase() : "";
+        const pKey = p.key ? String(p.key).toLowerCase() : "";
 
-  // Case-insensitive module matching
-  const matchedModuleKey = Object.keys(permissions).find(
-    (k) => moduleTargets.includes(String(k).toLowerCase())
-  );
-  if (!matchedModuleKey) return false;
-
-  const modulePermissions = permissions[matchedModuleKey];
-  if (!Array.isArray(modulePermissions)) return false;
-
-  if (action == null || action === undefined) {
-    return modulePermissions.length > 0;
+        const modMatches = moduleTargets.includes(pMod) || moduleTargets.includes(pId) || moduleTargets.includes(pName) || moduleTargets.includes(pKey);
+        if (actionTargets) {
+          const actMatches = actionTargets.includes(pId) || actionTargets.includes(pName) || actionTargets.includes(pKey);
+          return modMatches && actMatches;
+        }
+        return modMatches;
+      }
+      return false;
+    });
   }
 
-  const actionTargets = (ACTION_ALIASES[action] || [action]).map(a => String(a).toLowerCase());
+  // Case B: permissions is an Object
+  if (typeof permissions === "object") {
+    // Check module key in object
+    const matchedModuleKey = Object.keys(permissions).find(
+      (k) => moduleTargets.includes(String(k).toLowerCase())
+    );
 
-  // Case-insensitive action matching
-  return modulePermissions.some(
-    (p) => typeof p === "string" && actionTargets.includes(p.toLowerCase())
-  );
+    if (matchedModuleKey) {
+      const modulePermissions = permissions[matchedModuleKey];
+
+      if (action == null || action === undefined) {
+        return Array.isArray(modulePermissions) ? modulePermissions.length > 0 : Boolean(modulePermissions);
+      }
+
+      if (Array.isArray(modulePermissions)) {
+        return modulePermissions.some((p) => {
+          if (typeof p === "string") return actionTargets.includes(p.toLowerCase());
+          if (p && typeof p === "object") {
+            const pId = p._id ? String(p._id).toLowerCase() : "";
+            const pName = p.name ? String(p.name).toLowerCase() : "";
+            const pKey = p.key ? String(p.key).toLowerCase() : "";
+            return actionTargets.some(a => a === pId || a === pName || a === pKey);
+          }
+          return false;
+        });
+      }
+
+      if (typeof modulePermissions === "boolean") return modulePermissions;
+    }
+
+    // Secondary check: search across all keys in object if action specified
+    if (actionTargets) {
+      for (const [, actVal] of Object.entries(permissions)) {
+        if (Array.isArray(actVal)) {
+          const found = actVal.some((p) => {
+            if (typeof p === "string") return actionTargets.includes(p.toLowerCase());
+            if (p && typeof p === "object") {
+              const pId = p._id ? String(p._id).toLowerCase() : "";
+              const pName = p.name ? String(p.name).toLowerCase() : "";
+              const pKey = p.key ? String(p.key).toLowerCase() : "";
+              return actionTargets.some(a => a === pId || a === pName || a === pKey);
+            }
+            return false;
+          });
+          if (found) return true;
+        }
+      }
+    }
+  }
+
+  return false;
 };
 
 /**
@@ -73,20 +128,40 @@ export const hasPermission = (user, module, action) => {
  */
 export const hasModuleAccess = (user, moduleId) => {
   if (!user) return false;
-  if (user.isSuperAdmin === true) {
-    const modTargets = (MODULE_ALIASES[moduleId] || [moduleId]).map(m => String(m).toLowerCase());
-    return SUPER_ADMIN_MODULES.some(m => modTargets.includes(m.toLowerCase()));
-  }
-  const permissions = user.permissions;
-  if (!permissions || typeof permissions !== "object") return false;
-
   const moduleTargets = (MODULE_ALIASES[moduleId] || [moduleId]).map(m => String(m).toLowerCase());
 
-  const matchedModuleKey = Object.keys(permissions).find(
-    (k) => moduleTargets.includes(String(k).toLowerCase())
-  );
-  if (!matchedModuleKey) return false;
+  if (user.isSuperAdmin === true) {
+    const isAutoGranted = SUPER_ADMIN_MODULES.some(m => moduleTargets.includes(m.toLowerCase()));
+    if (isAutoGranted) return true;
+  }
+  
+  const permissions = user.permissions;
+  if (!permissions) return false;
 
-  const list = permissions[matchedModuleKey];
-  return Array.isArray(list) && list.length > 0;
+  if (Array.isArray(permissions)) {
+    return permissions.some(p => {
+      if (typeof p === "string") return moduleTargets.includes(p.toLowerCase());
+      if (p && typeof p === "object") {
+        const pMod = p.module ? String(p.module).toLowerCase() : "";
+        const pId = p._id ? String(p._id).toLowerCase() : "";
+        const pName = p.name ? String(p.name).toLowerCase() : "";
+        const pKey = p.key ? String(p.key).toLowerCase() : "";
+        return moduleTargets.some(m => m === pMod || m === pId || m === pName || m === pKey);
+      }
+      return false;
+    });
+  }
+
+  if (typeof permissions === "object") {
+    const matchedModuleKey = Object.keys(permissions).find(
+      (k) => moduleTargets.includes(String(k).toLowerCase())
+    );
+    if (!matchedModuleKey) return false;
+
+    const list = permissions[matchedModuleKey];
+    if (Array.isArray(list)) return list.length > 0;
+    return Boolean(list);
+  }
+
+  return false;
 };

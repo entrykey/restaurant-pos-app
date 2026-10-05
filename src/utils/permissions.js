@@ -41,11 +41,27 @@ const isSubscribedOrCore = (user, module, resource) => {
  * @param {string} permissionKey - Full key e.g. "organization.branch.create", or use hasPermissionFor for (module, resource, action)
  * @returns {boolean}
  */
+const isExpenseTarget = (str) => {
+  if (!str) return false;
+  const s = String(str).toLowerCase();
+  return (
+    s.includes("expense") ||
+    s === "6ab12a75fd8bac0f2fbd1ad8" ||
+    s === "6ab12a46fd8bac0f2fbd186e"
+  );
+};
+
+/**
+ * Check if user has a permission (backend structure: user.permissions = { moduleKey: [permissionKey, ...] }).
+ * @param {object} user - User with .permissions object
+ * @param {string} permissionKey - Full key e.g. "organization.branch.create", or use hasPermissionFor for (module, resource, action)
+ * @returns {boolean}
+ */
 export const hasPermission = (user, permissionKey) => {
   if (!user) return false;
-  if (user.isSuperAdmin === true) return true;
+  if (user.isSuperAdmin === true && !isExpenseTarget(permissionKey)) return true;
 
-  const parts = permissionKey.split(".");
+  const parts = String(permissionKey || "").split(".");
   const module = parts[0];
   const resource = parts.length > 1 ? parts[parts.length - 2] : null;
 
@@ -64,7 +80,7 @@ export const hasPermission = (user, permissionKey) => {
     return hasPermissionById(user, moduleName, permissionKey);
   }
 
-  return false;
+  return hasPermissionById(user, "EXPENSE_LEDGER", permissionKey);
 };
 
 /**
@@ -77,7 +93,14 @@ export const hasPermission = (user, permissionKey) => {
  */
 export const hasPermissionFor = (user, module, resource, action) => {
   if (!user) return false;
-  if (user.isSuperAdmin === true) return true;
+  if (
+    user.isSuperAdmin === true &&
+    !isExpenseTarget(module) &&
+    !isExpenseTarget(resource) &&
+    !isExpenseTarget(action)
+  ) {
+    return true;
+  }
 
   // Subscription check
   if (!isSubscribedOrCore(user, module, resource)) return false;
@@ -107,5 +130,5 @@ export const hasPermissionFor = (user, module, resource, action) => {
     return hasPermissionById(user, module, secondaryKey);
   }
 
-  return false;
+  return hasPermissionById(user, module, action);
 };
