@@ -87,18 +87,18 @@ const AddShopModal = ({ onClose, onSuccess }) => {
     };
 
     const handlePincodeLookup = async (pincode) => {
-        if (pincode.length < 5) return;
         handleAddressChange('pincode', pincode);
-        const code = formData.address.country.name === 'USA' ? 'us' : 'in';
+        if (!pincode || pincode.length < 5) return;
+        const code = formData.address?.country?.name === 'USA' ? 'us' : 'in';
 
         try {
             const data = await shopService.getLocationByPincode(code, pincode);
             if (data && data.places && data.places.length > 0) {
                 const place = data.places[0];
-                handleAddressChange('city', place['place name']);
+                handleAddressChange('city', place['place name'] || '');
                 handleAddressChange('state', {
-                    name: place['state'],
-                    code: place['state abbreviation']
+                    name: place['state'] || '',
+                    code: place['state abbreviation'] || ''
                 });
             }
         } catch (e) {

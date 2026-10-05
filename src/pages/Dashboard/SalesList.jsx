@@ -46,14 +46,23 @@ import { printBillA4 } from '../../utils/print';
 import { loadBillPrintSettings, buildPrintHeader, buildBillExtraInfo } from '../../utils/printSettingsUtils';
 
 const PAY_PILL = {
-    PAID: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800",
-    PARTIAL: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
-    UNPAID: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
-    PENDING: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
+    PAID: "bg-emerald-600 text-white font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] shadow-sm dark:bg-emerald-600 dark:text-white",
+    PARTIAL: "bg-blue-600 text-white font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] shadow-sm dark:bg-blue-600 dark:text-white",
+    UNPAID: "bg-amber-600 text-white font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] shadow-sm dark:bg-amber-600 dark:text-white",
+    PENDING: "bg-amber-600 text-white font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] shadow-sm dark:bg-amber-600 dark:text-white",
+};
+
+const METHOD_BADGE = {
+    CASH: "bg-slate-200 text-slate-900 border-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:border-slate-500",
+    UPI: "bg-indigo-100 text-indigo-950 border-indigo-300 dark:bg-indigo-900/80 dark:text-indigo-100 dark:border-indigo-500",
+    CARD: "bg-purple-100 text-purple-950 border-purple-300 dark:bg-purple-900/80 dark:text-purple-100 dark:border-purple-500",
+    BANK: "bg-blue-100 text-blue-950 border-blue-300 dark:bg-blue-900/80 dark:text-blue-100 dark:border-blue-500",
+    SPLIT: "bg-amber-100 text-amber-950 border-amber-300 dark:bg-amber-900/80 dark:text-amber-100 dark:border-amber-500",
+    DEFAULT: "bg-gray-200 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-500",
 };
 
 const getPaymentDetails = (order) => {
-    if (!order) return { paymentStatus: 'UNPAID', paidAmount: 0, balanceAmount: 0, paymentMethod: 'CASH' };
+    if (!order) return { paymentStatus: 'UNPAID', paidAmount: 0, balanceAmount: 0, paymentMethod: null, paymentBreakdown: [] };
     const total = Number(order.grandTotal || order.subtotal || 0);
     
     let paid = 0;
@@ -74,20 +83,55 @@ const getPaymentDetails = (order) => {
     const balance = rawBal <= 0.01 ? 0 : rawBal;
 
     let status = order.paymentStatus;
-    if (balance === 0) {
+    if (balance === 0 && total > 0) {
         status = 'PAID';
     } else if (!status) {
         if (paid > 0) status = 'PARTIAL';
-        else status = 'UNPAID';
+        else status = 'PENDING';
     }
 
-    const method = order.paymentMethod || (order.payments?.[0]?.paymentMethod) || 'CASH';
+    // Only show payment method if money has actually been paid or order is settled
+    const hasPaid = paid > 0 || status === 'PAID' || status === 'PARTIAL';
+    let method = null;
+    let paymentBreakdown = [];
+
+    if (hasPaid) {
+        const pList = Array.isArray(order.payments) ? order.payments : [];
+        if (pList.length > 0) {
+            // Group by payment method
+            const methodMap = {};
+            pList.forEach(p => {
+                const m = (p.paymentMethod || 'CASH').toUpperCase();
+                const amt = Number(p.amount || 0);
+                if (amt > 0) {
+                    methodMap[m] = (methodMap[m] || 0) + amt;
+                }
+            });
+            const methods = Object.keys(methodMap);
+            if (methods.length > 1) {
+                method = methods.join(' + ');
+                paymentBreakdown = methods.map(m => ({ method: m, amount: methodMap[m] }));
+            } else if (methods.length === 1) {
+                method = methods[0];
+                paymentBreakdown = [{ method: methods[0], amount: methodMap[methods[0]] }];
+            }
+        }
+        
+        if (!method) {
+            if (order.paymentMethod && order.paymentMethod !== 'SPLIT') {
+                method = order.paymentMethod;
+            } else {
+                method = 'CASH';
+            }
+        }
+    }
 
     return {
-        paymentStatus: status,
+        paymentStatus: status || 'PENDING',
         paidAmount: paid,
         balanceAmount: balance,
-        paymentMethod: method
+        paymentMethod: method,
+        paymentBreakdown
     };
 };
 
@@ -407,15 +451,15 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
 
     const urlStartDate = useMemo(() => {
         const param = queryParams.get('startDate');
-        if (param === null) return todayStr;
+        if (param === null) return '';
         return param;
-    }, [queryParams, todayStr]);
+    }, [queryParams]);
 
     const urlEndDate = useMemo(() => {
         const param = queryParams.get('endDate');
-        if (param === null) return todayStr;
+        if (param === null) return '';
         return param;
-    }, [queryParams, todayStr]);
+    }, [queryParams]);
 
     const [activeTab, setActiveTab] = useState(() => {
         if (initialTab === 'returns' || initialTab === 'history') return initialTab;
@@ -458,6 +502,8 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
     const [sortOrder, setSortOrder] = useState('desc');
     const [startDate, setStartDate] = useState(urlStartDate);
     const [endDate, setEndDate] = useState(urlEndDate);
+    const [filterPaymentStatus, setFilterPaymentStatus] = useState('');
+    const [filterPaymentMethod, setFilterPaymentMethod] = useState('');
 
     // When URL query params change (e.g. user navigates from dashboard or clicks cards), sync state
     useEffect(() => {
@@ -595,8 +641,10 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 const response = await orderService.getOrders({
                     shopId: resolvedShopId,
                     search: searchQuery || undefined,
-                    // Show all non-cancelled orders (COMPLETED, OPEN, PARTIAL payment, etc.)
-                    orderStatus: 'COMPLETED,OPEN,PROCESSING',
+                    // Show all non-cancelled orders (COMPLETED, OPEN, IN_PROGRESS, READY, SERVED, etc.)
+                    orderStatus: 'COMPLETED,OPEN,IN_PROGRESS,READY,SERVED',
+                    paymentStatus: filterPaymentStatus || undefined,
+                    paymentMethod: filterPaymentMethod || undefined,
                     page: currentPage,
                     limit: pageSize,
                     sortBy,
@@ -644,12 +692,12 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
         } finally {
             setLoading(false);
         }
-    }, [user?.shopId, user?.shop_id, activeTab, searchQuery, currentPage, pageSize, sortBy, sortOrder, startDate, endDate]);
+    }, [user?.shopId, user?.shop_id, activeTab, searchQuery, currentPage, pageSize, sortBy, sortOrder, startDate, endDate, filterPaymentStatus, filterPaymentMethod]);
 
     // Debounce search; reset page on search/filter change
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchQuery, sortBy, sortOrder, startDate, endDate, activeTab, pageSize]);
+    }, [searchQuery, sortBy, sortOrder, startDate, endDate, activeTab, pageSize, filterPaymentStatus, filterPaymentMethod]);
 
     useEffect(() => {
         const delay = setTimeout(() => { fetchSales(); }, searchQuery ? 400 : 0);
@@ -666,6 +714,8 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
         setSortOrder('desc');
         setStartDate('');
         setEndDate('');
+        setFilterPaymentStatus('');
+        setFilterPaymentMethod('');
         setCurrentPage(1);
         setSearchParams({ startDate: '', endDate: '' });
     };
@@ -674,6 +724,8 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
         sortBy !== 'createdAt' || sortOrder !== 'desc',
         !!startDate,
         !!endDate,
+        !!filterPaymentStatus,
+        !!filterPaymentMethod,
     ].filter(Boolean).length;
 
     const handleProcessReturn = (order) => {
@@ -787,6 +839,50 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                                 key={opt.value}
                                                 onClick={() => setSortOrder(opt.value)}
                                                 className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${sortOrder === opt.value ? 'bg-indigo-600 text-white' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Payment Status */}
+                                <div>
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Payment Status</label>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {[
+                                            { value: '', label: 'All Statuses' },
+                                            { value: 'PAID', label: 'Paid' },
+                                            { value: 'UNPAID', label: 'Unpaid / Pending' },
+                                            { value: 'PARTIAL', label: 'Partial' },
+                                        ].map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                onClick={() => setFilterPaymentStatus(opt.value)}
+                                                className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${filterPaymentStatus === opt.value ? 'bg-indigo-600 text-white' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Payment Method */}
+                                <div>
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Payment Method</label>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        {[
+                                            { value: '', label: 'All' },
+                                            { value: 'CASH', label: 'Cash' },
+                                            { value: 'UPI', label: 'UPI' },
+                                            { value: 'CARD', label: 'Card' },
+                                            { value: 'BANK', label: 'Bank' },
+                                            { value: 'SPLIT', label: 'Split' },
+                                        ].map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                onClick={() => setFilterPaymentMethod(opt.value)}
+                                                className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${filterPaymentMethod === opt.value ? 'bg-indigo-600 text-white' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
                                             >
                                                 {opt.label}
                                             </button>
@@ -942,6 +1038,43 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 </div>
             )}
 
+            {/* Quick Filter Bar */}
+            {activeTab === 'history' && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar text-xs font-black">
+                    <span className={`text-[10px] uppercase tracking-wider ${theme.textMuted} mr-1 whitespace-nowrap`}>Filter By:</span>
+                    {[
+                        { label: 'All Sales', status: '', method: '' },
+                        { label: 'Paid', status: 'PAID', method: '' },
+                        { label: 'Unpaid / Pending', status: 'UNPAID', method: '' },
+                        { label: 'Partial', status: 'PARTIAL', method: '' },
+                        { label: 'Cash', status: '', method: 'CASH' },
+                        { label: 'UPI', status: '', method: 'UPI' },
+                        { label: 'Card', status: '', method: 'CARD' },
+                        { label: 'Split', status: '', method: 'SPLIT' },
+                    ].map((f, i) => {
+                        const isActive = filterPaymentStatus === f.status && filterPaymentMethod === f.method;
+                        return (
+                            <button
+                                key={i}
+                                type="button"
+                                onClick={() => {
+                                    setFilterPaymentStatus(f.status);
+                                    setFilterPaymentMethod(f.method);
+                                    setCurrentPage(1);
+                                }}
+                                className={`px-3.5 py-1.5 rounded-xl transition-all whitespace-nowrap border ${
+                                    isActive
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20 font-black'
+                                        : `${theme.surfaceBg} ${theme.textSecondary} ${theme.borderLight} hover:border-indigo-400 font-bold`
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
             {/* Table */}
             <CommonTable
                 columns={activeTab === 'history' ? [
@@ -1025,19 +1158,29 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                         header: 'Payment',
                         key: 'paymentStatus',
                         render: (_, order) => {
-                            const { paymentStatus, balanceAmount, paymentMethod } = getPaymentDetails(order);
+                            const { paymentStatus, balanceAmount, paymentMethod, paymentBreakdown } = getPaymentDetails(order);
                             return (
                                 <div className="space-y-1">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                         <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black border uppercase tracking-wider ${PAY_PILL[paymentStatus] || PAY_PILL.UNPAID}`}>
                                             {paymentStatus}
                                         </span>
-                                        <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase">
-                                            {paymentMethod}
-                                        </span>
+                                        {paymentBreakdown.length > 1 ? (
+                                            <div className="flex items-center gap-1 flex-wrap">
+                                                {paymentBreakdown.map((b, idx) => (
+                                                    <span key={idx} className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md border shadow-xs ${METHOD_BADGE[b.method] || METHOD_BADGE.DEFAULT}`}>
+                                                        {b.method}: {fmt(b.amount)}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : paymentMethod ? (
+                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border shadow-xs ${METHOD_BADGE[paymentMethod] || METHOD_BADGE.DEFAULT}`}>
+                                                {paymentMethod}
+                                            </span>
+                                        ) : null}
                                     </div>
                                     {paymentStatus !== 'PAID' && balanceAmount > 0 && (
-                                        <div className="text-[10px] font-black text-red-500">
+                                        <div className="text-[10px] font-black text-red-600 dark:text-red-400">
                                             Bal: {fmt(balanceAmount)}
                                         </div>
                                     )}
@@ -1048,14 +1191,23 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                     {
                         header: 'Status',
                         key: 'orderStatus',
-                        render: (_, order) => (
-                            <div className="flex items-center gap-1.5 text-emerald-500">
-                                <CheckCircle2 size={14} />
-                                <span className="text-[10px] font-black uppercase tracking-widest">
-                                    {order.isExchange ? 'EXCHANGE' : order.orderStatus}
-                                </span>
-                            </div>
-                        )
+                        render: (_, order) => {
+                            const isComp = order.orderStatus === 'COMPLETED' || order.orderStatus === 'DELIVERED';
+                            const isCanc = order.orderStatus === 'CANCELLED';
+                            const colorClass = isComp
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : isCanc
+                                ? 'text-red-600 dark:text-red-400'
+                                : 'text-amber-600 dark:text-amber-400';
+                            return (
+                                <div className={`flex items-center gap-1.5 ${colorClass}`}>
+                                    {isComp ? <CheckCircle2 size={14} /> : isCanc ? <AlertCircle size={14} /> : <Clock size={14} />}
+                                    <span className="text-[10px] font-black uppercase tracking-widest">
+                                        {order.isExchange ? 'EXCHANGE' : order.orderStatus}
+                                    </span>
+                                </div>
+                            );
+                        }
                     },
                     {
                         header: 'Actions',

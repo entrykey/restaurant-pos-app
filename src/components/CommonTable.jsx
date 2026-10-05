@@ -136,7 +136,7 @@ const CommonTable = ({
     const handleExport = async (format) => {
         setExportOpen(false);
         const { exportToXLSX, exportToPDF } = await import('../utils/exportTable');
-        if (format === 'xlsx') exportToXLSX(columns, exportRows, exportFilename);
+        if (format === 'xlsx') exportToXLSX(columns, exportRows, exportFilename, exportTitle || exportFilename);
         else exportToPDF(columns, exportRows, exportFilename, exportTitle || exportFilename);
     };
 

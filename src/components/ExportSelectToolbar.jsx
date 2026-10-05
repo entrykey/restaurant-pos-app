@@ -46,7 +46,7 @@ const ExportSelectToolbar = ({
         // ExportSelectToolbar pre-flattens rows with header strings as keys.
         // Build simple pass-through columns: key = header, no exportValue needed.
         const flatColumns = columns.map(c => ({ header: c.header, key: c.header }));
-        if (format === 'xlsx') exportToXLSX(flatColumns, exportRows, exportFilename);
+        if (format === 'xlsx') exportToXLSX(flatColumns, exportRows, exportFilename, exportTitle || exportFilename);
         else exportToPDF(flatColumns, exportRows, exportFilename, exportTitle || exportFilename);
     };
 
