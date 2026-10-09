@@ -23,7 +23,16 @@ export function resolveIsExclusiveTax(item, taxObj) {
  * Pass the full tax list (not only active) so a linked taxId still resolves.
  */
 export function findTaxForItem(item, taxes = []) {
-    const taxPercent = Number(item?.taxPercent || item?.tax_percent || 0);
+    const taxPercent = Number(
+        item?.taxPercent ?? 
+        item?.tax_percent ?? 
+        item?.taxRate ?? 
+        item?.tax_rate ?? 
+        item?.gst ?? 
+        item?.tax ?? 
+        (typeof item?.taxId === "object" ? item?.taxId?.percentage : undefined) ?? 
+        0
+    );
     const wantsExclusive = item?.isExclusiveTax === true;
 
     if (item?.taxId) {

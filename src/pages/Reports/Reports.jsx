@@ -24,7 +24,17 @@ import {
     ArrowDownRight,
     Factory,
     Boxes,
-    GitFork
+    GitFork,
+    Building2,
+    Percent,
+    SlidersHorizontal,
+    X,
+    RotateCcw,
+    Filter,
+    Calendar,
+    Sparkles,
+    Check,
+    ChevronDown
 } from 'lucide-react';
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from '../../components/CommonTable';
@@ -33,7 +43,7 @@ import CommonSelect from "../../components/ui/CommonSelect";
 
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { usePermission } from "../../auth/usePermission";
-import api, { reportsService, itemService, categoryService } from "../../services/api";
+import api, { reportsService, itemService, categoryService, taxService } from "../../services/api";
 import { PurchaseService } from "../../services/PurchaseService";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
@@ -51,6 +61,7 @@ const toAbsoluteLogoUrl = (logoUrl) => {
 
 const baseReportCategories = [
     { id: "sales", label: "Sales Reports", icon: <TrendingUp size={16} />, permission: "SALES_REPORTS" },
+    { id: "purchases", label: "Purchase Report", icon: <ShoppingBag size={16} />, permission: "PURCHASE.REPORT" },
     { id: "stock_wise", label: "Stock-wise Report", icon: <Boxes size={16} />, permission: "STOCK_WISE_REPORT" },
     { id: "manufacturing", label: "Manufacturing Report", icon: <Factory size={16} />, permission: "MANUFACTURING_REPORT", manufacturedOnly: true },
     { id: "items", label: "Item-wise Sales", icon: <Utensils size={16} />, permission: "ITEM_WISE_SALES" },
@@ -89,6 +100,18 @@ const Reports = ({
     const [purchasesHistory, setPurchasesHistory] = useState([]);
     const [expensesHistory, setExpensesHistory] = useState([]);
     const [paymentFilter, setPaymentFilter] = useState("all"); // 'all' | 'sales' | 'purchases'
+    
+    // Dedicated isolated report filters (do NOT affect other reports)
+    const [salesViewMode, setSalesViewMode] = useState("summary"); // 'summary' | 'itemized'
+    const [purchaseViewMode, setPurchaseViewMode] = useState("summary"); // 'summary' | 'itemized'
+    const [salesTaxFilter, setSalesTaxFilter] = useState("all"); // 'all' | 'taxable' | 'non_taxable'
+    const [salesTaxPercentFilter, setSalesTaxPercentFilter] = useState("all"); // 'all' | percentage
+    const [purchaseSupplierFilter, setPurchaseSupplierFilter] = useState("all"); // 'all' | supplierId
+    const [purchaseTaxFilter, setPurchaseTaxFilter] = useState("all"); // 'all' | 'taxable' | 'non_taxable'
+    const [purchaseTaxPercentFilter, setPurchaseTaxPercentFilter] = useState("all"); // 'all' | percentage
+    const [showMoreFilters, setShowMoreFilters] = useState(false);
+    const [showDatePresetsPopover, setShowDatePresetsPopover] = useState(false);
+    const [taxesList, setTaxesList] = useState([]);
     const [performanceReport, setPerformanceReport] = useState([]);
     const [customerReport, setCustomerReport] = useState([]);
     const [supplierReport, setSupplierReport] = useState([]);
@@ -253,7 +276,7 @@ const Reports = ({
     }, [availableBranches.length]);
 
     const fetchData = React.useCallback(async () => {
-        console.log("DEBUG_REPORTS_FETCH_DATA_START:", { resolvedShopId, reportBranchFilter, filterStartDate, filterEndDate });
+        console.log("DEBUG_REPORTS_FETCH_DATA_START:", { resolvedShopId, reportBranchFilter, filterStartDate, filterEndDate, salesTaxFilter, salesTaxPercentFilter, purchaseSupplierFilter, purchaseTaxFilter, purchaseTaxPercentFilter });
         if (!resolvedShopId) {
             console.warn("DEBUG_REPORTS_FETCH_DATA_MISSING_SHOPID");
             return;
@@ -267,29 +290,21 @@ const Reports = ({
                 endDate: filterEndDate
             };
 
-            const [salesRes, expensesRes, perfRes, custRes, suppRes, plRes, bsRes, purchasesRes, mfgRes, itemsRes, catRes, stockWiseRes] = await Promise.all([
-                reportsService.getSalesReport(params),
+            const [salesRes, expensesRes, perfRes, custRes, suppRes, plRes, bsRes, purchasesRes, mfgRes, itemsRes, catRes, stockWiseRes, taxesRes] = await Promise.all([
+                reportsService.getSalesReport({ ...params, taxFilter: salesTaxFilter, taxPercent: salesTaxPercentFilter }),
                 reportsService.getExpensesReport(params),
                 reportsService.getPerformanceReport(params),
                 reportsService.getCustomerReport(params),
                 reportsService.getSupplierReport(params),
                 reportsService.getProfitLossReport(params),
                 reportsService.getBalanceSheetReport(params),
-                PurchaseService.getPurchases(params).catch(() => []),
+                reportsService.getPurchaseReport({ ...params, supplierId: purchaseSupplierFilter, taxFilter: purchaseTaxFilter, taxPercent: purchaseTaxPercentFilter }).catch(() => PurchaseService.getPurchases({ ...params, supplierId: purchaseSupplierFilter, taxFilter: purchaseTaxFilter, taxPercent: purchaseTaxPercentFilter }).catch(() => [])),
                 reportsService.getManufacturingReport(params).catch(() => ({ summary: {}, data: [] })),
                 itemService.getItems({ page: 1, limit: 1000, search: "", filters: { shopId: resolvedShopId, branchId: reportBranchFilter } }).catch(() => ({ data: [] })),
                 categoryService.getCategories({ shopId: resolvedShopId }).catch(() => ([])),
-                reportsService.getStockWiseReport(params).catch(() => ({ summary: {}, data: [] }))
+                reportsService.getStockWiseReport(params).catch(() => ({ summary: {}, data: [] })),
+                taxService.getTaxes({ shopId: resolvedShopId }).catch(() => ([]))
             ]);
-            console.log("DEBUG_REPORTS_DATA_RESPONSES:", {
-                sales: salesRes.data,
-                expenses: expensesRes.data,
-                customers: custRes.data,
-                suppliers: suppRes.data,
-                purchases: purchasesRes,
-                mfg: mfgRes,
-                stockWise: stockWiseRes
-            });
 
             setSalesHistory(unwrapApiData(salesRes));
             setExpensesHistory(unwrapApiData(expensesRes));
@@ -303,12 +318,13 @@ const Reports = ({
             setStockWiseReport(stockWiseRes?.data ? stockWiseRes : { summary: stockWiseRes?.summary || {}, data: unwrapApiData(stockWiseRes) });
             setItemList(unwrapApiData(itemsRes));
             setCategoryList(unwrapApiData(catRes));
+            setTaxesList(unwrapApiData(taxesRes));
         } catch (error) {
             console.error("Failed to fetch report data:", error);
         } finally {
             setLoading(false);
         }
-    }, [resolvedShopId, reportBranchFilter, filterStartDate, filterEndDate]);
+    }, [resolvedShopId, reportBranchFilter, filterStartDate, filterEndDate, salesTaxFilter, salesTaxPercentFilter, purchaseSupplierFilter, purchaseTaxFilter, purchaseTaxPercentFilter]);
 
     useEffect(() => {
         fetchData();
@@ -343,10 +359,240 @@ const Reports = ({
         return dateStr >= filterStartDate && dateStr <= filterEndDate;
     };
 
-    const salesInRange = React.useMemo(
-        () => salesHistory.filter((s) => isWithinRange(s.date)),
-        [salesHistory, filterStartDate, filterEndDate]
-    );
+    const presetsList = React.useMemo(() => {
+        const now = new Date();
+        const todayStr = now.toISOString().split("T")[0];
+
+        const y = new Date();
+        y.setDate(y.getDate() - 1);
+        const yesterdayStr = y.toISOString().split("T")[0];
+
+        const d7 = new Date();
+        d7.setDate(d7.getDate() - 6);
+        const last7Str = d7.toISOString().split("T")[0];
+
+        const d30 = new Date();
+        d30.setDate(d30.getDate() - 29);
+        const last30Str = d30.toISOString().split("T")[0];
+
+        const firstDayMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+        
+        const lastMonthFirst = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split("T")[0];
+        const lastMonthLast = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0];
+
+        const firstDayYear = new Date(now.getFullYear(), 0, 1).toISOString().split("T")[0];
+
+        return [
+            { id: "today", label: "Today", startDate: todayStr, endDate: todayStr },
+            { id: "yesterday", label: "Yesterday", startDate: yesterdayStr, endDate: yesterdayStr },
+            { id: "last7", label: "Last 7 Days", startDate: last7Str, endDate: todayStr },
+            { id: "last30", label: "Last 30 Days", startDate: last30Str, endDate: todayStr },
+            { id: "thisMonth", label: "This Month", startDate: firstDayMonth, endDate: todayStr },
+            { id: "lastMonth", label: "Last Month", startDate: lastMonthFirst, endDate: lastMonthLast },
+            { id: "thisYear", label: "This Year", startDate: firstDayYear, endDate: todayStr }
+        ];
+    }, [today]);
+
+    const activePreset = React.useMemo(() => {
+        return presetsList.find(p => p.startDate === filterStartDate && p.endDate === filterEndDate);
+    }, [presetsList, filterStartDate, filterEndDate]);
+
+    const activePresetLabel = activePreset ? activePreset.label : "Custom Range";
+    const activePresetId = activePreset ? activePreset.id : "custom";
+
+    const taxRateOptions = React.useMemo(() => {
+        const rates = new Set([0, 5, 12, 18, 28]);
+        (taxesList || []).forEach(t => {
+            if (t.percentage !== undefined && t.percentage !== null) {
+                rates.add(Number(t.percentage));
+            }
+        });
+        const sorted = Array.from(rates).sort((a, b) => a - b);
+        return [
+            { label: "All Tax Rates (%)", value: "all" },
+            ...sorted.map(r => ({ label: `${r}% Tax`, value: String(r) }))
+        ];
+    }, [taxesList]);
+
+    const filteredSalesHistory = React.useMemo(() => {
+        return salesHistory.filter((s) => {
+            const sDate = s.date || (s.createdAt ? new Date(s.createdAt).toISOString().split("T")[0] : null);
+            if (sDate && !isWithinRange(sDate)) return false;
+
+            // Tax status filter
+            if (salesTaxFilter === "taxable") {
+                const taxVal = Number(s.taxTotal || s.taxAmount || 0);
+                const itemTax = Array.isArray(s.items) && s.items.some(i => Number(i.taxAmount || 0) > 0 || Number(i.taxPercent || 0) > 0);
+                if (taxVal <= 0 && !itemTax) return false;
+            } else if (salesTaxFilter === "non_taxable") {
+                const taxVal = Number(s.taxTotal || s.taxAmount || 0);
+                const itemTax = Array.isArray(s.items) && s.items.some(i => Number(i.taxAmount || 0) > 0 || Number(i.taxPercent || 0) > 0);
+                if (taxVal > 0 || itemTax) return false;
+            }
+
+            // Tax % Rate filter (isolated to Sales Report)
+            if (salesTaxPercentFilter !== "all") {
+                const targetP = Number(salesTaxPercentFilter);
+                const hasPercent = Array.isArray(s.items)
+                    ? s.items.some(i => Number(i.taxPercent) === targetP)
+                    : Number(s.taxPercent || s.taxRate || 0) === targetP;
+                if (!hasPercent) return false;
+            }
+
+            return true;
+        });
+    }, [salesHistory, salesTaxFilter, salesTaxPercentFilter, filterStartDate, filterEndDate]);
+
+    const filteredPurchasesHistory = React.useMemo(() => {
+        return purchasesHistory.filter((pur) => {
+            if (pur.status === 'CANCELLED') return false;
+
+            const purDate = pur.invoiceDate ? new Date(pur.invoiceDate).toISOString().split("T")[0] : (pur.date || (pur.createdAt ? new Date(pur.createdAt).toISOString().split("T")[0] : null));
+            if (purDate && !isWithinRange(purDate)) return false;
+
+            // Supplier filter (isolated ONLY to Purchase Report)
+            if (purchaseSupplierFilter !== "all") {
+                const suppId = String(pur.supplierId?._id || pur.supplierId?.id || pur.supplierId || "");
+                if (suppId !== String(purchaseSupplierFilter)) return false;
+            }
+
+            // Tax status filter (isolated ONLY to Purchase Report)
+            const taxVal = Number(pur.taxTotal || pur.totalTax || pur.taxAmount || 0);
+            if (purchaseTaxFilter === "taxable") {
+                if (taxVal <= 0) return false;
+            } else if (purchaseTaxFilter === "non_taxable") {
+                if (taxVal > 0) return false;
+            }
+
+            // Tax % Rate filter (isolated ONLY to Purchase Report)
+            if (purchaseTaxPercentFilter !== "all") {
+                const targetP = Number(purchaseTaxPercentFilter);
+                const hasPercent = Array.isArray(pur.items)
+                    ? pur.items.some(i => Number(i.taxPercent) === targetP)
+                    : (Number(pur.taxPercent || pur.taxRate || 0) === targetP || (targetP > 0 && taxVal > 0));
+                if (!hasPercent) return false;
+            }
+
+            return true;
+        });
+    }, [purchasesHistory, purchaseSupplierFilter, purchaseTaxFilter, purchaseTaxPercentFilter, filterStartDate, filterEndDate]);
+
+    const filteredSalesItemBreakdown = React.useMemo(() => {
+        const rows = [];
+        filteredSalesHistory.forEach((s) => {
+            const items = Array.isArray(s.items) && s.items.length > 0
+                ? s.items
+                : [{
+                    id: s.id || s.invoiceNumber,
+                    name: 'Sale Order',
+                    quantity: 1,
+                    price: s.amount || s.grandTotal || 0,
+                    taxPercent: s.taxPercent || 0,
+                    taxAmount: s.taxAmount || s.taxTotal || 0,
+                    totalAmount: s.amount || s.grandTotal || 0
+                  }];
+
+            items.forEach((item) => {
+                const taxP = Number(item.taxPercent !== undefined ? item.taxPercent : (s.taxPercent || 0));
+                
+                // Tax status filter check at item level
+                if (salesTaxFilter === "taxable") {
+                    const lineTax = Number(item.taxAmount || 0);
+                    if (lineTax <= 0 && taxP <= 0) return;
+                } else if (salesTaxFilter === "non_taxable") {
+                    const lineTax = Number(item.taxAmount || 0);
+                    if (lineTax > 0 || taxP > 0) return;
+                }
+
+                // Tax percentage filter check at item level
+                if (salesTaxPercentFilter !== "all") {
+                    if (taxP !== Number(salesTaxPercentFilter)) return;
+                }
+
+                rows.push({
+                    id: item.id || `${s.invoiceNumber}-${rows.length}`,
+                    invoiceNumber: s.invoiceNumber,
+                    date: s.date,
+                    time: s.time || (s.timestamp ? new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''),
+                    customerName: s.customerName || 'Walk-in Customer',
+                    customerPhone: s.customerPhone || '',
+                    staffName: s.staffName || 'Admin / Staff',
+                    itemName: item.name || item.itemName || 'Unnamed Item',
+                    itemCode: item.itemCode || item.sku || '',
+                    quantity: item.quantity || 1,
+                    unitPrice: item.price || item.originalPrice || 0,
+                    taxPercent: taxP,
+                    taxAmount: item.taxAmount || 0,
+                    totalAmount: item.totalAmount || ((item.quantity || 1) * (item.price || 0)),
+                    paymentStatus: s.paymentStatus || 'FULLY PAID',
+                    method: s.method || 'Cash',
+                    type: s.type || 'Direct',
+                    branchName: s.branchName || 'Main Branch'
+                });
+            });
+        });
+        return rows;
+    }, [filteredSalesHistory, salesTaxFilter, salesTaxPercentFilter]);
+
+    const filteredPurchasesItemBreakdown = React.useMemo(() => {
+        const rows = [];
+        filteredPurchasesHistory.forEach((pur) => {
+            const items = Array.isArray(pur.items) && pur.items.length > 0
+                ? pur.items
+                : [{
+                    id: pur._id,
+                    itemName: 'Purchase Order',
+                    quantity: 1,
+                    purchasePrice: pur.grandTotal || pur.totalAmount || 0,
+                    taxPercent: pur.taxPercent || pur.taxRate || 0,
+                    taxAmount: pur.taxTotal || pur.totalTax || 0,
+                    totalAmount: pur.grandTotal || pur.totalAmount || 0
+                  }];
+
+            items.forEach((item) => {
+                const taxP = Number(item.taxPercent !== undefined ? item.taxPercent : (item.taxRate !== undefined ? item.taxRate : (pur.taxPercent || pur.taxRate || 0)));
+                const lineTax = Number(item.taxAmount || 0);
+
+                // Tax status filter check at item level
+                if (purchaseTaxFilter === "taxable") {
+                    if (lineTax <= 0 && taxP <= 0) return;
+                } else if (purchaseTaxFilter === "non_taxable") {
+                    if (lineTax > 0 || taxP > 0) return;
+                }
+
+                // Tax percentage filter check at item level
+                if (purchaseTaxPercentFilter !== "all") {
+                    if (taxP !== Number(purchaseTaxPercentFilter)) return;
+                }
+
+                const purNum = pur.purchaseNumber || pur.invoiceNumber || pur.supplierInvoiceNumber || '—';
+                const purDate = pur.invoiceDate ? new Date(pur.invoiceDate).toLocaleDateString() : (pur.date || (pur.createdAt ? new Date(pur.createdAt).toLocaleDateString() : ''));
+                const suppName = pur.supplierId?.name || pur.supplierName || '—';
+                const suppPhone = pur.supplierId?.phone || '';
+
+                rows.push({
+                    id: item.id || `${purNum}-${rows.length}`,
+                    purchaseNumber: purNum,
+                    date: purDate,
+                    supplierName: suppName,
+                    supplierPhone: suppPhone,
+                    itemName: item.itemName || item.name || 'Unnamed Item',
+                    itemCode: item.itemCode || '',
+                    quantity: item.quantity || 1,
+                    unitPrice: item.purchasePrice || 0,
+                    unitName: item.unitName || 'Pcs',
+                    taxPercent: taxP,
+                    taxAmount: lineTax,
+                    totalAmount: item.totalAmount || ((item.quantity || 1) * (item.purchasePrice || 0)),
+                    status: pur.status || pur.paymentStatus || 'CONFIRMED',
+                    branchName: pur.branchId?.name || pur.branchName || 'Main Branch'
+                });
+            });
+        });
+        return rows;
+    }, [filteredPurchasesHistory, purchaseTaxFilter, purchaseTaxPercentFilter]);
+
+    const salesInRange = filteredSalesHistory;
 
     const normalizePaymentMethod = React.useCallback((rawMethod) => {
         if (!rawMethod) return "Cash";
@@ -528,27 +774,61 @@ const Reports = ({
         let rows = [];
 
         if (reportCategory === "sales") {
-            columns = [
-                "Invoice #",
-                "Date",
-                "Time",
-                "Customer Name",
-                "Customer Phone",
-                "Table / Location",
-                "Order Type",
-                "Billed By",
-                "Payment Method",
-                "Payment Status",
-                "Subtotal",
-                "Tax Amount",
-                "Discount Amount",
-                "Paid Amount",
-                "Due Amount",
-                "Grand Total"
-            ];
-            rows = salesHistory
-                .filter((s) => isWithinRange(s.date))
-                .map((s) => {
+            if (salesViewMode === "itemized" || salesTaxPercentFilter !== "all") {
+                columns = [
+                    "Invoice #",
+                    "Date",
+                    "Time",
+                    "Customer Name",
+                    "Customer Phone",
+                    "Item Name",
+                    "Item Code",
+                    "Qty",
+                    "Unit Price",
+                    "Tax %",
+                    "Tax Amount",
+                    "Line Total",
+                    "Payment Status",
+                    "Order Type",
+                    "Billed By"
+                ];
+                rows = filteredSalesItemBreakdown.map((r) => [
+                    `#${r.invoiceNumber || ''}`,
+                    r.date || '',
+                    r.time || '',
+                    r.customerName || 'Walk-in Customer',
+                    r.customerPhone || 'N/A',
+                    r.itemName || 'Item',
+                    r.itemCode || '—',
+                    r.quantity,
+                    formatCurrency(r.unitPrice, currency),
+                    `${r.taxPercent}%`,
+                    formatCurrency(r.taxAmount, currency),
+                    formatCurrency(r.totalAmount, currency),
+                    r.paymentStatus || 'FULLY PAID',
+                    r.type || 'Direct',
+                    r.staffName || 'Admin / Staff'
+                ]);
+            } else {
+                columns = [
+                    "Invoice #",
+                    "Date",
+                    "Time",
+                    "Customer Name",
+                    "Customer Phone",
+                    "Table / Location",
+                    "Order Type",
+                    "Billed By",
+                    "Payment Method",
+                    "Payment Status",
+                    "Subtotal",
+                    "Tax Amount",
+                    "Discount Amount",
+                    "Paid Amount",
+                    "Due Amount",
+                    "Grand Total"
+                ];
+                rows = filteredSalesHistory.map((s) => {
                     const subtotal = s.subtotal !== undefined ? s.subtotal : ((s.amount || 0) - (s.taxAmount || 0) + (s.discountAmount || 0));
                     return [
                         `#${s.invoiceNumber || ''}`,
@@ -569,6 +849,57 @@ const Reports = ({
                         formatCurrency(s.amount, currency)
                     ];
                 });
+            }
+        } else if (reportCategory === "purchases") {
+            if (purchaseViewMode === "itemized" || purchaseTaxPercentFilter !== "all") {
+                columns = [
+                    "Invoice / Bill #",
+                    "Date",
+                    "Supplier Name",
+                    "Supplier Phone",
+                    "Item Name",
+                    "Item Code",
+                    "Qty",
+                    "Unit Price",
+                    "Tax %",
+                    "Tax Amount",
+                    "Line Total",
+                    "Status"
+                ];
+                rows = filteredPurchasesItemBreakdown.map((r) => [
+                    r.purchaseNumber || '—',
+                    r.date || '',
+                    r.supplierName || '—',
+                    r.supplierPhone || 'N/A',
+                    r.itemName || 'Item',
+                    r.itemCode || '—',
+                    `${r.quantity} ${r.unitName || 'Pcs'}`,
+                    formatCurrency(r.unitPrice, currency),
+                    `${r.taxPercent}%`,
+                    formatCurrency(r.taxAmount, currency),
+                    formatCurrency(r.totalAmount, currency),
+                    r.status || 'CONFIRMED'
+                ]);
+            } else {
+                columns = [
+                    "Invoice / Bill #",
+                    "Date",
+                    "Supplier Name",
+                    "Supplier Phone",
+                    "Tax Paid",
+                    "Total Amount",
+                    "Status"
+                ];
+                rows = filteredPurchasesHistory.map((pur) => [
+                    pur.purchaseNumber || pur.invoiceNumber || pur.supplierInvoiceNumber || '—',
+                    pur.invoiceDate ? new Date(pur.invoiceDate).toLocaleDateString() : (pur.date || (pur.createdAt ? new Date(pur.createdAt).toLocaleDateString() : '')),
+                    pur.supplierId?.name || pur.supplierName || '—',
+                    pur.supplierId?.phone || 'N/A',
+                    formatCurrency(pur.taxTotal || pur.totalTax || pur.taxAmount || 0, currency),
+                    formatCurrency(pur.grandTotal || pur.totalAmount || pur.total || 0, currency),
+                    pur.status || pur.paymentStatus || 'CONFIRMED'
+                ]);
+            }
         } else if (reportCategory === "stock_wise") {
             const stockData = stockWiseReport?.data || [];
             columns = [
@@ -1169,24 +1500,95 @@ const Reports = ({
                     <FileText className="mr-3 text-indigo-600 shrink-0" /> Reports & Analytics
                 </h2>
                 <div className="flex flex-wrap sm:flex-nowrap gap-3 items-center w-full lg:w-auto">
-                    <div className={`flex flex-col sm:flex-row sm:items-center gap-2 ${theme.surfaceBg} border-2 ${theme.borderLight} rounded-2xl px-3 py-2 shadow-sm w-full sm:w-auto`}>
-                        <DatePicker
-                            value={filterStartDate}
-                            onChange={val => setFilterStartDate(val || today)}
-                            className="w-full sm:w-36 md:w-40"
-                            placeholder="From date"
-                        />
-                        <span className={`text-xs font-bold ${theme.textMuted} hidden sm:inline`}>to</span>
-                        <DatePicker
-                            value={filterEndDate}
-                            onChange={val => setFilterEndDate(val || today)}
-                            className="w-full sm:w-36 md:w-40"
-                            placeholder="To date"
-                        />
+                    {/* Combined Date Range & Quick Presets Control Bar */}
+                    <div className={`relative flex flex-wrap sm:flex-nowrap items-center gap-2 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl p-1.5 shadow-sm w-full sm:w-auto`}>
+                        {/* Quick Presets Dropdown Trigger */}
+                        <div className="relative w-full sm:w-auto">
+                            <button
+                                type="button"
+                                onClick={() => setShowDatePresetsPopover(!showDatePresetsPopover)}
+                                className={`w-full sm:w-auto h-10 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-between sm:justify-start gap-2 ${
+                                    showDatePresetsPopover
+                                        ? 'bg-indigo-600 text-white shadow-md'
+                                        : `${theme.buttonBg} ${theme.buttonText} hover:bg-indigo-700`
+                                }`}
+                                title="Quick date range presets"
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <Sparkles size={14} className={showDatePresetsPopover ? 'text-white' : 'text-indigo-400'} />
+                                    <span>{activePresetLabel}</span>
+                                </div>
+                                <ChevronDown size={14} className={`transition-transform duration-200 ${showDatePresetsPopover ? 'rotate-180 text-white' : 'text-indigo-300'}`} />
+                            </button>
+
+                            {/* Quick Presets Popover Drawer */}
+                            {showDatePresetsPopover && (
+                                <div className={`absolute left-0 sm:left-0 top-12 w-full sm:w-72 p-4 rounded-2xl shadow-2xl border z-50 animate-in fade-in slide-in-from-top-2 duration-150 ${theme.surfaceBg} ${theme.borderLight}`}>
+                                    <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200 dark:border-slate-800">
+                                        <div className="flex items-center gap-2">
+                                            <Sparkles size={15} className="text-indigo-500" />
+                                            <span className={`text-xs font-black uppercase tracking-wider ${theme.textHeading}`}>Quick Presets</span>
+                                        </div>
+                                        <button onClick={() => setShowDatePresetsPopover(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1">
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-1.5 mb-3">
+                                        {presetsList.map(preset => {
+                                            const isSelected = activePresetId === preset.id;
+                                            return (
+                                                <button
+                                                    key={preset.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setFilterStartDate(preset.startDate);
+                                                        setFilterEndDate(preset.endDate);
+                                                        setShowDatePresetsPopover(false);
+                                                    }}
+                                                    className={`px-3 py-2 text-xs rounded-xl font-bold text-left transition-all flex items-center justify-between ${
+                                                        isSelected
+                                                            ? 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 shadow-xs'
+                                                            : `${theme.inputBg} ${theme.textPrimary} hover:bg-indigo-50/50 dark:hover:bg-indigo-900/30 border border-transparent`
+                                                    }`}
+                                                >
+                                                    <span>{preset.label}</span>
+                                                    {isSelected && <Check size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0 ml-1" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="pt-2 border-t border-gray-200 dark:border-slate-800 flex items-center justify-between text-[11px] font-semibold">
+                                        <span className={theme.textMuted}>Period:</span>
+                                        <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{rangeLabel}</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Date Inputs Range */}
+                        <div className="flex items-center gap-2 w-full sm:w-auto px-1">
+                            <DatePicker
+                                value={filterStartDate}
+                                onChange={val => setFilterStartDate(val || today)}
+                                className="w-full sm:w-32 md:w-36 text-xs h-10"
+                                placeholder="From date"
+                            />
+                            <span className={`text-xs font-bold ${theme.textMuted} shrink-0`}>to</span>
+                            <DatePicker
+                                value={filterEndDate}
+                                onChange={val => setFilterEndDate(val || today)}
+                                className="w-full sm:w-32 md:w-36 text-xs h-10"
+                                placeholder="To date"
+                            />
+                        </div>
                     </div>
+
                     {availableBranches.length > 1 && (
-                        <div className="w-full sm:w-44 md:w-48 z-50 flex-shrink-0">
+                        <div className="w-full sm:w-44 md:w-48 z-40 flex-shrink-0">
                             <CommonSelect
+                                size="sm"
                                 options={[
                                     { label: "All Branches", value: "all" },
                                     ...availableBranches.map(b => ({ label: b.name, value: b._id || b.id }))
@@ -1199,9 +1601,9 @@ const Reports = ({
                     )}
                     <button
                         onClick={() => setShowExportPicker(true)}
-                        className={`w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-3 ${theme.buttonBg} ${theme.buttonText} rounded-2xl shadow-sm text-sm font-bold ${theme.buttonHoverBg}`}
+                        className={`w-full sm:w-auto flex-shrink-0 inline-flex items-center justify-center gap-2 h-11 px-4 ${theme.buttonBg} ${theme.buttonText} rounded-2xl shadow-sm text-xs font-extrabold ${theme.buttonHoverBg} transition-all`}
                     >
-                        <Download size={18} />
+                        <Download size={16} />
                         <span>Export</span>
                     </button>
                 </div>
@@ -1342,14 +1744,14 @@ const Reports = ({
                 </div>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-6 w-full max-w-full min-w-0">
+            <div className="flex flex-col lg:flex-row gap-6 w-full max-w-full min-w-0 items-start">
                 {/* Sidebar for Reports */}
-                <div className={`w-full lg:w-64 ${theme.surfaceBg} rounded-3xl shadow-lg border ${theme.borderLight} p-2 lg:p-4 flex flex-row lg:flex-col gap-2 shrink-0 overflow-x-auto lg:overflow-y-auto no-scrollbar`}>
+                <div className={`w-full lg:w-60 xl:w-64 ${theme.surfaceBg} rounded-3xl shadow-lg border ${theme.borderLight} p-2 lg:p-2.5 flex flex-row lg:flex-col gap-1 lg:gap-1.5 shrink-0 lg:sticky lg:top-20 self-start overflow-x-auto lg:overflow-visible no-scrollbar`}>
                     {allowedCategories.map((item) => (
                         <button
                             key={item.id}
                             onClick={() => setReportCategory(item.id)}
-                            className={`flex items-center gap-3 p-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap flex-shrink-0 ${reportCategory === item.id
+                            className={`flex items-center gap-2.5 py-2 px-3 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex-shrink-0 ${reportCategory === item.id
                                 ? `${theme.buttonBg} ${theme.buttonText} shadow-md`
                                 : `${theme.textMuted} ${theme.sidebarItemHoverBg}`
                                 }`}
@@ -1372,9 +1774,69 @@ const Reports = ({
                     {/* 1. SALES REPORT */}
                     {reportCategory === "sales" && (
                         <div className="space-y-6">
-                            <h3 className={`text-xl font-black ${theme.textHeading} border-b ${theme.borderLight} pb-4`}>
-                                Sales Summary ({rangeLabel})
-                            </h3>
+                            <div className={`flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b ${theme.borderLight} pb-4`}>
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-wrap">
+                                    <h3 className={`text-xl font-black ${theme.textHeading}`}>
+                                        Sales Summary ({rangeLabel})
+                                    </h3>
+                                    {/* View Mode Toggle: Summary vs Item-wise */}
+                                    <div className={`inline-flex rounded-xl p-1 ${theme.pageBg} border ${theme.borderLight}`}>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSalesViewMode("summary");
+                                                setSalesTaxPercentFilter("all");
+                                            }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
+                                                salesViewMode === "summary"
+                                                    ? `${theme.buttonBg} ${theme.buttonText} shadow-xs font-black`
+                                                    : `${theme.textMuted} ${theme.sidebarItemHoverBg} font-bold`
+                                            }`}
+                                        >
+                                            Invoice Summary
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSalesViewMode("itemized")}
+                                            className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
+                                                salesViewMode === "itemized"
+                                                    ? `${theme.buttonBg} ${theme.buttonText} shadow-xs font-black`
+                                                    : `${theme.textMuted} ${theme.sidebarItemHoverBg} font-bold`
+                                            }`}
+                                        >
+                                            Item-wise Breakdown
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto">
+                                    <div className="w-[150px] sm:w-[160px]">
+                                        <CommonSelect
+                                            size="sm"
+                                            icon={TrendingUp}
+                                            options={[
+                                                { label: "All Sales", value: "all" },
+                                                { label: "With Tax Only", value: "taxable" },
+                                                { label: "Without Tax Only", value: "non_taxable" }
+                                            ]}
+                                            value={salesTaxFilter}
+                                            onChange={(val) => setSalesTaxFilter(val)}
+                                            placeholder="Tax Status"
+                                        />
+                                    </div>
+                                    {salesViewMode === "itemized" && (
+                                        <div className="w-[140px] sm:w-[150px]">
+                                            <CommonSelect
+                                                size="sm"
+                                                icon={Percent}
+                                                options={taxRateOptions.map(opt => opt.value === 'all' ? { ...opt, label: "All Tax Rates" } : opt)}
+                                                value={salesTaxPercentFilter}
+                                                onChange={(val) => setSalesTaxPercentFilter(val)}
+                                                placeholder="Tax Rate %"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div className={`p-5 rounded-2xl border transition-all ${
                                     isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'
@@ -1393,9 +1855,9 @@ const Reports = ({
                                         isDark ? 'text-white' : 'text-gray-900'
                                     }`}>
                                         {formatCurrency(
-                                            salesHistory
-                                                .filter((s) => isWithinRange(s.date))
-                                                .reduce((a, b) => a + b.amount, 0),
+                                            salesViewMode === "itemized"
+                                                ? filteredSalesItemBreakdown.reduce((a, b) => a + Number(b.totalAmount || 0), 0)
+                                                : filteredSalesHistory.reduce((a, b) => a + Number(b.amount || b.grandTotal || 0), 0),
                                             currency
                                         )}
                                     </p>
@@ -1411,12 +1873,14 @@ const Reports = ({
                                         </div>
                                         <p className={`text-xs font-bold uppercase tracking-wider ${
                                             isDark ? 'text-slate-400' : 'text-gray-600'
-                                        }`}>Total Orders</p>
+                                        }`}>
+                                            {salesViewMode === "itemized" ? "Filtered Line Items" : "Total Orders"}
+                                        </p>
                                     </div>
                                     <p className={`text-2xl md:text-3xl font-black ${
                                         isDark ? 'text-white' : 'text-gray-900'
                                     }`}>
-                                        {salesHistory.filter((s) => isWithinRange(s.date)).length}
+                                        {salesViewMode === "itemized" ? filteredSalesItemBreakdown.length : filteredSalesHistory.length}
                                     </p>
                                 </div>
                                 <div className={`p-5 rounded-2xl border transition-all ${
@@ -1430,130 +1894,630 @@ const Reports = ({
                                         </div>
                                         <p className={`text-xs font-bold uppercase tracking-wider ${
                                             isDark ? 'text-slate-400' : 'text-gray-600'
-                                        }`}>Avg Bill Value</p>
+                                        }`}>
+                                            {salesViewMode === "itemized" ? "Tax Collected" : "Avg Bill Value"}
+                                        </p>
                                     </div>
                                     <p className={`text-2xl md:text-3xl font-black ${
                                         isDark ? 'text-white' : 'text-gray-900'
                                     }`}>
                                         {formatCurrency(
-                                            salesHistory.filter((s) => isWithinRange(s.date)).length
-                                                ? salesHistory
-                                                    .filter((s) => isWithinRange(s.date))
-                                                    .reduce((a, b) => a + b.amount, 0) /
-                                                salesHistory.filter((s) => isWithinRange(s.date)).length
-                                                : 0,
+                                            salesViewMode === "itemized"
+                                                ? filteredSalesItemBreakdown.reduce((a, b) => a + Number(b.taxAmount || 0), 0)
+                                                : (filteredSalesHistory.length ? filteredSalesHistory.reduce((a, b) => a + Number(b.amount || b.grandTotal || 0), 0) / filteredSalesHistory.length : 0),
                                             currency
                                         )}
                                     </p>
                                 </div>
                             </div>
-                            <CommonTable
-                                selectable={false}
-                                showExport={false}
-                                columns={[
-                                    ...(reportBranchFilter === "all" ? [{
-                                        header: "Branch",
-                                        key: "branchName",
-                                        className: `text-xs font-bold ${theme.textSecondary}`
-                                    }] : []),
-                                    {
-                                        header: "Sales Invoice",
-                                        key: "invoiceNumber",
-                                        render: (value, row) => (
-                                            <div className="flex flex-col">
-                                                <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400">#{value}</span>
-                                                <span className="text-[10px] text-gray-400 font-medium">{row.date} • {row.time || (row.timestamp ? new Date(row.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}</span>
-                                            </div>
-                                        )
-                                    },
-                                    {
-                                        header: "Customer",
-                                        key: "customerName",
-                                        render: (value, row) => (
-                                            <div className="flex flex-col">
-                                                <span className={`text-xs font-bold ${theme.textHeading}`}>{value || 'Walk-in Customer'}</span>
-                                                {row.customerPhone && <span className="text-[10px] text-gray-400 font-medium">{row.customerPhone}</span>}
-                                            </div>
-                                        )
-                                    },
-                                    {
-                                        header: "Billed By",
-                                        key: "staffName",
-                                        render: (value) => (
-                                            <span className={`text-xs font-semibold ${theme.textSecondary}`}>{value || 'Admin / Staff'}</span>
-                                        )
-                                    },
-                                    {
-                                        header: "Type",
-                                        key: "type",
-                                        headerClassName: "text-center whitespace-nowrap min-w-[100px]",
-                                        className: "text-center whitespace-nowrap min-w-[100px]",
-                                        render: (value) => (
-                                            <span
-                                                className={`px-3 py-1 rounded-full text-[10px] font-black tracking-wider uppercase whitespace-nowrap inline-flex items-center justify-center shrink-0 w-max ${value === "Dine-in"
-                                                    ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200"
-                                                    : value === "Online"
-                                                        ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200"
-                                                        : value === "Takeaway"
-                                                            ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200"
-                                                            : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200"
-                                                    }`}
-                                            >
-                                                {value || 'Direct'}
-                                            </span>
-                                        )
-                                    },
-                                    {
-                                        header: "Payment Method",
-                                        key: "method",
-                                        headerClassName: "text-center whitespace-nowrap min-w-[120px]",
-                                        className: "text-center whitespace-nowrap min-w-[120px]",
-                                        render: (value) => (
-                                            <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 whitespace-nowrap inline-flex items-center justify-center shrink-0">
-                                                {value || 'Cash'}
-                                            </span>
-                                        )
-                                    },
-                                    {
-                                        header: "Status",
-                                        key: "paymentStatus",
-                                        headerClassName: "text-center whitespace-nowrap min-w-[130px]",
-                                        className: "text-center whitespace-nowrap min-w-[130px]",
-                                        render: (value, row) => {
-                                            const status = value || (row.dueAmount > 0 ? (row.paidAmount > 0 ? "PARTIALLY PAID" : "UNPAID / CREDIT") : "FULLY PAID");
-                                            const isFull = status === "FULLY PAID";
-                                            const isPartial = status === "PARTIALLY PAID";
-                                            return (
-                                                <div className="flex flex-col items-center">
-                                                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider whitespace-nowrap inline-flex items-center justify-center shrink-0 w-max ${
-                                                        isFull
-                                                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200"
-                                                            : isPartial
-                                                                ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200"
-                                                                : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 border border-red-200"
-                                                    }`}>
-                                                        {status}
-                                                    </span>
-                                                    {!isFull && row.dueAmount > 0 && (
-                                                        <span className="text-[9px] font-bold text-red-500 mt-0.5 whitespace-nowrap">Due: {formatCurrency(row.dueAmount, currency)}</span>
-                                                    )}
+                            
+                            {salesViewMode === "itemized" ? (
+                                <CommonTable
+                                    selectable={false}
+                                    showExport={false}
+                                    columns={[
+                                        ...(reportBranchFilter === "all" ? [{
+                                            header: "Branch",
+                                            key: "branchName",
+                                            className: `text-xs font-bold ${theme.textSecondary}`
+                                        }] : []),
+                                        {
+                                            header: "Invoice #",
+                                            key: "invoiceNumber",
+                                            render: (value, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400">#{value}</span>
+                                                    <span className="text-[10px] text-gray-400 font-medium">{row.date} • {row.time}</span>
                                                 </div>
-                                            );
+                                            )
+                                        },
+                                        {
+                                            header: "Customer",
+                                            key: "customerName",
+                                            render: (value, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className={`text-xs font-bold ${theme.textHeading}`}>{value}</span>
+                                                    {row.customerPhone && <span className="text-[10px] text-gray-400 font-medium">{row.customerPhone}</span>}
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Item Name",
+                                            key: "itemName",
+                                            render: (value, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className={`text-xs font-bold ${theme.textHeading}`}>{value}</span>
+                                                    {row.itemCode && <span className="font-mono text-[10px] text-indigo-500 font-semibold">{row.itemCode}</span>}
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Qty",
+                                            key: "quantity",
+                                            headerClassName: "text-center",
+                                            className: "text-center font-black text-xs"
+                                        },
+                                        {
+                                            header: "Unit Price",
+                                            key: "unitPrice",
+                                            headerClassName: "text-right",
+                                            className: "text-right font-medium text-xs",
+                                            render: (val) => formatCurrency(val, currency)
+                                        },
+                                        {
+                                            header: "Tax %",
+                                            key: "taxPercent",
+                                            headerClassName: "text-center",
+                                            className: "text-center",
+                                            render: (val) => (
+                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200">
+                                                    {val}% Tax
+                                                </span>
+                                            )
+                                        },
+                                        {
+                                            header: "Tax Amount",
+                                            key: "taxAmount",
+                                            headerClassName: "text-right",
+                                            className: "text-right font-bold text-purple-600 dark:text-purple-400 text-xs",
+                                            render: (val) => formatCurrency(val, currency)
+                                        },
+                                        {
+                                            header: "Line Total",
+                                            key: "totalAmount",
+                                            headerClassName: "text-right",
+                                            className: "text-right font-black text-indigo-600 dark:text-indigo-400 text-sm",
+                                            render: (val) => formatCurrency(val, currency)
                                         }
-                                    },
-                                    {
-                                        header: "Amount",
-                                        key: "amount",
-                                        headerClassName: "text-right",
-                                        className: "text-right font-black text-indigo-600 dark:text-indigo-400 text-sm",
-                                        render: (value) => formatCurrency(value, currency)
-                                    }
-                                ]}
-                                data={salesHistory.filter((s) => isWithinRange(s.date))}
-                                className="mt-4"
-                            />
+                                    ]}
+                                    data={filteredSalesItemBreakdown}
+                                    className="mt-4"
+                                />
+                            ) : (
+                                <CommonTable
+                                    selectable={false}
+                                    showExport={false}
+                                    columns={[
+                                        ...(reportBranchFilter === "all" ? [{
+                                            header: "Branch",
+                                            key: "branchName",
+                                            className: `text-xs font-bold ${theme.textSecondary}`
+                                        }] : []),
+                                        {
+                                            header: "Sales Invoice",
+                                            key: "invoiceNumber",
+                                            render: (value, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400">#{value}</span>
+                                                    <span className="text-[10px] text-gray-400 font-medium">{row.date} • {row.time || (row.timestamp ? new Date(row.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}</span>
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Customer",
+                                            key: "customerName",
+                                            render: (value, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className={`text-xs font-bold ${theme.textHeading}`}>{value || 'Walk-in Customer'}</span>
+                                                    {row.customerPhone && <span className="text-[10px] text-gray-400 font-medium">{row.customerPhone}</span>}
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Billed By",
+                                            key: "staffName",
+                                            render: (value) => (
+                                                <span className={`text-xs font-semibold ${theme.textSecondary}`}>{value || 'Admin / Staff'}</span>
+                                            )
+                                        },
+                                        {
+                                            header: "Type",
+                                            key: "type",
+                                            headerClassName: "text-center whitespace-nowrap min-w-[100px]",
+                                            className: "text-center whitespace-nowrap min-w-[100px]",
+                                            render: (value) => (
+                                                <span
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-black tracking-wider uppercase whitespace-nowrap inline-flex items-center justify-center shrink-0 w-max ${value === "Dine-in"
+                                                        ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200"
+                                                        : value === "Online"
+                                                            ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200"
+                                                            : value === "Takeaway"
+                                                                ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200"
+                                                                : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200"
+                                                        }`}
+                                                >
+                                                    {value || 'Direct'}
+                                                </span>
+                                            )
+                                        },
+                                        {
+                                            header: "Payment Method",
+                                            key: "method",
+                                            headerClassName: "text-center whitespace-nowrap min-w-[120px]",
+                                            className: "text-center whitespace-nowrap min-w-[120px]",
+                                            render: (value) => (
+                                                <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 whitespace-nowrap inline-flex items-center justify-center shrink-0">
+                                                    {value || 'Cash'}
+                                                </span>
+                                            )
+                                        },
+                                        {
+                                            header: "Status",
+                                            key: "paymentStatus",
+                                            headerClassName: "text-center whitespace-nowrap min-w-[130px]",
+                                            className: "text-center whitespace-nowrap min-w-[130px]",
+                                            render: (value, row) => {
+                                                const status = value || (row.dueAmount > 0 ? (row.paidAmount > 0 ? "PARTIALLY PAID" : "UNPAID / CREDIT") : "FULLY PAID");
+                                                const isFull = status === "FULLY PAID";
+                                                const isPartial = status === "PARTIALLY PAID";
+                                                return (
+                                                    <div className="flex flex-col items-center">
+                                                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider whitespace-nowrap inline-flex items-center justify-center shrink-0 w-max ${
+                                                            isFull
+                                                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200"
+                                                                : isPartial
+                                                                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200"
+                                                                    : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 border border-red-200"
+                                                        }`}>
+                                                            {status}
+                                                        </span>
+                                                        {!isFull && row.dueAmount > 0 && (
+                                                            <span className="text-[9px] font-bold text-red-500 mt-0.5 whitespace-nowrap">Due: {formatCurrency(row.dueAmount, currency)}</span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            }
+                                        },
+                                        {
+                                            header: "Amount",
+                                            key: "amount",
+                                            headerClassName: "text-right",
+                                            className: "text-right font-black text-indigo-600 dark:text-indigo-400 text-sm",
+                                            render: (value) => formatCurrency(value, currency)
+                                        }
+                                    ]}
+                                    data={filteredSalesHistory}
+                                    className="mt-4"
+                                />
+                            )}
                         </div>
                     )}
+
+                    {/* 2. PURCHASE REPORT */}
+                    {reportCategory === "purchases" && (() => {
+                        const isPurchaseFilterActive = purchaseSupplierFilter !== "all" || purchaseTaxFilter !== "all" || purchaseTaxPercentFilter !== "all";
+                        const getSupplierName = (id) => {
+                            const supp = (supplierReport || []).find(s => String(s.id || s._id) === String(id));
+                            return supp ? (supp.name || supp.supplierName) : id;
+                        };
+
+                        return (
+                            <div className="space-y-5">
+                                <div className={`flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b ${theme.borderLight} pb-4`}>
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-wrap">
+                                        <h3 className={`text-xl font-black ${theme.textHeading}`}>
+                                            Purchase Report ({rangeLabel})
+                                        </h3>
+                                        {/* View Mode Toggle: Summary vs Item-wise */}
+                                        <div className={`inline-flex rounded-xl p-1 ${theme.pageBg} border ${theme.borderLight}`}>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setPurchaseViewMode("summary");
+                                                    setPurchaseTaxPercentFilter("all");
+                                                }}
+                                                className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
+                                                    purchaseViewMode === "summary"
+                                                        ? `${theme.buttonBg} ${theme.buttonText} shadow-xs font-black`
+                                                        : `${theme.textMuted} ${theme.sidebarItemHoverBg} font-bold`
+                                                }`}
+                                            >
+                                                Bill Summary
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPurchaseViewMode("itemized")}
+                                                className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
+                                                    purchaseViewMode === "itemized"
+                                                        ? `${theme.buttonBg} ${theme.buttonText} shadow-xs font-black`
+                                                        : `${theme.textMuted} ${theme.sidebarItemHoverBg} font-bold`
+                                                }`}
+                                            >
+                                                Item-wise Breakdown
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Compact Single Line Filters Bar */}
+                                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full xl:w-auto shrink-0">
+                                        {/* Supplier Filter */}
+                                        <div className="w-[160px] sm:w-[170px]">
+                                            <CommonSelect
+                                                size="sm"
+                                                icon={Building2}
+                                                options={[
+                                                    { label: "All Suppliers", value: "all" },
+                                                    ...(supplierReport || []).map(s => ({
+                                                        label: s.name || s.supplierName,
+                                                        value: String(s.id || s._id)
+                                                    }))
+                                                ]}
+                                                value={purchaseSupplierFilter}
+                                                onChange={(val) => setPurchaseSupplierFilter(val)}
+                                                placeholder="All Suppliers"
+                                            />
+                                        </div>
+
+                                        {/* Purchase Type / Tax Status Filter */}
+                                        <div className="w-[150px] sm:w-[160px]">
+                                            <CommonSelect
+                                                size="sm"
+                                                icon={ShoppingBag}
+                                                options={[
+                                                    { label: "All Purchases", value: "all" },
+                                                    { label: "With Tax Only", value: "taxable" },
+                                                    { label: "Without Tax Only", value: "non_taxable" }
+                                                ]}
+                                                value={purchaseTaxFilter}
+                                                onChange={(val) => setPurchaseTaxFilter(val)}
+                                                placeholder="All Purchases"
+                                            />
+                                        </div>
+
+                                        {/* Tax Percent Filter */}
+                                        {purchaseViewMode === "itemized" && (
+                                            <div className="w-[140px] sm:w-[150px]">
+                                                <CommonSelect
+                                                    size="sm"
+                                                    icon={Percent}
+                                                    options={taxRateOptions.map(opt => opt.value === 'all' ? { ...opt, label: "All Tax Rates" } : opt)}
+                                                    value={purchaseTaxPercentFilter}
+                                                    onChange={(val) => setPurchaseTaxPercentFilter(val)}
+                                                    placeholder="All Tax Rates"
+                                                />
+                                            </div>
+                                        )}
+
+
+
+                                        {/* Clear inline button */}
+                                        {isPurchaseFilterActive && (
+                                            <button
+                                                onClick={() => {
+                                                    setPurchaseSupplierFilter("all");
+                                                    setPurchaseTaxFilter("all");
+                                                    setPurchaseTaxPercentFilter("all");
+                                                }}
+                                                className="h-10 px-2.5 py-1 text-xs font-bold text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-all flex items-center gap-1 shrink-0"
+                                                title="Clear all filters"
+                                            >
+                                                <RotateCcw size={13} />
+                                                <span className="hidden sm:inline">Clear</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Active Filter Chips */}
+                                {isPurchaseFilterActive && (
+                                    <div className="flex items-center flex-wrap gap-2 text-xs -mt-1 animate-in fade-in duration-200">
+                                        <span className={`font-bold text-[11px] uppercase tracking-wider ${theme.textMuted} mr-1`}>
+                                            Active Filters:
+                                        </span>
+
+                                        {purchaseSupplierFilter !== "all" && (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60">
+                                                <Building2 size={12} className="text-indigo-500" />
+                                                <span>Supplier: {getSupplierName(purchaseSupplierFilter)}</span>
+                                                <button
+                                                    onClick={() => setPurchaseSupplierFilter("all")}
+                                                    className="hover:bg-indigo-200/50 dark:hover:bg-indigo-800/80 rounded p-0.5 transition-colors ml-0.5"
+                                                    title="Remove filter"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </span>
+                                        )}
+
+                                        {purchaseTaxFilter !== "all" && (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60">
+                                                <ShoppingBag size={12} className="text-indigo-500" />
+                                                <span>Type: {purchaseTaxFilter === 'taxable' ? 'With Tax' : 'Without Tax'}</span>
+                                                <button
+                                                    onClick={() => setPurchaseTaxFilter("all")}
+                                                    className="hover:bg-indigo-200/50 dark:hover:bg-indigo-800/80 rounded p-0.5 transition-colors ml-0.5"
+                                                    title="Remove filter"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </span>
+                                        )}
+
+                                        {purchaseTaxPercentFilter !== "all" && (
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60">
+                                                <Percent size={12} className="text-indigo-500" />
+                                                <span>Tax Rate: {purchaseTaxPercentFilter}%</span>
+                                                <button
+                                                    onClick={() => setPurchaseTaxPercentFilter("all")}
+                                                    className="hover:bg-indigo-200/50 dark:hover:bg-indigo-800/80 rounded p-0.5 transition-colors ml-0.5"
+                                                    title="Remove filter"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </span>
+                                        )}
+
+                                        <button
+                                            onClick={() => {
+                                                setPurchaseSupplierFilter("all");
+                                                setPurchaseTaxFilter("all");
+                                                setPurchaseTaxPercentFilter("all");
+                                            }}
+                                            className="text-xs font-bold text-red-500 hover:text-red-600 hover:underline px-2 py-0.5 transition-all flex items-center gap-1"
+                                        >
+                                            <span>Clear all</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                            {/* Purchase Summary KPI Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div className={`p-5 rounded-2xl border transition-all ${isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'}`}>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${isDark ? 'bg-blue-950/60 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+                                            <ShoppingBag size={16} />
+                                        </div>
+                                        <p className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>Total Purchases</p>
+                                    </div>
+                                    <p className={`text-2xl md:text-3xl font-black ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                        {formatCurrency(
+                                            purchaseViewMode === "itemized"
+                                                ? filteredPurchasesItemBreakdown.reduce((acc, p) => acc + Number(p.totalAmount || 0), 0)
+                                                : filteredPurchasesHistory.reduce((acc, p) => acc + Number(p.grandTotal || p.totalAmount || p.total || 0), 0),
+                                            currency
+                                        )}
+                                    </p>
+                                </div>
+                                <div className={`p-5 rounded-2xl border transition-all ${isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'}`}>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${isDark ? 'bg-emerald-950/60 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
+                                            <ReceiptText size={16} />
+                                        </div>
+                                        <p className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>
+                                            {purchaseViewMode === "itemized" ? "Filtered Line Items" : "Total Bills"}
+                                        </p>
+                                    </div>
+                                    <p className={`text-2xl md:text-3xl font-black ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                        {purchaseViewMode === "itemized" ? filteredPurchasesItemBreakdown.length : filteredPurchasesHistory.length}
+                                    </p>
+                                </div>
+                                <div className={`p-5 rounded-2xl border transition-all ${isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'}`}>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${isDark ? 'bg-purple-950/60 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>
+                                            <ReceiptText size={16} />
+                                        </div>
+                                        <p className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>Tax Paid</p>
+                                    </div>
+                                    <p className={`text-2xl md:text-3xl font-black ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                        {formatCurrency(
+                                            purchaseViewMode === "itemized"
+                                                ? filteredPurchasesItemBreakdown.reduce((acc, p) => acc + Number(p.taxAmount || 0), 0)
+                                                : filteredPurchasesHistory.reduce((acc, p) => acc + Number(p.taxTotal || p.totalTax || p.taxAmount || 0), 0),
+                                            currency
+                                        )}
+                                    </p>
+                                </div>
+                                <div className={`p-5 rounded-2xl border transition-all ${isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-gray-300 shadow-xs'}`}>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${isDark ? 'bg-amber-950/60 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>
+                                            <Coins size={16} />
+                                        </div>
+                                        <p className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>Avg Bill / Line Value</p>
+                                    </div>
+                                    <p className={`text-2xl md:text-3xl font-black ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                        {formatCurrency(
+                                            purchaseViewMode === "itemized"
+                                                ? (filteredPurchasesItemBreakdown.length ? filteredPurchasesItemBreakdown.reduce((acc, p) => acc + Number(p.totalAmount || 0), 0) / filteredPurchasesItemBreakdown.length : 0)
+                                                : (filteredPurchasesHistory.length ? (filteredPurchasesHistory.reduce((acc, p) => acc + Number(p.grandTotal || p.totalAmount || p.total || 0), 0) / filteredPurchasesHistory.length) : 0),
+                                            currency
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Purchase CommonTable */}
+                            {purchaseViewMode === "itemized" ? (
+                                <CommonTable
+                                    selectable={false}
+                                    showExport={false}
+                                    columns={[
+                                        ...(reportBranchFilter === "all" ? [{
+                                            header: "Branch",
+                                            key: "branchName",
+                                            className: `text-xs font-bold ${theme.textSecondary}`,
+                                            render: (v, r) => r.branchName || "Main Branch"
+                                        }] : []),
+                                        {
+                                            header: "Invoice / Bill #",
+                                            key: "purchaseNumber",
+                                            render: (val, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400">
+                                                        {val}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-400 font-medium">
+                                                        {row.date}
+                                                    </span>
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Supplier",
+                                            key: "supplierName",
+                                            render: (val, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className={`text-xs font-bold ${theme.textHeading}`}>
+                                                        {val}
+                                                    </span>
+                                                    {row.supplierPhone && <span className="text-[10px] text-gray-400 font-medium">{row.supplierPhone}</span>}
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Item Name",
+                                            key: "itemName",
+                                            render: (val, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className={`text-xs font-bold ${theme.textHeading}`}>{val}</span>
+                                                    {row.itemCode && <span className="font-mono text-[10px] text-indigo-500 font-semibold">{row.itemCode}</span>}
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Qty",
+                                            key: "quantity",
+                                            headerClassName: "text-center",
+                                            className: "text-center font-black text-xs",
+                                            render: (v, r) => `${v} ${r.unitName || 'Pcs'}`
+                                        },
+                                        {
+                                            header: "Unit Price",
+                                            key: "unitPrice",
+                                            headerClassName: "text-right",
+                                            className: "text-right font-medium text-xs",
+                                            render: (v) => formatCurrency(v, currency)
+                                        },
+                                        {
+                                            header: "Tax %",
+                                            key: "taxPercent",
+                                            headerClassName: "text-center",
+                                            className: "text-center",
+                                            render: (val) => (
+                                                <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200">
+                                                    {val}% Tax
+                                                </span>
+                                            )
+                                        },
+                                        {
+                                            header: "Tax Paid",
+                                            key: "taxAmount",
+                                            headerClassName: "text-right",
+                                            className: "text-right font-bold text-purple-600 dark:text-purple-400 text-xs",
+                                            render: (v) => formatCurrency(v, currency)
+                                        },
+                                        {
+                                            header: "Line Total",
+                                            key: "totalAmount",
+                                            headerClassName: "text-right",
+                                            className: "text-right font-black text-indigo-600 dark:text-indigo-400 text-sm",
+                                            render: (v) => formatCurrency(v, currency)
+                                        }
+                                    ]}
+                                    data={filteredPurchasesItemBreakdown}
+                                />
+                            ) : (
+                                <CommonTable
+                                    selectable={false}
+                                    showExport={false}
+                                    columns={[
+                                        ...(reportBranchFilter === "all" ? [{
+                                            header: "Branch",
+                                            key: "branchName",
+                                            className: `text-xs font-bold ${theme.textSecondary}`,
+                                            render: (v, r) => r.branchId?.name || r.branchName || "Main Branch"
+                                        }] : []),
+                                        {
+                                            header: "Invoice / Bill #",
+                                            key: "purchaseNumber",
+                                            render: (val, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400">
+                                                        {val || row.invoiceNumber || row.supplierInvoiceNumber || "—"}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-400 font-medium">
+                                                        {new Date(row.invoiceDate || row.date || row.createdAt).toLocaleDateString()}
+                                                    </span>
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Supplier",
+                                            key: "supplierName",
+                                            render: (val, row) => (
+                                                <div className="flex flex-col">
+                                                    <span className={`text-xs font-bold ${theme.textHeading}`}>
+                                                        {row.supplierId?.name || val || '—'}
+                                                    </span>
+                                                    {row.supplierId?.phone && <span className="text-[10px] text-gray-400 font-medium">{row.supplierId.phone}</span>}
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Tax Paid",
+                                            key: "taxTotal",
+                                            headerClassName: "text-right",
+                                            render: (v, r) => (
+                                                <div className="text-right font-bold text-purple-600 dark:text-purple-400">
+                                                    {formatCurrency(r.taxTotal || r.totalTax || r.taxAmount || 0)}
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Total Amount",
+                                            key: "grandTotal",
+                                            headerClassName: "text-right",
+                                            render: (v, r) => (
+                                                <div className="text-right font-black text-indigo-600 dark:text-indigo-400">
+                                                    {formatCurrency(r.grandTotal || r.totalAmount || r.total || 0)}
+                                                </div>
+                                            )
+                                        },
+                                        {
+                                            header: "Status",
+                                            key: "status",
+                                            headerClassName: "text-center",
+                                            className: "text-center",
+                                            render: (v, r) => {
+                                                const st = (v || r.paymentStatus || "CONFIRMED").toUpperCase();
+                                                const isPaid = st === "PAID" || st === "CONFIRMED" || st === "APPROVED";
+                                                return (
+                                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-wider uppercase ${
+                                                        isPaid ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
+                                                        st === "PARTIAL" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+                                                        "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+                                                    }`}>
+                                                        {st}
+                                                    </span>
+                                                );
+                                            }
+                                        }
+                                    ]}
+                                    data={filteredPurchasesHistory}
+                                />
+                            )}
+                        </div>
+                    );
+                })()}
 
                     {/* STOCK-WISE REPORT */}
                     {reportCategory === "stock_wise" && (

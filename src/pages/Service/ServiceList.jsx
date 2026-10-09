@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus, Search, Calendar, User, Wrench } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
+import CommonSelect from "../../components/ui/CommonSelect";
 
 // Placeholder data - replace with API call
 const MOCK_SERVICES = [
@@ -96,18 +97,18 @@ const ServiceList = ({ hasPermissionFor }) => {
                     />
                 </div>
                 <div className="md:col-span-3">
-                    <select
+                    <CommonSelect
                         value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        className={`w-full px-4 py-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.inputText} rounded-lg ${theme.inputFocus} outline-none focus:ring-2`}
-                    >
-                        <option value="All">All Statuses</option>
-                        <option value="Received">Received</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Delivered">Delivered</option>
-                        <option value="Closed">Closed</option>
-                    </select>
+                        onChange={(val) => setFilterStatus(val)}
+                        options={[
+                            { label: "All Statuses", value: "All" },
+                            { label: "Received", value: "Received" },
+                            { label: "In Progress", value: "In Progress" },
+                            { label: "Completed", value: "Completed" },
+                            { label: "Delivered", value: "Delivered" },
+                            { label: "Closed", value: "Closed" }
+                        ]}
+                    />
                 </div>
             </div>
 

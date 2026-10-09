@@ -1282,7 +1282,7 @@ const TakeawayOrder = ({
                         const filtered = activeMenu.filter(i =>
                             activeMenuCategory === "All" || i.category === activeMenuCategory
                         );
-                        const inStock = filtered.filter(i => (i.quantityOnHand ?? 1) > 0).length;
+                        const inStock = filtered.filter(i => (i.quantityOnHand || i.openingStock || 0) > 0).length;
                         const outOfStock = filtered.length - inStock;
                         return (
                             <div className="flex items-center gap-3 text-[11px] font-black shrink-0">
@@ -1327,16 +1327,16 @@ const TakeawayOrder = ({
                                     if (sortMode === 'popular') {
                                         // Primary: most ordered first; secondary: in-stock first
                                         if (b._orderCount !== a._orderCount) return b._orderCount - a._orderCount;
-                                        const aStock = a.quantityOnHand > 0;
-                                        const bStock = b.quantityOnHand > 0;
+                                        const aStock = (a.quantityOnHand || a.openingStock || 0) > 0;
+                                        const bStock = (b.quantityOnHand || b.openingStock || 0) > 0;
                                         if (aStock && !bStock) return -1;
                                         if (!aStock && bStock) return 1;
                                         return 0;
                                     }
                                     if (sortMode === 'name') return (a.name || '').localeCompare(b.name || '');
                                     if (sortMode === 'stock') {
-                                        const aQ = a.quantityOnHand ?? 0;
-                                        const bQ = b.quantityOnHand ?? 0;
+                                        const aQ = a.quantityOnHand || a.openingStock || 0;
+                                        const bQ = b.quantityOnHand || b.openingStock || 0;
                                         return bQ - aQ;
                                     }
                                     return 0;

@@ -1,8 +1,9 @@
-import React, { useState } from "react";
-import { Scale, Minus, Plus } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Scale, Minus, Plus, RefreshCw, Zap, Plug, Wifi, Usb } from "lucide-react";
 import Modal from "../ui/Modal";
 import { formatCurrency } from "../../utils/format";
 import { useTheme } from "../../context/ThemeContext";
+import { useScale } from "../../context/ScaleContext";
 
 const CustomizationModal = ({
     isOpen,
@@ -19,6 +20,44 @@ const CustomizationModal = ({
     setCustomExtras,
 }) => {
     const { theme } = useTheme();
+    const scale = useScale();
+
+    const [showWifiForm, setShowWifiForm] = useState(false);
+    const [tempWifiIp, setTempWifiIp] = useState(scale.wifiIp || "");
+    const [tempWifiPort, setTempWifiPort] = useState(scale.wifiPort || "8080");
+
+    useEffect(() => {
+        if (scale.wifiIp) setTempWifiIp(scale.wifiIp);
+        if (scale.wifiPort) setTempWifiPort(scale.wifiPort);
+    }, [scale.wifiIp, scale.wifiPort]);
+
+    // Auto-grab weight from live scale when modal opens or live scale changes
+    useEffect(() => {
+        if (isOpen && item?.sellingType === "Weight" && scale.isScaleConnected && scale.scaleWeight > 0) {
+            const val = customWeightUnit === "g" 
+                ? parseFloat((scale.scaleWeight * 1000).toFixed(2)) 
+                : parseFloat(scale.scaleWeight.toFixed(3));
+            setCustomWeightInput(val);
+        }
+    }, [isOpen, item?.sellingType, scale.isScaleConnected, scale.scaleWeight, customWeightUnit]);
+
+    const handleGrabWeight = () => {
+        if (!scale.isScaleConnected) {
+            if (scale.isWebSerialSupported) {
+                scale.connectWebSerial();
+            } else {
+                setShowWifiForm(true);
+            }
+            return;
+        }
+        if (scale.scaleWeight > 0) {
+            const val = customWeightUnit === "g" 
+                ? parseFloat((scale.scaleWeight * 1000).toFixed(2)) 
+                : parseFloat(scale.scaleWeight.toFixed(3));
+            setCustomWeightInput(val);
+        }
+    };
+
     if (!item) return null;
 
     return (
@@ -99,8 +138,123 @@ const CustomizationModal = ({
 
                     {/* Weight Input */}
                     {item.sellingType === "Weight" && (
-                        <div>
-                            <div className="flex justify-between items-end mb-3">
+                        <div className="space-y-3">
+                            {/* Live Scale Status Strip */}
+                            <div className={`p-3 rounded-2xl border transition-all ${
+                                scale.isScaleConnected
+                                    ? "bg-emerald-50/90 border-emerald-200 text-emerald-900"
+                                    : "bg-amber-50/90 border-amber-200 text-amber-900"
+                            }`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        {scale.isScaleConnected ? (
+                                            <>
+                                                <span className="relative flex h-2.5 w-2.5">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                                </span>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold">
+                                                        Scale Live: <strong className="text-sm font-black text-emerald-700">{scale.scaleWeight.toFixed(3)} KG</strong>
+                                                    </span>
+                                                    <span className="text-[10px] text-emerald-600 font-medium">{scale.scalePortName}</span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Plug className="w-4 h-4 text-amber-600 shrink-0" />
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-bold">Scale Disconnected</span>
+                                                    <span className="text-[10px] text-amber-700 font-medium">Supports USB Serial & Wi-Fi IP Scale</span>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5">
+                                        {scale.isScaleConnected ? (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleGrabWeight}
+                                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow text-[11px] font-black flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                                                >
+                                                    <Zap size={12} />
+                                                    Grab Weight
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => scale.disconnectScale()}
+                                                    className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-[11px] font-bold active:scale-95 transition-all cursor-pointer"
+                                                    title="Disconnect Scale"
+                                                >
+                                                    Disconnect
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <div className="flex items-center gap-1">
+                                                {scale.isWebSerialSupported && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => scale.connectWebSerial()}
+                                                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow text-[11px] font-black flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                                                        title="Connect USB Scale via Web Serial"
+                                                    >
+                                                        <Usb size={12} />
+                                                        USB Scale
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowWifiForm(!showWifiForm)}
+                                                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow text-[11px] font-black flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                                                    title="Connect Wi-Fi Scale over LAN IP"
+                                                >
+                                                    <Wifi size={12} />
+                                                    Wi-Fi Scale
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Wi-Fi IP Connect Form */}
+                                {showWifiForm && !scale.isScaleConnected && (
+                                    <div className="mt-3 pt-3 border-t border-amber-200/80 flex flex-col gap-2">
+                                        <div className="text-[11px] font-black uppercase text-amber-900 tracking-wider">
+                                            Connect Wi-Fi / LAN Network Scale
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="Scale IP (e.g. 192.168.1.100)"
+                                                value={tempWifiIp}
+                                                onChange={(e) => setTempWifiIp(e.target.value)}
+                                                className="flex-1 px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-bold text-gray-800 outline-none focus:ring-2 focus:ring-amber-500"
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Port (8080)"
+                                                value={tempWifiPort}
+                                                onChange={(e) => setTempWifiPort(e.target.value)}
+                                                className="w-20 px-2 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-bold text-gray-800 outline-none focus:ring-2 focus:ring-amber-500"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    scale.connectWifiScale(tempWifiIp, tempWifiPort);
+                                                    setShowWifiForm(false);
+                                                }}
+                                                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-lg text-xs shadow active:scale-95 transition-all cursor-pointer"
+                                            >
+                                                Connect
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-between items-end">
                                 <label className={`text-xs font-black ${theme.textMuted} uppercase block`}>
                                     Enter Weight
                                 </label>
@@ -116,7 +270,7 @@ const CustomizationModal = ({
                                                 setCustomWeightUnit("kg");
                                             }
                                         }}
-                                        className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${customWeightUnit === "kg"
+                                        className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${customWeightUnit === "kg"
                                                 ? "bg-white shadow text-indigo-600"
                                                 : theme.textMuted
                                             }`}
@@ -134,7 +288,7 @@ const CustomizationModal = ({
                                                 setCustomWeightUnit("g");
                                             }
                                         }}
-                                        className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${customWeightUnit === "g"
+                                        className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${customWeightUnit === "g"
                                                 ? "bg-white shadow text-indigo-600"
                                                 : theme.textMuted
                                             }`}
@@ -143,8 +297,16 @@ const CustomizationModal = ({
                                     </button>
                                 </div>
                             </div>
-                            <div className={`flex items-center gap-4 ${theme.pageBg} p-4 rounded-2xl border-2 border-indigo-100`}>
-                                <Scale className="text-indigo-600" size={24} />
+
+                            <div className={`flex items-center gap-3 ${theme.pageBg} p-4 rounded-2xl border-2 border-indigo-100`}>
+                                <button
+                                    type="button"
+                                    onClick={handleGrabWeight}
+                                    title="Grab live weight from scale"
+                                    className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl transition-all active:scale-95 cursor-pointer shrink-0"
+                                >
+                                    <Scale size={24} />
+                                </button>
                                 <input
                                     type="number"
                                     value={customWeightInput}
@@ -164,13 +326,19 @@ const CustomizationModal = ({
                                     {customWeightUnit}
                                 </span>
                             </div>
-                            <div className="text-right mt-2 text-indigo-600 font-bold">
-                                Price:{" "}
-                                {formatCurrency(
-                                    (customWeightUnit === "g"
-                                        ? (parseFloat(customWeightInput) || 0) / 1000
-                                        : parseFloat(customWeightInput) || 0) * item.pricePerUnit
-                                )}
+
+                            <div className="flex justify-between items-center text-xs mt-2">
+                                <span className="text-gray-400 font-medium">
+                                    Rate: {formatCurrency(item.pricePerUnit)} / kg
+                                </span>
+                                <div className="text-indigo-600 font-black text-base">
+                                    Price:{" "}
+                                    {formatCurrency(
+                                        (customWeightUnit === "g"
+                                            ? (parseFloat(customWeightInput) || 0) / 1000
+                                            : parseFloat(customWeightInput) || 0) * (item.pricePerUnit || item.price || 0)
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}

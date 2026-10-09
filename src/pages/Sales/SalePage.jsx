@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
     ArrowLeft, Save, Plus, Trash2, Search, User, Building, Package,
-    Check, X, Phone, MapPin, Loader2, ShoppingBag, CreditCard, Banknote, Printer
+    Check, X, Phone, MapPin, Loader2, ShoppingBag, CreditCard, Banknote, Printer,
+    Layers, FileText, FileCheck
 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import { itemService, taxService, unitService, orderService, customerService } from "../../services/api";
@@ -70,6 +71,7 @@ const SalePage = () => {
     const [discountType, setDiscountType] = useState('flat'); // 'flat' | 'percent'
     const [isAutoRoundOff, setIsAutoRoundOff] = useState(true);
     const [printInvoice, setPrintInvoice] = useState(true);
+    const [printFormat, setPrintFormat] = useState("thermal");
     const [billPrintSettings, setBillPrintSettings] = useState(null);
 
     const fetchInitialData = useCallback(async (branchIdArg) => {
@@ -97,14 +99,37 @@ const SalePage = () => {
             setShopTaxes(activeTaxes);
 
             setStockItems(items.map((item) => {
-                const taxPercent = Number(item.taxPercent || 0);
-                const taxObj = findTaxForItem(item, allTaxes.length ? allTaxes : activeTaxes);
+                const taxList = allTaxes.length ? allTaxes : activeTaxes;
+                const taxObj = findTaxForItem(item, taxList);
+                const taxPercent = taxObj?.percentage !== undefined && taxObj?.percentage !== null
+                    ? Number(taxObj.percentage)
+                    : Number(
+                        item.taxPercent ?? 
+                        item.tax_percent ?? 
+                        item.taxRate ?? 
+                        item.tax_rate ?? 
+                        item.gst ?? 
+                        item.tax ?? 
+                        (typeof item.taxId === 'object' ? item.taxId?.percentage : undefined) ?? 
+                        0
+                    );
                 const isExclusiveTax = resolveIsExclusiveTax(item, taxObj);
+                const resolvedTaxId = taxObj?._id || taxObj?.id || (typeof item.taxId === 'string' ? item.taxId : item.taxId?._id) || null;
+                const resolvedTaxType = (taxObj?.taxType || (typeof item.taxId === 'object' ? item.taxId?.taxType : null) || (isExclusiveTax ? 'EXCLUSIVE' : 'INCLUSIVE')).toUpperCase();
+
+                const allUnits = unitsRes || [];
+                const priUnitName = item.primaryUnitName || item.unitId?.name || (allUnits.find(u => String(u._id || u.id) === String(item.unitId?._id || item.unitId))?.name) || "";
+                const secUnitName = item.secondaryUnitName || item.secondaryUnitId?.name || (allUnits.find(u => String(u._id || u.id) === String(item.secondaryUnitId?._id || item.secondaryUnitId))?.name) || "";
 
                 return {
                     ...item,
+                    taxId: resolvedTaxId,
                     taxPercent,
+                    taxType: resolvedTaxType,
                     isExclusiveTax,
+                    primaryUnitName: priUnitName,
+                    unitName: priUnitName,
+                    secondaryUnitName: secUnitName,
                 };
             }));
             setUnits(unitsRes || []);
@@ -135,6 +160,9 @@ const SalePage = () => {
                 const settings = await loadBillPrintSettings(currentShopId, branchId);
                 setBillPrintSettings(settings);
                 setPrintInvoice(settings.printOnCompleteSale !== false);
+                if (settings?.defaultFormat) {
+                    setPrintFormat(String(settings.defaultFormat).toLowerCase() === 'a4' ? 'a4' : 'thermal');
+                }
             } catch {
                 setPrintInvoice(true);
             }
@@ -144,10 +172,23 @@ const SalePage = () => {
 
     const buildLineItem = useCallback((item, quantity) => {
         const sellingPrice = item.pricing?.sellingPrice ?? item.sellingPrice ?? 0;
-        const taxPercent = Number(item.taxPercent || 0);
         const taxList = allShopTaxes.length ? allShopTaxes : shopTaxes;
         const taxObj = findTaxForItem(item, taxList);
+        const resolvedTaxPercent = taxObj?.percentage !== undefined && taxObj?.percentage !== null
+            ? Number(taxObj.percentage)
+            : Number(
+                item.taxPercent ?? 
+                item.tax_percent ?? 
+                item.taxRate ?? 
+                item.tax_rate ?? 
+                item.gst ?? 
+                item.tax ?? 
+                (typeof item.taxId === 'object' ? item.taxId?.percentage : undefined) ?? 
+                0
+            );
         const isExclusiveTax = resolveIsExclusiveTax(item, taxObj);
+        const resolvedTaxId = taxObj?._id || taxObj?.id || (typeof item.taxId === 'string' ? item.taxId : item.taxId?._id) || null;
+        const resolvedTaxType = (taxObj?.taxType || (typeof item.taxId === 'object' ? item.taxId?.taxType : null) || (isExclusiveTax ? 'EXCLUSIVE' : 'INCLUSIVE')).toUpperCase();
 
         return {
             itemId: item._id || item.itemId,
@@ -158,17 +199,18 @@ const SalePage = () => {
             discountAmount: 0,
             categoryId: item.categoryId?._id || item.categoryId || null,
             category_id: item.categoryId?._id || item.categoryId || null,
-            taxId: item.taxId?._id || item.taxId || null,
-            taxPercent,
-            taxAmount: calcLineTax(sellingPrice, quantity, taxPercent, isExclusiveTax),
+            taxId: resolvedTaxId,
+            taxPercent: resolvedTaxPercent,
+            taxType: resolvedTaxType,
+            taxAmount: calcLineTax(sellingPrice, quantity, resolvedTaxPercent, isExclusiveTax),
             isExclusiveTax,
             unitId: item.unitId?._id || item.unitId,
-            primaryUnitName: item.unitId?.name || "",
-            unitName: item.unitId?.name || "",
+            primaryUnitName: item.primaryUnitName || item.unitId?.name || (units.find(u => String(u._id || u.id) === String(item.unitId?._id || item.unitId))?.name) || "",
+            unitName: item.unitName || item.primaryUnitName || item.unitId?.name || "",
             secondaryUnitId: item.secondaryUnitId?._id || item.secondaryUnitId,
-            secondaryUnitName: item.secondaryUnitId?.name || "",
+            secondaryUnitName: item.secondaryUnitName || item.secondaryUnitId?.name || (units.find(u => String(u._id || u.id) === String(item.secondaryUnitId?._id || item.secondaryUnitId))?.name) || "",
             conversionFactor: item.conversionFactor || 1,
-            selectedUnit: item.defaultSaleUnit || item.defaultPurchaseUnit || "PRIMARY",
+            selectedUnit: item.selectedUnit || item.defaultSaleUnit || item.defaultPurchaseUnit || "PRIMARY",
         };
     }, [shopTaxes, allShopTaxes]);
 
@@ -465,7 +507,7 @@ const SalePage = () => {
                     const settings = billPrintSettings || await loadBillPrintSettings(currentShopId, formData.branchId);
                     await printSaleOrder({
                         order: orderFromBackend,
-                        format: settings.defaultFormat,
+                        format: printFormat || settings.defaultFormat || 'thermal',
                         billSettings: settings,
                         header: buildPrintHeader({ organization, branch, orderFromBackend, currentUser: user }),
                         extraInfo: buildBillExtraInfo(branch, organization),
@@ -703,7 +745,8 @@ const SalePage = () => {
                                             <tr className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} border-b ${theme.borderLight}`}>
                                                 <th className="py-4 pr-4">Product</th>
                                                 <th className="py-4 px-2 w-24">Qty</th>
-                                                <th className="py-4 px-2 w-32">Price</th>
+                                                <th className="py-4 px-2 w-36">Unit</th>
+                                                <th className="py-4 px-2 w-28">Price</th>
                                                 <th className="py-4 px-2 w-24">Tax %</th>
                                                 <th className="py-4 px-2 w-28">Disc {currencySymbol || '₹'}</th>
                                                 <th className="py-4 px-2 text-right">Line total</th>
@@ -764,6 +807,37 @@ const SalePage = () => {
                                                                 }}
                                                                 className={`w-full p-2 rounded-xl font-black text-center ${theme.inputBg} border ${theme.borderLight}`} />
                                                         </td>
+                                                         <td className="py-4 px-2">
+                                                             <div className="flex flex-col gap-1">
+                                                                 {row.secondaryUnitId && row.secondaryUnitName && row.secondaryUnitName !== row.primaryUnitName ? (
+                                                                     <div className={`flex rounded-xl border ${theme.borderLight} overflow-hidden font-black text-xs shadow-sm bg-white dark:bg-gray-800`}>
+                                                                         <button
+                                                                             type="button"
+                                                                             onClick={() => handleItemChange(idx, "selectedUnit", "PRIMARY")}
+                                                                             className={`flex-1 px-2.5 py-1.5 transition-all text-center ${row.selectedUnit !== "SECONDARY" ? "bg-indigo-600 text-white shadow-sm" : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
+                                                                         >
+                                                                             {row.primaryUnitName || "Primary"}
+                                                                         </button>
+                                                                         <button
+                                                                             type="button"
+                                                                             onClick={() => handleItemChange(idx, "selectedUnit", "SECONDARY")}
+                                                                             className={`flex-1 px-2.5 py-1.5 border-l ${theme.borderLight} transition-all text-center ${row.selectedUnit === "SECONDARY" ? "bg-indigo-600 text-white shadow-sm" : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
+                                                                         >
+                                                                             {row.secondaryUnitName || "Sec"}
+                                                                         </button>
+                                                                     </div>
+                                                                 ) : (
+                                                                     <div className="px-3 py-1.5 rounded-xl font-black text-xs text-center bg-indigo-600 text-white shadow-sm">
+                                                                         {row.primaryUnitName || row.unitName || "Primary"}
+                                                                     </div>
+                                                                 )}
+                                                                 {row.secondaryUnitId && row.selectedUnit === "SECONDARY" && row.conversionFactor > 1 && (
+                                                                     <div className={`text-[8px] font-black text-indigo-500/80 text-center uppercase tracking-tight flex items-center justify-center gap-1 bg-indigo-50/50 dark:bg-indigo-900/20 py-0.5 rounded-md`}>
+                                                                         <Layers size={8} /> 1 {row.primaryUnitName || "Pri"} = {row.conversionFactor} {row.secondaryUnitName || "Sec"}
+                                                                     </div>
+                                                                 )}
+                                                             </div>
+                                                         </td>
                                                         <td className="py-4 px-2">
                                                             <input type="number" min="0" step="any" value={row.sellingPrice}
                                                                 onWheel={(e) => e.target.blur()}
@@ -866,6 +940,19 @@ const SalePage = () => {
                                                             }}
                                                             className={`w-full p-2 rounded-xl font-black text-center text-sm ${theme.inputBg} border ${theme.borderLight}`} />
                                                     </div>
+                                                     <div>
+                                                         <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Unit</p>
+                                                         {row.secondaryUnitId && row.secondaryUnitName && row.secondaryUnitName !== row.primaryUnitName ? (
+                                                             <div className={`flex rounded-xl border ${theme.borderLight} overflow-hidden font-black text-[10px] h-[38px]`}>
+                                                                 <button type="button" onClick={() => handleItemChange(idx, "selectedUnit", "PRIMARY")} className={`flex-1 px-2 py-1.5 transition-all text-center ${row.selectedUnit !== "SECONDARY" ? "bg-indigo-600 text-white" : theme.textMuted}`}>{row.primaryUnitName || "Pri"}</button>
+                                                                 <button type="button" onClick={() => handleItemChange(idx, "selectedUnit", "SECONDARY")} className={`flex-1 px-2 py-1.5 border-l ${theme.borderLight} transition-all text-center ${row.selectedUnit === "SECONDARY" ? "bg-indigo-600 text-white" : theme.textMuted}`}>{row.secondaryUnitName || "Sec"}</button>
+                                                             </div>
+                                                         ) : (
+                                                             <div className="px-3 py-2 rounded-xl font-black text-xs text-center bg-indigo-600 text-white shadow-sm">
+                                                                 {row.primaryUnitName || row.unitName || "Primary"}
+                                                             </div>
+                                                         )}
+                                                     </div>
                                                     <div>
                                                         <p className={`text-[9px] font-black uppercase ${theme.textMuted} mb-1`}>Price</p>
                                                         <input type="number" min="0" step="any" value={row.sellingPrice}
@@ -1052,17 +1139,46 @@ const SalePage = () => {
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-2 mt-6 md:mt-10 md:flex-row">
-                            <label className={`flex items-center gap-2 px-4 py-3 rounded-2xl border ${theme.borderLight} cursor-pointer md:order-first`}>
-                                <input
-                                    type="checkbox"
-                                    checked={printInvoice}
-                                    onChange={(e) => setPrintInvoice(e.target.checked)}
-                                    className="rounded text-indigo-500"
-                                />
-                                <Printer size={16} className={theme.textMuted} />
-                                <span className={`text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Print Invoice</span>
-                            </label>
+                        <div className="flex flex-col gap-3 mt-6 md:mt-10 md:flex-row md:items-center">
+                            <div className="flex items-center gap-2 flex-wrap md:order-first">
+                                <label className={`flex items-center gap-2 px-4 py-3 rounded-2xl border ${theme.borderLight} cursor-pointer ${theme.surfaceBg}`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={printInvoice}
+                                        onChange={(e) => setPrintInvoice(e.target.checked)}
+                                        className="rounded text-indigo-500"
+                                    />
+                                    <Printer size={16} className={theme.textMuted} />
+                                    <span className={`text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Print Invoice</span>
+                                </label>
+
+                                {printInvoice && (
+                                    <div className={`flex rounded-2xl border ${theme.borderLight} overflow-hidden p-1 ${theme.inputBg}`}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPrintFormat('thermal')}
+                                            className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-1.5 ${
+                                                printFormat === 'thermal'
+                                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                                    : `${theme.textMuted} hover:text-indigo-600`
+                                            }`}
+                                        >
+                                            <FileText size={14} /> Thermal Receipt
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPrintFormat('a4')}
+                                            className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-1.5 ${
+                                                printFormat === 'a4'
+                                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                                    : `${theme.textMuted} hover:text-indigo-600`
+                                            }`}
+                                        >
+                                            <FileCheck size={14} /> A4 Print
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <button
                                 type="submit"
                                 disabled={loading || formData.items.length === 0}

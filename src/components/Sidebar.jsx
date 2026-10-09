@@ -37,7 +37,7 @@ import {
     Calculator,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ROUTE_ACCESS, ROUTE_KEYS_ORDER } from "../constants/routeAccess";
+import { ROUTE_ACCESS, ROUTE_KEYS_ORDER, getFirstAllowedPath } from "../constants/routeAccess";
 import { getModuleList } from "../config/businessTypes";
 import { usePermission } from "../auth/usePermission";
 import { useTheme } from "../context/ThemeContext";
@@ -158,7 +158,9 @@ const Sidebar = ({
 
     const goDashboard = () => {
         const prefix = getShopPrefix();
-        navigate(`${prefix}/dashboard`);
+        const hasDashboard = canModule('dashboard') || can('dashboard', 'view');
+        const targetPath = hasDashboard ? '/dashboard' : getFirstAllowedPath(can, canModule);
+        navigate(`${prefix}${targetPath}`);
         closeMobile();
     };
 

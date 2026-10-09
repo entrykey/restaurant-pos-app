@@ -94,6 +94,24 @@ export const AppProvider = ({ children }) => {
         || (branches.find(b => String(b.id || b._id) === String(activeBranchId))?.organizationId) 
         || null, [stableShopId, organization, branches, activeBranchId]);
 
+    // Reset shop-scoped state immediately whenever stableShopId changes
+    useEffect(() => {
+        if (!stableShopId) return;
+        setBranches([]);
+        setMenu([]);
+        setInventoryItems([]);
+        setSalesHistory([]);
+        setStaffList([]);
+        setRolesList([]);
+        setOrganization({});
+
+        const storedBranchId = localStorage.getItem("pos_activeBranchId");
+        if (storedBranchId) {
+            localStorage.removeItem("pos_activeBranchId");
+            setActiveBranchId(null);
+        }
+    }, [stableShopId]);
+
     // Fetch full business type details when businessType changes
     useEffect(() => {
         const fetchTypeDetails = async () => {

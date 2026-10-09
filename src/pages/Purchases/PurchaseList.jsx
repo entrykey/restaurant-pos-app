@@ -4,7 +4,7 @@ import {
     Plus, Search, Eye, Edit3, Trash2, ShoppingCart, Calendar,
     CheckCircle, CheckCircle2, Clock, AlertCircle, X, Package,
     Calculator, ReceiptText, XCircle, CreditCard,
-    Printer, Coins, RotateCcw
+    Printer, Coins, RotateCcw, SlidersHorizontal, Filter, User, ArrowUpDown
 } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
 import { PurchaseService } from "../../services/PurchaseService";
@@ -17,6 +17,8 @@ import { useTheme } from "../../context/ThemeContext";
 import { toast } from "react-hot-toast";
 import PurchaseReturnSheet from "../../components/modals/PurchaseReturnSheet";
 import CommonSelect from "../../components/ui/CommonSelect";
+import PurchaseOrdersTab from "./PurchaseOrdersTab";
+import GoodsReceivedTab from "./GoodsReceivedTab";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -470,8 +472,8 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
                                             ) : items.map((it, i) => (
                                                 <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                                                     <td className="px-4 py-3">
-                                                        <div className="font-bold text-gray-800">{it.itemId?.name || "—"}</div>
-                                                        <div className="text-[10px] text-gray-400">{it.itemId?.itemCode || ""}</div>
+                                                        <div className="font-bold text-gray-800">{it.itemId?.name || it.itemName || "—"}</div>
+                                                        <div className="text-[10px] text-gray-400">{it.itemId?.itemCode || it.itemCode || ""}</div>
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <div className="text-xs font-bold text-gray-600">{it.batchNo || "—"}</div>
@@ -727,11 +729,87 @@ const PurchaseList = ({ hasPermissionFor }) => {
     const { theme } = useTheme();
     const navigate = useNavigate();
     const [purchases, setPurchases] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [payTarget, setPayTarget] = useState(null); // purchase row for payment modal
     const [viewTarget, setViewTarget] = useState(null); // purchase id for detail modal
     const [returnTarget, setReturnTarget] = useState(null); // purchase object for return sheet
+    const [activeTab, setActiveTab] = useState("PURCHASES"); // "PURCHASES" | "PURCHASE_ORDERS" | "GOODS_RECEIVED"
+
+    // ── Filter & Sort & Pagination States
+    const [showFilter, setShowFilter] = useState(false);
+    const [filterPaymentStatus, setFilterPaymentStatus] = useState("");
+    const [filterPaymentMethod, setFilterPaymentMethod] = useState("");
+    const [filterSupplierId, setFilterSupplierId] = useState("");
+    const [sortBy, setSortBy] = useState("createdAt");
+    const [sortOrder, setSortOrder] = useState("desc");
+    const [startDate, setStartDate] = useState("");
+    const [endDate, setEndDate] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+    const filterRef = React.useRef(null);
+
+    useEffect(() => {
+        if (!currentShopId) return;
+        SupplierService.getSuppliers(currentShopId, "", 1, 1000)
+            .then(res => {
+                const list = Array.isArray(res) ? res : res?.data || res?.suppliers || [];
+                setSuppliers(list);
+            })
+            .catch(err => console.error("Error loading suppliers for filters:", err));
+    }, [currentShopId]);
+
+    const allSuppliersList = React.useMemo(() => {
+        const map = new Map();
+        suppliers.forEach(s => {
+            if (s && s._id) map.set(String(s._id), { _id: String(s._id), name: s.name });
+        });
+        purchases.forEach(p => {
+            if (p.supplierId && typeof p.supplierId === 'object' && p.supplierId._id) {
+                map.set(String(p.supplierId._id), { _id: String(p.supplierId._id), name: p.supplierId.name || 'Supplier' });
+            }
+        });
+        return Array.from(map.values());
+    }, [suppliers, purchases]);
+
+    const supplierOptions = React.useMemo(() => {
+        return [
+            { label: `All Suppliers (${allSuppliersList.length})`, value: "" },
+            ...allSuppliersList.map(s => ({ label: `Supplier: ${s.name}`, value: String(s._id) }))
+        ];
+    }, [allSuppliersList]);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (filterRef.current && !filterRef.current.contains(event.target)) {
+                setShowFilter(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const activeFilterCount = React.useMemo(() => {
+        let count = 0;
+        if (filterPaymentStatus) count++;
+        if (filterPaymentMethod) count++;
+        if (filterSupplierId) count++;
+        if (startDate) count++;
+        if (endDate) count++;
+        if (sortBy !== "createdAt" || sortOrder !== "desc") count++;
+        return count;
+    }, [filterPaymentStatus, filterPaymentMethod, filterSupplierId, startDate, endDate, sortBy, sortOrder]);
+
+    const handleClearFilters = () => {
+        setFilterPaymentStatus("");
+        setFilterPaymentMethod("");
+        setFilterSupplierId("");
+        setSortBy("createdAt");
+        setSortOrder("desc");
+        setStartDate("");
+        setEndDate("");
+    };
 
     const handleOpenReturn = async (row) => {
         try {
@@ -926,11 +1004,84 @@ const PurchaseList = ({ hasPermissionFor }) => {
         },
     ];
 
-    const filtered = purchases.filter(p =>
-        (p.purchaseNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.supplierId?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.supplierInvoiceNumber || "").toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filtered = React.useMemo(() => {
+        let list = [...purchases];
+
+        // Search query
+        if (searchTerm.trim()) {
+            const query = searchTerm.toLowerCase();
+            list = list.filter(p =>
+                (p.purchaseNumber || "").toLowerCase().includes(query) ||
+                (p.supplierId?.name || "").toLowerCase().includes(query) ||
+                (p.supplierInvoiceNumber || "").toLowerCase().includes(query)
+            );
+        }
+
+        // Payment Status filter
+        if (filterPaymentStatus) {
+            list = list.filter(p => {
+                const status = (p.paymentStatus || (p.balanceAmount === 0 ? 'PAID' : 'UNPAID')).toUpperCase();
+                return status === filterPaymentStatus.toUpperCase();
+            });
+        }
+
+        // Payment Method filter
+        if (filterPaymentMethod) {
+            list = list.filter(p => {
+                if (!p.payments || p.payments.length === 0) return false;
+                return p.payments.some(pm => (pm.paymentMethod || "").toUpperCase() === filterPaymentMethod.toUpperCase());
+            });
+        }
+
+        // Supplier filter
+        if (filterSupplierId) {
+            list = list.filter(p => {
+                const sid = typeof p.supplierId === 'object' ? p.supplierId?._id : p.supplierId;
+                return String(sid) === String(filterSupplierId);
+            });
+        }
+
+        // Date range filter
+        if (startDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            list = list.filter(p => new Date(p.invoiceDate || p.createdAt) >= start);
+        }
+        if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            list = list.filter(p => new Date(p.invoiceDate || p.createdAt) <= end);
+        }
+
+        // Sorting
+        list.sort((a, b) => {
+            let valA = a[sortBy];
+            let valB = b[sortBy];
+
+            if (sortBy === 'createdAt' || sortBy === 'invoiceDate') {
+                valA = new Date(valA || a.createdAt || 0).getTime();
+                valB = new Date(valB || b.createdAt || 0).getTime();
+            } else if (sortBy === 'grandTotal') {
+                valA = Number(valA || 0);
+                valB = Number(valB || 0);
+            } else if (typeof valA === 'string') {
+                valA = valA.toLowerCase();
+                valB = (valB || '').toLowerCase();
+            }
+
+            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        return list;
+    }, [purchases, searchTerm, filterPaymentStatus, filterPaymentMethod, filterSupplierId, startDate, endDate, sortBy, sortOrder]);
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const paginatedData = React.useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return filtered.slice(start, start + pageSize);
+    }, [filtered, currentPage, pageSize]);
 
     // ── Access Denied
     if (!canView) {
@@ -963,126 +1114,360 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         <p className={`font-bold ml-1 text-sm ${theme.textMuted} whitespace-normal break-words`}>Manage inventory procurement &amp; supplier invoices</p>
                     </div>
 
-                    <div className="flex flex-wrap sm:flex-nowrap gap-4 w-full xl:w-auto">
+                    <div className="flex flex-wrap sm:flex-nowrap gap-3 w-full xl:w-auto items-center">
                         <div className="relative flex-1 min-w-[200px]">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
+                            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={17} />
                             <input
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
                                 placeholder="Search invoice or supplier..."
-                                className="w-full pl-12 pr-4 py-4 border-2 border-transparent bg-white rounded-2xl shadow-sm outline-none focus:border-indigo-500 transition-all font-bold placeholder:font-medium placeholder:text-gray-300"
+                                className={`w-full pl-12 pr-4 py-3.5 border-2 rounded-2xl shadow-sm outline-none focus:border-indigo-500 transition-all font-bold placeholder:font-medium text-xs md:text-sm ${theme.surfaceBg} ${theme.borderLight} ${theme.textPrimary}`}
                             />
                         </div>
 
-                        {/* ★ Button always visible; manages action permission internally */}
+                        {/* Filter Popover Button */}
+                        <div ref={filterRef} className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setShowFilter(f => !f)}
+                                className={`relative p-3.5 rounded-2xl border transition-all ${
+                                    showFilter || activeFilterCount > 0 
+                                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' 
+                                        : `${theme.borderLight} ${theme.surfaceBg} ${theme.textPrimary} hover:bg-gray-50 dark:hover:bg-slate-800`
+                                }`}
+                                title="Filter & Sort"
+                            >
+                                <SlidersHorizontal size={20} />
+                                {activeFilterCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-600 text-white text-[9px] font-black flex items-center justify-center shadow-md">
+                                        {activeFilterCount}
+                                    </span>
+                                )}
+                            </button>
+
+                            {showFilter && (
+                                <div className={`absolute right-0 top-full mt-2 z-50 w-72 rounded-3xl shadow-2xl border p-5 space-y-4 ${theme.surfaceBg} ${theme.borderLight}`}>
+                                    <div className="flex items-center justify-between border-b pb-3 border-gray-100 dark:border-slate-800">
+                                        <span className={`text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Filters &amp; Sort</span>
+                                        {activeFilterCount > 0 && (
+                                            <button onClick={handleClearFilters} className="text-[10px] font-black text-indigo-600 hover:underline">Clear all</button>
+                                        )}
+                                    </div>
+
+                                    {/* Sort By */}
+                                    <div>
+                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Sort By</label>
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                            {[
+                                                { value: 'createdAt', label: 'Date' },
+                                                { value: 'purchaseNumber', label: 'Invoice' },
+                                                { value: 'grandTotal', label: 'Amount' },
+                                            ].map(opt => (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    onClick={() => setSortBy(opt.value)}
+                                                    className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${sortBy === opt.value ? 'bg-indigo-600 text-white shadow-md' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Order */}
+                                    <div>
+                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Order</label>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                            {[
+                                                { value: 'desc', label: '↓ Newest First' },
+                                                { value: 'asc', label: '↑ Oldest First' },
+                                            ].map(opt => (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    onClick={() => setSortOrder(opt.value)}
+                                                    className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${sortOrder === opt.value ? 'bg-indigo-600 text-white shadow-md' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Payment Method */}
+                                    <div>
+                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Payment Method</label>
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                            {[
+                                                { value: '', label: 'All' },
+                                                { value: 'CASH', label: 'Cash' },
+                                                { value: 'UPI', label: 'UPI' },
+                                                { value: 'CARD', label: 'Card' },
+                                                { value: 'BANK', label: 'Bank' },
+                                                { value: 'SPLIT', label: 'Split' },
+                                            ].map(opt => (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    onClick={() => setFilterPaymentMethod(opt.value)}
+                                                    className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${filterPaymentMethod === opt.value ? 'bg-indigo-600 text-white shadow-md' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Date Range */}
+                                    <div>
+                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Date Range</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <span className={`text-[9px] font-bold uppercase ${theme.textMuted} mb-0.5 block`}>From</span>
+                                                <input
+                                                    type="date"
+                                                    value={startDate}
+                                                    onChange={e => setStartDate(e.target.value)}
+                                                    className={`w-full p-2 rounded-xl text-xs font-bold border outline-none ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight}`}
+                                                />
+                                            </div>
+                                            <div>
+                                                <span className={`text-[9px] font-bold uppercase ${theme.textMuted} mb-0.5 block`}>To</span>
+                                                <input
+                                                    type="date"
+                                                    value={endDate}
+                                                    onChange={e => setEndDate(e.target.value)}
+                                                    className={`w-full p-2 rounded-xl text-xs font-bold border outline-none ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight}`}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         {canManage && (
                             <button
                                 onClick={() => navigate("/purchases/new")}
-                                className="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-black hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3 group whitespace-nowrap flex-1 sm:flex-none shrink-0"
+                                className="bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-black hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3 group whitespace-nowrap flex-1 sm:flex-none shrink-0 text-xs shadow-lg shadow-indigo-600/20"
                             >
-                                <Plus size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+                                <Plus size={18} className="group-hover:rotate-90 transition-transform duration-300" />
                                 NEW PURCHASE
                             </button>
                         )}
                     </div>
                 </div>
 
-                {/* ── Stats Row ── */}
-                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
-                    {[
-                        { label: "Total Invoices", value: purchases.length, icon: ReceiptText, color: "indigo" },
-                        { label: "Draft", value: purchases.filter(p => p.status === "DRAFT").length, icon: Clock, color: "amber" },
-                        { label: "Confirmed", value: purchases.filter(p => p.status === "CONFIRMED").length, icon: CheckCircle, color: "emerald" },
-                        { label: "Total Value", value: fmt(purchases.reduce((a, p) => a + (p.grandTotal || 0), 0), currency), icon: Coins, color: "indigo" },
-                        { label: "Total Due", value: fmt(purchases.reduce((a, p) => a + (p.balanceAmount || 0), 0), currency), icon: Coins, color: "red" },
-                    ].map(({ label, value, icon: Icon, color }) => (
-                        <div key={label} className={`${theme.surfaceBg} rounded-3xl shadow-sm border ${theme.borderLight} p-4 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-5`}>
-                            <div className={`p-2.5 md:p-3 rounded-2xl bg-${color}-50 text-${color}-600 shrink-0`}>
-                                <Icon size={18} />
-                            </div>
-                            <div className="min-w-0">
-                                <div className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest leading-tight ${theme.textMuted}`}>{label}</div>
-                                <div className={`text-lg md:text-xl font-black mt-0.5 truncate ${theme.textHeading}`}>{value}</div>
-                            </div>
-                        </div>
-                    ))}
+                {/* ── Top Navigation Tabs (Inventory Capsule Style) ── */}
+                <div className="flex items-center">
+                    <div className={`inline-flex items-center gap-1.5 p-1.5 rounded-2xl border transition-all ${
+                        theme.mode === 'dark' ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-200/60 border-slate-200/80 shadow-sm'
+                    }`}>
+                        <button
+                            onClick={() => setActiveTab("PURCHASES")}
+                            className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 ${
+                                activeTab === "PURCHASES"
+                                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                                    : theme.mode === 'dark' 
+                                        ? "text-slate-400 hover:text-white hover:bg-slate-800/60" 
+                                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80"
+                            }`}
+                        >
+                            Purchases (Invoices)
+                        </button>
+
+                        <button
+                            onClick={() => setActiveTab("PURCHASE_ORDERS")}
+                            className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 ${
+                                activeTab === "PURCHASE_ORDERS"
+                                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                                    : theme.mode === 'dark' 
+                                        ? "text-slate-400 hover:text-white hover:bg-slate-800/60" 
+                                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80"
+                            }`}
+                        >
+                            Purchase Orders
+                        </button>
+
+                        <button
+                            onClick={() => setActiveTab("GOODS_RECEIVED")}
+                            className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 ${
+                                activeTab === "GOODS_RECEIVED"
+                                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                                    : theme.mode === 'dark' 
+                                        ? "text-slate-400 hover:text-white hover:bg-slate-800/60" 
+                                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80"
+                            }`}
+                        >
+                            Goods Received (GRN)
+                        </button>
+                    </div>
                 </div>
 
-                {/* ── Table ── */}
-                {loading ? (
-                    <div className={`${theme.surfaceBg} rounded-[40px] p-20 shadow-xl border ${theme.borderLight} flex flex-col items-center gap-4`}>
-                        <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-                        <p className={`font-black uppercase tracking-widest text-[10px] ${theme.textMuted}`}>Loading Invoices…</p>
-                    </div>
-                ) : (
-                    <CommonTable
-                        columns={columns}
-                        data={filtered}
-                        mobileCardRender={(row) => (
-                            <div className="p-4 space-y-3">
-                                {/* Top: invoice + status */}
-                                <div className="flex items-start justify-between gap-2">
+                {/* ── Active Tab Content ── */}
+                {activeTab === "PURCHASE_ORDERS" && (
+                    <PurchaseOrdersTab />
+                )}
+
+                {activeTab === "GOODS_RECEIVED" && (
+                    <GoodsReceivedTab />
+                )}
+
+                {activeTab === "PURCHASES" && (
+                    <>
+                        {/* ── Quick Filter Pills Bar ── */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} mr-1`}>
+                                    Filter By:
+                                </span>
+                                {[
+                                    { value: '', label: 'All Purchases' },
+                                    { value: 'PAID', label: 'Paid' },
+                                    { value: 'UNPAID', label: 'Unpaid / Pending' },
+                                    { value: 'PARTIAL', label: 'Partial' },
+                                ].map(st => (
+                                    <button
+                                        key={st.value}
+                                        type="button"
+                                        onClick={() => setFilterPaymentStatus(st.value)}
+                                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                            filterPaymentStatus === st.value
+                                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                                : `${theme.mode === 'dark' ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 hover:bg-slate-100'} border ${theme.borderLight}`
+                                        }`}
+                                    >
+                                        {st.label}
+                                    </button>
+                                ))}
+
+                                {/* Quick Supplier Dropdown Filter */}
+                                <div className="w-52">
+                                    <CommonSelect
+                                        options={supplierOptions}
+                                        value={filterSupplierId}
+                                        onChange={(val) => setFilterSupplierId(val)}
+                                        placeholder="All Suppliers"
+                                        size="sm"
+                                    />
+                                </div>
+
+                                {activeFilterCount > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearFilters}
+                                        className="px-3 py-1.5 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-all flex items-center gap-1"
+                                    >
+                                        <X size={14} /> Clear
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        {/* ── Stats Row ── */}
+                        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
+                            {[
+                                { label: "Total Invoices", value: purchases.length, icon: ReceiptText, color: "indigo" },
+                                { label: "Draft", value: purchases.filter(p => p.status === "DRAFT").length, icon: Clock, color: "amber" },
+                                { label: "Confirmed", value: purchases.filter(p => p.status === "CONFIRMED").length, icon: CheckCircle, color: "emerald" },
+                                { label: "Total Value", value: fmt(purchases.reduce((a, p) => a + (p.grandTotal || 0), 0), currency), icon: Coins, color: "indigo" },
+                                { label: "Total Due", value: fmt(purchases.reduce((a, p) => a + (p.balanceAmount || 0), 0), currency), icon: Coins, color: "red" },
+                            ].map(({ label, value, icon: Icon, color }) => (
+                                <div key={label} className={`${theme.surfaceBg} rounded-3xl shadow-sm border ${theme.borderLight} p-4 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-5`}>
+                                    <div className={`p-2.5 md:p-3 rounded-2xl bg-${color}-50 text-${color}-600 shrink-0`}>
+                                        <Icon size={18} />
+                                    </div>
                                     <div className="min-w-0">
-                                        <div className={`font-black text-base ${theme.textHeading} truncate`}>{row.invoiceNumber || row.purchaseNumber}</div>
-                                        {row.supplierInvoiceNumber && (
-                                            <div className="text-[10px] font-black text-indigo-500">#{row.supplierInvoiceNumber}</div>
-                                        )}
-                                        <div className={`text-[10px] font-bold ${theme.textMuted} flex items-center gap-1 mt-0.5`}>
-                                            <Calendar size={9} />
-                                            {row.invoiceDate ? new Date(row.invoiceDate).toLocaleDateString() : "—"}
+                                        <div className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest leading-tight ${theme.textMuted}`}>{label}</div>
+                                        <div className={`text-lg md:text-xl font-black mt-0.5 truncate ${theme.textHeading}`}>{value}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* ── Table ── */}
+                        {loading ? (
+                            <div className={`${theme.surfaceBg} rounded-[40px] p-20 shadow-xl border ${theme.borderLight} flex flex-col items-center gap-4`}>
+                                <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                                <p className={`font-black uppercase tracking-widest text-[10px] ${theme.textMuted}`}>Loading Invoices…</p>
+                            </div>
+                        ) : (
+                            <CommonTable
+                                columns={columns}
+                                data={paginatedData}
+                                totalItems={filtered.length}
+                                currentPage={currentPage}
+                                totalPages={totalPages}
+                                pageSize={pageSize}
+                                onPageChange={(p) => setCurrentPage(p)}
+                                onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1); }}
+                                mobileCardRender={(row) => (
+                                    <div className="p-4 space-y-3">
+                                        {/* Top: invoice + status */}
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className={`font-black text-base ${theme.textHeading} truncate`}>{row.invoiceNumber || row.purchaseNumber}</div>
+                                                {row.supplierInvoiceNumber && (
+                                                    <div className="text-[10px] font-black text-indigo-500">#{row.supplierInvoiceNumber}</div>
+                                                )}
+                                                <div className={`text-[10px] font-bold ${theme.textMuted} flex items-center gap-1 mt-0.5`}>
+                                                    <Calendar size={9} />
+                                                    {row.invoiceDate ? new Date(row.invoiceDate).toLocaleDateString() : "—"}
+                                                </div>
+                                            </div>
+                                            <span className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border ${STATUS_PILL[row.status] || STATUS_PILL.DRAFT}`}>
+                                                {row.status === "CONFIRMED" ? <CheckCircle size={9} /> : row.status === "CANCELLED" ? <AlertCircle size={9} /> : <Clock size={9} />}
+                                                {row.status || "DRAFT"}
+                                            </span>
+                                        </div>
+
+                                        {/* Supplier + totals */}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className={`font-bold text-sm truncate ${theme.textPrimary}`}>{row.supplierId?.name || "—"}</span>
+                                            <span className="font-black text-indigo-600 shrink-0">{fmt(row.grandTotal, currency)}</span>
+                                        </div>
+
+                                        {/* Payment status + balance */}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black border ${PAY_PILL[row.paymentStatus] || PAY_PILL.UNPAID}`}>
+                                                {row.paymentStatus || "UNPAID"}
+                                            </span>
+                                            {row.paymentStatus !== "PAID" && row.balanceAmount > 0 && (
+                                                <span className="text-[10px] font-bold text-red-500">Due: {fmt(row.balanceAmount, currency)}</span>
+                                            )}
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="flex items-center gap-2 pt-1 border-t border-dashed border-white/10">
+                                            <button onClick={(e) => { e.stopPropagation(); setViewTarget(row._id); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center gap-1.5">
+                                                <Eye size={13} /> View
+                                            </button>
+                                            {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && (
+                                                <button onClick={(e) => { e.stopPropagation(); navigate(`/purchases/edit/${row._id}`); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center gap-1.5">
+                                                    <Edit3 size={13} /> Edit
+                                                </button>
+                                            )}
+                                            {canManage && row.status === "CONFIRMED" && row.balanceAmount > 0 && (
+                                                <button onClick={(e) => { e.stopPropagation(); setPayTarget(row); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center gap-1.5">
+                                                    <CreditCard size={13} /> Pay
+                                                </button>
+                                            )}
+                                            {canManage && row.status === "CONFIRMED" && (
+                                                <button onClick={(e) => { e.stopPropagation(); handleOpenReturn(row); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center gap-1.5">
+                                                    <RotateCcw size={13} /> Return
+                                                </button>
+                                            )}
+                                            {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && row.paidAmount === 0 && (
+                                                <button onClick={(e) => { e.stopPropagation(); handleDelete(row._id); }} className="p-2 text-[10px] font-black rounded-xl bg-red-50 text-red-400">
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
-                                    <span className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border ${STATUS_PILL[row.status] || STATUS_PILL.DRAFT}`}>
-                                        {row.status === "CONFIRMED" ? <CheckCircle size={9} /> : row.status === "CANCELLED" ? <AlertCircle size={9} /> : <Clock size={9} />}
-                                        {row.status || "DRAFT"}
-                                    </span>
-                                </div>
-
-                                {/* Supplier + totals */}
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className={`font-bold text-sm truncate ${theme.textPrimary}`}>{row.supplierId?.name || "—"}</span>
-                                    <span className="font-black text-indigo-600 shrink-0">{fmt(row.grandTotal, currency)}</span>
-                                </div>
-
-                                {/* Payment status + balance */}
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black border ${PAY_PILL[row.paymentStatus] || PAY_PILL.UNPAID}`}>
-                                        {row.paymentStatus || "UNPAID"}
-                                    </span>
-                                    {row.paymentStatus !== "PAID" && row.balanceAmount > 0 && (
-                                        <span className="text-[10px] font-bold text-red-500">Due: {fmt(row.balanceAmount, currency)}</span>
-                                    )}
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex items-center gap-2 pt-1 border-t border-dashed border-white/10">
-                                    <button onClick={(e) => { e.stopPropagation(); setViewTarget(row._id); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center gap-1.5">
-                                        <Eye size={13} /> View
-                                    </button>
-                                    {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && (
-                                        <button onClick={(e) => { e.stopPropagation(); navigate(`/purchases/edit/${row._id}`); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center gap-1.5">
-                                            <Edit3 size={13} /> Edit
-                                        </button>
-                                    )}
-                                    {canManage && row.status === "CONFIRMED" && row.balanceAmount > 0 && (
-                                        <button onClick={(e) => { e.stopPropagation(); setPayTarget(row); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center gap-1.5">
-                                            <CreditCard size={13} /> Pay
-                                        </button>
-                                    )}
-                                    {canManage && row.status === "CONFIRMED" && (
-                                        <button onClick={(e) => { e.stopPropagation(); handleOpenReturn(row); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center gap-1.5">
-                                            <RotateCcw size={13} /> Return
-                                        </button>
-                                    )}
-                                    {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && row.paidAmount === 0 && (
-                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(row._id); }} className="p-2 text-[10px] font-black rounded-xl bg-red-50 text-red-400">
-                                            <Trash2 size={13} />
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
+                                )}
+                            />
                         )}
-                    />
+                    </>
                 )}
             </div>
 

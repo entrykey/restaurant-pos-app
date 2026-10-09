@@ -1341,12 +1341,15 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             unitId: toIdString(ing.unitId)
         }));
 
+        const parsedStock = (formData.openingStock !== undefined && formData.openingStock !== null && formData.openingStock !== "") ? parseFloat(formData.openingStock) : undefined;
+
         const sanitizedPortionPricing = (hasVariants ? (formData.portionPricing || []) : []).map((p) => ({
             ...p,
             price: parseFloat(p.price) || 0,
             mrp: parseFloat(p.mrp) || 0,
             quantityFactor: parseFloat(p.quantityFactor) || 1,
             openingStock: parseFloat(p.openingStock) || 0,
+            quantityOnHand: parseFloat(p.quantityOnHand ?? p.openingStock) || 0,
             barcode: (p.barcode || '').trim(),
             ingredients: (p.ingredients || []).map(ing => ({
                 ...ing,
@@ -1414,7 +1417,8 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
             taxId: toIdString(formData.taxId),
             taxPercent: parseFloat(formData.taxPercent || 0),
             isExclusiveTax: selectedTaxType === 'EXCLUSIVE',
-            openingStock: (formData.openingStock !== undefined && formData.openingStock !== null && formData.openingStock !== "") ? parseFloat(formData.openingStock) : undefined,
+            openingStock: parsedStock,
+            quantityOnHand: parsedStock,
             shopId: toIdString(currentShopId),
             branchId: toIdString(currentBranchId),
             itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),

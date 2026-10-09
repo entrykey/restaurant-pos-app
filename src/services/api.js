@@ -1,22 +1,23 @@
 import axios from 'axios';
 
 export const api = axios.create({
-    baseURL: process.env.REACT_APP_API_URL, // Adjust base URL as needed
+    baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api', // Adjust base URL as needed
     headers: {
         'Content-Type': 'application/json',
     },
     withCredentials: true // Important for sending httpOnly refresh cookies
 });
 
-// Add a request interceptor to attach the token
+// Add a request interceptor to attach token & active branch ID header
 api.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem('accessToken');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
-        if (config.data instanceof FormData) {
-            delete config.headers['Content-Type'];
+        const activeBranchId = localStorage.getItem('pos_activeBranchId') || localStorage.getItem('pos_branchId');
+        if (activeBranchId && activeBranchId !== 'null' && activeBranchId !== 'undefined') {
+            config.headers['x-branch-id'] = activeBranchId;
         }
         return config;
     },
@@ -26,6 +27,7 @@ api.interceptors.request.use(
 // Response interceptor to handle token refresh
 let isRefreshing = false;
 let failedQueue = [];
+let isLoggingOut = false;
 
 const processQueue = (error, token = null) => {
     failedQueue.forEach(prom => {
@@ -38,15 +40,54 @@ const processQueue = (error, token = null) => {
     failedQueue = [];
 };
 
+const handleForceLogout = () => {
+    if (isLoggingOut) return;
+    isLoggingOut = true;
+
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('restaurant_pos_auth_v1');
+    localStorage.removeItem('pos_active_tabs');
+    localStorage.removeItem('pos_active_tab_id');
+    localStorage.removeItem('pos_active_tabs_shop');
+    localStorage.removeItem('pos_businessType');
+    localStorage.removeItem('pos_businessSubtype');
+    localStorage.removeItem('pos_activeBranchId');
+    localStorage.removeItem('pos_enabledModules');
+    localStorage.removeItem('pos_branchId');
+    localStorage.removeItem('pos_organizationId');
+    localStorage.removeItem('pos_shopId');
+
+    window.dispatchEvent(new CustomEvent('pos-unauthorized', { detail: { reason: 'session_expired' } }));
+
+    setTimeout(() => {
+        isLoggingOut = false;
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
+            window.location.href = '/login';
+        }
+    }, 300);
+};
+
 api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
+        const status = error.response?.status;
 
-        if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
-            // Prevent infinite loops if refresh endpoint itself fails
-            // Also skip refresh for login endpoint to show proper login error messages
-            if (originalRequest.url.includes('/auth/refresh') || originalRequest.url.includes('/auth/login')) {
+        // ONLY handle 401 Unauthorized (Expired or Invalid Access Token)
+        // Do NOT trigger token refresh or forced logout on 403 Forbidden (permission/role restriction)
+        if (status === 401 && originalRequest) {
+            const requestUrl = originalRequest?.url || '';
+
+            // 1. Skip login endpoint to allow normal invalid password/email messages
+            if (requestUrl.includes('/auth/login')) {
+                return Promise.reject(error);
+            }
+
+            // 2. If the request was the refresh endpoint itself OR if it was already retried and failed again,
+            // session is expired or invalid. Force logout and redirect to login screen!
+            if (requestUrl.includes('/auth/refresh') || originalRequest?._retry) {
+                handleForceLogout();
                 return Promise.reject(error);
             }
 
@@ -54,6 +95,7 @@ api.interceptors.response.use(
                 return new Promise(function (resolve, reject) {
                     failedQueue.push({ resolve, reject });
                 }).then(token => {
+                    originalRequest.headers = originalRequest.headers || {};
                     originalRequest.headers.Authorization = `Bearer ${token}`;
                     return api(originalRequest);
                 }).catch(err => {
@@ -65,14 +107,25 @@ api.interceptors.response.use(
             isRefreshing = true;
 
             try {
-                // Call the refresh endpoint (reads httpOnly cookie AND body fallback)
                 const storedRefreshToken = localStorage.getItem('refreshToken');
-                const rs = await axios.post(`${api.defaults.baseURL}/auth/refresh`, 
+                if (!storedRefreshToken) {
+                    handleForceLogout();
+                    return Promise.reject(error);
+                }
+
+                const baseUrl = api.defaults.baseURL || process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+                const cleanBaseUrl = String(baseUrl).replace(/\/+$/, '');
+
+                const rs = await axios.post(`${cleanBaseUrl}/auth/refresh`, 
                     { refreshToken: storedRefreshToken }, 
                     { withCredentials: true }
                 );
 
-                const { accessToken, refreshToken: newRefreshToken } = rs.data;
+                const { accessToken, refreshToken: newRefreshToken } = rs.data || {};
+
+                if (!accessToken) {
+                    throw new Error("No access token returned from refresh");
+                }
 
                 // Update storage explicitly so future requests get it
                 localStorage.setItem('accessToken', accessToken);
@@ -82,19 +135,14 @@ api.interceptors.response.use(
 
                 // Update default headers and current request
                 api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+                originalRequest.headers = originalRequest.headers || {};
                 originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
                 processQueue(null, accessToken);
                 return api(originalRequest);
             } catch (_error) {
                 processQueue(_error, null);
-                // Clear auth-related storage and let the UI fall back to the login screen
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('refreshToken');
-                localStorage.removeItem('restaurant_pos_auth_v1');
-                localStorage.removeItem('pos_active_tabs');
-                localStorage.removeItem('pos_active_tab_id');
-                localStorage.removeItem('pos_active_tabs_shop');
+                handleForceLogout();
                 return Promise.reject(_error);
             } finally {
                 isRefreshing = false;
@@ -1472,6 +1520,20 @@ export const reportsService = {
         } catch (error) {
             console.error("Error fetching sales report:", error);
             throw error.response ? error.response.data : error;
+        }
+    },
+    getPurchaseReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/purchases', { params });
+            return response.data;
+        } catch (error) {
+            try {
+                const response = await api.get('/purchases', { params });
+                return response.data;
+            } catch (err) {
+                console.error("Error fetching purchase report:", err);
+                throw err.response ? err.response.data : err;
+            }
         }
     },
     getExpensesReport: async (params = {}) => {

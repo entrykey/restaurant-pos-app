@@ -13,9 +13,14 @@ export const allowsNegativeStock = (item) => (
 
 export const isSeparateVariantStock = (item) => item?.inventoryMode === 'separate';
 
-export const getVariantStockQty = (variant) => (
-    Number(variant?.quantityOnHand ?? variant?.openingStock) || 0
-);
+export const getVariantStockQty = (variant) => {
+    if (!variant) return 0;
+    const qty = Number(variant.quantityOnHand);
+    const openQty = Number(variant.openingStock);
+    if (!isNaN(qty) && qty > 0) return qty;
+    if (!isNaN(openQty) && openQty > 0) return openQty;
+    return (!isNaN(qty) && qty >= 0) ? qty : ((!isNaN(openQty) && openQty >= 0) ? openQty : 0);
+};
 
 export const getCartLineStockQty = (cartItem) => {
     let qty = Number(cartItem?.quantity) || 0;
@@ -70,7 +75,10 @@ export const buildBaseStockMap = (menuItems = []) => {
     menuItems.forEach((item) => {
         const id = String(item.id || item._id);
         if (!id) return;
-        map[id] = Math.max(0, Number(item.quantityOnHand) || 0);
+        const qOnHand = Number(item.quantityOnHand);
+        const qOpen = Number(item.openingStock);
+        const effectiveQty = (!isNaN(qOnHand) && qOnHand > 0) ? qOnHand : ((!isNaN(qOpen) && qOpen > 0) ? qOpen : Math.max(0, qOnHand || qOpen || 0));
+        map[id] = Math.max(0, effectiveQty);
         if (isSeparateVariantStock(item) && Array.isArray(item.portionPricing)) {
             item.portionPricing.forEach((p) => {
                 map[`${id}::${p.name}`] = Math.max(0, getVariantStockQty(p));
@@ -84,7 +92,10 @@ export const applyCartStockToMenu = (menuItems = [], cartItems = [], baseStockMa
     return menuItems.map((item) => {
         if (!isStockTracked(item)) return item;
         const id = String(item.id || item._id);
-        const base = baseStockMap[id] ?? Math.max(0, Number(item.quantityOnHand) || 0);
+        const qOnHand = Number(item.quantityOnHand);
+        const qOpen = Number(item.openingStock);
+        const effectiveBase = (!isNaN(qOnHand) && qOnHand > 0) ? qOnHand : ((!isNaN(qOpen) && qOpen > 0) ? qOpen : Math.max(0, qOnHand || qOpen || 0));
+        const base = baseStockMap[id] ?? Math.max(0, effectiveBase);
         if (isSeparateVariantStock(item) && Array.isArray(item.portionPricing)) {
             const portionPricing = item.portionPricing.map((p) => {
                 const available = getAvailableStock(item, cartItems, baseStockMap, p);
@@ -139,15 +150,22 @@ export const getAvailableStock = (item, cartItems = [], baseStockMap = {}, varia
 
     const isDirectStockTracked = item?.stockSettings?.stockApplicable !== false && item?.stockApplicable !== false;
 
+    const qOnHand = Number(item._baseQuantityOnHand ?? item.quantityOnHand);
+    const qOpen = Number(item.openingStock);
+    const effectiveStock = (!isNaN(qOnHand) && qOnHand > 0) ? qOnHand : ((!isNaN(qOpen) && qOpen > 0) ? qOpen : Math.max(0, qOnHand || qOpen || 0));
+
     if (isDirectStockTracked) {
-        const base = baseStockMap[id] ?? Math.max(0, Number(item._baseQuantityOnHand ?? item.quantityOnHand) || 0);
+        const base = baseStockMap[id] ?? Math.max(0, effectiveStock);
         const reserved = reservations.get(id) || 0;
         available = Math.max(0, base - reserved);
     } else if (Array.isArray(item?.ingredients) && item.ingredients.length > 0) {
         for (const ing of item.ingredients) {
             const ingId = String(ing.rawItemId || ing.itemId || ing._id || '');
             if (!ingId) continue;
-            const ingBase = baseStockMap[ingId] ?? Math.max(0, Number(ing.quantityOnHand) || 0);
+            const ingOnHand = Number(ing.quantityOnHand);
+            const ingOpen = Number(ing.openingStock);
+            const ingEffective = (!isNaN(ingOnHand) && ingOnHand > 0) ? ingOnHand : ((!isNaN(ingOpen) && ingOpen > 0) ? ingOpen : Math.max(0, ingOnHand || ingOpen || 0));
+            const ingBase = baseStockMap[ingId] ?? Math.max(0, ingEffective);
             const ingReserved = reservations.get(ingId) || 0;
             const ingAvail = Math.max(0, ingBase - ingReserved);
             let qtyNeeded = Number(ing.quantity) || 1;
@@ -161,7 +179,7 @@ export const getAvailableStock = (item, cartItems = [], baseStockMap = {}, varia
             }
         }
     } else {
-        const base = baseStockMap[id] ?? Math.max(0, Number(item._baseQuantityOnHand ?? item.quantityOnHand) || 0);
+        const base = baseStockMap[id] ?? Math.max(0, effectiveStock);
         const reserved = reservations.get(id) || 0;
         available = Math.max(0, base - reserved);
     }
