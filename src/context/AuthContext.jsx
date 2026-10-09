@@ -118,6 +118,7 @@ export const AuthProvider = ({ children }) => {
     
     // Clear all app-specific storage
     localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
     localStorage.removeItem("permissions");
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem("pos_businessType");
@@ -131,6 +132,17 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("pos_active_tab_id");
     localStorage.removeItem("pos_active_tabs_shop");
   };
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logout();
+    };
+
+    window.addEventListener("pos-unauthorized", handleUnauthorized);
+    return () => {
+      window.removeEventListener("pos-unauthorized", handleUnauthorized);
+    };
+  }, []);
 
   const addAuthLog = (log) => {
     setAuthLogs((prev) => [log, ...prev]);

@@ -279,7 +279,9 @@ const ShopForm = ({ shopToEdit, onBack }) => {
                                                  handleChange(e);
                                                  requestAnimationFrame(() => {
                                                      if (inputEl && inputEl.setSelectionRange) {
-                                                         inputEl.setSelectionRange(cursorStart, cursorEnd);
+                                                         try {
+                                                             inputEl.setSelectionRange(cursorStart, cursorEnd);
+                                                         } catch (err) {}
                                                      }
                                                  });
                                              }}

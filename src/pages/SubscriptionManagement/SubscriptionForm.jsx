@@ -3,6 +3,7 @@ import { subscriptionService } from '../../services/api/subscriptions';
 import { useTheme } from '../../context/ThemeContext';
 import { ArrowLeft, Save, CreditCard, Calendar, FileText } from 'lucide-react';
 import DatePicker from '../../components/ui/DatePicker';
+import CommonSelect from '../../components/ui/CommonSelect';
 
 const SubscriptionForm = ({ subscriptionToEdit, onBack }) => {
     const { theme } = useTheme();
@@ -119,31 +120,29 @@ const SubscriptionForm = ({ subscriptionToEdit, onBack }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Subscription Status</label>
-                                <select
-                                    name="status"
+                                <CommonSelect
                                     value={formData.status}
-                                    onChange={handleChange}
-                                    className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
-                                >
-                                    <option value="pending_payment">Pending Payment</option>
-                                    <option value="active">Active</option>
-                                    <option value="trial">Trial</option>
-                                    <option value="cancelled">Cancelled</option>
-                                    <option value="expired">Expired</option>
-                                </select>
+                                    onChange={(val) => setFormData(prev => ({ ...prev, status: val }))}
+                                    options={[
+                                        { label: 'Pending Payment', value: 'pending_payment' },
+                                        { label: 'Active', value: 'active' },
+                                        { label: 'Trial', value: 'trial' },
+                                        { label: 'Cancelled', value: 'cancelled' },
+                                        { label: 'Expired', value: 'expired' }
+                                    ]}
+                                />
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Payment Status</label>
-                                <select
-                                    name="payment_status"
+                                <CommonSelect
                                     value={formData.payment_status}
-                                    onChange={handleChange}
-                                    className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
-                                >
-                                    <option value="pending">Pending</option>
-                                    <option value="paid">Paid</option>
-                                    <option value="failed">Failed</option>
-                                </select>
+                                    onChange={(val) => setFormData(prev => ({ ...prev, payment_status: val }))}
+                                    options={[
+                                        { label: 'Pending', value: 'pending' },
+                                        { label: 'Paid', value: 'paid' },
+                                        { label: 'Failed', value: 'failed' }
+                                    ]}
+                                />
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>End Date</label>

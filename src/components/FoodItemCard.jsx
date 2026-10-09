@@ -28,12 +28,17 @@ const FoodItemCard = ({
         if (!isStockTracked(item) || allowsNegativeStock(item)) return false;
         if (item.inventoryMode === 'separate' && Array.isArray(item.portionPricing) && item.portionPricing.length > 0) {
             const total = item.portionPricing.reduce(
-                (sum, p) => sum + (Number(p.quantityOnHand ?? p.openingStock) || 0),
+                (sum, p) => {
+                    const qH = Number(p.quantityOnHand);
+                    const qO = Number(p.openingStock);
+                    const eff = (!isNaN(qH) && qH > 0) ? qH : ((!isNaN(qO) && qO > 0) ? qO : Math.max(0, qH || qO || 0));
+                    return sum + eff;
+                },
                 0
             );
             return total <= 0;
         }
-        const available = Number.isFinite(item?.quantityOnHand) ? item.quantityOnHand : getAvailableStock(item);
+        const available = getAvailableStock(item);
         if (available === Infinity) return false;
         return available <= 0;
     }, [item]);

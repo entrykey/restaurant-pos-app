@@ -236,16 +236,7 @@ export default function ForgotPassword() {
                   type="email"
                   value={email}
                   onChange={(e) => {
-                    const inputEl = e.target;
-                    const cursorStart = inputEl.selectionStart;
-                    const cursorEnd = inputEl.selectionEnd;
-                    const value = sanitizeEmailInput(inputEl.value);
-                    setEmail(value);
-                    requestAnimationFrame(() => {
-                      if (inputEl && inputEl.setSelectionRange) {
-                        inputEl.setSelectionRange(cursorStart, cursorEnd);
-                      }
-                    });
+                    setEmail(sanitizeEmailInput(e.target.value));
                   }}
                   placeholder="Fill your email address"
                   className={`w-full px-4 py-3.5 rounded-2xl border text-xs sm:text-sm outline-none transition-all ${

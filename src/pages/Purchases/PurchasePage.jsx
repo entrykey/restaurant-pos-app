@@ -13,6 +13,7 @@ import DatePicker from "../../components/ui/DatePicker";
 import CommonSelect from "../../components/ui/CommonSelect";
 import InvoiceScannerModal from "../../components/modals/InvoiceScannerModal";
 import { findBestStockMatch, normalizeScannedProductName } from "../../utils/invoiceItemMatch";
+import { findTaxForItem, resolveIsExclusiveTax } from "../../utils/taxUtils";
 import { toast } from "react-hot-toast";
 import { loadPurchaseInvoiceSettings } from "../../utils/printSettingsUtils";
 import { validateEmail, sanitizeEmailInput, sanitizeNameInput, sanitizePhoneInput } from "../../utils/validation";
@@ -190,17 +191,42 @@ const PurchasePage = () => {
                 taxService.getTaxes({ branchId }),
                 unitService.getUnits()
             ]);
-            console.log("PURCHASE_ENTRY_ITEMS_FETCHED:", itemsRes.data?.length || 0, itemsRes.data);
-            console.log("PURCHASE_ENTRY_SUPPLIERS_FETCHED:", suppliersData?.data?.length || 0, suppliersData);
+            const activeTaxes = (taxesRes || []).filter(t => t.isActive !== false);
             setSuppliers(suppliersData?.data || []);
             setShopInfo(shopData);
-            setStockItems(itemsRes.data || []);
-            setShopTaxes(taxesRes.filter(t => t.isActive !== false));
+            setShopTaxes(activeTaxes);
             setUnits(unitsRes || []);
+
+            const mappedItems = (itemsRes.data || []).map(item => {
+                const taxObj = findTaxForItem(item, activeTaxes);
+                const taxPercent = taxObj?.percentage !== undefined && taxObj?.percentage !== null
+                    ? Number(taxObj.percentage)
+                    : Number(
+                        item.taxPercent ?? 
+                        item.tax_percent ?? 
+                        item.taxRate ?? 
+                        item.tax_rate ?? 
+                        item.gst ?? 
+                        item.tax ?? 
+                        (typeof item.taxId === 'object' ? item.taxId?.percentage : undefined) ?? 
+                        0
+                    );
+                const isExclusive = resolveIsExclusiveTax(item, taxObj);
+                const taxType = (taxObj?.taxType || (typeof item.taxId === 'object' ? item.taxId?.taxType : null) || (isExclusive ? 'EXCLUSIVE' : 'INCLUSIVE')).toUpperCase();
+                const resolvedTaxId = taxObj?._id || taxObj?.id || (typeof item.taxId === 'string' ? item.taxId : item.taxId?._id) || null;
+                return {
+                    ...item,
+                    taxPercent,
+                    taxId: resolvedTaxId,
+                    taxType,
+                    isExclusiveTax: isExclusive
+                };
+            });
+            setStockItems(mappedItems);
         } catch (error) {
             console.error("Error fetching form data:", error);
         }
-    }, [currentShopId, formData.branchId, activeBranchId]);
+    }, [currentShopId, activeBranchId]);
 
     const loadPurchase = React.useCallback(async () => {
         setLoading(true);
@@ -220,14 +246,23 @@ const PurchasePage = () => {
                 paymentReference: p.paymentReference || p.referenceNumber || (p.payments && p.payments[0]?.referenceNumber) || "",
                 items: data.items.map(it => {
                     const productMaster = it.itemId;
-                    const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
+                    const taxObj = findTaxForItem({ ...productMaster, ...it }, shopTaxes);
+                    const resolvedTaxPercent = taxObj?.percentage !== undefined && taxObj?.percentage !== null
+                        ? Number(taxObj.percentage)
+                        : Number(it.taxPercent ?? productMaster?.taxPercent ?? 0);
+                    const resolvedTaxId = taxObj?._id || taxObj?.id || (typeof it.taxId === 'string' ? it.taxId : it.taxId?._id) || (typeof productMaster?.taxId === 'string' ? productMaster.taxId : productMaster?.taxId?._id) || null;
+                    const isExclusive = resolveIsExclusiveTax({ ...productMaster, ...it }, taxObj);
+                    const resolvedTaxType = (taxObj?.taxType || (typeof it.taxId === 'object' ? it.taxId?.taxType : null) || (isExclusive ? 'EXCLUSIVE' : 'INCLUSIVE')).toUpperCase();
+
                     return {
                         ...it,
                         itemId: productMaster?._id || productMaster,
                         name: productMaster?.name || it.itemName || "Unknown Item",
                         itemCode: productMaster?.itemCode || "",
-                        taxPercent: it.taxPercent || productMaster?.taxPercent || 0,
-                        taxType: taxObj?.taxType || "",
+                        taxId: resolvedTaxId,
+                        taxPercent: resolvedTaxPercent,
+                        taxType: resolvedTaxType,
+                        isExclusiveTax: isExclusive,
                         unitId: it.unitId || productMaster?.unitId?._id || productMaster?.unitId,
                         primaryUnitName: productMaster?.unitId?.name || it.unitName || "",
                         unitName: it.unitName || productMaster?.unitId?.name || "",
@@ -250,45 +285,63 @@ const PurchasePage = () => {
     }, [id]);
 
     const handleAddItem = React.useCallback((item) => {
-        const existing = formData.items.find(it => it.itemId === item._id);
+        const itemIdStr = String(item._id || item.id || item.itemId);
+        const existing = formData.items.find(it => String(it.itemId) === itemIdStr);
         if (existing) {
             toast.error("Item already added. Adjust quantity in the list.");
             return;
         }
 
+        const taxList = shopTaxes || [];
+        const taxObj = findTaxForItem(item, taxList);
+        const resolvedTaxId = taxObj?._id || taxObj?.id || (typeof item.taxId === 'string' ? item.taxId : item.taxId?._id) || null;
+        const resolvedTaxPercent = taxObj?.percentage !== undefined && taxObj?.percentage !== null
+            ? Number(taxObj.percentage)
+            : Number(
+                item.taxPercent ?? 
+                item.tax_percent ?? 
+                item.taxRate ?? 
+                item.tax_rate ?? 
+                item.gst ?? 
+                item.tax ?? 
+                (typeof item.taxId === 'object' ? item.taxId?.percentage : undefined) ?? 
+                0
+            );
+        const isExclusive = resolveIsExclusiveTax(item, taxObj);
+        const resolvedTaxType = (taxObj?.taxType || (typeof item.taxId === 'object' ? item.taxId?.taxType : null) || (isExclusive ? 'EXCLUSIVE' : 'INCLUSIVE')).toUpperCase();
+
+        const purchasePrice = item.pricing?.purchasePrice ?? item.purchasePrice ?? 0;
+        const sellingPrice = item.pricing?.sellingPrice ?? item.sellingPrice ?? 0;
+        const mrp = item.pricing?.mrp ?? item.mrp ?? 0;
+
+        const r = resolvedTaxPercent;
+        const p = purchasePrice;
+        const taxAmt = !r ? 0 : parseFloat((isExclusive ? (p * r) / 100 : p - (p / (1 + r / 100))).toFixed(4));
+
         const newItem = {
-            itemId: item._id,
+            itemId: item._id || item.id || item.itemId,
             name: item.name,
             itemCode: item.itemCode,
             quantity: 1,
-            purchasePrice: item.pricing?.purchasePrice || 0,
-            sellingPrice: item.pricing?.sellingPrice || 0,
-            mrp: item.pricing?.mrp || 0,
+            purchasePrice,
+            sellingPrice,
+            mrp,
             discountAmount: 0,
             expiryDate: "",
             batchTracking: item.tracking?.batchTracking || false,
             expiryTracking: item.tracking?.expiryTracking || false,
-            // For barcode handling in backend:
-            // existingBarcode: manufacturer / scanned code if any, per line item
             existingBarcode: item.barcode || "",
-            // For IMEI / serial-tracked items we may want per-unit barcode generation
             hasIndividualBarcode: item.tracking?.serialTracking || false,
-            taxId: item.taxId || null,
-            taxPercent: item.taxPercent || 0,
-            taxType: "", // For two-step tax selection
-            taxAmount: (() => {
-                const taxObj = item.taxId ? shopTaxes.find(t => String(t._id || t.id) === String(item.taxId?._id || item.taxId)) : shopTaxes.find(t => t.percentage === Number(item.taxPercent || 0));
-                const isExclusive = item.isExclusiveTax ?? (taxObj ? taxObj.taxType === 'EXCLUSIVE' : false);
-                const p = item.pricing?.purchasePrice || 0;
-                const r = item.taxPercent || 0;
-                if (!r) return 0;
-                return parseFloat((isExclusive ? (p * r) / 100 : p - (p / (1 + r / 100))).toFixed(4));
-            })(),
+            taxId: resolvedTaxId,
+            taxPercent: resolvedTaxPercent,
+            taxType: resolvedTaxType,
+            taxAmount: taxAmt,
+            isExclusiveTax: isExclusive,
             unitId: item.unitId?._id || item.unitId,
-            primaryUnitName: item.unitId?.name || (units.find(u => (u._id || u.id) === (item.unitId?._id || item.unitId))?.name) || "",
-            unitName: item.unitId?.name || (units.find(u => (u._id || u.id) === (item.unitId?._id || item.unitId))?.name) || "",
+            primaryUnitName: item.unitId?.name || (units.find(u => String(u._id || u.id) === String(item.unitId?._id || item.unitId))?.name) || "",
+            unitName: item.unitId?.name || (units.find(u => String(u._id || u.id) === String(item.unitId?._id || item.unitId))?.name) || "",
             secondaryUnitId: item.secondaryUnitId?._id || item.secondaryUnitId,
-            secondaryUnitName: item.secondaryUnitId?.name || (units.find(u => (u._id || u.id) === (item.secondaryUnitId?._id || item.secondaryUnitId))?.name) || "",
+            secondaryUnitName: item.secondaryUnitId?.name || (units.find(u => String(u._id || u.id) === String(item.secondaryUnitId?._id || item.secondaryUnitId))?.name) || "",
             conversionFactor: item.conversionFactor || 1,
             selectedUnit: item.defaultPurchaseUnit || "PRIMARY"
         };
@@ -392,19 +445,23 @@ const PurchasePage = () => {
     }, [handleBarcodeSearch]);
 
     useEffect(() => {
+        let isMounted = true;
         if (user && (user.shop_id || currentShopId)) {
-            fetchInitialData(activeBranchId);
+            const init = async () => {
+                await fetchInitialData(activeBranchId);
+                if (isEditing && isMounted) {
+                    await loadPurchase();
+                } else if (activeBranchId && isMounted) {
+                    setFormData(prev => ({
+                        ...prev,
+                        branchId: activeBranchId
+                    }));
+                }
+            };
+            init();
         }
-        if (isEditing) {
-            loadPurchase();
-        } else if (activeBranchId) {
-            // Sync branchId with active branch if not editing an existing purchase
-            setFormData(prev => ({
-                ...prev,
-                branchId: activeBranchId
-            }));
-        }
-    }, [user, id, activeBranchId, currentShopId, isEditing, fetchInitialData, loadPurchase]);
+        return () => { isMounted = false; };
+    }, [user, id, activeBranchId, currentShopId, isEditing]);
 
     // Handle restoration of state and auto-addition of new products when returning from full-page view
     useEffect(() => {
@@ -1926,33 +1983,37 @@ const PurchasePage = () => {
                                                     />
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-2">
-                                                <div className="flex flex-col gap-1.5">
-                                                    <div className={`flex rounded-xl border ${theme.borderLight} overflow-hidden font-black text-xs shadow-sm bg-white dark:bg-gray-800`}>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleItemChange(idx, 'selectedUnit', 'PRIMARY')}
-                                                            className={`flex-1 px-2.5 py-1.5 transition-all ${it.selectedUnit !== 'SECONDARY' ? 'bg-indigo-600 text-white shadow-sm' : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
-                                                        >
-                                                            {it.primaryUnitName || "Primary"}
-                                                        </button>
-                                                        {it.secondaryUnitId && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleItemChange(idx, 'selectedUnit', 'SECONDARY')}
-                                                                className={`flex-1 px-2.5 py-1.5 border-l ${theme.borderLight} transition-all ${it.selectedUnit === 'SECONDARY' ? 'bg-indigo-600 text-white shadow-sm' : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
-                                                            >
-                                                                {it.secondaryUnitName || "Sec"}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    {it.selectedUnit === 'SECONDARY' && it.conversionFactor > 1 && (
-                                                        <div className={`text-[8px] font-black text-indigo-500/80 text-center uppercase tracking-tight flex items-center justify-center gap-1 bg-indigo-50/50 dark:bg-indigo-900/20 py-0.5 rounded-md`}>
-                                                            <Layers size={8} /> 1 {it.primaryUnitName || "Pri"} = {it.conversionFactor} {it.secondaryUnitName || "Sec"}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </td>
+                                             <td className="py-3 px-2">
+                                                 <div className="flex flex-col gap-1.5">
+                                                     {it.secondaryUnitId && it.secondaryUnitName && it.secondaryUnitName !== it.primaryUnitName ? (
+                                                         <div className={`flex rounded-xl border ${theme.borderLight} overflow-hidden font-black text-xs shadow-sm bg-white dark:bg-gray-800`}>
+                                                             <button
+                                                                 type="button"
+                                                                 onClick={() => handleItemChange(idx, "selectedUnit", "PRIMARY")}
+                                                                 className={`flex-1 px-2.5 py-1.5 transition-all text-center ${it.selectedUnit !== "SECONDARY" ? "bg-indigo-600 text-white shadow-sm" : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
+                                                             >
+                                                                 {it.primaryUnitName || "Primary"}
+                                                             </button>
+                                                             <button
+                                                                 type="button"
+                                                                 onClick={() => handleItemChange(idx, "selectedUnit", "SECONDARY")}
+                                                                 className={`flex-1 px-2.5 py-1.5 border-l ${theme.borderLight} transition-all text-center ${it.selectedUnit === "SECONDARY" ? "bg-indigo-600 text-white shadow-sm" : `${theme.textMuted} hover:bg-indigo-50 dark:hover:bg-indigo-900/20`}`}
+                                                             >
+                                                                 {it.secondaryUnitName || "Sec"}
+                                                             </button>
+                                                         </div>
+                                                     ) : (
+                                                         <div className="px-3 py-1.5 rounded-xl font-black text-xs text-center bg-indigo-600 text-white shadow-sm">
+                                                             {it.primaryUnitName || it.unitName || "Primary"}
+                                                         </div>
+                                                     )}
+                                                     {it.secondaryUnitId && it.selectedUnit === "SECONDARY" && it.conversionFactor > 1 && (
+                                                         <div className={`text-[8px] font-black text-indigo-500/80 text-center uppercase tracking-tight flex items-center justify-center gap-1 bg-indigo-50/50 dark:bg-indigo-900/20 py-0.5 rounded-md`}>
+                                                             <Layers size={8} /> 1 {it.primaryUnitName || "Pri"} = {it.conversionFactor} {it.secondaryUnitName || "Sec"}
+                                                         </div>
+                                                     )}
+                                                 </div>
+                                             </td>
                                             <td className="py-3 px-2">
                                                 <input
                                                     type="number"
@@ -2060,52 +2121,61 @@ const PurchasePage = () => {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-2">
-                                                {/* Tax Type Selector */}
-                                                <CommonSelect
-                                                    options={[
-                                                        { label: "Select...", value: "" },
-                                                        { label: "Inclusive", value: "INCLUSIVE" },
-                                                        { label: "Exclusive", value: "EXCLUSIVE" }
-                                                    ]}
-                                                    value={it.taxType || ""}
-                                                    onChange={(val) => {
-                                                        handleItemChange(idx, {
-                                                            taxType: val,
-                                                            taxId: null,
-                                                            taxPercent: 0
-                                                        });
-                                                    }}
-                                                    className="w-full text-xs font-black mb-1"
-                                                />
-                                                
-                                                {/* Tax Percentage Selector - only show if type is selected */}
-                                                {it.taxType && (
-                                                    <CommonSelect
-                                                        options={[
-                                                            { label: "0%", value: "0" },
-                                                            ...shopTaxes
-                                                                .filter(t => (t.taxType || 'INCLUSIVE').toUpperCase() === it.taxType)
-                                                                .map(t => ({
-                                                                    label: `${t.name} (${t.percentage}%)`,
-                                                                    value: String(t._id)
-                                                                }))
-                                                        ]}
-                                                        value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
-                                                        onChange={(val) => {
-                                                            if (val === "0" || val === 0) {
-                                                                handleItemChange(idx, { taxId: null, taxPercent: 0 });
-                                                            } else {
-                                                                const selectedTax = shopTaxes.find(t => t._id === val);
-                                                                if (selectedTax) {
-                                                                    handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage });
-                                                                }
-                                                            }
-                                                        }}
-                                                        className="w-full text-xs font-black"
-                                                    />
-                                                )}
-                                            </td>
+                                             <td className="py-3 px-2">
+                                                 {/* Tax Type Selector */}
+                                                 <CommonSelect
+                                                     options={[
+                                                         { label: "Select...", value: "" },
+                                                         { label: "Inclusive", value: "INCLUSIVE" },
+                                                         { label: "Exclusive", value: "EXCLUSIVE" }
+                                                     ]}
+                                                     value={it.taxType || (it.isExclusiveTax ? "EXCLUSIVE" : "INCLUSIVE")}
+                                                     onChange={(val) => {
+                                                         const matchingTax = shopTaxes.find(t => String(t._id || t.id) === String(it.taxId)) ||
+                                                             shopTaxes.find(t => (t.taxType || "INCLUSIVE").toUpperCase() === val && Number(t.percentage) === Number(it.taxPercent || 0)) ||
+                                                             shopTaxes.find(t => Number(t.percentage) === Number(it.taxPercent || 0));
+                                                         handleItemChange(idx, {
+                                                             taxType: val,
+                                                             taxId: matchingTax ? String(matchingTax._id || matchingTax.id) : (it.taxId || null),
+                                                             taxPercent: matchingTax ? Number(matchingTax.percentage) : (it.taxPercent || 0),
+                                                             isExclusiveTax: val === "EXCLUSIVE"
+                                                         });
+                                                     }}
+                                                     className="w-full text-xs font-black mb-1"
+                                                 />
+                                                 
+                                                 {/* Tax Percentage Selector */}
+                                                 <CommonSelect
+                                                     options={[
+                                                         { label: "0%", value: "0" },
+                                                         ...shopTaxes.map(t => ({
+                                                             label: `${t.name} (${t.percentage}%)`,
+                                                             value: String(t._id || t.id)
+                                                         }))
+                                                     ]}
+                                                     value={
+                                                         it.taxId
+                                                             ? String(it.taxId)
+                                                             : (it.taxPercent
+                                                                 ? String(shopTaxes.find(t => Number(t.percentage) === Number(it.taxPercent))?._id || shopTaxes.find(t => Number(t.percentage) === Number(it.taxPercent))?.id || "0")
+                                                                 : "0")
+                                                     }
+                                                     onChange={(val) => {
+                                                         if (val === "0" || val === 0) {
+                                                             handleItemChange(idx, { taxId: null, taxPercent: 0, taxAmount: 0 });
+                                                         } else {
+                                                             const selectedTax = shopTaxes.find(t => String(t._id || t.id) === String(val));
+                                                             if (selectedTax) {
+                                                                 handleItemChange(idx, {
+                                                                     taxId: String(selectedTax._id || selectedTax.id),
+                                                                     taxPercent: Number(selectedTax.percentage)
+                                                                 });
+                                                             }
+                                                         }
+                                                     }}
+                                                     className="w-full text-xs font-black"
+                                                 />
+                                             </td>
                                             <td className="py-3 px-2 text-right font-black text-sm">
                                                 {(() => {
                                                     const taxObj = it.taxId ? shopTaxes.find(t => t._id === it.taxId) : shopTaxes.find(t => t.percentage === Number(it.taxPercent || 0));
@@ -2188,14 +2258,20 @@ const PurchasePage = () => {
                                                         className={`w-full p-3 rounded-2xl font-black text-indigo-600 border-2 border-transparent focus:border-indigo-500 outline-none text-center ${theme.inputBg} text-sm`}
                                                     />
                                                 </div>
-                                                <div>
-                                                    <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Unit</label>
-                                                    <div className={`flex rounded-2xl border-2 ${theme.borderLight} overflow-hidden font-black text-[10px] h-[46px]`}>
-                                                        <button type="button" onClick={() => handleItemChange(idx, 'selectedUnit', 'PRIMARY')} className={`flex-1 px-2 py-2 transition-all text-center ${it.selectedUnit !== 'SECONDARY' ? 'bg-indigo-600 text-white' : theme.textMuted}`}>{it.primaryUnitName || "Pri"}</button>
-                                                        {it.secondaryUnitId && <button type="button" onClick={() => handleItemChange(idx, 'selectedUnit', 'SECONDARY')} className={`flex-1 px-2 py-2 border-l-2 ${theme.borderLight} transition-all text-center ${it.selectedUnit === 'SECONDARY' ? 'bg-indigo-600 text-white' : theme.textMuted}`}>{it.secondaryUnitName || "Sec"}</button>}
-                                                    </div>
-                                                </div>
-                                            </div>
+                                                 <div>
+                                                     <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Unit</label>
+                                                     {it.secondaryUnitId && it.secondaryUnitName && it.secondaryUnitName !== it.primaryUnitName ? (
+                                                         <div className={`flex rounded-2xl border-2 ${theme.borderLight} overflow-hidden font-black text-[10px] h-[46px]`}>
+                                                             <button type="button" onClick={() => handleItemChange(idx, "selectedUnit", "PRIMARY")} className={`flex-1 px-2 py-2 transition-all text-center ${it.selectedUnit !== "SECONDARY" ? "bg-indigo-600 text-white" : theme.textMuted}`}>{it.primaryUnitName || "Pri"}</button>
+                                                             <button type="button" onClick={() => handleItemChange(idx, "selectedUnit", "SECONDARY")} className={`flex-1 px-2 py-2 border-l-2 ${theme.borderLight} transition-all text-center ${it.selectedUnit === "SECONDARY" ? "bg-indigo-600 text-white" : theme.textMuted}`}>{it.secondaryUnitName || "Sec"}</button>
+                                                         </div>
+                                                     ) : (
+                                                         <div className="px-3 py-2 rounded-2xl font-black text-xs text-center bg-indigo-600 text-white shadow-sm">
+                                                             {it.primaryUnitName || it.unitName || "Primary"}
+                                                         </div>
+                                                     )}
+                                                 </div>
+                                             </div>
 
                                             {/* Prices */}
                                             <div className="grid grid-cols-3 gap-2">
@@ -2250,37 +2326,53 @@ const PurchasePage = () => {
                                             <div className="grid grid-cols-2 gap-3 items-end">
                                                 <div className="space-y-2">
                                                     <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Tax Type</label>
-                                                    <CommonSelect
-                                                        options={[
-                                                            { label: "Select...", value: "" },
-                                                            { label: "Inclusive", value: "INCLUSIVE" },
-                                                            { label: "Exclusive", value: "EXCLUSIVE" }
-                                                        ]}
-                                                        value={it.taxType || ""}
-                                                        onChange={(val) => {
-                                                            handleItemChange(idx, {
-                                                                taxType: val,
-                                                                taxId: null,
-                                                                taxPercent: 0
-                                                            });
-                                                        }}
-                                                        className="w-full text-[11px] font-black"
-                                                    />
-                                                    
-                                                    {it.taxType && (
-                                                        <>
-                                                            <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Tax %</label>
-                                                            <CommonSelect
-                                                                options={[{ label: "0%", value: "0" }, ...shopTaxes.filter(t => (t.taxType || 'INCLUSIVE').toUpperCase() === it.taxType).map(t => ({ label: `${t.name} (${t.percentage}%)`, value: String(t._id) }))]}
-                                                                value={it.taxId ? String(it.taxId) : (it.taxPercent ? String(shopTaxes.find(t => t.percentage === it.taxPercent)?._id || "0") : "0")}
-                                                                onChange={(val) => {
-                                                                    if (val === "0" || val === 0) { handleItemChange(idx, { taxId: null, taxPercent: 0 }); }
-                                                                    else { const selectedTax = shopTaxes.find(t => t._id === val); if (selectedTax) handleItemChange(idx, { taxId: val, taxPercent: selectedTax.percentage }); }
-                                                                }}
-                                                                className="w-full text-[11px] font-black"
-                                                            />
-                                                        </>
-                                                    )}
+                                                     <CommonSelect
+                                                         options={[
+                                                             { label: "Select...", value: "" },
+                                                             { label: "Inclusive", value: "INCLUSIVE" },
+                                                             { label: "Exclusive", value: "EXCLUSIVE" }
+                                                         ]}
+                                                         value={it.taxType || (it.isExclusiveTax ? "EXCLUSIVE" : "INCLUSIVE")}
+                                                         onChange={(val) => {
+                                                             handleItemChange(idx, {
+                                                                 taxType: val,
+                                                                 isExclusiveTax: val === "EXCLUSIVE"
+                                                             });
+                                                         }}
+                                                         className="w-full text-[11px] font-black"
+                                                     />
+                                                     
+                                                     <label className={`text-[9px] font-black uppercase tracking-widest block mb-1 ${theme.textMuted}`}>Tax %</label>
+                                                     <CommonSelect
+                                                         options={[
+                                                             { label: "0%", value: "0" },
+                                                             ...shopTaxes.map(t => ({
+                                                                 label: `${t.name} (${t.percentage}%)`,
+                                                                 value: String(t._id || t.id)
+                                                             }))
+                                                         ]}
+                                                         value={
+                                                             it.taxId
+                                                                 ? String(it.taxId)
+                                                                 : (it.taxPercent
+                                                                     ? String(shopTaxes.find(t => Number(t.percentage) === Number(it.taxPercent))?._id || shopTaxes.find(t => Number(t.percentage) === Number(it.taxPercent))?.id || "0")
+                                                                     : "0")
+                                                         }
+                                                         onChange={(val) => {
+                                                             if (val === "0" || val === 0) {
+                                                                 handleItemChange(idx, { taxId: null, taxPercent: 0, taxAmount: 0 });
+                                                             } else {
+                                                                 const selectedTax = shopTaxes.find(t => String(t._id || t.id) === String(val));
+                                                                 if (selectedTax) {
+                                                                     handleItemChange(idx, {
+                                                                         taxId: String(selectedTax._id || selectedTax.id),
+                                                                         taxPercent: Number(selectedTax.percentage)
+                                                                     });
+                                                                 }
+                                                             }
+                                                         }}
+                                                         className="w-full text-[11px] font-black"
+                                                     />
                                                 </div>
                                                 <div className={`p-3 rounded-2xl text-right ${theme.inputBg}`}>
                                                     <div className={`text-[9px] font-black uppercase tracking-widest ${theme.textMuted}`}>Total</div>

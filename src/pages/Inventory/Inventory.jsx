@@ -116,6 +116,8 @@ const Inventory = ({
     const [editingProductId, setEditingProductId] = useState(null);
     const [usedCategories, setUsedCategories] = useState([]);
     const [selectedCategory, setSelectedCategory] = useState("ALL");
+    const [selectedTaxFilter, setSelectedTaxFilter] = useState("ALL");
+    const [selectedSort, setSelectedSort] = useState("DEFAULT");
     const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
 
     const branchId = activeBranchId || (user?.branchIds?.length ? user.branchIds[0] : null);
@@ -136,6 +138,33 @@ const Inventory = ({
         [usedCategories]
     );
 
+    const taxOptions = useMemo(
+        () => [
+            { _id: "ALL", name: "All Tax Rates" },
+            { _id: "EXEMPT", name: "0% (Exempt)" },
+            { _id: "5", name: "5% Tax" },
+            { _id: "12", name: "12% Tax" },
+            { _id: "18", name: "18% Tax" },
+            { _id: "28", name: "28% Tax" },
+        ],
+        []
+    );
+
+    const sortOptions = useMemo(
+        () => [
+            { _id: "DEFAULT", name: "Sort: Default" },
+            { _id: "NAME_ASC", name: "Sort: Name (A - Z)" },
+            { _id: "NAME_DESC", name: "Sort: Name (Z - A)" },
+            { _id: "PRICE_ASC", name: "Sort: Price (Low → High)" },
+            { _id: "PRICE_DESC", name: "Sort: Price (High → Low)" },
+            { _id: "STOCK_DESC", name: "Sort: Stock (High → Low)" },
+            { _id: "STOCK_ASC", name: "Sort: Stock (Low → High)" },
+            { _id: "TAX_DESC", name: "Sort: Tax (High → Low)" },
+            { _id: "TAX_ASC", name: "Sort: Tax (Low → High)" },
+        ],
+        []
+    );
+
     // Stock Adjustment State
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
     const [selectedAdjustmentItem, setSelectedAdjustmentItem] = useState(null);
@@ -152,11 +181,13 @@ const Inventory = ({
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [showLowStockOnly, setShowLowStockOnly] = useState(false);
 
-    // Reset page, category, local items, and stock alert filter on tab change
+    // Reset page, category, tax, sort, local items, and stock alert filter on tab change
     useEffect(() => {
         setLocalItems([]);
         setCurrentPage(1);
         setSelectedCategory("ALL");
+        setSelectedTaxFilter("ALL");
+        setSelectedSort("DEFAULT");
         setShowLowStockOnly(false);
     }, [activeTab]);
 
@@ -202,15 +233,29 @@ const Inventory = ({
         if (!currentShopId) return;
         setLoadingItems(true);
         try {
+            let sortBy = undefined;
+            let sortOrder = undefined;
+            if (selectedSort === "NAME_ASC") { sortBy = "name"; sortOrder = "asc"; }
+            else if (selectedSort === "NAME_DESC") { sortBy = "name"; sortOrder = "desc"; }
+            else if (selectedSort === "PRICE_ASC") { sortBy = "pricing.sellingPrice"; sortOrder = "asc"; }
+            else if (selectedSort === "PRICE_DESC") { sortBy = "pricing.sellingPrice"; sortOrder = "desc"; }
+            else if (selectedSort === "STOCK_ASC") { sortBy = "quantityOnHand"; sortOrder = "asc"; }
+            else if (selectedSort === "STOCK_DESC") { sortBy = "quantityOnHand"; sortOrder = "desc"; }
+            else if (selectedSort === "TAX_ASC") { sortBy = "taxPercent"; sortOrder = "asc"; }
+            else if (selectedSort === "TAX_DESC") { sortBy = "taxPercent"; sortOrder = "desc"; }
+
             const payload = {
                 page: currentPage,
                 limit: pageSize,
                 search: inventorySearch,
+                sortBy,
+                sortOrder,
                 filters: {
                     shopId: currentShopId,
                     branchId,
                     itemType: activeTab === "menu" ? "MANUFACTURED" : (activeTab === "raw" ? "STOCK" : "TRADE"),
                     categoryId: selectedCategory === "ALL" ? undefined : selectedCategory,
+                    taxPercent: selectedTaxFilter === "ALL" ? undefined : (selectedTaxFilter === "EXEMPT" ? 0 : Number(selectedTaxFilter)),
                 },
             };
 
@@ -235,6 +280,8 @@ const Inventory = ({
         currentShopId,
         inventorySearch,
         selectedCategory,
+        selectedTaxFilter,
+        selectedSort,
     ]);
 
     // Fetch items when filters, page, or refresh change
@@ -252,10 +299,6 @@ const Inventory = ({
         setPageSize(Number(newSize));
         setCurrentPage(1);
     };
-
-
-
-
 
     useEffect(() => {
         if (activeTab === "menu") {
@@ -275,6 +318,36 @@ const Inventory = ({
         };
         window.addEventListener('inventoryFieldsUpdated', handleUpdates);
         return () => window.removeEventListener('inventoryFieldsUpdated', handleUpdates);
+    }, []);
+
+    const getItemTaxInfo = useCallback((item) => {
+        if (!item) return { percent: 0, isExclusive: false, typeLabel: 'Inclusive', typeShort: 'Incl.', hasTax: false, displayText: '0% (Exempt)' };
+        let percent = item.taxPercent;
+        if (percent === undefined || percent === null) {
+            if (item.taxId && typeof item.taxId === 'object' && item.taxId.percentage !== undefined) {
+                percent = item.taxId.percentage;
+            }
+        }
+        const numPercent = Number(percent) || 0;
+
+        let isExclusive = false;
+        if (item.isExclusiveTax !== undefined && item.isExclusiveTax !== null) {
+            isExclusive = Boolean(item.isExclusiveTax);
+        } else if (item.taxId && typeof item.taxId === 'object' && item.taxId.taxType) {
+            isExclusive = String(item.taxId.taxType).toUpperCase() === 'EXCLUSIVE';
+        }
+
+        const typeLabel = isExclusive ? 'Exclusive' : 'Inclusive';
+        const typeShort = isExclusive ? 'Excl.' : 'Incl.';
+
+        return {
+            percent: numPercent,
+            isExclusive,
+            typeLabel,
+            typeShort,
+            hasTax: numPercent > 0,
+            displayText: `${numPercent}% (${typeShort})`
+        };
     }, []);
 
     // Helper to check if an item exceeds its stock alert limit
@@ -353,15 +426,64 @@ const Inventory = ({
         return localItems.filter(item => (item.itemType || 'STOCK').toUpperCase() === targetItemType);
     }, [localItems, targetItemType]);
 
+    // Filter items by Tax Filter if set
+    const taxFilteredItems = useMemo(() => {
+        if (selectedTaxFilter === "ALL") return tabFilteredItems;
+        return tabFilteredItems.filter((item) => {
+            const info = getItemTaxInfo(item);
+            if (selectedTaxFilter === "EXEMPT") {
+                return info.percent === 0 || !info.hasTax;
+            }
+            const targetTax = Number(selectedTaxFilter);
+            return Math.abs(info.percent - targetTax) < 0.1;
+        });
+    }, [tabFilteredItems, selectedTaxFilter]);
+
     // Filter items by stock alert if showLowStockOnly is active
     const lowStockFilteredItems = useMemo(() => {
-        if (!showLowStockOnly) return tabFilteredItems;
-        return tabFilteredItems.filter(item => checkItemIsLowStock(item));
-    }, [tabFilteredItems, showLowStockOnly, checkItemIsLowStock]);
+        if (!showLowStockOnly) return taxFilteredItems;
+        return taxFilteredItems.filter(item => checkItemIsLowStock(item));
+    }, [taxFilteredItems, showLowStockOnly, checkItemIsLowStock]);
 
-    // Sort items so out of stock items are pushed to the end
+    // Sort items based on selectedSort option
     const filteredData = useMemo(() => {
-        return [...lowStockFilteredItems].sort((a, b) => {
+        const items = [...lowStockFilteredItems];
+
+        if (selectedSort === "NAME_ASC") {
+            return items.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        }
+        if (selectedSort === "NAME_DESC") {
+            return items.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
+        }
+        if (selectedSort === "PRICE_ASC") {
+            return items.sort((a, b) => {
+                const pA = a.pricing?.sellingPrice ?? a.sellingPrice ?? 0;
+                const pB = b.pricing?.sellingPrice ?? b.sellingPrice ?? 0;
+                return pA - pB;
+            });
+        }
+        if (selectedSort === "PRICE_DESC") {
+            return items.sort((a, b) => {
+                const pA = a.pricing?.sellingPrice ?? a.sellingPrice ?? 0;
+                const pB = b.pricing?.sellingPrice ?? b.sellingPrice ?? 0;
+                return pB - pA;
+            });
+        }
+        if (selectedSort === "STOCK_ASC") {
+            return items.sort((a, b) => (a.quantityOnHand ?? 0) - (b.quantityOnHand ?? 0));
+        }
+        if (selectedSort === "STOCK_DESC") {
+            return items.sort((a, b) => (b.quantityOnHand ?? 0) - (a.quantityOnHand ?? 0));
+        }
+        if (selectedSort === "TAX_ASC") {
+            return items.sort((a, b) => getItemTaxInfo(a).percent - getItemTaxInfo(b).percent);
+        }
+        if (selectedSort === "TAX_DESC") {
+            return items.sort((a, b) => getItemTaxInfo(b).percent - getItemTaxInfo(a).percent);
+        }
+
+        // Default sorting: Stock alert items / in-stock first
+        return items.sort((a, b) => {
             const qtyA = a.quantityOnHand ?? 0;
             const qtyB = b.quantityOnHand ?? 0;
 
@@ -372,7 +494,9 @@ const Inventory = ({
             if (!aHasStock && bHasStock) return 1;
             return 0;
         });
-    }, [lowStockFilteredItems]);
+    }, [lowStockFilteredItems, selectedSort]);
+
+
 
     const canView = activeTab === "menu" ? canViewMenu : (activeTab === "raw" ? canViewItems : canViewTradeItems);
     const canManage = activeTab === "menu" ? canManageMenu : (activeTab === "raw" ? canManageItems : canManageTradeItems);
@@ -473,35 +597,6 @@ const Inventory = ({
         } finally {
             setLoadingHistory(false);
         }
-    };
-
-    const getItemTaxInfo = (item) => {
-        let percent = item.taxPercent;
-        if (percent === undefined || percent === null) {
-            if (item.taxId && typeof item.taxId === 'object' && item.taxId.percentage !== undefined) {
-                percent = item.taxId.percentage;
-            }
-        }
-        const numPercent = Number(percent) || 0;
-
-        let isExclusive = false;
-        if (item.isExclusiveTax !== undefined && item.isExclusiveTax !== null) {
-            isExclusive = Boolean(item.isExclusiveTax);
-        } else if (item.taxId && typeof item.taxId === 'object' && item.taxId.taxType) {
-            isExclusive = String(item.taxId.taxType).toUpperCase() === 'EXCLUSIVE';
-        }
-
-        const typeLabel = isExclusive ? 'Exclusive' : 'Inclusive';
-        const typeShort = isExclusive ? 'Excl.' : 'Incl.';
-
-        return {
-            percent: numPercent,
-            isExclusive,
-            typeLabel,
-            typeShort,
-            hasTax: numPercent > 0,
-            displayText: `${numPercent}% (${typeShort})`
-        };
     };
 
     const taxColumn = {
@@ -1578,17 +1673,50 @@ const Inventory = ({
                     )}
                 </div>
 
-                {/* Category Filter */}
-                <div className="w-full lg:w-56">
-                    <CommonSelect
-                        options={categoryOptions}
-                        value={selectedCategory}
-                        onChange={handleCategoryChange}
-                        labelKey="name"
-                        valueKey="_id"
-                        placeholder="Filter by Category"
-                        searchPlaceholder="Search categories..."
-                    />
+                {/* Filters Bar: Category, Tax, Sort */}
+                <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full lg:w-auto">
+                    {/* Category Filter */}
+                    <div className="w-full sm:w-44 lg:w-48">
+                        <CommonSelect
+                            options={categoryOptions}
+                            value={selectedCategory}
+                            onChange={handleCategoryChange}
+                            labelKey="name"
+                            valueKey="_id"
+                            placeholder="All Categories"
+                            searchPlaceholder="Search categories..."
+                        />
+                    </div>
+
+                    {/* Tax Value Filter */}
+                    <div className="w-full sm:w-40 lg:w-44">
+                        <CommonSelect
+                            options={taxOptions}
+                            value={selectedTaxFilter}
+                            onChange={(val) => {
+                                setSelectedTaxFilter(val || "ALL");
+                                setCurrentPage(1);
+                            }}
+                            labelKey="name"
+                            valueKey="_id"
+                            placeholder="All Tax Rates"
+                        />
+                    </div>
+
+                    {/* Sort By Filter */}
+                    <div className="w-full sm:w-48 lg:w-52">
+                        <CommonSelect
+                            options={sortOptions}
+                            value={selectedSort}
+                            onChange={(val) => {
+                                setSelectedSort(val || "DEFAULT");
+                                setCurrentPage(1);
+                            }}
+                            labelKey="name"
+                            valueKey="_id"
+                            placeholder="Sort Items"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -1609,15 +1737,29 @@ const Inventory = ({
                     exportFilename={`items-${activeTab}-${new Date().toISOString().split('T')[0]}`}
                     exportTitle={`${activeTab === 'menu' ? 'Menu' : activeTab === 'raw' ? 'Stock' : 'Trade'} Items Export`}
                     onFetchAll={async () => {
+                        let sortBy = undefined;
+                        let sortOrder = undefined;
+                        if (selectedSort === "NAME_ASC") { sortBy = "name"; sortOrder = "asc"; }
+                        else if (selectedSort === "NAME_DESC") { sortBy = "name"; sortOrder = "desc"; }
+                        else if (selectedSort === "PRICE_ASC") { sortBy = "pricing.sellingPrice"; sortOrder = "asc"; }
+                        else if (selectedSort === "PRICE_DESC") { sortBy = "pricing.sellingPrice"; sortOrder = "desc"; }
+                        else if (selectedSort === "STOCK_ASC") { sortBy = "quantityOnHand"; sortOrder = "asc"; }
+                        else if (selectedSort === "STOCK_DESC") { sortBy = "quantityOnHand"; sortOrder = "desc"; }
+                        else if (selectedSort === "TAX_ASC") { sortBy = "taxPercent"; sortOrder = "asc"; }
+                        else if (selectedSort === "TAX_DESC") { sortBy = "taxPercent"; sortOrder = "desc"; }
+
                         const response = await itemService.getItems({
                             page: 1,
                             limit: 9999,
                             search: inventorySearch || undefined,
+                            sortBy,
+                            sortOrder,
                             filters: {
                                 shopId: currentShopId,
                                 branchId,
                                 itemType: activeTab === "menu" ? "MANUFACTURED" : activeTab === "raw" ? "STOCK" : "TRADE",
                                 categoryId: selectedCategory === "ALL" ? undefined : selectedCategory,
+                                taxPercent: selectedTaxFilter === "ALL" ? undefined : (selectedTaxFilter === "EXEMPT" ? 0 : Number(selectedTaxFilter)),
                             },
                         });
                         return (response?.data || []).map(item => ({ ...item, id: item._id }));

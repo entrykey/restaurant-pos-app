@@ -18,15 +18,30 @@ export const DiningProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [reservations, setReservations] = useState([]);
 
-    const resolveBranchId = useCallback(() => (
-        activeBranchId ||
-        user?.branch_id ||
-        user?.branchId ||
-        user?.branch ||
-        (user?.branchIds?.length ? user.branchIds[0] : null) ||
-        branches?.[0]?._id ||
-        null
-    ), [activeBranchId, user, branches]);
+    const currentShopId = user?.shop_id || user?.shopId;
+
+    // Reset dining state immediately whenever currentShopId changes
+    useEffect(() => {
+        setTables([]);
+        setCategories([]);
+        setReservations([]);
+        setActiveTableId(null);
+    }, [currentShopId]);
+
+    const resolveBranchId = useCallback(() => {
+        if (activeBranchId && branches && branches.length > 0) {
+            const isValid = branches.some(b => String(b._id || b.id) === String(activeBranchId));
+            if (isValid) return activeBranchId;
+        }
+
+        const userBranch = user?.branch_id || user?.branchId || user?.branch || (user?.branchIds?.length ? user.branchIds[0] : null);
+        if (userBranch && branches && branches.length > 0) {
+            const isValidUserBranch = branches.some(b => String(b._id || b.id) === String(userBranch));
+            if (isValidUserBranch) return userBranch;
+        }
+
+        return branches?.[0]?._id || branches?.[0]?.id || null;
+    }, [activeBranchId, user, branches]);
 
     const [hasPermissionError, setHasPermissionError] = useState(false);
 
