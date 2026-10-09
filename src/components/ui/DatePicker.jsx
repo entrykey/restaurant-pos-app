@@ -239,16 +239,16 @@ const parseToLocalMidnight = (dateVal) => {
         <div className="relative w-full" ref={containerRef}>
             <div
                 className={`
-                    w-full flex items-center justify-between transition-all cursor-pointer group 
-                    ${className || `px-4 py-3 border-2 rounded-2xl ${theme.inputBg} ${theme.borderLight} hover:border-indigo-400`}
+                    w-full flex items-center justify-between transition-all cursor-pointer group rounded-xl border ${theme.inputBg} ${theme.borderLight} hover:border-indigo-400
+                    ${className ? className : 'px-4 py-3 text-sm rounded-2xl'}
                     ${disabled ? 'opacity-50 cursor-not-allowed border-gray-100' : ''}
-                    ${isOpen ? 'border-indigo-500 shadow-indigo-100 shadow-lg' : ''}
+                    ${isOpen ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-md' : ''}
                 `}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
             >
-                <div className="flex items-center gap-3 overflow-hidden">
-                    <CalendarIcon size={18} className={isOpen ? 'text-indigo-600' : `${theme.textMuted} group-hover:text-indigo-500 transition-colors`} />
-                    <span className={`font-bold truncate mt-0.5 ${value ? theme.textPrimary : theme.textMuted} ${!className.includes('text-') ? 'text-sm' : ''}`}>
+                <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                    <CalendarIcon size={className.includes('text-xs') ? 14 : 18} className={isOpen ? 'text-indigo-600' : `${theme.textMuted} group-hover:text-indigo-500 transition-colors shrink-0`} />
+                    <span className={`font-bold truncate mt-0.5 ${value ? theme.textPrimary : theme.textMuted} ${className.includes('text-xs') ? 'text-xs' : 'text-sm'}`}>
                         {displayDate() || placeholder}
                     </span>
                 </div>
@@ -256,9 +256,9 @@ const parseToLocalMidnight = (dateVal) => {
                     <button
                         type="button"
                         onClick={handleClear}
-                        className={`p-1 rounded-full ${theme.textMuted} hover:text-red-500 hover:bg-red-50 transition-colors z-10`}
+                        className={`p-0.5 rounded-full ${theme.textMuted} hover:text-red-500 hover:bg-red-50 transition-colors z-10 shrink-0 ml-1`}
                     >
-                        <X size={14} />
+                        <X size={12} />
                     </button>
                 )}
             </div>

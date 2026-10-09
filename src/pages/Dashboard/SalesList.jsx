@@ -846,27 +846,6 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                     </div>
                                 </div>
 
-                                {/* Payment Status */}
-                                <div>
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Payment Status</label>
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        {[
-                                            { value: '', label: 'All Statuses' },
-                                            { value: 'PAID', label: 'Paid' },
-                                            { value: 'UNPAID', label: 'Unpaid / Pending' },
-                                            { value: 'PARTIAL', label: 'Partial' },
-                                        ].map(opt => (
-                                            <button
-                                                key={opt.value}
-                                                onClick={() => setFilterPaymentStatus(opt.value)}
-                                                className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${filterPaymentStatus === opt.value ? 'bg-indigo-600 text-white' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
-                                            >
-                                                {opt.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
                                 {/* Payment Method */}
                                 <div>
                                     <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Payment Method</label>

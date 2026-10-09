@@ -7,17 +7,19 @@ import { OrderProvider } from "./context/OrderContext";
 import { DiningProvider } from "./pages/DiningHall/DiningContext";
 import { TakeawayProvider } from "./pages/Takeaway/TakeawayContext";
 import { OnlineOrderProvider } from "./pages/OnlineOrders/OnlineOrderContext";
+import { ScaleProvider } from "./context/ScaleContext";
 import AppContent from "./components/AppContent";
 
 const App = () => {
   return (
     <ThemeProvider>
       <AppProvider>
-        <OrderProvider>
-          <DiningProvider>
-            <TakeawayProvider>
-              <OnlineOrderProvider>
-                <AppContent />
+        <ScaleProvider>
+          <OrderProvider>
+            <DiningProvider>
+              <TakeawayProvider>
+                <OnlineOrderProvider>
+                  <AppContent />
                 <Toaster
                   position="top-center"
                   reverseOrder={false}
@@ -60,8 +62,9 @@ const App = () => {
             </TakeawayProvider>
           </DiningProvider>
         </OrderProvider>
-      </AppProvider>
-    </ThemeProvider>
+      </ScaleProvider>
+    </AppProvider>
+  </ThemeProvider>
   );
 };
 

@@ -127,11 +127,13 @@ export const ROUTE_KEY_TO_PATH = Object.freeze({
 
 /** Resolve first path the user is allowed to access (for redirect when denying a route) */
 export function getFirstAllowedPath(can, canModule) {
-  for (const key of ROUTE_KEYS_ORDER) {
-    const r = ROUTE_ACCESS[key];
-    if (!r) continue;
-    const allowed = r.action != null && r.action !== undefined ? can(r.module, r.action) : canModule(r.module);
-    if (allowed) return ROUTE_KEY_TO_PATH[key];
+  if (typeof can === 'function' && typeof canModule === 'function') {
+    for (const key of ROUTE_KEYS_ORDER) {
+      const r = ROUTE_ACCESS[key];
+      if (!r) continue;
+      const allowed = r.action != null && r.action !== undefined ? can(r.module, r.action) : canModule(r.module);
+      if (allowed) return ROUTE_KEY_TO_PATH[key] || "/profile";
+    }
   }
-  return "/dashboard";
+  return "/profile";
 }

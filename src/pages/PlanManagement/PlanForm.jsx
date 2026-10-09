@@ -5,6 +5,7 @@ import { planService } from '../../services/api/plans';
 import { businessTypesService } from '../../services/api/businessTypes';
 import { shopService } from '../../services/api/shops';
 import { useTheme } from '../../context/ThemeContext';
+import CommonSelect from '../../components/ui/CommonSelect';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 const PlanForm = ({ planToEdit, onBack }) => {
@@ -312,18 +313,13 @@ const PlanForm = ({ planToEdit, onBack }) => {
                             {formData.isCustom && (
                                 <div className="md:col-span-2">
                                     <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Select Shop *</label>
-                                    <select
-                                        name="shopId"
+                                    <CommonSelect
                                         value={formData.shopId}
-                                        onChange={handleChange}
+                                        onChange={(val) => setFormData(prev => ({ ...prev, shopId: val }))}
+                                        options={shops.map(shop => ({ label: shop.name, value: shop._id }))}
+                                        placeholder="-- Select Shop --"
                                         required={formData.isCustom}
-                                        className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
-                                    >
-                                        <option value="">-- Select Shop --</option>
-                                        {shops.map(shop => (
-                                            <option key={shop._id} value={shop._id}>{shop.name}</option>
-                                        ))}
-                                    </select>
+                                    />
                                 </div>
                             )}
 
@@ -339,33 +335,27 @@ const PlanForm = ({ planToEdit, onBack }) => {
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Target Business Type *</label>
-                                <select
-                                    name="businessType"
+                                <CommonSelect
                                     value={formData.businessType}
-                                    onChange={handleTypeChange}
+                                    onChange={(val) => {
+                                        setFormData(prev => ({ ...prev, businessType: val, subType: '' }));
+                                        fetchSubtypes(val);
+                                    }}
+                                    options={businessTypes.map(t => ({ label: t.displayString || t.name, value: t._id }))}
+                                    placeholder="Select Type"
                                     required
-                                    className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
-                                >
-                                    <option value="">Select Type</option>
-                                    {businessTypes.map(t => (
-                                        <option key={t._id} value={t._id}>{t.displayString || t.name}</option>
-                                    ))}
-                                </select>
+                                />
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Target Sub Type *</label>
-                                <select
-                                    name="subType"
+                                <CommonSelect
                                     value={formData.subType}
-                                    onChange={handleChange}
+                                    onChange={(val) => setFormData(prev => ({ ...prev, subType: val }))}
+                                    options={subtypes.map(s => ({ label: s.displayString || s.name, value: s._id }))}
+                                    placeholder="Select Subtype"
                                     required
-                                    className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
-                                >
-                                    <option value="">Select Subtype</option>
-                                    {subtypes.map(s => (
-                                        <option key={s._id} value={s._id}>{s.displayString || s.name}</option>
-                                    ))}
-                                </select>
+                                    disabled={!formData.businessType || subtypes.length === 0}
+                                />
                             </div>
                         </div>
                     </div>
@@ -382,17 +372,16 @@ const PlanForm = ({ planToEdit, onBack }) => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Cycle Days</label>
-                                <select
-                                    name="durationDays"
+                                <CommonSelect
                                     value={formData.durationDays}
-                                    onChange={handleChange}
-                                    className={`w-full p-4 border-2 border-transparent ${theme.pageBg} rounded-2xl outline-none focus:border-indigo-500 font-bold ${theme.textPrimary} transition-all`}
-                                >
-                                    <option value={30}>30 Days (Monthly)</option>
-                                    <option value={90}>90 Days (Quarterly)</option>
-                                    <option value={180}>180 Days (Bi-Annual)</option>
-                                    <option value={365}>365 Days (Yearly)</option>
-                                </select>
+                                    onChange={(val) => setFormData(prev => ({ ...prev, durationDays: Number(val) }))}
+                                    options={[
+                                        { label: '30 Days (Monthly)', value: 30 },
+                                        { label: '90 Days (Quarterly)', value: 90 },
+                                        { label: '180 Days (Bi-Annual)', value: 180 },
+                                        { label: '365 Days (Yearly)', value: 365 }
+                                    ]}
+                                />
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>Currency</label>

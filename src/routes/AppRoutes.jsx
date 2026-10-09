@@ -1,6 +1,7 @@
 import React, { useEffect, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import ProtectedRoute from "../components/ProtectedRoute";
+import { getFirstAllowedPath } from "../constants/routeAccess";
 import { useTakeaway } from "../pages/Takeaway/TakeawayContext";
 import {
   ORGANIZATION_PERMISSION_KEYS,
@@ -836,7 +837,7 @@ const AppRoutes = (props) => {
           element={
             <>
               {view === "dashboard" && (
-                <Navigate to="/dashboard" replace />
+                <Navigate to={safeHasPermissionFor("dashboard") || safeHasPermission("DASHBOARD") || safeHasPermission("dashboard") ? "/dashboard" : getFirstAllowedPath(safeHasPermission, safeHasPermissionFor)} replace />
               )}
               {view === "tables" && (
                 <Navigate to="/dininghall" replace />

@@ -211,6 +211,10 @@ const AppContent = () => {
                         const taxObj = findTaxForItem(item, allTaxes.length ? allTaxes : activeTaxes);
                         const isExclusiveTax = resolveIsExclusiveTax(item, taxObj);
 
+                        const qH = Number(item.quantityOnHand);
+                        const qO = Number(item.openingStock);
+                        const effectiveStock = (!isNaN(qH) && qH > 0) ? qH : ((!isNaN(qO) && qO > 0) ? qO : Math.max(0, qH || qO || 0));
+
                         return {
                             ...item,
                             id: item._id,
@@ -221,7 +225,8 @@ const AppContent = () => {
                             unitName: item.unitId?.name || "Unit",
                             sellingType: item.weightBased ? "Weight" : "Standard",
                             unitId: item.unitId, // Ensure this is preserved for React State
-                            quantityOnHand: item.quantityOnHand || 0,
+                            quantityOnHand: effectiveStock,
+                            openingStock: !isNaN(qO) ? qO : effectiveStock,
                             taxPercent,
                             isExclusiveTax
                         };
@@ -469,23 +474,28 @@ const AppContent = () => {
                 : canModule(r.module);
 
             if (hasAccess) {
-                return ROUTE_KEY_TO_PATH[key] || "/dashboard";
+                return ROUTE_KEY_TO_PATH[key] || "/profile";
             }
         }
-        return "/dashboard";
+        return "/profile";
     };
 
-    // If authenticated user lands on /login, move them into app dashboard.
+    // If authenticated user lands on /login or root shop path, move them into app's first allowed page.
     useEffect(() => {
         if (!isAuthenticated) return;
 
         const rawPath = String(location.pathname || "/");
+        const segs = rawPath.split("/").filter(Boolean);
+
+        const isBareShopPath = segs.length === 1 && !ROOT_PATH_SEGMENTS.has(segs[0]);
         const isLoginScopedPath =
-            rawPath === "/" || // Add root path to login scoped for redirection
+            rawPath === "/" ||
             rawPath === "/login" ||
             rawPath.startsWith("/login/") ||
             rawPath.endsWith("/login") ||
-            rawPath.includes("/login/");
+            rawPath.includes("/login/") ||
+            isBareShopPath;
+
         if (!isLoginScopedPath) return;
 
         const isSuperAdmin =
@@ -498,7 +508,7 @@ const AppContent = () => {
             return;
         }
 
-        if (currentUser?.isOwner) {
+        if (currentUser?.isOwner && !isBareShopPath) {
             const shops = Array.isArray(currentUser?.shops) ? currentUser.shops : [];
             if (shops.length === 1) {
                 const shop = shops[0];
@@ -529,8 +539,6 @@ const AppContent = () => {
     }, [isAuthenticated, location.pathname, navigate]);
 
     // Keep shop slug as a common base URL for all normal app routes.
-    // This lets existing absolute navigations (/takeaway, /inventory, etc.)
-    // remain backward-compatible while still enforcing /{shopName}/... for scoped users.
     useEffect(() => {
         if (!isAuthenticated) return;
 
@@ -569,8 +577,14 @@ const AppContent = () => {
         const entry = Object.entries(ROUTE_KEY_TO_PATH).find(([key, routePath]) => path === routePath);
         if (entry) {
             setView(entry[0]);
+        } else if (!canModule('dashboard')) {
+            const firstAllowed = getFirstAllowedPath();
+            const matchingEntry = Object.entries(ROUTE_KEY_TO_PATH).find(([_, routePath]) => routePath === firstAllowed);
+            if (matchingEntry) {
+                setView(matchingEntry[0]);
+            }
         }
-    }, [location.pathname, setView]);
+    }, [location.pathname, setView, canModule]);
 
     // Sync tableId from TakeawayContext to DiningContext when tab changes
     useEffect(() => {
@@ -869,14 +883,18 @@ const AppContent = () => {
     };
 
     const getResolvedBranchId = () => {
-        return (
-            activeBranchId ||
-            currentUser?.branch_id ||
-            currentUser?.branchId ||
-            (currentUser?.branchIds && currentUser.branchIds[0]) ||
-            (branches[0]?._id) ||
-            null
-        );
+        if (activeBranchId && branches && branches.length > 0) {
+            const isValid = branches.some(b => String(b._id || b.id) === String(activeBranchId));
+            if (isValid) return activeBranchId;
+        }
+
+        const userBranch = currentUser?.branch_id || currentUser?.branchId || (currentUser?.branchIds && currentUser.branchIds[0]);
+        if (userBranch && branches && branches.length > 0) {
+            const isValidUserBranch = branches.some(b => String(b._id || b.id) === String(userBranch));
+            if (isValidUserBranch) return userBranch;
+        }
+
+        return branches?.[0]?._id || branches?.[0]?.id || null;
     };
 
     const getActiveBranchForPrint = () => {

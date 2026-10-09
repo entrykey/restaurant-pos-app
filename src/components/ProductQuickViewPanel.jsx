@@ -29,15 +29,11 @@ const ProductQuickViewPanel = ({ item, onClose, onAddToCart, formatCurrency }) =
         if (!isStockTracked(item) || allowsNegativeStock(item)) return false;
 
         if (selectedVariant) {
-            const variantStock = Number.isFinite(selectedVariant.quantityOnHand)
-                ? selectedVariant.quantityOnHand
-                : Number.isFinite(selectedVariant.openingStock)
-                ? selectedVariant.openingStock
-                : getAvailableStock(item);
+            const variantStock = getAvailableStock(item, [], {}, selectedVariant);
             return variantStock !== Infinity && variantStock <= 0;
         }
 
-        const available = Number.isFinite(item?.quantityOnHand) ? item.quantityOnHand : getAvailableStock(item);
+        const available = getAvailableStock(item);
         return available !== Infinity && available <= 0;
     }, [item, selectedVariant]);
 
