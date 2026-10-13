@@ -349,14 +349,53 @@ export function printBill({
     : "";
 
   const finalAmt = totals?.finalTotal ?? 0;
-  const paidAmt = totals?.paidAmount !== undefined ? totals.paidAmount : (totals?.remainingBalance !== undefined ? Math.max(0, finalAmt - totals.remainingBalance) : finalAmt);
-  const remainingBal = totals?.remainingBalance !== undefined ? totals.remainingBalance : Math.max(0, finalAmt - paidAmt);
-  const isFullyPaid = remainingBal <= 0;
+  const explicitStatus = (totals?.paymentStatus || totals?.status || "").toUpperCase();
+
+  let paidAmt;
+  let remainingBal;
+
+  if (totals?.paidAmount !== undefined && totals?.paidAmount !== null) {
+    paidAmt = Number(totals.paidAmount);
+    remainingBal = totals?.remainingBalance !== undefined && totals?.remainingBalance !== null
+      ? Number(totals.remainingBalance)
+      : Math.max(0, finalAmt - paidAmt);
+  } else if (totals?.remainingBalance !== undefined && totals?.remainingBalance !== null) {
+    remainingBal = Number(totals.remainingBalance);
+    paidAmt = Math.max(0, finalAmt - remainingBal);
+  } else if (explicitStatus === "PENDING" || explicitStatus === "UNPAID") {
+    paidAmt = 0;
+    remainingBal = finalAmt;
+  } else if (explicitStatus === "PARTIAL" || explicitStatus === "PARTIALLY PAID") {
+    paidAmt = totals?.paidAmount ? Number(totals.paidAmount) : 0;
+    remainingBal = Math.max(0, finalAmt - paidAmt);
+  } else {
+    paidAmt = finalAmt;
+    remainingBal = 0;
+  }
+
+  let statusText = "FULLY PAID";
+  let statusColor = "#16a34a";
+  let isFullyPaid = false;
+
+  if (explicitStatus === "PENDING" || explicitStatus === "UNPAID" || (paidAmt <= 0 && remainingBal > 0)) {
+    statusText = explicitStatus === "UNPAID" ? "UNPAID" : "PENDING";
+    statusColor = "#dc2626";
+    isFullyPaid = false;
+  } else if (explicitStatus === "PARTIAL" || explicitStatus === "PARTIALLY PAID" || (paidAmt > 0 && remainingBal > 0.01)) {
+    statusText = "PARTIALLY PAID";
+    statusColor = "#d97706";
+    isFullyPaid = false;
+  } else {
+    statusText = "FULLY PAID";
+    statusColor = "#16a34a";
+    isFullyPaid = true;
+  }
 
   const settlementHtml = isFullyPaid
     ? `<div class="row bold" style="margin-top:6px; color:#16a34a;"><span>Payment Status</span><span>FULLY PAID</span></div>`
-    : `<div class="row" style="margin-top:6px;"><span class="muted">Amount Paid</span><span>${escapeHtml(formatCurrency(paidAmt))}</span></div>
-       <div class="row bold" style="color:#d97706;"><span>Balance Due</span><span>${escapeHtml(formatCurrency(remainingBal))}</span></div>`;
+    : `<div class="row bold" style="margin-top:6px; color:${statusColor};"><span>Payment Status</span><span>${escapeHtml(statusText)}</span></div>
+       ${paidAmt > 0 ? `<div class="row" style="margin-top:2px;"><span class="muted">Amount Paid</span><span>${escapeHtml(formatCurrency(paidAmt))}</span></div>` : ""}
+       <div class="row bold" style="color:#dc2626; margin-top:2px;"><span>Balance Due</span><span>${escapeHtml(formatCurrency(remainingBal))}</span></div>`;
 
   const html = `
     <div class="paper" style="width:${paperWidth}mm; font-size:${baseFont}px;">
@@ -401,7 +440,7 @@ export function printBill({
   printHtml({ title: "", html });
 }
 
-export function printBillA4({
+export function getBillA4Html({
   header,
   meta,
   items,
@@ -412,6 +451,7 @@ export function printBillA4({
   billSettings,
   extraInfo,
   paymentMethod,
+  paymentStatus,
 }) {
   const formatSettings = billSettings?.a4 || billSettings || {};
   const addr = (header?.addressLines || []).filter(Boolean);
@@ -422,135 +462,223 @@ export function printBillA4({
   const footerText = formatSettings.includeThankYou !== false
     ? (formatSettings.footerText || "Thank you! Visit Again")
     : "";
-  const finalAmtA4 = totals?.finalTotal ?? 0;
-  const paidAmtA4 = totals?.paidAmount !== undefined ? totals.paidAmount : (totals?.remainingBalance !== undefined ? Math.max(0, finalAmtA4 - totals.remainingBalance) : finalAmtA4);
-  const remainingBalA4 = totals?.remainingBalance !== undefined ? totals.remainingBalance : Math.max(0, finalAmtA4 - paidAmtA4);
-  const isFullyPaidA4 = remainingBalA4 <= 0;
+
+  const finalAmtA4 = Number(totals?.finalTotal ?? 0);
+  const explicitStatusA4 = (paymentStatus || totals?.paymentStatus || totals?.status || '').toUpperCase();
+
+  let paidAmtA4;
+  let remainingBalA4;
+
+  if (totals?.paidAmount !== undefined && totals?.paidAmount !== null) {
+    paidAmtA4 = Number(totals.paidAmount);
+    remainingBalA4 = totals?.remainingBalance !== undefined && totals?.remainingBalance !== null
+      ? Number(totals.remainingBalance)
+      : Math.max(0, finalAmtA4 - paidAmtA4);
+  } else if (totals?.remainingBalance !== undefined && totals?.remainingBalance !== null) {
+    remainingBalA4 = Number(totals.remainingBalance);
+    paidAmtA4 = Math.max(0, finalAmtA4 - remainingBalA4);
+  } else if (explicitStatusA4 === 'PENDING' || explicitStatusA4 === 'UNPAID') {
+    paidAmtA4 = 0;
+    remainingBalA4 = finalAmtA4;
+  } else if (explicitStatusA4 === 'PARTIAL' || explicitStatusA4 === 'PARTIALLY PAID') {
+    paidAmtA4 = totals?.paidAmount ? Number(totals.paidAmount) : 0;
+    remainingBalA4 = Math.max(0, finalAmtA4 - paidAmtA4);
+  } else {
+    paidAmtA4 = finalAmtA4;
+    remainingBalA4 = 0;
+  }
+
+  let statusTextA4 = 'FULLY PAID';
+  let statusColorA4 = '#16a34a';
+  let isFullyPaidA4 = false;
+
+  if (explicitStatusA4 === 'PENDING' || explicitStatusA4 === 'UNPAID' || (paidAmtA4 <= 0 && remainingBalA4 > 0)) {
+    statusTextA4 = explicitStatusA4 === 'UNPAID' ? 'UNPAID' : 'PENDING';
+    statusColorA4 = '#dc2626';
+    isFullyPaidA4 = false;
+  } else if (explicitStatusA4 === 'PARTIAL' || explicitStatusA4 === 'PARTIALLY PAID' || (paidAmtA4 > 0 && remainingBalA4 > 0.01)) {
+    statusTextA4 = 'PARTIALLY PAID';
+    statusColorA4 = '#d97706';
+    isFullyPaidA4 = false;
+  } else {
+    statusTextA4 = 'FULLY PAID';
+    statusColorA4 = '#16a34a';
+    isFullyPaidA4 = true;
+  }
 
   const settlementHtmlA4 = isFullyPaidA4
     ? `<div class="row bold" style="margin-top:8px; color:#16a34a; font-weight:900;"><span>Payment Status</span><span>FULLY PAID</span></div>`
-    : `<div class="row" style="margin-top:8px;"><span class="muted">Amount Paid</span><span>${escapeHtml(formatCurrency(paidAmtA4))}</span></div>
-       <div class="row bold" style="color:#d97706; font-weight:900;"><span>Balance Due</span><span>${escapeHtml(formatCurrency(remainingBalA4))}</span></div>`;
+    : `<div class="row bold" style="margin-top:8px; color:${statusColorA4}; font-weight:900;"><span>Payment Status</span><span>${escapeHtml(statusTextA4)}</span></div>
+       ${paidAmtA4 > 0 ? `<div class="row" style="margin-top:4px;"><span class="muted">Amount Paid</span><span>${escapeHtml(formatCurrency(paidAmtA4))}</span></div>` : ''}
+       <div class="row bold" style="color:#dc2626; font-weight:900; margin-top:4px;"><span>Balance Due</span><span>${escapeHtml(formatCurrency(remainingBalA4))}</span></div>`;
 
-  const html = `
-    <div style="padding: 0; margin: 0;">
-      <style>
-        @page { size: A4; margin: 15mm; }
-        body { font-family: Inter, -apple-system, system-ui, sans-serif; color: #111; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #eee; padding-bottom:18px; margin-bottom:22px; }
-        .title { font-size: 26px; font-weight: 900; margin: 0; letter-spacing: -0.5px; text-transform: uppercase; }
-        .meta { font-size: 12px; color:#444; margin-top: 10px; line-height: 1.5; }
-        .meta strong { color:#000; text-transform: uppercase; font-size: 10px; letter-spacing: 0.8px; }
-        .brand { text-align:right; }
-        .brand img { max-height: 60px; margin-bottom: 8px; object-fit: contain; }
-        .brand .shop { font-size: 16px; font-weight: 900; }
-        .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 16px 0 20px; }
-        .box { border:1px solid #eee; border-radius: 12px; padding: 14px; }
-        .box h3 { margin:0 0 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color:#666; }
-        .box .name { font-size: 14px; font-weight: 800; margin-bottom: 6px; }
-        .box .line { font-size: 12px; color:#444; line-height: 1.4; }
-        table { width:100%; border-collapse: collapse; }
-        th { text-align:left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color:#666; padding: 10px 8px; border-bottom: 2px solid #111; background:#fafafa; }
-        td { padding: 10px 8px; border-bottom: 1px solid #f0f0f0; font-size: 12px; vertical-align: top; }
-        td.right, th.right { text-align:right; }
-        .item { font-weight: 700; color:#000; }
-        .totals { display:flex; justify-content:flex-end; margin-top: 14px; }
-        .totalsBox { width: 320px; border:1px solid #eee; border-radius: 12px; padding: 12px 14px; }
-        .row { display:flex; justify-content: space-between; padding: 6px 0; font-size: 12px; color:#444; }
-        .grand { border-top: 2px solid #111; margin-top: 10px; padding-top: 10px; font-weight: 900; font-size: 16px; color:#000; }
-        .foot { margin-top: 40px; padding-top: 14px; border-top: 1px solid #eee; text-align:center; font-size: 10px; color:#999; letter-spacing: 1.5px; text-transform: uppercase; }
-      </style>
+  const paymentMethodLabel = (paidAmtA4 > 0 || isFullyPaidA4)
+    ? (paymentMethod || 'CASH')
+    : null;
 
-      <div class="container">
-        <div class="header">
-          <div>
-            <h1 class="title">Tax Invoice</h1>
-            <div class="meta">
-              ${formatSettings.includeInvoiceNumber !== false && meta?.invoiceLabel ? `<div><strong>Invoice:</strong> ${escapeHtml(meta.invoiceLabel)}</div>` : ""}
-              ${formatSettings.includeOrderNumber !== false && meta?.orderLabel ? `<div><strong>Order:</strong> ${escapeHtml(meta.orderLabel)}</div>` : ""}
-              ${formatSettings.includeTable !== false && meta?.tableLabel ? `<div><strong>Table:</strong> ${escapeHtml(meta.tableLabel)}</div>` : ""}
-              ${formatSettings.includeCustomer !== false && meta?.customerLabel ? `<div><strong>Customer:</strong> ${escapeHtml(meta.customerLabel)}</div>` : ""}
-              <div><strong>Date:</strong> ${escapeHtml(meta?.printedAt || "")}</div>
-              ${formatSettings.includePaymentMethod && paymentMethod ? `<div><strong>Payment:</strong> ${escapeHtml(paymentMethod)}</div>` : ""}
-            </div>
-          </div>
-          <div class="brand">
-            ${formatSettings.includeLogo !== false && header?.logoUrl ? `<img src="${escapeHtml(header.logoUrl)}" alt="logo" />` : ""}
-            ${formatSettings.includeShopName !== false ? `<div class="shop">${escapeHtml(header?.shopName || "")}</div>` : ""}
-            ${formatSettings.includeBranchName !== false ? `<div class="line" style="font-size:12px; font-weight:700; color:#555;">${escapeHtml(header?.branchName || "")}</div>` : ""}
-          </div>
-        </div>
-
-        <div class="grid">
-          <div class="box">
-            <h3>Sold By</h3>
-            ${formatSettings.includeShopName !== false ? `<div class="name">${escapeHtml(header?.shopName || "")}</div>` : ""}
-            ${formatSettings.includeAddress !== false ? addr.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("") : ""}
-            ${formatSettings.includeContact !== false && header?.contact ? `<div class="line">Ph: ${escapeHtml(header.contact)}</div>` : ""}
-            ${showGst ? `<div class="line">GSTIN: ${escapeHtml(extraInfo.gstNumber)}</div>` : ""}
-            ${showFssai ? `<div class="line">FSSAI: ${escapeHtml(extraInfo.fssai)}</div>` : ""}
-          </div>
-          <div class="box">
-            <h3>Branch</h3>
-            ${formatSettings.includeBranchName !== false ? `<div class="name">${escapeHtml(header?.branchName || "")}</div>` : ""}
-            ${formatSettings.includeAddress !== false ? addr.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("") : ""}
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tax Invoice - ${escapeHtml(meta?.invoiceLabel || meta?.orderLabel || "Invoice")}</title>
+    <style>
+      @page { size: A4; margin: 15mm; }
+      body { font-family: Inter, -apple-system, system-ui, sans-serif; color: #111; margin: 0; padding: 0; background: #fff; }
+      .container { max-width: 800px; margin: 0 auto; padding: 20px; box-sizing: border-box; }
+      .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #eee; padding-bottom:18px; margin-bottom:22px; }
+      .title { font-size: 26px; font-weight: 900; margin: 0; letter-spacing: -0.5px; text-transform: uppercase; }
+      .meta { font-size: 12px; color:#444; margin-top: 10px; line-height: 1.5; }
+      .meta strong { color:#000; text-transform: uppercase; font-size: 10px; letter-spacing: 0.8px; }
+      .brand { text-align:right; }
+      .brand img { max-height: 60px; margin-bottom: 8px; object-fit: contain; }
+      .brand .shop { font-size: 16px; font-weight: 900; }
+      .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 16px 0 20px; }
+      .box { border:1px solid #eee; border-radius: 12px; padding: 14px; }
+      .box h3 { margin:0 0 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color:#666; }
+      .box .name { font-size: 14px; font-weight: 800; margin-bottom: 6px; }
+      .box .line { font-size: 12px; color:#444; line-height: 1.4; }
+      table { width:100%; border-collapse: collapse; }
+      th { text-align:left; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color:#666; padding: 10px 8px; border-bottom: 2px solid #111; background:#fafafa; }
+      td { padding: 10px 8px; border-bottom: 1px solid #f0f0f0; font-size: 12px; vertical-align: top; }
+      td.right, th.right { text-align:right; }
+      .item { font-weight: 700; color:#000; }
+      .totals { display:flex; justify-content:flex-end; margin-top: 14px; }
+      .totalsBox { width: 320px; border:1px solid #eee; border-radius: 12px; padding: 12px 14px; }
+      .row { display:flex; justify-content: space-between; padding: 6px 0; font-size: 12px; color:#444; }
+      .grand { border-top: 2px solid #111; margin-top: 10px; padding-top: 10px; font-weight: 900; font-size: 16px; color:#000; }
+      .foot { margin-top: 40px; padding-top: 14px; border-top: 1px solid #eee; text-align:center; font-size: 10px; color:#999; letter-spacing: 1.5px; text-transform: uppercase; }
+      @media print {
+        body { padding: 0; background: #fff; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div>
+          <h1 class="title">Tax Invoice</h1>
+          <div class="meta">
+            ${formatSettings.includeInvoiceNumber !== false && meta?.invoiceLabel ? `<div><strong>Invoice:</strong> ${escapeHtml(meta.invoiceLabel)}</div>` : ""}
+            ${formatSettings.includeOrderNumber !== false && meta?.orderLabel ? `<div><strong>Order:</strong> ${escapeHtml(meta.orderLabel)}</div>` : ""}
+            ${formatSettings.includeTable !== false && meta?.tableLabel ? `<div><strong>Table:</strong> ${escapeHtml(meta.tableLabel)}</div>` : ""}
+            ${formatSettings.includeCustomer !== false && meta?.customerLabel ? `<div><strong>Customer:</strong> ${escapeHtml(meta.customerLabel)}</div>` : ""}
+            <div><strong>Date:</strong> ${escapeHtml(meta?.printedAt || "")}</div>
+            ${formatSettings.includePaymentMethod !== false && paymentMethodLabel ? `<div><strong>Payment:</strong> ${escapeHtml(paymentMethodLabel)}</div>` : (!isFullyPaidA4 ? `<div><strong>Payment:</strong> <span style="color:${statusColorA4}; font-weight:bold;">${escapeHtml(statusTextA4)}</span></div>` : "")}
           </div>
         </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th style="width:6%;">#</th>
-              <th>Item</th>
-              <th class="right" style="width:10%;">Qty</th>
-              <th class="right" style="width:18%;">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${(items || []).map((it, idx) => `
-              <tr>
-                <td style="color:#888;">${String(idx + 1).padStart(2, "0")}</td>
-                <td>
-                  <div class="item">${escapeHtml(it?.name)}</div>
-                  ${it?.variant ? `<div style="font-size:10px; color:#666; margin-top:2px;">${escapeHtml(it.variant)}</div>` : ""}
-                </td>
-                <td class="right">${escapeHtml(it?.qty)}</td>
-                <td class="right" style="font-weight:700;">${escapeHtml(formatCurrency(it?.lineTotal ?? 0))}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-
-        <div class="totals">
-          <div class="totalsBox">
-            <div class="row"><span>Subtotal</span><span>${escapeHtml(formatCurrency(totals?.subtotal ?? 0))}</span></div>
-            ${formatSettings.includeOffers !== false ? (offers || []).filter(o => o && (o.discount || o.discountAmount) > 0).map(o =>
-              `<div class="row" style="color:#16a34a;"><span>${escapeHtml(o.name || o.offerName || "Offer")}</span><span>- ${escapeHtml(formatCurrency(o.discount || o.discountAmount || 0))}</span></div>`
-            ).join("") : ""}
-            ${(totals?.discountAmount ?? 0) ? `<div class="row"><span>Discount</span><span>- ${escapeHtml(formatCurrency(totals.discountAmount))}</span></div>` : ""}
-            <div class="row"><span>Tax</span><span>${escapeHtml(formatCurrency(totals?.taxAmount ?? 0))}</span></div>
-            
-            ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.cgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>CGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.cgst))}</span></div>` : ""}
-            ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.sgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>SGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.sgst))}</span></div>` : ""}
-            ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.igst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>IGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.igst))}</span></div>` : ""}
-
-            <div class="row grand"><span>Grand Total</span><span>${escapeHtml(formatCurrency(totals?.finalTotal ?? 0))}</span></div>
-            ${settlementHtmlA4}
-            ${upiQrHtml}
-          </div>
-        </div>
-
-        <div class="foot">
-          ${formatSettings.includeStaff !== false && staffName ? `Billed by: ${escapeHtml(staffName)} &nbsp;|&nbsp; ` : ""}
-          ${footerText ? `${escapeHtml(footerText)} &nbsp;|&nbsp; ` : ""}
-          Invoice generated by ${escapeHtml(header?.shopName || "POS")}
+        <div class="brand">
+          ${formatSettings.includeLogo !== false && header?.logoUrl ? `<img src="${escapeHtml(header.logoUrl)}" alt="logo" />` : ""}
+          ${formatSettings.includeShopName !== false ? `<div class="shop">${escapeHtml(header?.shopName || "")}</div>` : ""}
+          ${formatSettings.includeBranchName !== false ? `<div class="line" style="font-size:12px; font-weight:700; color:#555;">${escapeHtml(header?.branchName || "")}</div>` : ""}
         </div>
       </div>
-    </div>
-  `;
 
-  printHtml({ title: "", html });
+      <div class="grid">
+        <div class="box">
+          <h3>Sold By</h3>
+          ${formatSettings.includeShopName !== false ? `<div class="name">${escapeHtml(header?.shopName || "")}</div>` : ""}
+          ${formatSettings.includeAddress !== false ? addr.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("") : ""}
+          ${formatSettings.includeContact !== false && header?.contact ? `<div class="line">Ph: ${escapeHtml(header.contact)}</div>` : ""}
+          ${showGst ? `<div class="line">GSTIN: ${escapeHtml(extraInfo.gstNumber)}</div>` : ""}
+          ${showFssai ? `<div class="line">FSSAI: ${escapeHtml(extraInfo.fssai)}</div>` : ""}
+        </div>
+        <div class="box">
+          <h3>Billed To</h3>
+          ${formatSettings.includeShopName !== false ? `<div class="name">${escapeHtml(header?.shopName || "")}</div>` : ""}
+          ${formatSettings.includeBranchName !== false ? `<div class="line" style="font-weight:600; color:#334155;">${escapeHtml(header?.branchName || "")}</div>` : ""}
+          ${formatSettings.includeAddress !== false ? addr.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("") : ""}
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:6%;">#</th>
+            <th>Item</th>
+            <th class="right" style="width:10%;">Qty</th>
+            <th class="right" style="width:18%;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(items || []).map((it, idx) => `
+            <tr>
+              <td style="color:#888;">${String(idx + 1).padStart(2, "0")}</td>
+              <td>
+                <div class="item">${escapeHtml(it?.name)}</div>
+                ${it?.variant ? `<div style="font-size:10px; color:#666; margin-top:2px;">${escapeHtml(it.variant)}</div>` : ""}
+              </td>
+              <td class="right">${escapeHtml(it?.qty)}</td>
+              <td class="right" style="font-weight:700;">${escapeHtml(formatCurrency(it?.lineTotal ?? 0))}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+
+      <div class="totals">
+        <div class="totalsBox">
+          <div class="row"><span>Subtotal</span><span>${escapeHtml(formatCurrency(totals?.subtotal ?? 0))}</span></div>
+          ${formatSettings.includeOffers !== false ? (offers || []).filter(o => o && (o.discount || o.discountAmount) > 0).map(o =>
+            `<div class="row" style="color:#16a34a;"><span>${escapeHtml(o.name || o.offerName || "Offer")}</span><span>- ${escapeHtml(formatCurrency(o.discount || o.discountAmount || 0))}</span></div>`
+          ).join("") : ""}
+          ${(totals?.discountAmount ?? 0) ? `<div class="row"><span>Discount</span><span>- ${escapeHtml(formatCurrency(totals.discountAmount))}</span></div>` : ""}
+          <div class="row"><span>Tax</span><span>${escapeHtml(formatCurrency(totals?.taxAmount ?? 0))}</span></div>
+          
+          ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.cgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>CGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.cgst))}</span></div>` : ""}
+          ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.sgst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>SGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.sgst))}</span></div>` : ""}
+          ${formatSettings.includeTaxBreakdown !== false && totals?.taxBreakdown && totals.taxBreakdown.igst > 0 ? `<div class="row" style="font-size: 10px; color: #888; padding-left: 12px;"><span>IGST</span><span>${escapeHtml(formatCurrency(totals.taxBreakdown.igst))}</span></div>` : ""}
+
+          <div class="row grand"><span>Grand Total</span><span>${escapeHtml(formatCurrency(totals?.finalTotal ?? 0))}</span></div>
+          ${settlementHtmlA4}
+          ${upiQrHtml}
+        </div>
+      </div>
+
+      <div class="foot">
+        ${formatSettings.includeStaff !== false && staffName ? `Billed by: ${escapeHtml(staffName)} &nbsp;|&nbsp; ` : ""}
+        ${footerText ? `${escapeHtml(footerText)} &nbsp;|&nbsp; ` : ""}
+        Invoice generated by ${escapeHtml(header?.shopName || "POS")}
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+export function printBillA4(params) {
+  const html = getBillA4Html(params);
+  printHtml({ title: params?.meta?.invoiceLabel || "Tax Invoice", html });
+}
+
+export function downloadHtmlFile(htmlContent, fileName = "invoice.html") {
+  const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function openPrintWindowA4({ title = "Invoice", html }) {
+  const w = window.open("", "_blank");
+  if (!w) {
+    alert("Popup blocked. Please allow popups to save or print invoice as PDF.");
+    return false;
+  }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => {
+    try {
+      w.print();
+    } catch (e) {
+      console.warn("Print error:", e);
+    }
+  }, 400);
+  return true;
 }
 
 export function printCustomHtml({

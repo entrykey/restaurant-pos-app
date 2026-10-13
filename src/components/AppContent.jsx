@@ -20,6 +20,7 @@ import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFo
 import { formatCurrency } from "../utils/format";
 import { buildTakeawayDraftSignature, buildTableDraftSignature } from "../utils/saleDraftSignature";
 import { printBill, printBillA4, printKot } from "../utils/print";
+import { getOrderPaymentDetails } from "../utils/paymentUtils";
 import { loadBillPrintSettings, buildBillExtraInfo, printSaleOrder } from "../utils/printSettingsUtils";
 import { isItemTypeAllowedOnSale } from "../utils/cartStockUtils";
 import { syncItemBogoQuantity } from "../utils/posOfferHelpers";
@@ -997,9 +998,8 @@ const AppContent = () => {
                 lineTotal: it?.totalAmount ?? (Number(it?.price || 0) * Number(it?.quantity || 0)),
             }));
 
+            const payDetails = getOrderPaymentDetails(orderFromBackend);
             const backendGrand = Number(orderFromBackend?.grandTotal || 0);
-            const backendPaid = orderFromBackend?.paidAmount !== undefined ? Number(orderFromBackend.paidAmount) : backendGrand;
-            const backendRemaining = Math.max(0, backendGrand - backendPaid);
 
             const totals = {
                 subtotal: orderFromBackend?.subtotal ?? 0,
@@ -1008,8 +1008,9 @@ const AppContent = () => {
                 taxBreakdown: orderFromBackend?.taxBreakdown ?? null,
                 roundOff: 0,
                 finalTotal: backendGrand,
-                paidAmount: backendPaid,
-                remainingBalance: backendRemaining,
+                paidAmount: payDetails.paidAmount,
+                remainingBalance: payDetails.balanceAmount,
+                paymentStatus: payDetails.paymentStatus,
             };
 
             const orderType = orderFromBackend?.orderType || activeOrderType;
@@ -1025,6 +1026,10 @@ const AppContent = () => {
 
             const billSettings = await loadBillPrintSettings(currentShopId, getResolvedBranchId());
             const extraInfo = buildBillExtraInfo(activeBranch, organization);
+
+            const effectivePaymentMethod = payDetails.paidAmount > 0
+                ? payDetails.paymentMethod
+                : (payDetails.paymentStatus === 'PAID' ? (payDetails.paymentMethod || 'CASH') : null);
 
             const printer = format === "a4" ? printBillA4 : printBill;
             printer({
@@ -1046,6 +1051,8 @@ const AppContent = () => {
                 formatCurrency,
                 billSettings,
                 extraInfo,
+                paymentMethod: effectivePaymentMethod,
+                paymentStatus: payDetails.paymentStatus,
             });
         } catch (e) {
             console.error("Print bill failed:", e);
