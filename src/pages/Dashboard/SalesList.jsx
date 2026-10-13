@@ -33,7 +33,8 @@ import {
     Printer,
     Trash2,
     ReceiptText,
-    CreditCard
+    CreditCard,
+    Share2
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatCurrency, formatDate } from '../../utils/format';
@@ -42,8 +43,10 @@ import OrderEditSheet from '../../components/modals/OrderEditSheet';
 import PayInSheet from '../../components/modals/PayInSheet';
 import CommonTable from '../../components/CommonTable';
 import CommonDialog from '../../components/modals/CommonDialog';
+import ShareInvoiceModal from '../../components/modals/ShareInvoiceModal';
 import { printBillA4 } from '../../utils/print';
 import { loadBillPrintSettings, buildPrintHeader, buildBillExtraInfo } from '../../utils/printSettingsUtils';
+import { getOrderPaymentDetails } from '../../utils/paymentUtils';
 
 const PAY_PILL = {
     PAID: "bg-emerald-600 text-white font-extrabold px-2.5 py-0.5 rounded-lg text-[9px] shadow-sm dark:bg-emerald-600 dark:text-white",
@@ -61,79 +64,7 @@ const METHOD_BADGE = {
     DEFAULT: "bg-gray-200 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-500",
 };
 
-const getPaymentDetails = (order) => {
-    if (!order) return { paymentStatus: 'UNPAID', paidAmount: 0, balanceAmount: 0, paymentMethod: null, paymentBreakdown: [] };
-    const total = Number(order.grandTotal || order.subtotal || 0);
-    
-    let paid = 0;
-    if (order.paidAmount !== undefined && order.paidAmount !== null) {
-        paid = Number(order.paidAmount);
-    } else if (order.totalPaid !== undefined && order.totalPaid !== null) {
-        paid = Number(order.totalPaid);
-    } else if (Array.isArray(order.payments) && order.payments.length > 0) {
-        paid = order.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-    } else if (order.orderStatus === 'COMPLETED' || order.orderStatus === 'DELIVERED') {
-        paid = total;
-    }
-
-    const rawBal = order.balanceAmount !== undefined && order.balanceAmount !== null
-        ? Math.max(0, Number(order.balanceAmount))
-        : Math.max(0, total - paid);
-
-    const balance = rawBal <= 0.01 ? 0 : rawBal;
-
-    let status = order.paymentStatus;
-    if (balance === 0 && total > 0) {
-        status = 'PAID';
-    } else if (!status) {
-        if (paid > 0) status = 'PARTIAL';
-        else status = 'PENDING';
-    }
-
-    // Only show payment method if money has actually been paid or order is settled
-    const hasPaid = paid > 0 || status === 'PAID' || status === 'PARTIAL';
-    let method = null;
-    let paymentBreakdown = [];
-
-    if (hasPaid) {
-        const pList = Array.isArray(order.payments) ? order.payments : [];
-        if (pList.length > 0) {
-            // Group by payment method
-            const methodMap = {};
-            pList.forEach(p => {
-                const m = (p.paymentMethod || 'CASH').toUpperCase();
-                const amt = Number(p.amount || 0);
-                if (amt > 0) {
-                    methodMap[m] = (methodMap[m] || 0) + amt;
-                }
-            });
-            const methods = Object.keys(methodMap);
-            if (methods.length > 1) {
-                method = methods.join(' + ');
-                paymentBreakdown = methods.map(m => ({ method: m, amount: methodMap[m] }));
-            } else if (methods.length === 1) {
-                method = methods[0];
-                paymentBreakdown = [{ method: methods[0], amount: methodMap[methods[0]] }];
-            }
-        }
-        
-        if (!method) {
-            if (order.paymentMethod && order.paymentMethod !== 'SPLIT') {
-                method = order.paymentMethod;
-            } else {
-                method = 'CASH';
-            }
-        }
-    }
-
-    return {
-        paymentStatus: status || 'PENDING',
-        paidAmount: paid,
-        balanceAmount: balance,
-        paymentMethod: method,
-        paymentBreakdown
-    };
-};
+const getPaymentDetails = getOrderPaymentDetails;
 
 const ReturnDetailModal = ({ isOpen, onClose, returnData, theme, formatCurrency, formatDate }) => {
     if (!isOpen || !returnData) return null;
@@ -283,7 +214,7 @@ const ReturnDetailModal = ({ isOpen, onClose, returnData, theme, formatCurrency,
     );
 };
 
-const OrderDetailModal = ({ isOpen, onClose, order, theme, formatCurrency, formatDate, onPrint }) => {
+const OrderDetailModal = ({ isOpen, onClose, order, theme, formatCurrency, formatDate, onPrint, onShare }) => {
     if (!isOpen || !order) return null;
     const { paymentStatus, paidAmount, balanceAmount, paymentMethod } = getPaymentDetails(order);
 
@@ -305,6 +236,13 @@ const OrderDetailModal = ({ isOpen, onClose, order, theme, formatCurrency, forma
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => onShare && onShare(order)}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 text-white font-black text-xs hover:bg-purple-700 transition-all shadow-md active:scale-95"
+                            title="Share invoice"
+                        >
+                            <Share2 size={14} /> Share
+                        </button>
                         <button
                             onClick={() => onPrint(order)}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white font-black text-xs hover:bg-indigo-700 transition-all shadow-md active:scale-95"
@@ -520,10 +458,28 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
     const [selectedOrderForEdit, setSelectedOrderForEdit] = useState(null);
     const [viewOrderTarget, setViewOrderTarget] = useState(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+    const [shareTargetOrder, setShareTargetOrder] = useState(null);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [payTargetOrder, setPayTargetOrder] = useState(null);
     const [isPayInOpen, setIsPayInOpen] = useState(false);
     const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', type: 'danger', confirmText: '', onConfirm: null });
     const [expandedOrders, setExpandedOrders] = useState({});
+
+    const handleShareOrder = async (order) => {
+        try {
+            let orderFromBackend = null;
+            try {
+                orderFromBackend = await orderService.getOrderById(order._id);
+            } catch (e) {
+                console.warn("Could not fetch full order details for share, using row:", e);
+            }
+            const mergedOrder = { ...order, ...(orderFromBackend || {}) };
+            setShareTargetOrder(mergedOrder);
+            setIsShareModalOpen(true);
+        } catch (err) {
+            toast.error("Failed to prepare order for sharing");
+        }
+    };
 
     const handlePrintBill = async (order) => {
         try {
@@ -540,11 +496,17 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 lineTotal: (item.quantity || 1) * (item.price || 0)
             }));
 
+            const mergedOrder = { ...order, ...orderFromBackend };
+            const payDetails = getOrderPaymentDetails(mergedOrder);
+
             const totals = {
                 subtotal: orderFromBackend?.subtotal || 0,
                 discountAmount: orderFromBackend?.discountTotal || 0,
                 taxAmount: orderFromBackend?.taxTotal || 0,
                 finalTotal: orderFromBackend?.grandTotal || 0,
+                paidAmount: payDetails.paidAmount,
+                remainingBalance: payDetails.balanceAmount,
+                paymentStatus: payDetails.paymentStatus,
                 taxBreakdown: {
                     cgst: orderFromBackend?.cgst || 0,
                     sgst: orderFromBackend?.sgst || 0,
@@ -560,6 +522,10 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 printedAt: formatDate(new Date()),
             };
 
+            const effectivePaymentMethod = payDetails.paidAmount > 0
+                ? payDetails.paymentMethod
+                : (payDetails.paymentStatus === 'PAID' ? (payDetails.paymentMethod || 'CASH') : null);
+
             printBillA4({
                 header,
                 meta,
@@ -570,7 +536,8 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 formatCurrency: fmt,
                 billSettings,
                 extraInfo,
-                paymentMethod: orderFromBackend?.paymentMethod || 'CASH'
+                paymentMethod: effectivePaymentMethod,
+                paymentStatus: payDetails.paymentStatus
             });
             toast.success("Printing invoice...");
         } catch (err) {
@@ -1231,6 +1198,14 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                     >
                                         <Printer size={15} />
                                     </button>
+                                    {/* 🔗 Share invoice */}
+                                    <button
+                                        onClick={e => { e.stopPropagation(); handleShareOrder(order); }}
+                                        className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 rounded-xl transition-all shadow-sm"
+                                        title="Share Invoice"
+                                    >
+                                        <Share2 size={15} />
+                                    </button>
                                     {/* 🔄 Return sale */}
                                     <button
                                         onClick={e => { e.stopPropagation(); handleProcessReturn(order); }}
@@ -1422,6 +1397,9 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                 <button onClick={e => { e.stopPropagation(); handlePrintBill(order); }} className="p-1.5 text-blue-500 bg-blue-50 dark:bg-blue-900/30 rounded-lg" title="Print receipt">
                                     <Printer size={14} />
                                 </button>
+                                <button onClick={e => { e.stopPropagation(); handleShareOrder(order); }} className="p-1.5 text-purple-600 bg-purple-50 dark:bg-purple-900/30 rounded-lg" title="Share invoice">
+                                    <Share2 size={14} />
+                                </button>
                                 <button onClick={e => { e.stopPropagation(); handleProcessReturn(order); }} className="px-3 py-1.5 rounded-lg text-[10px] font-black bg-orange-600 text-white flex items-center gap-1 shadow-sm" title="Return">
                                     <RotateCcw size={11} /> Return
                                 </button>
@@ -1482,6 +1460,18 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 formatCurrency={fmt}
                 formatDate={formatDate}
                 onPrint={handlePrintBill}
+                onShare={handleShareOrder}
+            />
+
+            <ShareInvoiceModal
+                isOpen={isShareModalOpen}
+                onClose={() => { setIsShareModalOpen(false); setShareTargetOrder(null); }}
+                type="sale"
+                data={shareTargetOrder}
+                organization={organization}
+                branches={branches}
+                currentUser={user}
+                formatCurrency={fmt}
             />
 
             {selectedOrder && (
