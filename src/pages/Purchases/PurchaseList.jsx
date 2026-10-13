@@ -4,7 +4,8 @@ import {
     Plus, Search, Eye, Edit3, Trash2, ShoppingCart, Calendar,
     CheckCircle, CheckCircle2, Clock, AlertCircle, X, Package,
     Calculator, ReceiptText, XCircle, CreditCard,
-    Printer, Coins, RotateCcw, SlidersHorizontal, Filter, User, ArrowUpDown
+    Printer, Coins, RotateCcw, SlidersHorizontal, Filter, User, ArrowUpDown,
+    Share2
 } from "lucide-react";
 import CommonTable from "../../components/CommonTable";
 import { PurchaseService } from "../../services/PurchaseService";
@@ -19,6 +20,8 @@ import PurchaseReturnSheet from "../../components/modals/PurchaseReturnSheet";
 import CommonSelect from "../../components/ui/CommonSelect";
 import PurchaseOrdersTab from "./PurchaseOrdersTab";
 import GoodsReceivedTab from "./GoodsReceivedTab";
+import ShareInvoiceModal from "../../components/modals/ShareInvoiceModal";
+import { printPurchaseInvoice } from "./purchaseInvoiceUtils";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -74,15 +77,10 @@ const confirmAction = (message, onConfirm, themeMode) => {
     ), { 
         duration: Infinity, 
         position: 'top-center',
-        style: {
-            background: 'transparent',
-            padding: 0,
-            boxShadow: 'none'
-        }
     });
 };
 
-const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId }) => {
+const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId, onShare }) => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [shopInfo, setShopInfo] = useState(null);
@@ -135,245 +133,12 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
 
     const handlePrint = () => {
         if (!purchase) return;
-
-        const formatAddress = (addr) => {
-            if (!addr) return '';
-            const parts = [
-                addr.line1,
-                addr.line2,
-                addr.city,
-                addr.state?.name || addr.state,
-                addr.pincode
-            ].filter(Boolean);
-            return parts.join(', ');
-        };
-
-        const html = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Purchase Invoice - ${purchase.supplierInvoiceNumber || 'INV'}</title>
-    <style>
-      @page { size: A4; margin: 15mm; }
-      body { 
-        font-family: 'Inter', -apple-system, system-ui, sans-serif; 
-        padding: 0; 
-        color: #1a1a1a; 
-        line-height: 1.6;
-        background: #fff;
-      }
-      .container { max-width: 800px; margin: 0 auto; }
-      .header { 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: flex-start;
-        border-bottom: 2px solid #f0f0f0; 
-        padding-bottom: 30px; 
-        margin-bottom: 40px; 
-      }
-      .title-section h1 { 
-        font-size: 32px; 
-        font-weight: 900; 
-        letter-spacing: -0.5px; 
-        margin: 0;
-        color: #000;
-        text-transform: uppercase;
-      }
-      .meta-info { margin-top: 15px; font-size: 13px; color: #444; }
-      .meta-info div { margin-bottom: 4px; }
-      .meta-info strong { color: #000; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-
-      .address-grid { 
-        display: grid; 
-        grid-template-columns: 1fr 1fr; 
-        gap: 40px; 
-        margin-bottom: 50px; 
-      }
-      .address-box h3 { 
-        font-size: 11px; 
-        text-transform: uppercase; 
-        letter-spacing: 1.5px; 
-        color: #666; 
-        margin-bottom: 15px;
-        border-bottom: 1px solid #eee;
-        padding-bottom: 8px;
-      }
-      .address-content { font-size: 14px; }
-      .address-content strong { font-size: 18px; display: block; margin-bottom: 5px; color: #000; }
-      .address-detail { color: #444; margin-bottom: 2px; }
-
-      table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
-      th { 
-        text-align: left; 
-        font-size: 11px; 
-        text-transform: uppercase; 
-        letter-spacing: 1px; 
-        color: #666;
-        padding: 15px 10px;
-        border-bottom: 2px solid #1a1a1a;
-        background: #fafafa;
-      }
-      td { 
-        padding: 15px 10px; 
-        border-bottom: 1px solid #f0f0f0; 
-        font-size: 14px; 
-        vertical-align: top;
-      }
-      .item-name { font-weight: 600; color: #000; }
-      .item-code { font-size: 11px; color: #666; margin-top: 4px; }
-
-      .summary-section { 
-        display: flex; 
-        justify-content: flex-end; 
-      }
-      .totals-table { width: 300px; }
-      .total-row { 
-        display: flex; 
-        justify-content: space-between; 
-        padding: 10px 0; 
-        font-size: 14px; 
-        color: #444;
-      }
-      .total-row.grand { 
-        border-top: 2px solid #000; 
-        margin-top: 15px; 
-        padding-top: 20px; 
-        font-weight: 900; 
-        font-size: 22px; 
-        color: #000; 
-      }
-
-      .footer { 
-        margin-top: 100px; 
-        padding-top: 30px;
-        border-top: 1px solid #f0f0f0;
-        text-align: center; 
-        color: #999; 
-        font-size: 10px; 
-        text-transform: uppercase; 
-        letter-spacing: 2px;
-      }
-      
-      @media print {
-        body { padding: 0; }
-        .no-print { display: none; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <div class="title-section">
-          <h1>Purchase Invoice</h1>
-          <div class="meta-info">
-            <div><strong>Date:</strong> ${new Date(purchase.invoiceDate || purchase.createdAt).toLocaleDateString()}</div>
-            <div><strong>Ref No:</strong> ${purchase.purchaseNumber || '—'}</div>
-            <div><strong>Supplier Inv:</strong> ${purchase.supplierInvoiceNumber || '—'}</div>
-            ${purchase.invoiceNumber ? `<div><strong>System Inv:</strong> ${purchase.invoiceNumber}</div>` : ''}
-          </div>
-        </div>
-        <div style="text-align: right;">
-          ${shopInfo?.logoUrl ? `<img src="${shopInfo.logoUrl.startsWith('http') ? shopInfo.logoUrl : (api.defaults.baseURL.replace(/\/api\/?$/, '') + shopInfo.logoUrl)}" style="max-height: 60px; margin-bottom: 10px;" />` : ''}
-          <div style="font-size: 18px; font-weight: 900;">${shopInfo?.name || 'Restaurant POS'}</div>
-        </div>
-      </div>
-
-      <div class="address-grid">
-        <div class="address-box">
-          <h3>Supplier Details</h3>
-          <div class="address-content">
-            <strong>${purchase.supplierId?.name || 'Unknown Supplier'}</strong>
-            <div class="address-detail">${formatAddress(purchase.supplierId?.address)}</div>
-            ${purchase.supplierId?.phone ? `<div class="address-detail">Ph: ${purchase.supplierId.phone}</div>` : ''}
-            ${purchase.supplierId?.email ? `<div class="address-detail">Email: ${purchase.supplierId.email}</div>` : ''}
-            ${purchase.supplierId?.taxNumber ? `<div class="address-detail">TAX ID: ${purchase.supplierId.taxNumber}</div>` : ''}
-          </div>
-        </div>
-        <div class="address-box">
-          <h3>Billed To (Branch)</h3>
-          <div class="address-content">
-            <strong>${purchase.branchId?.name || (shopInfo?.name || 'Main Branch')}</strong>
-            <div class="address-detail">${formatAddress(purchase.branchId?.address)}</div>
-            ${purchase.branchId?.address?.city ? `<div class="address-detail">${purchase.branchId.address.city}, ${purchase.branchId.address.state?.name || purchase.branchId.address.state || ''}</div>` : ''}
-            ${purchase.branchId?.taxProfile?.registrationNumber ? `<div class="address-detail">GST/TAX: ${purchase.branchId.taxProfile.registrationNumber}</div>` : ''}
-          </div>
-        </div>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 8%">#</th>
-            <th style="width: 42%">Item Description</th>
-            <th style="width: 12%; text-align: center;">Qty</th>
-            <th style="width: 18%; text-align: right;">Price</th>
-            <th style="width: 20%; text-align: right;">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${items.map((it, idx) => `
-            <tr>
-              <td style="color:#888">${String(idx + 1).padStart(2, '0')}</td>
-              <td>
-                <div class="item-name">${it.itemId?.name || 'Unknown'}</div>
-                <div class="item-code">${it.itemId?.itemCode || ''}</div>
-              </td>
-              <td style="text-align: center;">${it.quantity}</td>
-              <td style="text-align: right;">${fmt(it.purchasePrice, currency)}</td>
-              <td style="text-align: right; font-weight: 600;">${fmt(it.quantity * it.purchasePrice, currency)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-
-      <div class="summary-section">
-        <div class="totals-table">
-          <div class="total-row">
-            <span>Subtotal</span>
-            <span>${fmt(purchase.subtotal, currency)}</span>
-          </div>
-          <div class="total-row">
-            <span>Tax (+)</span>
-            <span>${fmt(purchase.taxTotal, currency)}</span>
-          </div>
-          ${purchase.otherCharges ? `
-          <div class="total-row">
-            <span>Additional Charges (+)</span>
-            <span>${fmt(purchase.otherCharges, currency)}</span>
-          </div>
-          ` : ''}
-          <div class="total-row">
-            <span>Discount (-)</span>
-            <span>${fmt(purchase.discountTotal, currency)}</span>
-          </div>
-          <div class="total-row grand">
-            <span>GRAND TOTAL</span>
-            <span>${fmt(purchase.grandTotal, currency)}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="footer">
-        Supplier Invoice generated from Restaurant POS system behalf of ${shopInfo?.name || 'Restaurant'}
-      </div>
-    </div>
-    <script>
-      window.onload = () => {
-        window.print();
-        setTimeout(() => window.close(), 500);
-      };
-    </script>
-  </body>
-</html>
-        `;
-        const printWindow = window.open('', '_blank', 'width=900,height=900');
-        if (!printWindow) {
-            alert("Popup blocked. Please allow popups to print.");
-            return;
-        }
-        printWindow.document.write(html);
-        printWindow.document.close();
+        printPurchaseInvoice({
+            purchase,
+            items,
+            shopInfo,
+            currency
+        });
     };
 
     const STATUS_COLOR = {
@@ -406,6 +171,14 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
                     <div className="flex items-center gap-3">
                         {purchase && (
                             <>
+                                <button
+                                    onClick={() => onShare && onShare({ purchase, items, payments })}
+                                    className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-black transition-all border border-white/20"
+                                    title="Share Invoice"
+                                >
+                                    <Share2 size={14} />
+                                    <span>SHARE</span>
+                                </button>
                                 <button
                                     onClick={handlePrint}
                                     className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-black transition-all border border-white/20"
@@ -735,7 +508,28 @@ const PurchaseList = ({ hasPermissionFor }) => {
     const [payTarget, setPayTarget] = useState(null); // purchase row for payment modal
     const [viewTarget, setViewTarget] = useState(null); // purchase id for detail modal
     const [returnTarget, setReturnTarget] = useState(null); // purchase object for return sheet
+    const [shareTargetPurchase, setShareTargetPurchase] = useState(null);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState("PURCHASES"); // "PURCHASES" | "PURCHASE_ORDERS" | "GOODS_RECEIVED"
+
+    const handleSharePurchase = async (purchaseRow) => {
+        try {
+            let fullData = null;
+            try {
+                fullData = await PurchaseService.getPurchaseById(purchaseRow._id);
+            } catch (e) {
+                console.warn("Could not fetch full purchase details for share, using row:", e);
+            }
+            setShareTargetPurchase({
+                purchase: fullData?.purchase || purchaseRow,
+                items: fullData?.items || [],
+                payments: fullData?.payments || []
+            });
+            setIsShareModalOpen(true);
+        } catch (err) {
+            toast.error("Failed to prepare purchase for sharing");
+        }
+    };
 
     // ── Filter & Sort & Pagination States
     const [showFilter, setShowFilter] = useState(false);
@@ -956,6 +750,12 @@ const PurchaseList = ({ hasPermissionFor }) => {
                         className="p-2 text-indigo-500 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all"
                         title="View details"
                     ><Eye size={15} /></button>
+                    {/* 🔗 Share — always visible */}
+                    <button
+                        onClick={() => handleSharePurchase(row)}
+                        className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 rounded-xl transition-all shadow-sm"
+                        title="Share Purchase Invoice"
+                    ><Share2 size={15} /></button>
                     {/* ✎ Edit — allowed for DRAFT and CONFIRMED */}
                     {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && (
                         <button
@@ -1442,6 +1242,9 @@ const PurchaseList = ({ hasPermissionFor }) => {
                                             <button onClick={(e) => { e.stopPropagation(); setViewTarget(row._id); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center gap-1.5">
                                                 <Eye size={13} /> View
                                             </button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleSharePurchase(row); }} className="p-2 text-[10px] font-black rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center gap-1.5" title="Share Invoice">
+                                                <Share2 size={13} />
+                                            </button>
                                             {canManage && (row.status === "DRAFT" || row.status === "CONFIRMED") && (
                                                 <button onClick={(e) => { e.stopPropagation(); navigate(`/purchases/edit/${row._id}`); }} className="flex-1 py-2 text-[10px] font-black rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center gap-1.5">
                                                     <Edit3 size={13} /> Edit
@@ -1478,8 +1281,23 @@ const PurchaseList = ({ hasPermissionFor }) => {
                     onClose={() => setViewTarget(null)}
                     currency={currency}
                     shopId={currentShopId}
+                    onShare={handleSharePurchase}
                 />
             )}
+
+            {/* ── Share Modal ── */}
+            <ShareInvoiceModal
+                isOpen={isShareModalOpen}
+                onClose={() => {
+                    setIsShareModalOpen(false);
+                    setShareTargetPurchase(null);
+                }}
+                type="purchase"
+                data={shareTargetPurchase}
+                currency={currency}
+                formatCurrency={fmt}
+                shopId={currentShopId}
+            />
 
             {/* ── Pay Modal ── */}
             {payTarget && (

@@ -8,6 +8,7 @@ import {
     mergeBillPrintSettings,
     mergePurchaseInvoiceSettings,
 } from '../config/billPrintSettings';
+import { getOrderPaymentDetails } from './paymentUtils';
 
 export const loadBarcodePrintSettings = async (shopId, branchId) => {
     try {
@@ -95,6 +96,7 @@ export const printSaleOrder = async ({
     formatCurrency,
     staffName,
     paymentMethod,
+    paymentStatus,
 }) => {
     const mergedSettings = mergeBillPrintSettings(billSettings);
     const printFormat = format || mergedSettings.defaultFormat || 'thermal';
@@ -107,6 +109,8 @@ export const printSaleOrder = async ({
         lineTotal: it?.totalAmount ?? (Number(it?.price || 0) * Number(it?.quantity || 0)),
     }));
 
+    const payDetails = getOrderPaymentDetails(order);
+
     const totals = {
         subtotal: order?.subtotal ?? 0,
         discountAmount: order?.discountTotal ?? 0,
@@ -114,6 +118,9 @@ export const printSaleOrder = async ({
         taxBreakdown: order?.taxBreakdown ?? null,
         roundOff: 0,
         finalTotal: order?.grandTotal ?? 0,
+        paidAmount: payDetails.paidAmount,
+        remainingBalance: payDetails.balanceAmount,
+        paymentStatus: payDetails.paymentStatus,
     };
 
     const orderType = order?.orderType;
@@ -121,6 +128,10 @@ export const printSaleOrder = async ({
     const tableLabelName = (!isDirectOrWholesale && order?.tableId?.name)
         ? order.tableId.name
         : (!isDirectOrWholesale && orderType === 'TAKEAWAY' ? 'Takeaway' : '');
+
+    const effectivePaymentMethod = payDetails.paidAmount > 0
+        ? payDetails.paymentMethod
+        : (payDetails.paymentStatus === 'PAID' ? (payDetails.paymentMethod || paymentMethod || 'CASH') : null);
 
     const printer = printFormat === 'a4' ? printBillA4 : printBill;
     printer({
@@ -144,6 +155,7 @@ export const printSaleOrder = async ({
         formatCurrency,
         billSettings: mergedSettings,
         extraInfo,
-        paymentMethod,
+        paymentMethod: effectivePaymentMethod,
+        paymentStatus: payDetails.paymentStatus,
     });
 };
