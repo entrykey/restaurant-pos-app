@@ -81,6 +81,7 @@ const PurchaseReturnsPage = () => {
                 </div>
             ) : (
                 <CommonTable
+                    tableId="purchases-returns-list"
                     columns={[
                         {
                             header: 'Return',

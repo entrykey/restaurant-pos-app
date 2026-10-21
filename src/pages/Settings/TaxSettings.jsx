@@ -251,7 +251,7 @@ const TaxSettings = () => {
             </div>
 
             <div className={`${theme.surfaceBg} rounded-[24px] shadow-sm border ${theme.borderLight} overflow-hidden`}>
-                <CommonTable columns={columns} data={taxes} />
+                <CommonTable tableId="settings-taxes-list" columns={columns} data={taxes} />
             </div>
 
             {isDialogOpen && (

@@ -191,6 +191,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         {
             header: "Supplier Name",
             key: "name",
+            required: true,
             render: (value, item) => (
                 <div>
                     <div className={`font-bold ${theme.textHeading}`}>{value}</div>
@@ -234,6 +235,51 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                     />
                 </button>
             )
+        },
+        // Optional / Adjustable Columns (hidden by default)
+        {
+            header: "GSTIN / Tax ID",
+            key: "taxId",
+            defaultVisible: false,
+            exportValue: (_, item) => item.taxId || item.gstin || "—",
+            render: (_, item) => (
+                <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400">
+                    {item.taxId || item.gstin || "—"}
+                </span>
+            )
+        },
+        {
+            header: "Address",
+            key: "address",
+            defaultVisible: false,
+            exportValue: (_, item) => item.address || "—",
+            render: (_, item) => (
+                <span className={`text-xs ${theme.textSecondary} truncate max-w-[150px] inline-block`} title={item.address}>
+                    {item.address || "—"}
+                </span>
+            )
+        },
+        {
+            header: "State",
+            key: "state",
+            defaultVisible: false,
+            exportValue: (_, item) => item.state || "—",
+            render: (_, item) => (
+                <span className={`text-xs font-medium ${theme.textSecondary}`}>
+                    {item.state || "—"}
+                </span>
+            )
+        },
+        {
+            header: "Payment Terms",
+            key: "paymentTerms",
+            defaultVisible: false,
+            exportValue: (_, item) => item.paymentTerms || "—",
+            render: (_, item) => (
+                <span className={`text-xs font-bold ${theme.textPrimary}`}>
+                    {item.paymentTerms || "—"}
+                </span>
+            )
         }
     ];
 
@@ -241,6 +287,8 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         columns.push({
             header: "Actions",
             key: "actions",
+            required: true,
+            defaultVisible: true,
             headerClassName: "text-right",
             className: "text-right",
             render: (_, item) => (
@@ -330,6 +378,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
             ) : (
                 <>
                     <CommonTable
+                        tableId="parties-suppliers-list"
                         columns={columns}
                         data={suppliers}
                         currentPage={currentPage}

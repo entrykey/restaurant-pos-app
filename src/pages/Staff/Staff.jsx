@@ -1441,6 +1441,7 @@ const Staff = ({
                     ) : (
                         <div className="w-full rounded-2xl">
                             <CommonTable
+                            tableId="staff-employees-list"
                             rowKey="_id"
                             exportFilename="Staff_List"
                             exportTitle="Staff List"
@@ -1591,6 +1592,7 @@ const Staff = ({
                     ) : (
                         <div className="w-full rounded-2xl">
                             <CommonTable
+                            tableId="staff-roles-list"
                             columns={[
                                 ...(hasViewAllStaff ? [{ header: "Shop", key: "shopId.name", className: `font-bold text-xs ${theme.textSecondary}`, render: (_, item) => item.shopId?.name || "N/A" }] : []),
                                 {
@@ -1814,6 +1816,7 @@ const Staff = ({
 
                     <div className="mt-6">
                         <CommonTable
+                            tableId="staff-attendance-policies-list"
                             columns={[
                                 { header: "Name", key: "name", className: `font-bold ${theme.textPrimary}` },
                                 { header: "Type", key: "policyType", className: theme.textSecondary },
@@ -1882,6 +1885,7 @@ const Staff = ({
                     <div className="mt-8">
                         <div className={`text-sm font-black ${theme.textHeading} mb-3`}>Assignments</div>
                         <CommonTable
+                            tableId="staff-attendance-assignments-list"
                             exportFilename="Attendance_Assignments"
                             exportTitle="Attendance Assignments"
                             columns={[
@@ -2044,6 +2048,7 @@ const Staff = ({
 
                     <div className="mt-6">
                         <CommonTable
+                            tableId="staff-attendance-logs-list"
                             exportFilename="Attendance_Logs"
                             exportTitle="Attendance Logs"
                             columns={[
@@ -2186,6 +2191,7 @@ const Staff = ({
 
                     <div className={`${theme.surfaceBg} rounded-[3rem] shadow-2xl shadow-indigo-500/5 border ${theme.borderLight} overflow-hidden`}>
                         <CommonTable 
+                            tableId="staff-employee-leaves-list"
                             exportFilename="Employee_Leaves"
                             exportTitle="Employee Leaves"
                             columns={[

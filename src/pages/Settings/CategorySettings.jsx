@@ -158,7 +158,7 @@ const CategorySettings = () => {
             </div>
 
             <div className={`${theme.surfaceBg} rounded-[24px] shadow-sm border ${theme.borderLight} overflow-hidden`}>
-                <CommonTable columns={columns} data={categories} />
+                <CommonTable tableId="settings-categories-list" columns={columns} data={categories} />
             </div>
 
             {isDialogOpen && (

@@ -160,6 +160,7 @@ const ShopList = ({ onEdit, onAddNew }) => {
 
                 {/* ── Table ── */}
                 <CommonTable
+                    tableId="admin-shops-list"
                     columns={columns}
                     data={filteredShops}
                     rowKey="_id"

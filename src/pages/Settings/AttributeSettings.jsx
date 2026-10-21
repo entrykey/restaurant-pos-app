@@ -300,7 +300,7 @@ const AttributeSettings = () => {
             </div>
 
             <div className={`${theme.surfaceBg} rounded-[24px] shadow-sm border ${theme.borderLight} overflow-hidden`}>
-                <CommonTable columns={columns} data={attributes} />
+                <CommonTable tableId="settings-attributes-list" columns={columns} data={attributes} />
             </div>
 
             {isDialogOpen && (

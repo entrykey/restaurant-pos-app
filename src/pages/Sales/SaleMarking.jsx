@@ -223,6 +223,7 @@ const SaleMarking = () => {
                 </div>
             <div className="px-0 pb-6">
                 <CommonTable
+                    tableId="sales-sale-marking-list"
                     columns={columns}
                     data={filteredItems}
                     isLoading={isLoading}
