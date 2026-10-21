@@ -1,5 +1,5 @@
 import React, { useEffect, lazy, Suspense } from "react";
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import { Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { getFirstAllowedPath } from "../constants/routeAccess";
 import { useTakeaway } from "../pages/Takeaway/TakeawayContext";
@@ -161,6 +161,7 @@ const AppRoutes = (props) => {
     activeBranchId,
   } = props;
 
+  const location = useLocation();
   const isWholesale = takeawayOrder?.orderType === "WHOLESALE";
   const prefix = "/:shopName?";
 
@@ -244,6 +245,14 @@ const AppRoutes = (props) => {
           }
         />
         <Route
+          path={`${prefix}/pay-in`}
+          element={
+            <ProtectedRoute routeKey="DASHBOARD">
+              <PayInList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path={`${prefix}/dashboard/pay-out`}
           element={
             <ProtectedRoute routeKey="PAY_OUT">
@@ -252,7 +261,23 @@ const AppRoutes = (props) => {
           }
         />
         <Route
+          path={`${prefix}/pay-out`}
+          element={
+            <ProtectedRoute routeKey="PAY_OUT">
+              <PayOutList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path={`${prefix}/dashboard/operating-expenses`}
+          element={
+            <ProtectedRoute routeKey="OPERATING_EXPENSES">
+              <OperatingExpenses />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={`${prefix}/operating-expenses`}
           element={
             <ProtectedRoute routeKey="OPERATING_EXPENSES">
               <OperatingExpenses />
@@ -835,75 +860,26 @@ const AppRoutes = (props) => {
         <Route
           path="*"
           element={
-            <>
-              {view === "dashboard" && (
-                <Navigate to={safeHasPermissionFor("dashboard") || safeHasPermission("DASHBOARD") || safeHasPermission("dashboard") ? "/dashboard" : getFirstAllowedPath(safeHasPermission, safeHasPermissionFor)} replace />
-              )}
-              {view === "tables" && (
-                <Navigate to="/dininghall" replace />
-              )}
-              {view === "order" && isTakeaway && (
-                <Navigate to={takeawayOrder?.orderType === "WHOLESALE" ? "/wholesale" : "/takeaway"} replace />
-              )}
-              {view === "order" && !isTakeaway && (
-                <Navigate to={`/dininghall/table/${activeTableId}`} replace />
-              )}
-              {view === "online-orders" && (
-                <Navigate to="/online-orders" replace />
-              )}
-              {view === "reservations" && (
-                <Navigate to="/reservations" replace />
-              )}
-              {view === "kds" && (
-                <Navigate to="/kds" replace />
-              )}
-              {view === "inventory" && (
-                <Navigate to="/inventory" replace />
-              )}
-              {view === "reports" && (
-                <Navigate to="/reports" replace />
-              )}
-              {view === "organization" && (
-                <Navigate to="/organization" replace />
-              )}
-              {view === "suppliers" && (
-                <Navigate to="/suppliers" replace />
-              )}
-              {view === "parties" && (
-                <Navigate to="/parties" replace />
-              )}
-              {view === "service" && (
-                <Navigate to="/service" replace />
-              )}
-              {view === "purchases" && (
-                <Navigate to="/purchases" replace />
-              )}
-              {view === "business-types" && (
-                <Navigate to="/business-types" replace />
-              )}
-              {view === "shop-management" && (
-                <Navigate to="/shop-management" replace />
-              )}
-              {view === "plan-management" && (
-                <Navigate to="/plan-management" replace />
-              )}
-              {view === "client-management" && (
-                <Navigate to="/client-management" replace />
-              )}
-              {view === "table-management" && (
-                <Navigate to="/table-management" replace />
-              )}
-              {view === "offers" && (
-                <Navigate to="/offers" replace />
-              )}
-              {view === "owner-dashboard" && (
-                <Navigate to="/owner-dashboard" replace />
-              )}
-              {view === "my-salary" && (
-                <Navigate to="/my-salary" replace />
-              )}
-              {view !== "dashboard" && view !== "tables" && view !== "order" && view !== "online-orders" && view !== "reservations" && view !== "kds" && view !== "inventory" && view !== "reports" && view !== "organization" && view !== "suppliers" && view !== "parties" && view !== "service" && view !== "purchases" && view !== "business-types" && view !== "shop-management" && view !== "client-management" && view !== "plan-management" && view !== "table-management" && view !== "owner-dashboard" && view !== "offers" && props.children}
-            </>
+            (() => {
+              const segs = String(location.pathname || "/").split("/").filter(Boolean);
+              const first = segs[0];
+              const ROOT_SEGMENTS = new Set([
+                "dashboard", "dininghall", "takeaway", "wholesale", "online-orders",
+                "delivery-management", "delivery-settlement", "reservations", "kds",
+                "inventory", "reports", "settings", "staff", "organization", "suppliers",
+                "parties", "service", "purchases", "business-types", "shop-management",
+                "client-management", "plan-management", "subscription-management",
+                "table-management", "offers", "owner-dashboard", "my-attendance",
+                "my-leaves", "my-salary", "staff-dashboard", "sale-marking", "sales-history",
+                "operating-expenses", "pay-in", "pay-out", "login", "profile", "salesreturn", "purchasereturn"
+              ]);
+              const shopPrefix = (first && !ROOT_SEGMENTS.has(first)) ? `/${first}` : "";
+              const defaultTarget = (safeHasPermissionFor("dashboard") || safeHasPermission("DASHBOARD") || safeHasPermission("dashboard"))
+                ? "/dashboard"
+                : getFirstAllowedPath(safeHasPermission, safeHasPermissionFor);
+
+              return <Navigate to={`${shopPrefix}${defaultTarget}`} replace />;
+            })()
           }
         />
       </Routes>

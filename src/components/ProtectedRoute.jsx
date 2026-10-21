@@ -5,12 +5,13 @@ import { ROUTE_ACCESS, getFirstAllowedPath } from "../constants/routeAccess";
 
 const ROOT_PATH_SEGMENTS = new Set([
     "dashboard", "dininghall", "takeaway", "wholesale", "online-orders",
+    "delivery-management", "delivery-settlement",
     "reservations", "kds", "inventory", "reports", "settings", "staff",
     "organization", "suppliers", "parties", "service", "purchases",
     "business-types", "shop-management", "client-management", "plan-management",
     "subscription-management", "table-management", "offers", "owner-dashboard",
     "my-attendance", "my-leaves", "my-salary", "staff-dashboard", "sale-marking",
-    "sales-history", "operating-expenses", "login", "profile", "salesreturn", "purchasereturn"
+    "sales-history", "operating-expenses", "pay-in", "pay-out", "login", "profile", "salesreturn", "purchasereturn"
 ]);
 
 /**

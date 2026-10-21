@@ -274,7 +274,7 @@ const Parties = ({ hasPermissionFor }) => {
             )
         },
         { header: 'Code', key: 'customerCode', className: `text-sm font-mono ${theme.textSecondary}` },
-        { header: 'Name', key: 'name', render: (v, row) => <div className={`font-bold ${theme.textHeading}`}>{v}</div> },
+        { header: 'Name', key: 'name', required: true, render: (v, row) => <div className={`font-bold ${theme.textHeading}`}>{v}</div> },
         {
             header: 'Contact',
             key: 'phone',
@@ -311,12 +311,66 @@ const Parties = ({ hasPermissionFor }) => {
                     />
                 </button>
             )
+        },
+        // Optional / Adjustable Columns (hidden by default)
+        {
+            header: 'GSTIN',
+            key: 'gstin',
+            defaultVisible: false,
+            exportValue: (_, row) => row.gstin || row.taxNumber || '—',
+            render: (_, row) => (
+                <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400">
+                    {row.gstin || row.taxNumber || '—'}
+                </span>
+            )
+        },
+        {
+            header: 'Address',
+            key: 'address',
+            defaultVisible: false,
+            exportValue: (_, row) => row.address || '—',
+            render: (_, row) => (
+                <span className={`text-xs ${theme.textSecondary} truncate max-w-[150px] inline-block`} title={row.address}>
+                    {row.address || '—'}
+                </span>
+            )
+        },
+        {
+            header: 'Credit Limit',
+            key: 'creditLimit',
+            defaultVisible: false,
+            headerClassName: 'text-right',
+            className: 'text-right',
+            exportValue: (_, row) => String(row.creditLimit || 0),
+            render: (_, row) => (
+                <span className={`text-xs font-bold ${theme.textPrimary}`}>
+                    {row.creditLimit ? `₹${row.creditLimit}` : '—'}
+                </span>
+            )
+        },
+        {
+            header: 'Balance',
+            key: 'balance',
+            defaultVisible: false,
+            headerClassName: 'text-right',
+            className: 'text-right',
+            exportValue: (_, row) => String(row.balance || row.outstandingBalance || 0),
+            render: (_, row) => {
+                const bal = row.balance || row.outstandingBalance || 0;
+                return (
+                    <span className={`text-xs font-black ${bal > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                        {bal !== 0 ? `₹${bal}` : '₹0'}
+                    </span>
+                );
+            }
         }
     ];
     if (canCustomerEdit || canCustomerDelete) {
         customerColumns.push({
             header: 'Actions',
             key: 'actions',
+            required: true,
+            defaultVisible: true,
             headerClassName: 'text-right',
             className: 'text-right',
             render: (_, row) => (
@@ -427,6 +481,7 @@ const Parties = ({ hasPermissionFor }) => {
                     ) : (
                         <>
                             <CommonTable
+                                tableId="parties-customers-list"
                                 columns={customerColumns}
                                 data={customers}
                                 currentPage={customerPage}

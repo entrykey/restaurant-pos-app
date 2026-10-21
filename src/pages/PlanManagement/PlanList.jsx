@@ -171,6 +171,7 @@ const PlanList = ({ onEdit, onAddNew }) => {
 
                 {/* ── Table ── */}
                 <CommonTable
+                    tableId="admin-plans-list"
                     columns={columns}
                     data={filteredPlans}
                     rowKey="_id"

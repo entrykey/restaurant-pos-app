@@ -1,11 +1,30 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { ChevronDown, Download, FileSpreadsheet, FileText } from 'lucide-react';
+import {
+    ChevronDown,
+    Download,
+    FileSpreadsheet,
+    FileText,
+    SlidersHorizontal,
+    RotateCcw,
+    X,
+    Search,
+    Eye,
+    EyeOff,
+    Lock,
+    Check
+} from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { settingService } from '../services/api';
 
 /**
  * CommonTable Component
  * Props:
- *  columns        - column defs: { header, key, render, exportValue, headerClassName, className, width }
+ *  columns        - column defs: { header, key, render, exportValue, headerClassName, className, width, defaultVisible, required }
+ *  availableColumns - optional extra column definitions that can be adjusted/toggled
+ *  tableId        - unique identifier for persisting column settings
+ *  showAdjust     - whether to display the Adjust button (default: true)
+ *  onColumnsChange - callback when visible columns change
  *  data           - row objects
  *  rowKey         - unique key field (default: 'id')
  *  onRowClick     - row click callback
@@ -19,9 +38,13 @@ import { ChevronDown, Download, FileSpreadsheet, FileText } from 'lucide-react';
  *  selectable     - if false, hide checkbox column entirely (default: true)
  */
 const CommonTable = ({
-    columns,
-    data,
+    columns = [],
+    availableColumns = [],
+    data = [],
     rowKey = 'id',
+    tableId,
+    showAdjust = true,
+    onColumnsChange,
     onRowClick,
     className = '',
     renderAdditionalRow,
@@ -42,6 +65,9 @@ const CommonTable = ({
     onFetchAll,          // async () => allRows[] — called when user wants to select/export ALL pages
 }) => {
     const { theme } = useTheme();
+
+    const app = useApp();
+    const currentShopId = app?.currentShopId || null;
 
     // ── Selection state ──────────────────────────────────────────────────────
     const [selectedKeys, setSelectedKeys] = useState(new Set());
@@ -117,6 +143,173 @@ const CommonTable = ({
         }
     }, [currentPage, pageSize]);
 
+    const getColKey = useCallback((col, idx) => {
+        return col.id || col.key || (typeof col.header === 'string' ? col.header : `col_${idx}`);
+    }, []);
+
+    // ── All columns pool (base columns + any extra available columns) ─────────
+    const allColumns = useMemo(() => {
+        const list = [...(columns || []), ...(availableColumns || [])];
+        const seen = new Set();
+        return list.filter((col, idx) => {
+            const k = getColKey(col, idx);
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+        });
+    }, [columns, availableColumns, getColKey]);
+
+    // ── Table identity & strictly isolated storage key ───────────────────────
+    const resolvedTableId = useMemo(() => {
+        if (tableId && typeof tableId === 'string' && tableId.trim()) {
+            return tableId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+        }
+        if (exportFilename && exportFilename !== 'export' && typeof exportFilename === 'string') {
+            return exportFilename.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+        }
+        if (exportTitle && typeof exportTitle === 'string' && exportTitle.trim()) {
+            return exportTitle.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+        }
+        const firstKey = (columns && columns[0]) ? (columns[0].key || columns[0].id || 'col') : 'col';
+        return `tbl_${columns?.length || 0}_${firstKey}`;
+    }, [tableId, exportFilename, exportTitle]);
+
+    const storageKey = `filepe_tbl_${currentShopId || 'common'}_${resolvedTableId}`;
+
+    const allColKeys = useMemo(() => allColumns.map((c, idx) => getColKey(c, idx)), [allColumns, getColKey]);
+    const allColKeysSig = useMemo(() => allColKeys.join(','), [allColKeys]);
+
+    const defaultVisibleKeys = useMemo(() => {
+        return allColumns
+            .filter(c => c.defaultVisible !== false)
+            .map((c, idx) => getColKey(c, idx));
+    }, [allColumns, getColKey]);
+
+    // One-time cleanup of legacy keys that caused cross-table pollution
+    useEffect(() => {
+        try {
+            localStorage.removeItem('table_columns_export');
+            localStorage.removeItem('table_columns_default-table');
+            localStorage.removeItem('table_columns_undefined');
+        } catch (e) {}
+    }, []);
+
+    const [visibleKeys, setVisibleKeys] = useState(() => {
+        try {
+            const saved = localStorage.getItem(storageKey);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const valid = parsed.filter(k => allColKeys.includes(k));
+                    if (valid.length > 0) return valid;
+                }
+            }
+        } catch (e) {}
+        return defaultVisibleKeys;
+    });
+
+    const prevSigRef = useRef(allColKeysSig);
+    const prevStorageKeyRef = useRef(storageKey);
+
+    useEffect(() => {
+        if (prevSigRef.current === allColKeysSig && prevStorageKeyRef.current === storageKey) {
+            return;
+        }
+        prevSigRef.current = allColKeysSig;
+        prevStorageKeyRef.current = storageKey;
+
+        let targetKeys = defaultVisibleKeys;
+        try {
+            const saved = localStorage.getItem(storageKey);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const valid = parsed.filter(k => allColKeys.includes(k));
+                    if (valid.length > 0) targetKeys = valid;
+                }
+            }
+        } catch (e) {}
+
+        setVisibleKeys(prev => {
+            if (prev.length === targetKeys.length && prev.every((k, i) => k === targetKeys[i])) {
+                return prev;
+            }
+            return targetKeys;
+        });
+    }, [storageKey, allColKeysSig]);
+
+    const persistVisibleKeys = useCallback((newKeys) => {
+        setVisibleKeys(newKeys);
+        try {
+            localStorage.setItem(storageKey, JSON.stringify(newKeys));
+        } catch (e) {}
+        // Only sync to backend if an explicit tableId is provided
+        if (settingService && currentShopId && tableId) {
+            settingService.updateSetting(storageKey, { value: newKeys, shopId: currentShopId }).catch(() => {});
+        }
+        if (onColumnsChange) onColumnsChange(newKeys);
+    }, [storageKey, currentShopId, tableId, onColumnsChange]);
+
+    const toggleColumn = useCallback((colKey) => {
+        const col = allColumns.find((c, idx) => getColKey(c, idx) === colKey);
+        if (col?.required) return;
+
+        if (visibleKeys.includes(colKey)) {
+            if (visibleKeys.length <= 1) return;
+            const next = visibleKeys.filter(k => k !== colKey);
+            persistVisibleKeys(next);
+        } else {
+            const next = allColumns
+                .map((c, idx) => getColKey(c, idx))
+                .filter(k => visibleKeys.includes(k) || k === colKey);
+            persistVisibleKeys(next);
+        }
+    }, [allColumns, visibleKeys, getColKey, persistVisibleKeys]);
+
+    const resetToDefault = useCallback(() => {
+        persistVisibleKeys(defaultVisibleKeys);
+        try {
+            localStorage.removeItem(storageKey);
+        } catch (e) {}
+    }, [defaultVisibleKeys, persistVisibleKeys, storageKey]);
+
+    const showAll = useCallback(() => {
+        const all = allColumns.map((c, idx) => getColKey(c, idx));
+        persistVisibleKeys(all);
+    }, [allColumns, getColKey, persistVisibleKeys]);
+
+    const activeColumns = useMemo(() => {
+        const keySet = new Set(visibleKeys);
+        const filtered = allColumns.filter((c, idx) => keySet.has(getColKey(c, idx)));
+        return filtered.length > 0 ? filtered : allColumns.filter(c => c.defaultVisible !== false);
+    }, [allColumns, visibleKeys, getColKey]);
+
+    // ── Adjust Dropdown State ────────────────────────────────────────────────
+    const [adjustOpen, setAdjustOpen] = useState(false);
+    const [adjustSearch, setAdjustSearch] = useState('');
+    const adjustRef = useRef(null);
+
+    useEffect(() => {
+        if (!adjustOpen) return;
+        const h = (e) => {
+            if (adjustRef.current && !adjustRef.current.contains(e.target)) {
+                setAdjustOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', h);
+        return () => document.removeEventListener('mousedown', h);
+    }, [adjustOpen]);
+
+    const filteredColsForAdjust = useMemo(() => {
+        if (!adjustSearch.trim()) return allColumns;
+        const q = adjustSearch.toLowerCase();
+        return allColumns.filter((col, idx) => {
+            const headerStr = typeof col.header === 'string' ? col.header : '';
+            const keyStr = String(col.key || '');
+            return headerStr.toLowerCase().includes(q) || keyStr.toLowerCase().includes(q);
+        });
+    }, [allColumns, adjustSearch]);
+
     const selectedRows = allPagesSelected && allRows
         ? allRows
         : (data || []).filter((r, i) => selectedKeys.has(r[rowKey] ?? i));
@@ -136,8 +329,8 @@ const CommonTable = ({
     const handleExport = async (format) => {
         setExportOpen(false);
         const { exportToXLSX, exportToPDF } = await import('../utils/exportTable');
-        if (format === 'xlsx') exportToXLSX(columns, exportRows, exportFilename, exportTitle || exportFilename);
-        else exportToPDF(columns, exportRows, exportFilename, exportTitle || exportFilename);
+        if (format === 'xlsx') exportToXLSX(activeColumns, exportRows, exportFilename, exportTitle || exportFilename);
+        else exportToPDF(activeColumns, exportRows, exportFilename, exportTitle || exportFilename);
     };
 
     // ── Page size dropdown ───────────────────────────────────────────────────
@@ -152,7 +345,7 @@ const CommonTable = ({
         return () => document.removeEventListener('mousedown', h);
     }, [pageSizeOpen]);
 
-    // ── Export + selection toolbar ───────────────────────────────────────────
+    // ── Export + Adjust + selection toolbar ──────────────────────────────────
     const toolbar = (selectable || true) ? (
         <div className={`flex flex-col border-b ${theme.borderLight}`}>
             <div className={`flex items-center justify-between gap-3 px-4 py-2.5 ${theme.pageBg}`}>
@@ -163,37 +356,170 @@ const CommonTable = ({
                             ? `${selectedKeys.size} of ${(data || []).length} selected`
                             : `${(data || []).length} rows`}
                 </span>
-                {/* Export dropdown */}
-                {showExport && (
-                <div ref={exportRef} className="relative">
-                    <button
-                        onClick={() => setExportOpen(o => !o)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black border transition-all ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:opacity-80`}
-                        title="Export"
-                    >
-                        <Download size={13} />
-                        Export
-                        {(selectedKeys.size > 0 || allPagesSelected) && (
-                            <span className="text-indigo-500">
-                                ({allPagesSelected ? (totalItems || selectedKeys.size) : selectedKeys.size})
-                            </span>
-                        )}
-                        <ChevronDown size={11} className={`transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    {exportOpen && (
-                        <div className={`absolute right-0 top-full mt-1 z-50 rounded-2xl shadow-xl border overflow-hidden w-44 ${theme.surfaceBg} ${theme.borderLight}`}>
-                            <button onClick={() => handleExport('xlsx')}
-                                className={`w-full flex items-center gap-2 px-4 py-2.5 text-[12px] font-black text-left transition-all ${theme.textPrimary} hover:bg-emerald-500/10`}>
-                                <FileSpreadsheet size={15} className="text-emerald-500" /> Export as XLSX
+                <div className="flex items-center gap-2">
+                    {/* Adjust Dropdown */}
+                    {showAdjust && allColumns.length > 0 && (
+                        <div ref={adjustRef} className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setAdjustOpen(o => !o)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black border transition-all ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:opacity-80 active:scale-95`}
+                                title="Adjust Table Fields"
+                            >
+                                <SlidersHorizontal size={13} className="text-indigo-500 shrink-0" />
+                                <span>Adjust</span>
+                                {allColumns.length > activeColumns.length && (
+                                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                                        {activeColumns.length}/{allColumns.length}
+                                    </span>
+                                )}
+                                <ChevronDown size={11} className={`transition-transform duration-200 ${adjustOpen ? 'rotate-180' : ''}`} />
                             </button>
-                            <button onClick={() => handleExport('pdf')}
-                                className={`w-full flex items-center gap-2 px-4 py-2.5 text-[12px] font-black text-left transition-all ${theme.textPrimary} hover:bg-red-500/10`}>
-                                <FileText size={15} className="text-red-500" /> Export as PDF
-                            </button>
+
+                            {adjustOpen && (
+                                <div className={`absolute right-0 top-full mt-1.5 z-50 rounded-2xl shadow-2xl border overflow-hidden w-72 sm:w-80 ${theme.surfaceBg} ${theme.borderLight}`}>
+                                    {/* Header */}
+                                    <div className={`p-3.5 border-b ${theme.borderLight} flex items-center justify-between`}>
+                                        <div>
+                                            <div className={`text-xs font-black uppercase tracking-wider ${theme.textHeading} flex items-center gap-1.5`}>
+                                                <SlidersHorizontal size={13} className="text-indigo-500" />
+                                                Adjust Fields
+                                            </div>
+                                            <div className={`text-[10px] font-medium ${theme.textMuted} mt-0.5`}>
+                                                {activeColumns.length} of {allColumns.length} fields visible
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={resetToDefault}
+                                                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all ${theme.borderLight} ${theme.textSecondary} hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 flex items-center gap-1`}
+                                                title="Reset to default fields"
+                                            >
+                                                <RotateCcw size={11} />
+                                                Reset
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAdjustOpen(false)}
+                                                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Search if more than 5 columns */}
+                                    {allColumns.length > 5 && (
+                                        <div className={`px-3 py-2 border-b ${theme.borderLight}`}>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search fields..."
+                                                    value={adjustSearch}
+                                                    onChange={(e) => setAdjustSearch(e.target.value)}
+                                                    className={`w-full pl-7 pr-3 py-1.5 rounded-xl text-xs font-medium border outline-none ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500`}
+                                                />
+                                                <Search size={12} className="absolute left-2.5 top-2.5 text-gray-400" />
+                                                {adjustSearch && (
+                                                    <button onClick={() => setAdjustSearch("")} className="absolute right-2.5 top-2 text-gray-400">
+                                                        <X size={11} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Column Checklist */}
+                                    <div className="max-h-72 overflow-y-auto p-2 space-y-1">
+                                        {filteredColsForAdjust.map((col, idx) => {
+                                            const key = getColKey(col, idx);
+                                            const isVisible = visibleKeys.includes(key);
+                                            const isRequired = col.required || (col.key === 'name' && !allColumns.some(c => c.key === 'id'));
+                                            const label = typeof col.header === 'string' ? col.header : (col.key || `Field ${idx + 1}`);
+
+                                            return (
+                                                <div
+                                                    key={key}
+                                                    onClick={() => !isRequired && toggleColumn(key)}
+                                                    className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                                        isVisible
+                                                            ? "bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200"
+                                                            : `${theme.textSecondary} hover:bg-gray-100 dark:hover:bg-slate-800 opacity-60`
+                                                    } ${isRequired ? "cursor-default opacity-90" : ""}`}
+                                                >
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isVisible}
+                                                            disabled={isRequired}
+                                                            onChange={() => {}}
+                                                            className="w-4 h-4 rounded accent-indigo-600 cursor-pointer pointer-events-none"
+                                                        />
+                                                        <span className="truncate">{label}</span>
+                                                    </div>
+                                                    {isRequired ? (
+                                                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-0.5">
+                                                            <Lock size={10} /> Fixed
+                                                        </span>
+                                                    ) : isVisible ? (
+                                                        <Eye size={13} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                                    ) : (
+                                                        <EyeOff size={13} className="text-gray-400 shrink-0" />
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div className={`p-2.5 border-t ${theme.borderLight} bg-gray-50/50 dark:bg-slate-900/50 flex items-center justify-between text-[11px]`}>
+                                        <button
+                                            type="button"
+                                            onClick={showAll}
+                                            className="text-indigo-600 dark:text-indigo-400 font-black hover:underline"
+                                        >
+                                            Show All
+                                        </button>
+                                        <span className="text-gray-400 font-medium text-[10px]">Saved in settings</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
+
+                    {/* Export dropdown */}
+                    {showExport && (
+                    <div ref={exportRef} className="relative">
+                        <button
+                            onClick={() => setExportOpen(o => !o)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black border transition-all ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:opacity-80`}
+                            title="Export"
+                        >
+                            <Download size={13} />
+                            Export
+                            {(selectedKeys.size > 0 || allPagesSelected) && (
+                                <span className="text-indigo-500">
+                                    ({allPagesSelected ? (totalItems || selectedKeys.size) : selectedKeys.size})
+                                </span>
+                            )}
+                            <ChevronDown size={11} className={`transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {exportOpen && (
+                            <div className={`absolute right-0 top-full mt-1.5 z-50 rounded-2xl shadow-xl border overflow-hidden w-44 ${theme.surfaceBg} ${theme.borderLight}`}>
+                                <button onClick={() => handleExport('xlsx')}
+                                    className={`w-full flex items-center gap-2 px-4 py-2.5 text-[12px] font-black text-left transition-all ${theme.textPrimary} hover:bg-emerald-500/10`}>
+                                    <FileSpreadsheet size={15} className="text-emerald-500" /> Export as XLSX
+                                </button>
+                                <button onClick={() => handleExport('pdf')}
+                                    className={`w-full flex items-center gap-2 px-4 py-2.5 text-[12px] font-black text-left transition-all ${theme.textPrimary} hover:bg-red-500/10`}>
+                                    <FileText size={15} className="text-red-500" /> Export as PDF
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    )}
                 </div>
-                )}
             </div>
             {/* "Select all pages" banner — only shown when current page all selected and more pages exist */}
             {allSelected && !allPagesSelected && onFetchAll && totalPages > 1 && (
@@ -293,7 +619,7 @@ const CommonTable = ({
         </td>
     ) : null;
 
-    const totalCols = columns.length + (selectable ? 1 : 0);
+    const totalCols = activeColumns.length + (selectable ? 1 : 0);
 
     /* ── Mobile card view ───────────────────────────────────────────────────── */
     if (mobileCardRender) {
@@ -330,13 +656,13 @@ const CommonTable = ({
                 {/* Desktop */}
                 <div className={`hidden sm:block rounded-[24px] shadow-sm border ${theme.surfaceBg} ${theme.borderLight} ${className}`}>
                     {toolbar}
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                    <div className="overflow-x-auto w-full">
+                        <table className="w-full text-left border-collapse min-w-max">
                             <thead className={`${theme.tableHeaderBg || theme.pageBg} sticky top-0 z-10`}>
                                 <tr className={`${theme.tableHeaderText || theme.textMuted} text-[11px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
                                     {checkboxHeader}
-                                    {columns.map((col, i) => (
-                                        <th key={i} className={`px-4 py-3 ${col.headerClassName || ''}`} style={col.width ? { width: col.width } : {}}>
+                                    {activeColumns.map((col, i) => (
+                                        <th key={col.id || col.key || i} className={`px-4 py-3 ${col.headerClassName || ''}`} style={col.width ? { width: col.width } : {}}>
                                             {col.header}
                                         </th>
                                     ))}
@@ -356,8 +682,8 @@ const CommonTable = ({
                                             <tr onClick={() => onRowClick && onRowClick(row)}
                                                 className={`${theme.tableRowHover} transition-colors ${onRowClick ? 'cursor-pointer' : ''} group ${selectedKeys.has(row[rowKey] ?? rowIndex) ? theme.infoBg : ''}`}>
                                                 {checkboxCell(row, rowIndex)}
-                                                {columns.map((col, colIndex) => (
-                                                    <td key={colIndex} className={`px-4 py-2.5 ${col.className || ''}`}>
+                                                {activeColumns.map((col, colIndex) => (
+                                                    <td key={col.id || col.key || colIndex} className={`px-4 py-2.5 ${col.className || ''}`}>
                                                         {col.render ? col.render(row[col.key], row, rowIndex) : row[col.key]}
                                                     </td>
                                                 ))}
@@ -381,13 +707,13 @@ const CommonTable = ({
     return (
         <div className={`rounded-[24px] shadow-sm border ${theme.surfaceBg} ${theme.borderLight} ${className}`}>
             {toolbar}
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+            <div className="overflow-x-auto w-full">
+                <table className="w-full text-left border-collapse min-w-max">
                     <thead className={`${theme.tableHeaderBg || theme.pageBg} sticky top-0 z-10`}>
                         <tr className={`${theme.tableHeaderText || theme.textMuted} text-[11px] uppercase font-black border-b ${theme.borderLight} tracking-widest`}>
                             {checkboxHeader}
-                            {columns.map((col, index) => (
-                                <th key={index} className={`px-4 py-3 ${col.headerClassName || ''}`} style={col.width ? { width: col.width } : {}}>
+                            {activeColumns.map((col, index) => (
+                                <th key={col.id || col.key || index} className={`px-4 py-3 ${col.headerClassName || ''}`} style={col.width ? { width: col.width } : {}}>
                                     {col.header}
                                 </th>
                             ))}
@@ -407,9 +733,9 @@ const CommonTable = ({
                                     <tr onClick={() => onRowClick && onRowClick(row)}
                                         className={`${theme.tableRowHover} transition-colors ${onRowClick ? 'cursor-pointer' : ''} group ${selectedKeys.has(row[rowKey] ?? rowIndex) ? theme.infoBg : ''}`}>
                                         {checkboxCell(row, rowIndex)}
-                                        {columns.map((col, colIndex) => (
-                                            <td key={colIndex} className={`px-4 py-2.5 ${col.className || ''}`}>
-                                                {col.render ? col.render(row[col.key], row, colIndex) : row[col.key]}
+                                        {activeColumns.map((col, colIndex) => (
+                                            <td key={col.id || col.key || colIndex} className={`px-4 py-2.5 ${col.className || ''}`}>
+                                                {col.render ? col.render(row[col.key], row, rowIndex) : row[col.key]}
                                             </td>
                                         ))}
                                     </tr>

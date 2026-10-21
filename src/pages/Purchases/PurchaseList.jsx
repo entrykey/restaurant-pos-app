@@ -688,6 +688,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
         {
             header: "Invoice",
             key: "invoiceNumber",
+            required: true,
             render: (val, row) => (
                 <div>
                     <div className={`font-black ${theme.textPrimary}`}>{row.invoiceNumber || row.purchaseNumber}</div>
@@ -737,9 +738,84 @@ const PurchaseList = ({ hasPermissionFor }) => {
                 </span>
             ),
         },
+        // Adjustable Extra Columns (Hidden by default, toggleable via Adjust)
+        {
+            header: "Tax Total",
+            key: "taxTotal",
+            defaultVisible: false,
+            headerClassName: "text-right",
+            className: "text-right",
+            exportValue: (_, row) => fmt(row.taxTotal || row.totalTax || 0, currency),
+            render: (_, row) => (
+                <span className={`text-xs font-bold ${theme.textPrimary}`}>
+                    {fmt(row.taxTotal || row.totalTax || 0, currency)}
+                </span>
+            )
+        },
+        {
+            header: "Paid Amount",
+            key: "paidAmount",
+            defaultVisible: false,
+            headerClassName: "text-right",
+            className: "text-right",
+            exportValue: (_, row) => fmt(row.paidAmount || 0, currency),
+            render: (_, row) => (
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    {fmt(row.paidAmount || 0, currency)}
+                </span>
+            )
+        },
+        {
+            header: "Payment Method",
+            key: "paymentMethod",
+            defaultVisible: false,
+            exportValue: (_, row) => row.paymentMethod || "—",
+            render: (_, row) => (
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${PAY_PILL[row.paymentMethod] || "bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300"}`}>
+                    {row.paymentMethod || "—"}
+                </span>
+            )
+        },
+        {
+            header: "Items Count",
+            key: "itemsCount",
+            defaultVisible: false,
+            headerClassName: "text-center",
+            className: "text-center",
+            exportValue: (_, row) => String(row.items?.length || 0),
+            render: (_, row) => (
+                <span className="px-2 py-0.5 rounded-md text-xs font-black bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300">
+                    {row.items?.length || 0}
+                </span>
+            )
+        },
+        {
+            header: "Supplier GSTIN",
+            key: "supplierGstin",
+            defaultVisible: false,
+            exportValue: (_, row) => row.supplierId?.gstin || row.supplierGstin || "—",
+            render: (_, row) => (
+                <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400">
+                    {row.supplierId?.gstin || row.supplierGstin || "—"}
+                </span>
+            )
+        },
+        {
+            header: "Notes",
+            key: "notes",
+            defaultVisible: false,
+            exportValue: (_, row) => row.notes || "—",
+            render: (_, row) => (
+                <span className={`text-xs ${theme.textSecondary} truncate max-w-[150px] inline-block`} title={row.notes}>
+                    {row.notes || "—"}
+                </span>
+            )
+        },
         {
             header: "Actions",
             key: "_id",
+            required: true,
+            defaultVisible: true,
             headerClassName: "text-right",
             className: "text-right",
             render: (id, row) => (
@@ -1193,6 +1269,7 @@ const PurchaseList = ({ hasPermissionFor }) => {
                             </div>
                         ) : (
                             <CommonTable
+                                tableId="purchases-invoices-list"
                                 columns={columns}
                                 data={paginatedData}
                                 totalItems={filtered.length}

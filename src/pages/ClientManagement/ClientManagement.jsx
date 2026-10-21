@@ -247,6 +247,7 @@ const ClientManagement = () => {
                 {/* ── Table ── */}
                 <div className="w-full">
                     <CommonTable
+                        tableId="admin-clients-list"
                         columns={columns}
                         data={filteredClients}
                         rowKey="_id"

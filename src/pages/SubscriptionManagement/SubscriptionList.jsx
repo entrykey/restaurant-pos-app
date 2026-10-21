@@ -714,6 +714,7 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
 
                         {/* Subscriptions Table */}
                         <CommonTable
+                            tableId="admin-subscriptions-list"
                             columns={subColumns}
                             data={filteredSubscriptions}
                             rowKey="_id"
@@ -815,6 +816,7 @@ const SubscriptionList = ({ setView, setSubscriptionToEdit }) => {
 
                             {/* Trial Run Requests Table */}
                             <CommonTable
+                                tableId="admin-trial-requests-list"
                                 columns={[
                                     {
                                         header: 'Shop Name',
