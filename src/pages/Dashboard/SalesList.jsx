@@ -1023,10 +1023,12 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
 
             {/* Table */}
             <CommonTable
+                tableId={`sales-orders-${activeTab}`}
                 columns={activeTab === 'history' ? [
                     {
                         header: 'Order Info',
                         key: 'orderNumber',
+                        required: true,
                         render: (_, order) => (
                             <div className="space-y-1">
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -1087,6 +1089,37 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                 {(order.discountTotal || 0) > 0 ? `-${fmt(order.discountTotal)}` : '—'}
                             </p>
                         )
+                    },
+                    {
+                        header: 'Tax Total',
+                        key: 'taxTotal',
+                        defaultVisible: false,
+                        headerClassName: 'text-right',
+                        className: 'text-right',
+                        exportValue: (_, order) => fmt(order.taxTotal || 0),
+                        render: (_, order) => (
+                            <span className={`text-xs font-bold ${theme.textPrimary}`}>
+                                {(order.taxTotal || 0) > 0 ? fmt(order.taxTotal) : '—'}
+                            </span>
+                        )
+                    },
+                    {
+                        header: 'Round Off',
+                        key: 'roundOff',
+                        defaultVisible: false,
+                        headerClassName: 'text-right',
+                        className: 'text-right',
+                        exportValue: (_, order) => String(order.roundOff || 0),
+                        render: (_, order) => {
+                            const val = Number(order.roundOff || 0);
+                            if (val === 0) return <span className={`text-xs ${theme.textMuted}`}>—</span>;
+                            const isPositive = val > 0;
+                            return (
+                                <span className={`text-xs font-black ${isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+                                    {isPositive ? `+${fmt(val)}` : `-${fmt(Math.abs(val))}`}
+                                </span>
+                            );
+                        }
                     },
                     {
                         header: 'Total',
@@ -1155,9 +1188,48 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                             );
                         }
                     },
+                    // Optional / Adjustable Columns (hidden by default)
+                    {
+                        header: 'Order Type',
+                        key: 'orderType',
+                        defaultVisible: false,
+                        exportValue: (_, order) => order.orderType ? order.orderType.replace(/_/g, ' ') : '—',
+                        render: (_, order) => {
+                            if (!order.orderType) return <span className={`text-xs ${theme.textMuted}`}>—</span>;
+                            return (
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                    {order.orderType.replace(/_/g, ' ')}
+                                </span>
+                            );
+                        }
+                    },
+                    {
+                        header: 'Cashier',
+                        key: 'cashier',
+                        defaultVisible: false,
+                        exportValue: (_, order) => order.createdBy?.name || order.createdBy?.username || order.creatorId?.name || order.cashierName || '—',
+                        render: (_, order) => (
+                            <span className={`text-xs font-bold ${theme.textPrimary}`}>
+                                {order.createdBy?.name || order.createdBy?.username || order.creatorId?.name || order.cashierName || '—'}
+                            </span>
+                        )
+                    },
+                    {
+                        header: 'Notes',
+                        key: 'orderNotes',
+                        defaultVisible: false,
+                        exportValue: (_, order) => order.notes || '—',
+                        render: (_, order) => (
+                            <span className={`text-xs ${theme.textSecondary} truncate max-w-[140px] inline-block`} title={order.notes}>
+                                {order.notes || '—'}
+                            </span>
+                        )
+                    },
                     {
                         header: 'Actions',
                         key: '_id',
+                        required: true,
+                        defaultVisible: true,
                         headerClassName: 'text-right',
                         className: 'text-right',
                         render: (_, order) => {

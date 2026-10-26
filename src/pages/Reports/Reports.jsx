@@ -34,7 +34,8 @@ import {
     Calendar,
     Sparkles,
     Check,
-    ChevronDown
+    ChevronDown,
+    Search
 } from 'lucide-react';
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from '../../components/CommonTable';
@@ -76,6 +77,7 @@ const baseReportCategories = [
     { id: "profit_loss", label: "Profit & Loss", icon: <Scale size={16} />, permission: "PROFIT_LOSS" },
     { id: "balance_sheet", label: "Balance Sheet", icon: <Landmark size={16} />, permission: "BALANCE_SHEET" },
     { id: "parties", label: "Parties Report", icon: <Users size={16} />, permission: "PARTIES_REPORT" },
+    { id: "hsn", label: "HSN Report", icon: <FileSpreadsheet size={16} />, permission: "HSN.REPORT" },
 ];
 
 const Reports = ({
@@ -128,6 +130,9 @@ const Reports = ({
     const [stockStatusFilter, setStockStatusFilter] = useState("all");
     const [itemList, setItemList] = useState([]);
     const [categoryList, setCategoryList] = useState([]);
+    const [hsnReport, setHsnReport] = useState({ summary: {}, salesHsn: [], purchaseHsn: [] });
+    const [hsnTypeFilter, setHsnTypeFilter] = useState("all");
+    const [hsnSearchQuery, setHsnSearchQuery] = useState("");
     const [loading, setLoading] = useState(false);
     const [showExportPicker, setShowExportPicker] = useState(false);
     const resolvedShopId = shopId || currentShopId;
@@ -290,7 +295,7 @@ const Reports = ({
                 endDate: filterEndDate
             };
 
-            const [salesRes, expensesRes, perfRes, custRes, suppRes, plRes, bsRes, purchasesRes, mfgRes, itemsRes, catRes, stockWiseRes, taxesRes] = await Promise.all([
+            const [salesRes, expensesRes, perfRes, custRes, suppRes, plRes, bsRes, purchasesRes, mfgRes, itemsRes, catRes, stockWiseRes, taxesRes, hsnRes] = await Promise.all([
                 reportsService.getSalesReport({ ...params, taxFilter: salesTaxFilter, taxPercent: salesTaxPercentFilter }),
                 reportsService.getExpensesReport(params),
                 reportsService.getPerformanceReport(params),
@@ -303,7 +308,8 @@ const Reports = ({
                 itemService.getItems({ page: 1, limit: 1000, search: "", filters: { shopId: resolvedShopId, branchId: reportBranchFilter } }).catch(() => ({ data: [] })),
                 categoryService.getCategories({ shopId: resolvedShopId }).catch(() => ([])),
                 reportsService.getStockWiseReport(params).catch(() => ({ summary: {}, data: [] })),
-                taxService.getTaxes({ shopId: resolvedShopId }).catch(() => ([]))
+                taxService.getTaxes({ shopId: resolvedShopId }).catch(() => ([])),
+                reportsService.getHsnReport(params).catch(() => ({ summary: {}, salesHsn: [], purchaseHsn: [] }))
             ]);
 
             setSalesHistory(unwrapApiData(salesRes));
@@ -319,6 +325,7 @@ const Reports = ({
             setItemList(unwrapApiData(itemsRes));
             setCategoryList(unwrapApiData(catRes));
             setTaxesList(unwrapApiData(taxesRes));
+            setHsnReport(hsnRes?.data || hsnRes || { summary: {}, salesHsn: [], purchaseHsn: [] });
         } catch (error) {
             console.error("Failed to fetch report data:", error);
         } finally {
@@ -768,6 +775,168 @@ const Reports = ({
         [address?.country?.name || address?.country, address?.pincode].filter(Boolean).join(" - "),
     ].filter(Boolean);
     const headerContact = organization?.ownerContact || settings?.shopPhone || "";
+
+    const activeHsnList = React.useMemo(() => {
+        const sales = hsnReport?.salesHsn || [];
+        const purchases = hsnReport?.purchaseHsn || [];
+        if (hsnTypeFilter === "sales") return sales;
+        if (hsnTypeFilter === "purchases") return purchases;
+        return [...sales, ...purchases];
+    }, [hsnReport, hsnTypeFilter]);
+
+    const hsnFilteredData = React.useMemo(() => {
+        if (!hsnSearchQuery.trim()) return activeHsnList;
+        const q = hsnSearchQuery.trim().toLowerCase();
+        return activeHsnList.filter(item => {
+            const code = String(item.hsnCode || '').toLowerCase();
+            const desc = String(item.description || '').toLowerCase();
+            return code.includes(q) || desc.includes(q);
+        });
+    }, [activeHsnList, hsnSearchQuery]);
+
+    const hsnTotals = React.useMemo(() => {
+        return hsnFilteredData.reduce((acc, row) => {
+            acc.totalQty += Number(row.totalQuantity || 0);
+            acc.totalVal += Number(row.totalValue || row.totalAmount || 0);
+            acc.taxableVal += Number(row.taxableValue || row.taxableAmount || 0);
+            acc.cgst += Number(row.cgstAmount || 0);
+            acc.sgst += Number(row.sgstAmount || 0);
+            acc.igst += Number(row.igstAmount || 0);
+            acc.cess += Number(row.cessAmount || 0);
+            return acc;
+        }, { totalQty: 0, totalVal: 0, taxableVal: 0, cgst: 0, sgst: 0, igst: 0, cess: 0 });
+    }, [hsnFilteredData]);
+
+    const hsnColumns = React.useMemo(() => [
+        {
+            key: 'hsnCode',
+            header: 'HSN / SAC Code',
+            render: (val, row) => (
+                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                    {row?.hsnCode || val || '—'}
+                </span>
+            ),
+            exportValue: (row) => row?.hsnCode || '—'
+        },
+        {
+            key: 'description',
+            header: 'Product / Service Description',
+            render: (val, row) => (
+                <div className="max-w-xs truncate font-medium text-slate-800 dark:text-slate-200" title={row?.description || val}>
+                    {row?.description || val || '—'}
+                </div>
+            ),
+            exportValue: (row) => row?.description || '—'
+        },
+        {
+            key: 'uqc',
+            header: 'UQC',
+            className: 'text-center',
+            headerClassName: 'text-center',
+            render: (val, row) => (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    {row?.uqc || val || 'PCS'}
+                </span>
+            ),
+            exportValue: (row) => row?.uqc || 'PCS'
+        },
+        {
+            key: 'totalQuantity',
+            header: 'Total Quantity',
+            className: 'text-right',
+            headerClassName: 'text-right',
+            render: (val, row) => (
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {(row?.totalQuantity ?? val ?? 0).toLocaleString()}
+                </span>
+            ),
+            exportValue: (row) => row?.totalQuantity ?? 0
+        },
+        {
+            key: 'totalValue',
+            header: 'Total Value',
+            className: 'text-right',
+            headerClassName: 'text-right',
+            render: (val, row) => (
+                <span className="font-bold text-slate-900 dark:text-slate-100">
+                    {formatCurrency(row?.totalValue ?? row?.totalAmount ?? val ?? 0, currency)}
+                </span>
+            ),
+            exportValue: (row) => row?.totalValue ?? row?.totalAmount ?? 0
+        },
+        {
+            key: 'taxableValue',
+            header: 'Taxable Value',
+            className: 'text-right',
+            headerClassName: 'text-right',
+            render: (val, row) => (
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {formatCurrency(row?.taxableValue ?? row?.taxableAmount ?? val ?? 0, currency)}
+                </span>
+            ),
+            exportValue: (row) => row?.taxableValue ?? row?.taxableAmount ?? 0
+        },
+        {
+            key: 'gstRate',
+            header: 'GST Rate',
+            className: 'text-center',
+            headerClassName: 'text-center',
+            render: (val, row) => (
+                <span className="font-semibold px-2 py-0.5 rounded-full text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    {row?.gstRate !== undefined ? row.gstRate : (row?.taxRate !== undefined ? row.taxRate : val)}%
+                </span>
+            ),
+            exportValue: (row) => `${row?.gstRate !== undefined ? row.gstRate : (row?.taxRate || 0)}%`
+        },
+        {
+            key: 'cgstAmount',
+            header: 'CGST Amount',
+            className: 'text-right',
+            headerClassName: 'text-right',
+            render: (val, row) => (
+                <span className="text-slate-700 dark:text-slate-300">
+                    {formatCurrency(row?.cgstAmount ?? val ?? 0, currency)}
+                </span>
+            ),
+            exportValue: (row) => row?.cgstAmount ?? 0
+        },
+        {
+            key: 'sgstAmount',
+            header: 'SGST Amount',
+            className: 'text-right',
+            headerClassName: 'text-right',
+            render: (val, row) => (
+                <span className="text-slate-700 dark:text-slate-300">
+                    {formatCurrency(row?.sgstAmount ?? val ?? 0, currency)}
+                </span>
+            ),
+            exportValue: (row) => row?.sgstAmount ?? 0
+        },
+        {
+            key: 'igstAmount',
+            header: 'IGST Amount',
+            className: 'text-right',
+            headerClassName: 'text-right',
+            render: (val, row) => (
+                <span className="text-slate-700 dark:text-slate-300">
+                    {formatCurrency(row?.igstAmount ?? val ?? 0, currency)}
+                </span>
+            ),
+            exportValue: (row) => row?.igstAmount ?? 0
+        },
+        {
+            key: 'cessAmount',
+            header: 'Cess Amount',
+            className: 'text-right',
+            headerClassName: 'text-right',
+            render: (val, row) => (
+                <span className="text-slate-700 dark:text-slate-300">
+                    {formatCurrency(row?.cessAmount ?? val ?? 0, currency)}
+                </span>
+            ),
+            exportValue: (row) => row?.cessAmount ?? 0
+        }
+    ], [formatCurrency, currency]);
 
     const buildReportData = () => {
         let columns = [];
@@ -1288,6 +1457,34 @@ const Reports = ({
                 ["Liabilities", "Total Liabilities", formatCurrency(bs.liabilities?.total, currency)],
                 ["Equity", "Owner's Equity", formatCurrency(bs.equity?.total, currency)],
             ];
+        } else if (reportCategory === "hsn") {
+            columns = [
+                "HSN / SAC Code",
+                "Product / Service Description",
+                "UQC",
+                "Total Quantity",
+                "Total Value",
+                "Taxable Value",
+                "GST Rate",
+                "CGST Amount",
+                "SGST Amount",
+                "IGST Amount",
+                "Cess Amount"
+            ];
+            const dataToExport = hsnFilteredData;
+            rows = dataToExport.map(row => [
+                row.hsnCode || '—',
+                row.description || '—',
+                row.uqc || 'PCS',
+                row.totalQuantity || 0,
+                formatCurrency(row.totalValue || row.totalAmount || 0, currency),
+                formatCurrency(row.taxableValue || row.taxableAmount || 0, currency),
+                `${row.gstRate !== undefined ? row.gstRate : (row.taxRate || 0)}%`,
+                formatCurrency(row.cgstAmount || 0, currency),
+                formatCurrency(row.sgstAmount || 0, currency),
+                formatCurrency(row.igstAmount || 0, currency),
+                formatCurrency(row.cessAmount || 0, currency)
+            ]);
         }
 
         return { columns, rows };
@@ -4088,6 +4285,135 @@ const Reports = ({
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* 12. HSN / SAC REPORT */}
+                    {reportCategory === "hsn" && (
+                        <div className="space-y-6">
+                            {/* Top Controls & Category Filters */}
+                            <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b ${theme.borderLight} pb-4`}>
+                                <div>
+                                    <h3 className={`text-xl font-black ${theme.textHeading} flex items-center gap-2`}>
+                                        <FileSpreadsheet className="text-indigo-600" size={22} />
+                                        HSN / SAC Summary Report
+                                    </h3>
+                                    <p className={`text-xs ${theme.textMuted} mt-0.5`}>
+                                        Statutory item classification, tax rates, taxable value & GST breakdown (GSTR-1 Table 12 & Inward compliance)
+                                    </p>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                                    {/* Search Input */}
+                                    <div className="relative flex-1 md:w-64">
+                                        <input
+                                            type="text"
+                                            value={hsnSearchQuery}
+                                            onChange={(e) => setHsnSearchQuery(e.target.value)}
+                                            placeholder="Search HSN code or item..."
+                                            className={`w-full pl-9 pr-4 py-2 text-xs font-medium rounded-xl border ${theme.borderLight} ${theme.surfaceBg} ${theme.textPrimary} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                        />
+                                        <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
+                                        {hsnSearchQuery && (
+                                            <button
+                                                onClick={() => setHsnSearchQuery("")}
+                                                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Type Toggle Pills */}
+                                    <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-2xl">
+                                        <button
+                                            onClick={() => setHsnTypeFilter("all")}
+                                            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                                hsnTypeFilter === "all"
+                                                    ? `${theme.buttonBg} ${theme.buttonText} shadow-md`
+                                                    : theme.textMuted
+                                            }`}
+                                        >
+                                            All ({((hsnReport?.salesHsn?.length || 0) + (hsnReport?.purchaseHsn?.length || 0))})
+                                        </button>
+                                        <button
+                                            onClick={() => setHsnTypeFilter("sales")}
+                                            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                                hsnTypeFilter === "sales"
+                                                    ? `${theme.buttonBg} ${theme.buttonText} shadow-md`
+                                                    : theme.textMuted
+                                            }`}
+                                        >
+                                            Sales ({hsnReport?.salesHsn?.length || 0})
+                                        </button>
+                                        <button
+                                            onClick={() => setHsnTypeFilter("purchases")}
+                                            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                                hsnTypeFilter === "purchases"
+                                                    ? `${theme.buttonBg} ${theme.buttonText} shadow-md`
+                                                    : theme.textMuted
+                                            }`}
+                                        >
+                                            Purchases ({hsnReport?.purchaseHsn?.length || 0})
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* KPI Metrics Summary Cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className={`p-4 rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total HSN / SAC</div>
+                                    <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">
+                                        {new Set(hsnFilteredData.map(r => r.hsnCode).filter(Boolean)).size}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">{hsnFilteredData.length} line items</div>
+                                </div>
+
+                                <div className={`p-4 rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Taxable Value</div>
+                                    <div className="text-2xl font-black text-slate-900 dark:text-slate-100 mt-1">
+                                        {formatCurrency(hsnTotals.taxableVal, currency)}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">Base assessable value</div>
+                                </div>
+
+                                <div className={`p-4 rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total GST Amount</div>
+                                    <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+                                        {formatCurrency(hsnTotals.cgst + hsnTotals.sgst + hsnTotals.igst + hsnTotals.cess, currency)}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                        CGST: {formatCurrency(hsnTotals.cgst, currency)} | SGST: {formatCurrency(hsnTotals.sgst, currency)}
+                                    </div>
+                                </div>
+
+                                <div className={`p-4 rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} shadow-sm`}>
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Gross Total Value</div>
+                                    <div className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">
+                                        {formatCurrency(hsnTotals.totalVal, currency)}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">Includes all taxes & cess</div>
+                                </div>
+                            </div>
+
+                            {/* HSN Records Table */}
+                            <div className={`rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} p-2 shadow-sm`}>
+                                <CommonTable
+                                    columns={hsnColumns}
+                                    data={hsnFilteredData}
+                                    tableId="hsn_reports"
+                                    rowKey={(r, idx) => `${r.hsnCode || 'hsn'}_${r.gstRate || r.taxRate || 0}_${r.uqc || 'pcs'}_${idx}`}
+                                    showAdjust={true}
+                                    showExport={true}
+                                    selectable={true}
+                                    isLoading={loading}
+                                    emptyMessage="No HSN / SAC records found for the selected period."
+                                    exportFilename={`HSN_Report_${filterStartDate}_${filterEndDate}`}
+                                    exportTitle="HSN / SAC Summary Report"
+                                    pageSize={15}
+                                />
+                            </div>
                         </div>
                     )}
                 </div>

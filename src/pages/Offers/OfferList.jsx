@@ -282,6 +282,7 @@ const OfferList = ({ hasPermissionFor, formatCurrency }) => {
                 ) : (
                     <div className="h-full overflow-y-auto custom-scrollbar">
                         <CommonTable
+                            tableId="promotions-offers-list"
                             columns={columns}
                             data={filteredOffers}
                         />

@@ -1631,6 +1631,15 @@ export const reportsService = {
             throw error.response ? error.response.data : error;
         }
     },
+    getHsnReport: async (params = {}) => {
+        try {
+            const response = await api.get('/reports/hsn', { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching HSN report:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
 };
 
 export const reservationService = {

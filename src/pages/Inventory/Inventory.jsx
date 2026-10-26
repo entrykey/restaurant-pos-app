@@ -776,6 +776,7 @@ const Inventory = ({
         {
             header: "Item Details",
             key: "name",
+            required: true,
             render: (value, item) => (
                 <>
                     <div className={`font-black text-lg ${theme.textHeading}`}>{value}</div>
@@ -953,6 +954,7 @@ const Inventory = ({
         {
             header: "Item Name",
             key: "name",
+            required: true,
             render: (value, item) => (
                 <>
                     <div className={`font-black text-lg ${theme.textHeading}`}>{value}</div>
@@ -1131,9 +1133,200 @@ const Inventory = ({
 
     const currentColumns = useMemo(() => [
         ...baseColumns,
+        // Optional / Adjustable Columns (hidden by default, can be toggled via Adjust button)
+        {
+            header: "HSN / SAC",
+            key: "hsnSacCode",
+            defaultVisible: false,
+            exportValue: (_, item) => item.hsnSacCode || item.hsn_sac_code || item.hsnCode || "",
+            render: (_, item) => {
+                const code = item.hsnSacCode || item.hsn_sac_code || item.hsnCode;
+                return code ? (
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-mono font-black bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                        {code}
+                    </span>
+                ) : (
+                    <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                );
+            }
+        },
+        {
+            header: "Barcode",
+            key: "barcode",
+            defaultVisible: false,
+            exportValue: (_, item) => item.barcode || "",
+            render: (_, item) => item.barcode ? (
+                <span className={`font-mono text-xs font-bold ${theme.textPrimary}`}>{item.barcode}</span>
+            ) : (
+                <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+            )
+        },
+        {
+            header: "Brand",
+            key: "brandId",
+            defaultVisible: false,
+            exportValue: (_, item) => item.brandId?.name || item.brand?.name || item.brandName || "",
+            render: (_, item) => {
+                const brand = item.brandId?.name || item.brand?.name || item.brandName;
+                return brand ? (
+                    <span className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-3 py-1 rounded-xl text-xs font-bold">
+                        {brand}
+                    </span>
+                ) : (
+                    <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                );
+            }
+        },
+        {
+            header: "Cost Price",
+            key: "purchasePrice",
+            defaultVisible: false,
+            headerClassName: "text-right",
+            className: "text-right",
+            exportValue: (_, item) => {
+                const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
+                return pp != null ? String(pp) : "";
+            },
+            render: (_, item) => {
+                const pp = item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit;
+                return pp != null ? (
+                    <span className={`text-xs font-bold ${theme.textHeading}`}>
+                        {formatCurrency ? formatCurrency(pp) : `₹${pp}`}
+                    </span>
+                ) : (
+                    <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                );
+            }
+        },
+        {
+            header: "MRP",
+            key: "mrp",
+            defaultVisible: false,
+            headerClassName: "text-right",
+            className: "text-right",
+            exportValue: (_, item) => {
+                const mrp = item.pricing?.mrp ?? item.mrp;
+                return mrp != null ? String(mrp) : "";
+            },
+            render: (_, item) => {
+                const mrp = item.pricing?.mrp ?? item.mrp;
+                return mrp != null ? (
+                    <span className={`text-xs font-bold ${theme.textHeading}`}>
+                        {formatCurrency ? formatCurrency(mrp) : `₹${mrp}`}
+                    </span>
+                ) : (
+                    <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                );
+            }
+        },
+        {
+            header: "Sale Price",
+            key: "sellingPriceDirect",
+            defaultVisible: false,
+            headerClassName: "text-right",
+            className: "text-right",
+            exportValue: (_, item) => {
+                const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+                return sp != null ? String(sp) : "";
+            },
+            render: (_, item) => {
+                const sp = item.pricing?.sellingPrice ?? item.sellingPrice;
+                return sp != null ? (
+                    <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency ? formatCurrency(sp) : `₹${sp}`}
+                    </span>
+                ) : (
+                    <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                );
+            }
+        },
+        {
+            header: "Min Stock Alert",
+            key: "minStockAlert",
+            defaultVisible: false,
+            headerClassName: "text-center",
+            className: "text-center",
+            exportValue: (_, item) => {
+                const min = item.stockSettings?.minStockAlert ?? item.minStockAlert;
+                return min != null ? String(min) : "";
+            },
+            render: (_, item) => {
+                const min = item.stockSettings?.minStockAlert ?? item.minStockAlert;
+                return min != null && min > 0 ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300">
+                        {min}
+                    </span>
+                ) : (
+                    <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                );
+            }
+        },
+        {
+            header: "Unit",
+            key: "unitId",
+            defaultVisible: false,
+            exportValue: (_, item) => item.unitId?.name || item.unitId?.code || item.unit?.name || "",
+            render: (_, item) => {
+                const u = item.unitId?.name || item.unitId?.code || item.unit?.name;
+                return u ? (
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                        {u}
+                    </span>
+                ) : (
+                    <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                );
+            }
+        },
+        {
+            header: "Secondary Unit",
+            key: "secondaryUnitId",
+            defaultVisible: false,
+            exportValue: (_, item) => item.secondaryUnitId?.name || item.secondaryUnitId?.code || "",
+            render: (_, item) => {
+                const su = item.secondaryUnitId?.name || item.secondaryUnitId?.code;
+                return su ? (
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-400">
+                        {su} {item.conversionFactor > 1 ? `(1 = ${item.conversionFactor})` : ''}
+                    </span>
+                ) : (
+                    <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                );
+            }
+        },
+        {
+            header: "Item Type",
+            key: "itemType",
+            defaultVisible: false,
+            exportValue: (_, item) => item.itemType || "",
+            render: (_, item) => {
+                const t = item.itemType;
+                return t ? (
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-slate-700">
+                        {t}
+                    </span>
+                ) : (
+                    <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+                );
+            }
+        },
+        {
+            header: "Description",
+            key: "description",
+            defaultVisible: false,
+            exportValue: (_, item) => item.description || "",
+            render: (_, item) => item.description ? (
+                <span className={`text-xs ${theme.textSecondary} line-clamp-1 max-w-[200px]`} title={item.description}>
+                    {item.description}
+                </span>
+            ) : (
+                <span className={`text-xs opacity-40 ${theme.textSecondary}`}>—</span>
+            )
+        },
         {
             header: "Actions",
             key: "actions",
+            required: true,
+            defaultVisible: true,
             headerClassName: "text-right",
             className: "text-right",
             render: (_, item) => (
@@ -1174,7 +1367,7 @@ const Inventory = ({
                 </div>
             )
         }
-    ], [baseColumns, canManage, activeTab, loadingItemId, theme]);
+    ], [baseColumns, canManage, activeTab, loadingItemId, theme, formatCurrency]);
 
     // -- Mobile card renderer --------------------------------------------------
     const mobileCardRender = (item) => {
@@ -1723,6 +1916,7 @@ const Inventory = ({
             {/* Table section */}
             <div className="px-2 md:px-4 pb-10">
                 <CommonTable
+                    tableId={`inventory-items-${activeTab}`}
                     columns={currentColumns}
                     data={filteredData}
                     isLoading={loadingItems}

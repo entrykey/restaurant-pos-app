@@ -111,6 +111,7 @@ export const ROUTE_ACCESS = Object.freeze({
   INVENTORY: { module: MODULES.INVENTORY, resource: "inventory", action: "view" },
   REPORTS: { module: MODULES.REPORTS, resource: "report", action: "VIEW.REPORTS" },
   STOCK_WISE_REPORT: { module: MODULES.REPORTS, resource: "report", action: "STOCK.WISE.REPORT" },
+  HSN_REPORT: { module: MODULES.REPORTS, resource: "report", action: "HSN.REPORT" },
   SETTINGS: { module: MODULES.SETTINGS, resource: "settings", action: "view" },
   STAFF: { module: MODULES.STAFF, resource: "staff", action: "view" },
   STAFF_DASHBOARD: { module: MODULES.STAFF, resource: "staff", action: "dashboard" },

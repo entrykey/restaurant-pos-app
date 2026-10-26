@@ -1159,6 +1159,7 @@ const Organization = ({
                         )}
                     </div>
                     <CommonTable
+                        tableId="organization-branches-list"
                         columns={branchColumns}
                         data={branches}
                         rowKey="id"

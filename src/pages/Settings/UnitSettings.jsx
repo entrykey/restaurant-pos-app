@@ -157,7 +157,7 @@ const UnitSettings = () => {
             </div>
 
             <div className={`${theme.surfaceBg} rounded-[24px] shadow-sm border ${theme.borderLight} overflow-hidden`}>
-                <CommonTable columns={columns} data={units} />
+                <CommonTable tableId="settings-units-list" columns={columns} data={units} />
             </div>
 
             {isDialogOpen && (

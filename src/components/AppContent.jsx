@@ -57,6 +57,8 @@ const ROOT_PATH_SEGMENTS = new Set([
     "takeaway",
     "wholesale",
     "online-orders",
+    "delivery-management",
+    "delivery-settlement",
     "reservations",
     "kds",
     "inventory",
@@ -82,6 +84,11 @@ const ROOT_PATH_SEGMENTS = new Set([
     "staff-dashboard",
     "sale-marking",
     "sales-history",
+    "operating-expenses",
+    "pay-in",
+    "pay-out",
+    "salesreturn",
+    "purchasereturn",
     "login",
     "profile",
 ]);
@@ -566,6 +573,47 @@ const AppContent = () => {
     }, [isAuthenticated, currentUser, location.pathname, navigate, organization?.businessName, settings?.shopName]);
 
     // Sync view with URL path
+    // Maps ROUTE_KEY_TO_PATH keys → the lowercase view strings used by Sidebar / wildcard route
+    const ROUTE_KEY_TO_VIEW = {
+        DASHBOARD: "dashboard",
+        STAFF_DASHBOARD: "staff-dashboard",
+        MYATTENDANCE: "my-attendance",
+        MYLEAVES: "my-leaves",
+        MYSALARY: "my-salary",
+        DINING: "tables",
+        TAKEAWAY: "order",
+        DIRECT_SALE: "order",
+        WHOLESALE: "order",
+        ONLINE_ORDERS: "online-orders",
+        DELIVERY_MANAGEMENT: "delivery-management",
+        DELIVERY_SETTLEMENT: "delivery-settlement",
+        KDS: "kds",
+        RESERVATIONS: "reservations",
+        INVENTORY: "inventory",
+        OPERATING_EXPENSES: "operating-expenses",
+        REPORTS: "reports",
+        SETTINGS: "settings",
+        STAFF: "staff",
+        ORGANIZATION: "organization",
+        SUPPLIERS: "suppliers",
+        PARTIES: "parties",
+        SERVICE: "service",
+        PURCHASES: "purchases",
+        BUSINESS_TYPES: "business-types",
+        SHOP_MANAGEMENT: "shop-management",
+        PLAN_MANAGEMENT: "plan-management",
+        SUBSCRIPTION_MANAGEMENT: "subscription-management",
+        TABLE_MANAGEMENT: "table-management",
+        OFFERS: "offers",
+        CLIENT_MANAGEMENT: "client-management",
+        SALE_MARKING: "sale-marking",
+        SALES_HISTORY: "sales-history",
+        SALES_RETURN: "salesreturn",
+        PAY_IN: "pay-in",
+        PAY_OUT: "pay-out",
+        PURCHASE_RETURN: "purchasereturn",
+    };
+
     useEffect(() => {
         const rawPath = location.pathname;
         const segs = String(rawPath || "/").split("/").filter(Boolean);
@@ -575,14 +623,18 @@ const AppContent = () => {
             ? `/${segs.slice(1).join("/")}`
             : rawPath;
 
-        const entry = Object.entries(ROUTE_KEY_TO_PATH).find(([key, routePath]) => path === routePath);
+        const entry = Object.entries(ROUTE_KEY_TO_PATH)
+            .sort((a, b) => String(b[1]).length - String(a[1]).length)
+            .find(([, routePath]) => path === routePath || path.startsWith(`${routePath}/`));
         if (entry) {
-            setView(entry[0]);
+            const viewStr = ROUTE_KEY_TO_VIEW[entry[0]] || entry[0].toLowerCase().replace(/_/g, '-');
+            setView(viewStr);
         } else if (!canModule('dashboard')) {
             const firstAllowed = getFirstAllowedPath();
             const matchingEntry = Object.entries(ROUTE_KEY_TO_PATH).find(([_, routePath]) => routePath === firstAllowed);
             if (matchingEntry) {
-                setView(matchingEntry[0]);
+                const viewStr = ROUTE_KEY_TO_VIEW[matchingEntry[0]] || matchingEntry[0].toLowerCase().replace(/_/g, '-');
+                setView(viewStr);
             }
         }
     }, [location.pathname, setView, canModule]);

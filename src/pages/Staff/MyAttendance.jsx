@@ -111,6 +111,7 @@ const MyAttendance = () => {
 
             <div className={`${theme.surfaceBg} rounded-3xl shadow-lg border ${theme.borderLight} overflow-hidden`}>
                 <CommonTable 
+                    tableId="staff-my-attendance-list"
                     columns={[
                         { header: "Date", key: "attendanceDate", className: "font-mono font-bold" },
                         { 
