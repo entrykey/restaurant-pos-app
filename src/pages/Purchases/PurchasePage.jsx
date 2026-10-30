@@ -959,7 +959,7 @@ const PurchasePage = () => {
             <div class="address-detail">${formatAddress(supplier?.address)}</div>
             ${supplier?.phone ? `<div class="address-detail">Ph: ${supplier.phone}</div>` : ''}
             ${supplier?.email ? `<div class="address-detail">Email: ${supplier.email}</div>` : ''}
-            ${supplier?.taxNumber ? `<div class="address-detail">TAX ID: ${supplier.taxNumber}</div>` : ''}
+            ${(supplier?.taxNumber || supplier?.taxId || supplier?.gstNumber || supplier?.gstin) ? `<div class="address-detail"><strong>GSTIN:</strong> ${supplier.taxNumber || supplier.taxId || supplier.gstNumber || supplier.gstin}</div>` : ''}
           </div>
         </div>` : ''}
         <div class="address-box">

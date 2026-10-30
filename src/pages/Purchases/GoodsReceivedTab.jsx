@@ -111,6 +111,11 @@ const GoodsReceivedTab = () => {
                                         </td>
                                         <td className={`py-3.5 px-4 font-bold ${theme.textPrimary}`}>
                                             {grn.supplierId?.name || 'N/A'}
+                                            {(grn.supplierId?.taxNumber || grn.supplierId?.taxId || grn.supplierId?.gstNumber || grn.supplierId?.gstin) && (
+                                                <div className="text-[10px] font-mono text-indigo-500 font-bold">
+                                                    GST: {grn.supplierId?.taxNumber || grn.supplierId?.taxId || grn.supplierId?.gstNumber || grn.supplierId?.gstin}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className={`py-3.5 px-4 font-semibold ${theme.textSecondary}`}>
                                             {grn.supplierChallanNo || '—'}

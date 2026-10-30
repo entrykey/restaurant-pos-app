@@ -452,8 +452,44 @@ export function getBillA4Html({
   extraInfo,
   paymentMethod,
   paymentStatus,
+  customer,
 }) {
   const formatSettings = billSettings?.a4 || billSettings || {};
+
+  // Customer data resolution for Billed To box
+  const custObj = customer || meta?.customer || (typeof meta?.customerData === 'object' ? meta.customerData : null) || {};
+  let custAddrLines = [];
+  if (custObj?.address) {
+    if (typeof custObj.address === 'string' && custObj.address !== '[object Object]') {
+      custAddrLines = [custObj.address];
+    } else if (typeof custObj.address === 'object') {
+      const parts = [
+        custObj.address.street || custObj.address.line1,
+        custObj.address.city,
+        typeof custObj.address.state === 'object' ? (custObj.address.state?.name || custObj.address.state?.code) : custObj.address.state,
+        custObj.address.postalCode || custObj.address.pincode
+      ].filter(Boolean);
+      if (parts.length > 0) custAddrLines = [parts.join(', ')];
+    }
+  }
+
+  let custName = custObj?.name || '';
+  let custPhone = custObj?.phone || '';
+  const custGst = String(custObj?.taxNumber || custObj?.taxId || custObj?.gstNumber || custObj?.gstin || custObj?.tax_number || custObj?.gst || '').trim();
+
+  if (!custName && meta?.customerLabel) {
+    const cleaned = meta.customerLabel.replace(/^Customer:\s*/i, '').trim();
+    const phoneMatch = cleaned.match(/\(([^)]+)\)/);
+    if (phoneMatch) {
+      custPhone = custPhone || phoneMatch[1].trim();
+      custName = cleaned.replace(/\s*\([^)]+\)/, '').trim();
+    } else {
+      custName = cleaned;
+    }
+  }
+  if (!custName || custName.toLowerCase() === 'undefined' || custName.toLowerCase() === 'null') {
+    custName = 'Walk-in Customer';
+  }
   const addr = (header?.addressLines || []).filter(Boolean);
   const showGst = formatSettings.includeGstNumber && extraInfo?.gstNumber;
   const showFssai = formatSettings.includeFssai && extraInfo?.fssai;
@@ -585,9 +621,10 @@ export function getBillA4Html({
         </div>
         <div class="box">
           <h3>Billed To</h3>
-          ${formatSettings.includeShopName !== false ? `<div class="name">${escapeHtml(header?.shopName || "")}</div>` : ""}
-          ${formatSettings.includeBranchName !== false ? `<div class="line" style="font-weight:600; color:#334155;">${escapeHtml(header?.branchName || "")}</div>` : ""}
-          ${formatSettings.includeAddress !== false ? addr.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("") : ""}
+          <div class="name">${escapeHtml(custName)}</div>
+          ${custAddrLines.length > 0 ? custAddrLines.map((l) => `<div class="line">${escapeHtml(l)}</div>`).join("") : ""}
+          ${custPhone ? `<div class="line">Ph: ${escapeHtml(custPhone)}</div>` : ""}
+          ${custGst ? `<div class="line"><strong>GSTIN:</strong> ${escapeHtml(custGst)}</div>` : `<div class="line" style="color:#64748b; font-size:11px;">GSTIN: Unregistered Person (URP)</div>`}
         </div>
       </div>
 

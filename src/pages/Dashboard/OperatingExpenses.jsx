@@ -5,7 +5,15 @@ import { useTheme } from '../../context/ThemeContext';
 import { shopExpenseService } from '../../services/api/shopExpenses';
 import { dashboardService } from '../../services/api';
 import OperatingExpenseCard from '../../components/cards/OperatingExpenseCard';
-import { ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, Settings2, Calendar, ShoppingBag, Coins, TrendingDown, FileText, ArrowRightCircle, Trash2 } from 'lucide-react';
+import CommonTable from '../../components/CommonTable';
+import OperatingExpenseSheet from '../../components/modals/OperatingExpenseSheet';
+import ExpenseBillScanModal from '../../components/modals/ExpenseBillScanModal';
+import { 
+    ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, 
+    Settings2, Calendar, ShoppingBag, Coins, TrendingDown, FileText, 
+    ArrowRightCircle, Trash2, LayoutGrid, Table as TableIcon, Edit3, Search,
+    Sparkles, Camera, Car, Building, Hash, Receipt
+} from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import CommonSelect from '../../components/ui/CommonSelect';
 import CommonDialog from '../../components/modals/CommonDialog';
@@ -33,6 +41,11 @@ const OperatingExpenses = () => {
     const [showAddInput, setShowAddInput] = useState(false);
     const [showBranchDropdown, setShowBranchDropdown] = useState(false);
     const [activeTab, setActiveTab] = useState(() => urlTab || 'expenses'); // 'expenses', 'drafts', or 'timeline'
+    const [viewMode, setViewMode] = useState(() => localStorage.getItem('operating_expenses_view_mode') || 'table');
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const [sheetExpense, setSheetExpense] = useState(null);
+    const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+    const [tableSearch, setTableSearch] = useState('');
     const [todayProfit, setTodayProfit] = useState(0);
     const [profitTimeline, setProfitTimeline] = useState([]);
     const [expandedDate, setExpandedDate] = useState(null);
@@ -51,6 +64,11 @@ const OperatingExpenses = () => {
     }, [urlStartDate]);
 
     const defaultCategories = ['Salary', 'Rent', 'Electricity', 'Water'];
+
+    const handleViewModeChange = (mode) => {
+        setViewMode(mode);
+        localStorage.setItem('operating_expenses_view_mode', mode);
+    };
 
     // Determine which branches this user can see/manage
     const filteredBranches = (branches || []).filter(b => {
@@ -186,6 +204,7 @@ const OperatingExpenses = () => {
         setSavingId(index);
         try {
             await shopExpenseService.upsertExpense(shopId, branchId, {
+                ...expense,
                 _id: expense._id,
                 category: expense.category,
                 amount: expense.amount,
@@ -203,13 +222,43 @@ const OperatingExpenses = () => {
         }
     };
 
-    const handleDeleteExpense = (index) => {
-        const expense = expenses[index];
+    const handleSheetSave = async (expenseData) => {
+        const shopId = user?.shopId || user?.shop_id;
+        const branchId = selectedBranchId;
+
+        if (!branchId) {
+            toast.error("Please select a branch first");
+            return;
+        }
+
+        try {
+            await shopExpenseService.upsertExpense(shopId, branchId, {
+                ...expenseData,
+                _id: expenseData._id,
+                category: expenseData.category,
+                amount: expenseData.amount,
+                term: expenseData.term,
+                isDefault: expenseData.isDefault || false,
+                isDraft: expenseData.isDraft || false
+            });
+            toast.success(expenseData.isDraft ? "Draft expense saved successfully" : "Expense saved successfully");
+            fetchData();
+        } catch (error) {
+            console.error("Failed to save expense:", error);
+            toast.error(error?.response?.data?.message || error?.message || "Failed to save expense");
+            throw error;
+        }
+    };
+
+    const handleDeleteExpense = (item) => {
+        const expense = typeof item === 'number' ? expenses[item] : item;
+        if (!expense) return;
+
         if (!expense._id || expense.isNew) {
             if (expense.category) {
                 setDeletedDefaultCategories(prev => [...prev, expense.category]);
             }
-            setExpenses(expenses.filter((_, i) => i !== index));
+            setExpenses(expenses.filter(e => e !== expense && e.category !== expense.category));
             return;
         }
 
@@ -308,6 +357,165 @@ const OperatingExpenses = () => {
         }
     };
 
+    const calculatePerDay = useCallback((exp) => {
+        if (!exp || exp.term === 'one time' || exp.isDraft) return 0;
+        const termDaysMap = {
+            'daily': 1, 'monthly': 30, '2months': 60, '3months': 90, '6months': 180, 'yearly': 365
+        };
+        return (Number(exp.amount) || 0) / (termDaysMap[exp.term] || 30);
+    }, []);
+
+    const tableColumns = useMemo(() => [
+        {
+            header: 'Category',
+            key: 'category',
+            render: (cat, row) => (
+                <div className="flex flex-col py-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-black text-sm ${theme.textHeading}`}>{cat}</span>
+                        {row.vehicleNumber && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-lg flex items-center gap-1">
+                                <Car size={10} /> {row.vehicleNumber}
+                            </span>
+                        )}
+                        {row.billNumber && (
+                            <span className="px-1.5 py-0.5 text-[9px] font-bold bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 rounded">
+                                #{row.billNumber}
+                            </span>
+                        )}
+                        {row.isDraft && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 rounded-lg">
+                                Draft
+                            </span>
+                        )}
+                        {row.isPurchase && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded-lg">
+                                Stock Purchase
+                            </span>
+                        )}
+                        {row.amount < 0 && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 rounded-lg">
+                                Negative
+                            </span>
+                        )}
+                    </div>
+                    {(row.vendorName || row.notes || row.isDefault) && (
+                        <div className="flex items-center gap-2 mt-0.5">
+                            {row.vendorName && (
+                                <span className={`text-[10px] font-bold text-gray-400 dark:text-gray-500 truncate max-w-[200px]`}>
+                                    {row.vendorName}
+                                </span>
+                            )}
+                            {row.isDefault && (
+                                <span className={`text-[10px] font-bold ${theme.textMuted}`}>Default Parameter</span>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )
+        },
+        {
+            header: 'Billing Term',
+            key: 'term',
+            render: (term) => {
+                const termLabels = {
+                    'daily': 'Daily',
+                    'monthly': 'Monthly',
+                    '2months': '2 Months',
+                    '3months': '3 Months',
+                    '6months': '6 Months',
+                    'yearly': 'Yearly',
+                    'one time': 'One Time'
+                };
+                return (
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${theme.pageBg} border ${theme.borderLight} ${theme.textPrimary}`}>
+                        {termLabels[term] || term || 'Monthly'}
+                    </span>
+                );
+            }
+        },
+        {
+            header: 'Amount',
+            key: 'amount',
+            render: (amt) => (
+                <span className={`font-black text-base ${amt < 0 ? 'text-red-600 dark:text-red-400' : theme.textPrimary}`}>
+                    {formatCurrency(amt || 0)}
+                </span>
+            )
+        },
+        {
+            header: 'Daily Cost',
+            key: 'dailyCost',
+            render: (_, row) => {
+                const perDay = calculatePerDay(row);
+                return (
+                    <div className="flex flex-col">
+                        <span className={`font-black text-base ${perDay < 0 ? 'text-red-600' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                            {formatCurrency(perDay)}
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme.textMuted}`}>
+                            {row.term === 'one time' ? 'Excluded (One Time)' : 'per day'}
+                        </span>
+                    </div>
+                );
+            }
+        },
+        {
+            header: 'Actions',
+            key: 'actions',
+            render: (_, row) => (
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <button
+                        onClick={() => {
+                            setSheetExpense(row);
+                            setSheetOpen(true);
+                        }}
+                        title="Edit Expense in Sheet"
+                        className={`p-2 rounded-xl transition-all ${theme.pageBg} border ${theme.borderLight} hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 dark:hover:bg-indigo-950/40`}
+                    >
+                        <Edit3 size={15} />
+                    </button>
+
+                    {row.isDraft && (
+                        <button
+                            onClick={() => handleMoveToExpense(row)}
+                            title="Move to Active Expenses"
+                            className="p-2 rounded-xl text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-all"
+                        >
+                            <ArrowRightCircle size={15} />
+                        </button>
+                    )}
+
+                    {!row.isPurchase && (
+                        <button
+                            onClick={() => handleDeleteExpense(row)}
+                            title="Delete Expense"
+                            className="p-2 rounded-xl text-red-500 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 hover:bg-red-100 transition-all"
+                        >
+                            <Trash2 size={15} />
+                        </button>
+                    )}
+                </div>
+            )
+        }
+    ], [theme, formatCurrency, calculatePerDay]);
+
+    const tableData = useMemo(() => {
+        return expenses.map((exp, idx) => ({
+            ...exp,
+            id: exp._id || `${exp.category}-${idx}`,
+            dailyCost: calculatePerDay(exp)
+        })).filter(exp => {
+            if (!tableSearch.trim()) return true;
+            const q = tableSearch.toLowerCase();
+            return (exp.category || '').toLowerCase().includes(q) || 
+                   (exp.term || '').toLowerCase().includes(q) ||
+                   (exp.vendorName || '').toLowerCase().includes(q) ||
+                   (exp.vehicleNumber || '').toLowerCase().includes(q) ||
+                   (exp.billNumber || '').toLowerCase().includes(q);
+        });
+    }, [expenses, tableSearch, calculatePerDay]);
+
     const filteredTimeline = useMemo(() => {
         if (!urlStartDate && !urlEndDate) return profitTimeline;
         return profitTimeline.filter(day => {
@@ -387,100 +595,257 @@ const OperatingExpenses = () => {
                 </div>
             </div>
 
-            {/* Tab Switching */}
-            <div className={`flex gap-2 p-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl w-fit`}>
-                <button
-                    onClick={() => setActiveTab('expenses')}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm uppercase tracking-widest transition-all ${activeTab === 'expenses'
-                        ? 'bg-indigo-600 text-white shadow-lg'
-                        : `${theme.textMuted} hover:bg-gray-100 dark:hover:bg-white/5`
-                        }`}
-                >
-                    <Settings2 size={18} />
-                    Manage Expenses
-                </button>
-                <button
-                    onClick={() => setActiveTab('drafts')}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm uppercase tracking-widest transition-all ${activeTab === 'drafts'
-                        ? 'bg-amber-600 text-white shadow-lg'
-                        : `${theme.textMuted} hover:bg-gray-100 dark:hover:bg-white/5`
-                        }`}
-                >
-                    <FileText size={18} />
-                    Draft Expenses
-                </button>
-                <button
-                    onClick={() => setActiveTab('timeline')}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm uppercase tracking-widest transition-all ${activeTab === 'timeline'
-                        ? 'bg-indigo-600 text-white shadow-lg'
-                        : `${theme.textMuted} hover:bg-gray-100 dark:hover:bg-white/5`
-                        }`}
-                >
-                    <History size={18} />
-                    Profit History
-                </button>
+            {/* Tab Switching & View Controls */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className={`flex gap-2 p-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl w-fit`}>
+                    <button
+                        onClick={() => setActiveTab('expenses')}
+                        className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm uppercase tracking-widest transition-all ${activeTab === 'expenses'
+                            ? 'bg-indigo-600 text-white shadow-lg'
+                            : `${theme.textMuted} hover:bg-gray-100 dark:hover:bg-white/5`
+                            }`}
+                    >
+                        <Settings2 size={18} />
+                        Manage Expenses
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('drafts')}
+                        className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm uppercase tracking-widest transition-all ${activeTab === 'drafts'
+                            ? 'bg-amber-600 text-white shadow-lg'
+                            : `${theme.textMuted} hover:bg-gray-100 dark:hover:bg-white/5`
+                            }`}
+                    >
+                        <FileText size={18} />
+                        Draft Expenses
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('timeline')}
+                        className={`flex items-center gap-2 px-6 py-3 rounded-xl font-black text-sm uppercase tracking-widest transition-all ${activeTab === 'timeline'
+                            ? 'bg-indigo-600 text-white shadow-lg'
+                            : `${theme.textMuted} hover:bg-gray-100 dark:hover:bg-white/5`
+                            }`}
+                    >
+                        <History size={18} />
+                        Profit History
+                    </button>
+                </div>
+
+                {/* View switcher and Side Sheet Add button */}
+                {(activeTab === 'expenses' || activeTab === 'drafts') && (
+                    <div className="flex items-center gap-3">
+                        <div className={`flex items-center gap-1 p-1 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl`}>
+                            <button
+                                onClick={() => handleViewModeChange('table')}
+                                title="Table View"
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${
+                                    viewMode === 'table'
+                                        ? 'bg-indigo-600 text-white shadow-md'
+                                        : `${theme.textMuted} hover:bg-gray-100 dark:hover:bg-white/5`
+                                }`}
+                            >
+                                <TableIcon size={16} />
+                                <span>Table View</span>
+                            </button>
+                            <button
+                                onClick={() => handleViewModeChange('grid')}
+                                title="Card / Box View"
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${
+                                    viewMode === 'grid'
+                                        ? 'bg-indigo-600 text-white shadow-md'
+                                        : `${theme.textMuted} hover:bg-gray-100 dark:hover:bg-white/5`
+                                }`}
+                            >
+                                <LayoutGrid size={16} />
+                                <span>Box View</span>
+                            </button>
+                        </div>
+
+                        <button
+                            onClick={() => setIsScanModalOpen(true)}
+                            className="flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider text-white shadow-lg shadow-amber-500/20 bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 transition-all active:scale-95"
+                            title="Upload petrol slips, food receipts, or daily bills to auto-record via Filepe AI"
+                        >
+                            <Sparkles size={16} />
+                            <span>Scan Bill (Filepe AI)</span>
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                setSheetExpense(null);
+                                setSheetOpen(true);
+                            }}
+                            className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider text-white shadow-lg transition-all active:scale-95 ${
+                                activeTab === 'drafts'
+                                    ? 'bg-amber-600 hover:bg-amber-700'
+                                    : 'bg-indigo-600 hover:bg-indigo-700'
+                            }`}
+                        >
+                            <Plus size={16} />
+                            <span>{activeTab === 'drafts' ? 'Add Draft Entry' : 'Add Expense Entry'}</span>
+                        </button>
+                    </div>
+                )}
             </div>
 
             {activeTab === 'expenses' || activeTab === 'drafts' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Add Category Card */}
-                    {!showAddInput ? (
-                        <button
-                            onClick={() => setShowAddInput(true)}
-                            className={`h-full min-h-[200px] border-2 border-dashed ${activeTab === 'drafts' ? 'border-amber-300' : theme.borderLight} rounded-[32px] flex flex-col items-center justify-center gap-4 ${activeTab === 'drafts' ? 'text-amber-600 hover:border-amber-500 hover:bg-amber-50/50' : 'text-gray-400 hover:text-indigo-600 hover:border-indigo-600 hover:bg-indigo-50/50'} transition-all group order-last`}
-                        >
-                            <div className={`p-4 ${activeTab === 'drafts' ? 'bg-amber-50' : 'bg-gray-50 dark:bg-white/5'} rounded-2xl ${activeTab === 'drafts' ? 'group-hover:bg-amber-100 dark:group-hover:bg-amber-900/30' : 'group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/30'} transition-colors`}>
-                                <Plus size={32} />
-                            </div>
-                            <span className="font-bold uppercase tracking-widest text-sm text-[11px]">
-                                {activeTab === 'drafts' ? 'Add Draft Category' : 'Add Custom Category'}
-                            </span>
-                        </button>
-                    ) : (
-                        <div className={`${theme.surfaceBg} p-6 rounded-[32px] border-2 ${activeTab === 'drafts' ? 'border-amber-500' : 'border-indigo-500'} shadow-xl space-y-4 flex flex-col items-center justify-center order-first animate-in zoom-in-95 duration-200`}>
-                            <div className="w-full">
-                                <label className={`block text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>New Category Name</label>
+                viewMode === 'table' ? (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Table Search & Count Bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                            <div className="relative min-w-[260px] max-w-sm">
+                                <Search size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${theme.textMuted}`} />
                                 <input
-                                    autoFocus
                                     type="text"
-                                    value={newCategoryName}
-                                    onChange={(e) => setNewCategoryName(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
-                                    placeholder="e.g. Broadband"
-                                    className={`w-full p-4 ${theme.pageBg} rounded-2xl outline-none font-bold ${theme.textPrimary}`}
+                                    value={tableSearch}
+                                    onChange={(e) => setTableSearch(e.target.value)}
+                                    placeholder="Search categories..."
+                                    className={`w-full pl-10 pr-4 py-2.5 rounded-2xl border text-sm font-bold outline-none transition-all ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500`}
                                 />
+                                {tableSearch && (
+                                    <button
+                                        onClick={() => setTableSearch('')}
+                                        className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full ${theme.textMuted} hover:text-gray-600`}
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
                             </div>
-                            <div className="flex gap-2 w-full">
-                                <button
-                                    onClick={handleAddCategory}
-                                    className={`flex-1 ${activeTab === 'drafts' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'} text-white p-4 rounded-xl font-black shadow-lg transition-all`}
-                                >
-                                    ADD
-                                </button>
-                                <button
-                                    onClick={() => { setShowAddInput(false); setNewCategoryName(''); }}
-                                    className={`p-4 ${theme.pageBg} ${theme.textSecondary} rounded-xl hover:bg-gray-100 transition-all`}
-                                >
-                                    <X size={20} />
-                                </button>
-                            </div>
-                        </div>
-                    )}
 
-                    {/* Show regular expenses or drafts based on active tab */}
-                    {expenses.map((expense, idx) => (
-                        <OperatingExpenseCard
-                            key={expense._id || expense.category || idx}
-                            {...expense}
-                            isSaving={savingId === idx || savingId === expense._id}
-                            isDraft={activeTab === 'drafts'}
-                            onUpdate={(updates) => handleUpdate(idx, updates)}
-                            onSave={() => handleSave(idx)}
-                            onDelete={() => handleDeleteExpense(idx)}
-                            onMoveToExpense={activeTab === 'drafts' ? () => handleMoveToExpense(expense) : null}
+                            <span className={`text-xs font-black uppercase tracking-wider ${theme.textMuted}`}>
+                                Showing {tableData.length} of {expenses.length} Categories
+                            </span>
+                        </div>
+
+                        {/* CommonTable Component */}
+                        <CommonTable
+                            tableId={`operating-expenses-${activeTab}`}
+                            columns={tableColumns}
+                            data={tableData}
+                            rowKey="id"
+                            selectable={false}
+                            showAdjust={true}
+                            showExport={true}
+                            exportFilename={`operating_expenses_${activeTab}`}
+                            exportTitle={`Operating Expenses - ${activeTab === 'drafts' ? 'Drafts' : 'Active'}`}
+                            onRowClick={(row) => {
+                                setSheetExpense(row);
+                                setSheetOpen(true);
+                            }}
+                            emptyMessage={activeTab === 'drafts' ? "No draft expenses found. Click '+ Add Draft Entry' to create one." : "No operating expenses found. Click '+ Add Expense Entry' to create one."}
+                            mobileCardRender={(row) => (
+                                <div className="p-4 space-y-3">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <h4 className={`font-black text-base ${theme.textHeading}`}>{row.category}</h4>
+                                            <div className="flex gap-1.5 mt-1">
+                                                {row.isDraft && (
+                                                    <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 rounded-lg">Draft</span>
+                                                )}
+                                                {row.isPurchase && (
+                                                    <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 rounded-lg">Stock</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className={`text-base font-black ${row.amount < 0 ? 'text-red-600' : theme.textPrimary}`}>
+                                                {formatCurrency(row.amount)}
+                                            </span>
+                                            <p className={`text-[10px] font-bold ${theme.textMuted}`}>{row.term}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-2 border-t border-dashed border-gray-100 dark:border-gray-800">
+                                        <span className={`text-xs font-bold ${theme.textMuted}`}>
+                                            Daily: <strong className="text-indigo-600">{formatCurrency(calculatePerDay(row))}</strong>
+                                        </span>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSheetExpense(row);
+                                                    setSheetOpen(true);
+                                                }}
+                                                className="p-1.5 rounded-lg border text-indigo-600"
+                                            >
+                                                <Edit3 size={14} />
+                                            </button>
+                                            {!row.isPurchase && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteExpense(row);
+                                                    }}
+                                                    className="p-1.5 rounded-lg border text-red-500"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         />
-                    ))}
-                </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Add Category Card */}
+                        {!showAddInput ? (
+                            <button
+                                onClick={() => setShowAddInput(true)}
+                                className={`h-full min-h-[200px] border-2 border-dashed ${activeTab === 'drafts' ? 'border-amber-300' : theme.borderLight} rounded-[32px] flex flex-col items-center justify-center gap-4 ${activeTab === 'drafts' ? 'text-amber-600 hover:border-amber-500 hover:bg-amber-50/50' : 'text-gray-400 hover:text-indigo-600 hover:border-indigo-600 hover:bg-indigo-50/50'} transition-all group order-last`}
+                            >
+                                <div className={`p-4 ${activeTab === 'drafts' ? 'bg-amber-50' : 'bg-gray-50 dark:bg-white/5'} rounded-2xl ${activeTab === 'drafts' ? 'group-hover:bg-amber-100 dark:group-hover:bg-amber-900/30' : 'group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/30'} transition-colors`}>
+                                    <Plus size={32} />
+                                </div>
+                                <span className="font-bold uppercase tracking-widest text-sm text-[11px]">
+                                    {activeTab === 'drafts' ? 'Add Draft Category' : 'Add Custom Category'}
+                                </span>
+                            </button>
+                        ) : (
+                            <div className={`${theme.surfaceBg} p-6 rounded-[32px] border-2 ${activeTab === 'drafts' ? 'border-amber-500' : 'border-indigo-500'} shadow-xl space-y-4 flex flex-col items-center justify-center order-first animate-in zoom-in-95 duration-200`}>
+                                <div className="w-full">
+                                    <label className={`block text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-2`}>New Category Name</label>
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={newCategoryName}
+                                        onChange={(e) => setNewCategoryName(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                                        placeholder="e.g. Broadband"
+                                        className={`w-full p-4 ${theme.pageBg} rounded-2xl outline-none font-bold ${theme.textPrimary}`}
+                                    />
+                                </div>
+                                <div className="flex gap-2 w-full">
+                                    <button
+                                        onClick={handleAddCategory}
+                                        className={`flex-1 ${activeTab === 'drafts' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'} text-white p-4 rounded-xl font-black shadow-lg transition-all`}
+                                    >
+                                        ADD
+                                    </button>
+                                    <button
+                                        onClick={() => { setShowAddInput(false); setNewCategoryName(''); }}
+                                        className={`p-4 ${theme.pageBg} ${theme.textSecondary} rounded-xl hover:bg-gray-100 transition-all`}
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Show regular expenses or drafts based on active tab */}
+                        {expenses.map((expense, idx) => (
+                            <OperatingExpenseCard
+                                key={expense._id || expense.category || idx}
+                                {...expense}
+                                isSaving={savingId === idx || savingId === expense._id}
+                                isDraft={activeTab === 'drafts'}
+                                onUpdate={(updates) => handleUpdate(idx, updates)}
+                                onSave={() => handleSave(idx)}
+                                onDelete={() => handleDeleteExpense(idx)}
+                                onMoveToExpense={activeTab === 'drafts' ? () => handleMoveToExpense(expense) : null}
+                            />
+                        ))}
+                    </div>
+                )
             ) : (
                 <div className="space-y-4">
                     {(urlStartDate || urlEndDate) && (
@@ -684,6 +1049,33 @@ const OperatingExpenses = () => {
                 </div>
             </div>
         )}
+
+            {/* Operating Expense Side Sheet Entry / Edit Modal */}
+            <OperatingExpenseSheet
+                isOpen={sheetOpen}
+                onClose={() => {
+                    setSheetOpen(false);
+                    setSheetExpense(null);
+                }}
+                expense={sheetExpense}
+                onSave={handleSheetSave}
+                isDraftMode={activeTab === 'drafts'}
+                onDelete={handleDeleteExpense}
+                onMoveToExpense={handleMoveToExpense}
+                existingCategories={expenses.map(e => e.category)}
+            />
+
+            {/* Python OCR Bill Scanner Modal */}
+            <ExpenseBillScanModal
+                isOpen={isScanModalOpen}
+                onClose={() => setIsScanModalOpen(false)}
+                onSaveExpense={handleSheetSave}
+                onOpenSheetWithData={(data) => {
+                    setSheetExpense(data);
+                    setSheetOpen(true);
+                }}
+                existingExpenses={expenses}
+            />
 
             {/* Delete Confirmation Modal */}
             <CommonDialog
