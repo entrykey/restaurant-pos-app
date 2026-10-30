@@ -599,6 +599,15 @@ export const customerService = {
             throw error.response ? error.response.data : error;
         }
     },
+    getCustomerById: async (id) => {
+        try {
+            const response = await api.get(`/customers/${id}`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching customer by id:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
     createCustomer: async (payload) => {
         try {
             const response = await api.post('/customers', payload);

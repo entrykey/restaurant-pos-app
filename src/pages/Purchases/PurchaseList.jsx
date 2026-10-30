@@ -163,7 +163,9 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
                             </h2>
                             {purchase && (
                                 <p className="text-indigo-200 text-xs font-bold mt-0.5">
-                                    {purchase.supplierId?.name || "—"} · {new Date(purchase.createdAt).toLocaleDateString()}
+                                    {purchase.supplierId?.name || "—"}
+                                    {(purchase.supplierId?.taxNumber || purchase.supplierId?.taxId || purchase.supplierId?.gstNumber || purchase.supplierId?.gstin) ? ` · GSTIN: ${purchase.supplierId.taxNumber || purchase.supplierId.taxId || purchase.supplierId.gstNumber || purchase.supplierId.gstin}` : ""}
+                                    {` · ${new Date(purchase.createdAt).toLocaleDateString()}`}
                                 </p>
                             )}
                         </div>
@@ -212,6 +214,8 @@ const PurchaseDetailModal = ({ purchaseId, onClose, currency, shopId: propShopId
                             {/* ── Info Cards ── */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 {[
+                                    { label: "Supplier", value: purchase.supplierId?.name || "—" },
+                                    { label: "Supplier GSTIN", value: purchase.supplierId?.taxNumber || purchase.supplierId?.taxId || purchase.supplierId?.gstNumber || purchase.supplierId?.gstin || "—" },
                                     { label: "Supplier Invoice", value: purchase.supplierInvoiceNumber || "—" },
                                     { label: "Invoice Date", value: purchase.invoiceDate ? new Date(purchase.invoiceDate).toLocaleDateString() : "—" },
                                     { label: "Branch", value: purchase.branchId?.name || "—" },
@@ -707,7 +711,19 @@ const PurchaseList = ({ hasPermissionFor }) => {
         {
             header: "Supplier",
             key: "supplierId",
-            render: val => <span className={`font-bold ${theme.textPrimary}`}>{val?.name || "—"}</span>,
+            render: val => {
+                const gst = val?.taxNumber || val?.taxId || val?.gstNumber || val?.gstin;
+                return (
+                    <div>
+                        <div className={`font-bold ${theme.textPrimary}`}>{val?.name || "—"}</div>
+                        {gst && (
+                            <div className="text-[10px] font-mono font-bold text-indigo-500 mt-0.5">
+                                GST: {gst}
+                            </div>
+                        )}
+                    </div>
+                );
+            },
         },
         {
             header: "Grand Total",

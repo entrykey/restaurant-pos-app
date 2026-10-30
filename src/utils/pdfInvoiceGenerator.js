@@ -203,6 +203,10 @@ export const buildSaleInvoicePdfDoc = ({
     }
 
     // Box 2: BILLED TO
+    const custData = order.customerId || order.customer || {};
+    const customerAddr = formatAddressText(custData?.address);
+    const customerGst = String(custData?.taxNumber || custData?.taxId || custData?.gstNumber || custData?.gstin || custData?.tax_number || custData?.gst || '').trim();
+
     const box2X = margin + boxWidth + 16;
     doc.setDrawColor(226, 232, 240); // slate-200 border
     doc.setFillColor(255, 255, 255); // standard white background
@@ -216,14 +220,25 @@ export const buildSaleInvoicePdfDoc = ({
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42); // slate-900 (crisp readable dark)
-    doc.text(shopName, box2X + 12, y + 28);
+    doc.text(customerName, box2X + 12, y + 28);
 
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(51, 65, 85); // slate-700 (crisp readable dark)
-    doc.text(branchName, box2X + 12, y + 41);
-    if (shopAddr) {
-        doc.text(shopAddr, box2X + 12, y + 53);
+    doc.setTextColor(51, 65, 85); // slate-700
+    let bY = y + 41;
+    if (customerAddr) {
+        doc.text(customerAddr, box2X + 12, bY);
+        bY += 12;
+    }
+    if (customerPhone) {
+        doc.text(`Ph: ${customerPhone}`, box2X + 12, bY);
+        bY += 12;
+    }
+    if (customerGst) {
+        doc.text(`GSTIN: ${customerGst}`, box2X + 12, bY);
+    } else {
+        doc.setTextColor(100, 116, 139);
+        doc.text(`GSTIN: Unregistered Person (URP)`, box2X + 12, bY);
     }
 
     y += boxHeight + 16;
@@ -420,7 +435,7 @@ export const buildPurchaseInvoicePdfDoc = ({
     const supplierName = purchase.supplierId?.name || 'Supplier';
     const supplierPhone = purchase.supplierId?.phone || '';
     const supplierEmail = purchase.supplierId?.email || '';
-    const supplierTax = purchase.supplierId?.taxNumber || '';
+    const supplierTax = purchase.supplierId?.taxNumber || purchase.supplierId?.taxId || purchase.supplierId?.gstNumber || purchase.supplierId?.gstin || '';
     const shopName = shopInfo?.name || purchase.branchId?.name || 'Restaurant POS';
     const branchName = purchase.branchId?.name || 'Main Branch';
     const dateStr = purchase.invoiceDate ? new Date(purchase.invoiceDate).toLocaleDateString('en-IN') : (purchase.createdAt ? new Date(purchase.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString());
@@ -516,7 +531,7 @@ export const buildPurchaseInvoicePdfDoc = ({
         suppY += 12;
     }
     if (supplierTax) {
-        doc.text(`TAX ID: ${supplierTax}`, margin + 12, suppY);
+        doc.text(`GSTIN: ${supplierTax}`, margin + 12, suppY);
     }
 
     // Box 2: BILLED TO

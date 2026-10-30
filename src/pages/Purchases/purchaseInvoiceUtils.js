@@ -185,8 +185,7 @@ export const getPurchaseInvoiceHtml = ({ purchase, items = [], shopInfo, currenc
             <strong>${purchase.supplierId?.name || 'Unknown Supplier'}</strong>
             <div class="address-detail">${formatAddress(purchase.supplierId?.address)}</div>
             ${purchase.supplierId?.phone ? `<div class="address-detail">Ph: ${purchase.supplierId.phone}</div>` : ''}
-            ${purchase.supplierId?.email ? `<div class="address-detail">Email: ${purchase.supplierId.email}</div>` : ''}
-            ${purchase.supplierId?.taxNumber ? `<div class="address-detail">TAX ID: ${purchase.supplierId.taxNumber}</div>` : ''}
+            ${(purchase.supplierId?.taxNumber || purchase.supplierId?.taxId || purchase.supplierId?.gstNumber || purchase.supplierId?.gstin) ? `<div class="address-detail"><strong>GSTIN:</strong> ${purchase.supplierId.taxNumber || purchase.supplierId.taxId || purchase.supplierId.gstNumber || purchase.supplierId.gstin}</div>` : ''}
           </div>
         </div>
         <div class="address-box">

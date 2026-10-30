@@ -82,11 +82,39 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
         loadSuppliers(searchTerm, page);
     };
 
+    const formatAddressToString = (addr) => {
+        if (!addr) return '';
+        if (typeof addr === 'string') {
+            return addr.trim() === '[object Object]' ? '' : addr.trim();
+        }
+        if (typeof addr === 'object') {
+            const parts = [
+                addr.line1 || addr.street || addr.addressLine1,
+                addr.line2 || addr.addressLine2,
+                addr.city,
+                typeof addr.state === 'object' ? (addr.state?.name || addr.state?.code) : addr.state,
+                addr.pincode || addr.postalCode || addr.zipCode,
+                typeof addr.country === 'object' ? (addr.country?.name || addr.country?.code) : addr.country
+            ].filter(Boolean);
+            return parts.join(', ');
+        }
+        return '';
+    };
+
     const handleOpenModal = (supplier = null) => {
         setValidationErrors({});
         if (supplier) {
             setEditingSupplier(supplier);
-            setFormData(supplier);
+            const rawTax = supplier.taxId || supplier.taxNumber || supplier.gstNumber || supplier.gstin || '';
+            setFormData({
+                name: supplier.name || '',
+                contactPerson: supplier.contactPerson || '',
+                phone: supplier.phone || '',
+                email: supplier.email || '',
+                address: formatAddressToString(supplier.address),
+                taxId: rawTax,
+                status: supplier.status || 'ACTIVE'
+            });
         } else {
             setEditingSupplier(null);
             setFormData({
@@ -127,11 +155,21 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
 
         setLoading(true);
         try {
+            const cleanGst = (formData.taxId || '').trim();
+            const payload = {
+                ...formData,
+                taxId: cleanGst,
+                taxNumber: cleanGst,
+                gstNumber: cleanGst,
+                gstin: cleanGst,
+                address: formData.address || ''
+            };
+
             if (editingSupplier) {
-                await SupplierService.updateSupplier(editingSupplier._id || editingSupplier.id, formData);
+                await SupplierService.updateSupplier(editingSupplier._id || editingSupplier.id, payload);
                 toast.success('Supplier updated successfully');
             } else {
-                await SupplierService.addSupplier({ ...formData, shopId: currentShopId });
+                await SupplierService.addSupplier({ ...payload, shopId: currentShopId });
                 toast.success('Supplier created successfully');
             }
             setIsModalOpen(false);
@@ -192,12 +230,15 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
             header: "Supplier Name",
             key: "name",
             required: true,
-            render: (value, item) => (
-                <div>
-                    <div className={`font-bold ${theme.textHeading}`}>{value}</div>
-                    <div className={`text-xs ${theme.textMuted}`}>{item.taxId}</div>
-                </div>
-            )
+            render: (value, item) => {
+                const tax = item.taxId || item.taxNumber || item.gstNumber || item.gstin;
+                return (
+                    <div>
+                        <div className={`font-bold ${theme.textHeading}`}>{value}</div>
+                        {tax && <div className={`text-[10px] font-mono font-bold text-indigo-500`}>GST: {tax}</div>}
+                    </div>
+                );
+            }
         },
         {
             header: "Contact Person",
@@ -241,23 +282,29 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
             header: "GSTIN / Tax ID",
             key: "taxId",
             defaultVisible: false,
-            exportValue: (_, item) => item.taxId || item.gstin || "—",
-            render: (_, item) => (
-                <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400">
-                    {item.taxId || item.gstin || "—"}
-                </span>
-            )
+            exportValue: (_, item) => item.taxId || item.taxNumber || item.gstNumber || item.gstin || "—",
+            render: (_, item) => {
+                const tax = item.taxId || item.taxNumber || item.gstNumber || item.gstin;
+                return (
+                    <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400">
+                        {tax || "—"}
+                    </span>
+                );
+            }
         },
         {
             header: "Address",
             key: "address",
             defaultVisible: false,
-            exportValue: (_, item) => item.address || "—",
-            render: (_, item) => (
-                <span className={`text-xs ${theme.textSecondary} truncate max-w-[150px] inline-block`} title={item.address}>
-                    {item.address || "—"}
-                </span>
-            )
+            exportValue: (_, item) => formatAddressToString(item.address) || "—",
+            render: (_, item) => {
+                const addrStr = formatAddressToString(item.address);
+                return (
+                    <span className={`text-xs ${theme.textSecondary} truncate max-w-[150px] inline-block`} title={addrStr}>
+                        {addrStr || "—"}
+                    </span>
+                );
+            }
         },
         {
             header: "State",

@@ -4,7 +4,7 @@ import { Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useApp } from '../../context/AppContext';
-import { orderService, dashboardService } from '../../services/api';
+import { orderService, dashboardService, customerService } from '../../services/api';
 import { 
     ShoppingBag, 
     Search, 
@@ -514,11 +514,37 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 }
             };
 
+            let customerObj = orderFromBackend?.customerId || orderFromBackend?.customer || order?.customerId || order?.customer;
+            const custPhone = customerObj?.phone || orderFromBackend?.customerPhone || order?.customerPhone;
+            const custId = typeof customerObj === 'string' ? customerObj : (customerObj?._id || customerObj?.id);
+            if ((!customerObj || typeof customerObj === 'string' || !customerObj.taxNumber) && (custPhone || custId)) {
+                try {
+                    const searchParam = custPhone || custId;
+                    const res = await customerService.getCustomers({ search: searchParam });
+                    const list = res?.data || (Array.isArray(res) ? res : []);
+                    const found = (custId && list.find(c => String(c._id || c.id) === String(custId))) ||
+                                  (custPhone && list.find(c => c.phone && (c.phone === custPhone || String(c.phone).endsWith(String(custPhone).slice(-10))))) ||
+                                  list[0];
+                    if (found) {
+                        customerObj = {
+                            ...(typeof customerObj === 'object' && customerObj ? customerObj : {}),
+                            ...found,
+                            taxNumber: found.taxNumber || found.taxId || found.gstNumber || found.gstin || customerObj?.taxNumber || ''
+                        };
+                    }
+                } catch (cErr) {
+                    console.warn("Failed to enrich customer for bill print:", cErr);
+                }
+            }
+
             const meta = {
                 invoiceLabel: `INV: ${orderFromBackend?.invoiceNumber || orderFromBackend?.orderNumber}`,
                 orderLabel: `#${orderFromBackend?.orderNumber}`,
                 tableLabel: orderFromBackend?.tableName ? `Table ${orderFromBackend.tableName}` : null,
-                customerLabel: orderFromBackend?.customerId?.name || 'Walk-in Customer',
+                customerLabel: customerObj?.name
+                    ? `${customerObj.name}${customerObj.phone ? ` (${customerObj.phone})` : ''}`
+                    : (orderFromBackend?.customerId?.name || 'Walk-in Customer'),
+                customer: customerObj,
                 printedAt: formatDate(new Date()),
             };
 
@@ -529,6 +555,7 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
             printBillA4({
                 header,
                 meta,
+                customer: customerObj,
                 items,
                 totals,
                 offers: orderFromBackend?.appliedOffers || [],

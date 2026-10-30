@@ -212,6 +212,11 @@ const PurchaseOrdersTab = () => {
                                             <td className={`py-3.5 px-4 font-bold ${theme.textPrimary}`}>
                                                 {po.supplierId?.name || 'N/A'}
                                                 {po.supplierId?.phone && <div className={`text-[10px] font-medium ${theme.textMuted}`}>{po.supplierId.phone}</div>}
+                                                {(po.supplierId?.taxNumber || po.supplierId?.taxId || po.supplierId?.gstNumber || po.supplierId?.gstin) && (
+                                                    <div className="text-[10px] font-mono text-indigo-500 font-bold">
+                                                        GST: {po.supplierId?.taxNumber || po.supplierId?.taxId || po.supplierId?.gstNumber || po.supplierId?.gstin}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className={`py-3.5 px-4 font-semibold ${theme.textSecondary}`}>
                                                 {totalItemsCount} product{totalItemsCount === 1 ? '' : 's'}

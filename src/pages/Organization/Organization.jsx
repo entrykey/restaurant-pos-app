@@ -480,7 +480,9 @@ const Organization = ({
 
     const handlePlanChange = (plan) => {
         const isCurrent = organization?.subscriptionPlanId === plan.id;
-        const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
+        const isExpired = organization?.subscriptionStatus === 'expired' || 
+            organization?.subscriptionStatus === 'inactive' ||
+            Boolean(organization?.subscriptionEndDate && new Date(organization.subscriptionEndDate) < new Date());
         const cycleName = billingCycleToggle === 'yearly' ? 'Annual (Yearly)' : 'Monthly';
         const cyclePrice = billingCycleToggle === 'yearly' ? (plan.yearlyPrice || plan.price) : (plan.monthlyPrice || plan.price);
 
@@ -1056,7 +1058,9 @@ const Organization = ({
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {plans.map((plan) => {
                                     const isCurrent = organization?.subscriptionPlanId === plan.id;
-                                    const isExpired = organization?.subscriptionStatus === 'expired' || organization?.subscriptionStatus === 'inactive';
+                                    const isExpired = organization?.subscriptionStatus === 'expired' || 
+                                        organization?.subscriptionStatus === 'inactive' ||
+                                        Boolean(organization?.subscriptionEndDate && new Date(organization.subscriptionEndDate) < new Date());
                                     const isPending = (organization?.subscriptionStatus === 'pending_payment' || organization?.subscriptionStatus === 'pending') && isCurrent;
                                     const isTrialPlan = organization?.isTrial;
                                     const isTrialLoading = trialLoading === plan.id;

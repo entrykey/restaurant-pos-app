@@ -144,9 +144,16 @@ const PurchaseOrderBillModal = ({ isOpen, onClose, initialData, onOrderSaved }) 
                                 {supplier?.contactPerson ? `Contact: ${supplier.contactPerson} • ` : ''}
                                 {supplier?.phone ? `Phone: ${supplier.phone}` : ''}
                             </p>
+                            {(supplier?.taxNumber || supplier?.taxId || supplier?.gstNumber || supplier?.gstin) && (
+                                <p className="text-xs font-mono font-bold text-indigo-500 mt-1">
+                                    GSTIN: {supplier.taxNumber || supplier.taxId || supplier.gstNumber || supplier.gstin}
+                                </p>
+                            )}
                             {supplier?.address && (
-                                <p className={`text-xs ${theme.textMuted}`}>
-                                    {supplier.address.line1}, {supplier.address.city}, {supplier.address.state?.name}
+                                <p className={`text-xs ${theme.textMuted} mt-0.5`}>
+                                    {typeof supplier.address === 'string'
+                                        ? (supplier.address !== '[object Object]' ? supplier.address : '')
+                                        : [supplier.address.line1 || supplier.address.street, supplier.address.city, supplier.address.state?.name || supplier.address.state, supplier.address.pincode].filter(Boolean).join(', ')}
                                 </p>
                             )}
                         </div>
