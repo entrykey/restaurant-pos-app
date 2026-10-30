@@ -17,15 +17,26 @@ if (typeof window !== 'undefined') {
     }
   }, { passive: false });
 
-  // Auto-scroll focused inputs into view above virtual keyboard on tablets & phone screens
+  // Auto-scroll focused inputs into view above virtual keyboard on tablets & phone screens only
   const scrollFocusedInputIntoView = (el) => {
+    // Desktop devices with mouse/keyboard must NEVER have their viewport shifted
+    const isTouchDevice = typeof window !== 'undefined' && 
+      (window.matchMedia('(hover: none) and (pointer: coarse)').matches || 'ontouchstart' in window);
+    
+    if (!isTouchDevice) {
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+      }
+      return;
+    }
+
     if (
       el &&
       (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
     ) {
       setTimeout(() => {
         try {
-          el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+          el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
         } catch (_) {
           el.scrollIntoView(false);
         }
@@ -34,6 +45,13 @@ if (typeof window !== 'undefined') {
   };
 
   document.addEventListener('focusin', (e) => scrollFocusedInputIntoView(e.target), true);
+
+  // Keep window level scroll at 0 to prevent top gaps from appearing
+  window.addEventListener('scroll', () => {
+    if (window.scrollY !== 0 || window.scrollX !== 0) {
+      window.scrollTo(0, 0);
+    }
+  }, { passive: true });
 
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => {

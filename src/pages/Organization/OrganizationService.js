@@ -99,7 +99,9 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
       defaultUpiId: data.shop.defaultUpiId ?? null,
       // If data.plan is null, set subscriptionPlanId to null so UI knows no plan is active
       subscriptionPlanId: data.plan ? data.plan._id : null,
-      subscriptionStatus: data.subscription?.status || 'inactive',
+      subscriptionStatus: (data.subscription?.end_date && new Date(data.subscription.end_date) < new Date())
+        ? 'expired'
+        : (data.subscription?.status || 'inactive'),
       isTrial: data.subscription?.is_trial || false,
       subscriptionEndDate: data.subscription?.end_date || null,
       planName: data.subscriptionMethod === 'trial_run'
@@ -111,6 +113,8 @@ export const fetchOrganizationData = async (userId, customShopId = null) => {
         )
         : data.subscription?.status === 'pending_payment' || data.subscription?.payment_status === 'pending'
           ? 'Subscription Pending Approval'
+        : (data.subscription?.end_date && new Date(data.subscription.end_date) < new Date())
+          ? (data.plan ? `Expired: ${data.plan.name}` : 'Subscription Expired')
         : data.plan
           ? (data.plan.name === 'Trail' ? 'Trial' : data.plan.name)
           : 'No Active Plan',

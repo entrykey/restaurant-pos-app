@@ -143,8 +143,10 @@ export const printSaleOrder = async ({
             customerLabel: order?.customerId?.name
                 ? `${order.customerId.name}${order.customerId.phone ? ` (${order.customerId.phone})` : ''}`
                 : (order?.customerName || ''),
+            customer: order?.customerId || order?.customer,
             printedAt: new Date().toLocaleString(),
         },
+        customer: order?.customerId || order?.customer,
         items: itemsForPrint,
         totals,
         offers: (order?.appliedOffers || []).map((o) => ({

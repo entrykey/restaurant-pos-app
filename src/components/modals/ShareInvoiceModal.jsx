@@ -44,6 +44,7 @@ import {
     getSaleInvoicePdfFile,
     getPurchaseInvoicePdfFile
 } from '../../utils/pdfInvoiceGenerator';
+import { customerService } from '../../services/api';
 
 const ShareInvoiceModal = ({
     isOpen,
@@ -154,17 +155,44 @@ const ShareInvoiceModal = ({
             }
         };
 
+        let customerObj = saleOrder?.customerId || saleOrder?.customer;
+        const custPhone = customerObj?.phone || saleOrder?.customerPhone;
+        const custId = typeof customerObj === 'string' ? customerObj : (customerObj?._id || customerObj?.id);
+        if ((!customerObj || typeof customerObj === 'string' || !customerObj.taxNumber) && (custPhone || custId)) {
+            try {
+                const searchParam = custPhone || custId;
+                const res = await customerService.getCustomers({ search: searchParam });
+                const list = res?.data || (Array.isArray(res) ? res : []);
+                const found = (custId && list.find(c => String(c._id || c.id) === String(custId))) ||
+                              (custPhone && list.find(c => c.phone && (c.phone === custPhone || String(c.phone).endsWith(String(custPhone).slice(-10))))) ||
+                              list[0];
+                if (found) {
+                    customerObj = {
+                        ...(typeof customerObj === 'object' && customerObj ? customerObj : {}),
+                        ...found,
+                        taxNumber: found.taxNumber || found.taxId || found.gstNumber || found.gstin || customerObj?.taxNumber || ''
+                    };
+                }
+            } catch (cErr) {
+                console.warn("Failed to enrich customer for share invoice modal:", cErr);
+            }
+        }
+
         const meta = {
             invoiceLabel: `INV: ${saleOrder?.invoiceNumber || saleOrder?.orderNumber}`,
             orderLabel: `#${saleOrder?.orderNumber}`,
             tableLabel: saleOrder?.tableName ? `Table ${saleOrder.tableName}` : null,
-            customerLabel: saleOrder?.customerId?.name || saleOrder?.customerName || 'Walk-in Customer',
+            customerLabel: customerObj?.name
+                ? `${customerObj.name}${customerObj.phone ? ` (${customerObj.phone})` : ''}`
+                : (saleOrder?.customerId?.name || saleOrder?.customerName || 'Walk-in Customer'),
+            customer: customerObj,
             printedAt: new Date().toLocaleString(),
         };
 
         return {
             header,
             meta,
+            customer: customerObj,
             items,
             totals,
             offers: saleOrder?.appliedOffers || [],

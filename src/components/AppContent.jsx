@@ -25,7 +25,7 @@ import { loadBillPrintSettings, buildBillExtraInfo, printSaleOrder } from "../ut
 import { isItemTypeAllowedOnSale } from "../utils/cartStockUtils";
 import { syncItemBogoQuantity } from "../utils/posOfferHelpers";
 import { findTaxForItem, resolveIsExclusiveTax } from "../utils/taxUtils";
-import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService, loyaltyService } from "../services/api";
+import api, { itemService, orderService, settingService, tableService, employeeService, shopService, taxService, roleService, loyaltyService, customerService } from "../services/api";
 import { fetchOrganizationData } from "../pages/Organization/OrganizationService";
 import { announceItemAdded, playCoinDropSound } from "../utils/soundService";
 import { TextProvider } from "../context/TextContext";
@@ -1072,9 +1072,35 @@ const AppContent = () => {
                 : "";
 
             const tableLabel = tableLabelName ? `Table: ${tableLabelName}` : "";
-            const customerLabel = orderFromBackend?.customerId?.name
-                ? `Customer: ${orderFromBackend.customerId.name}${orderFromBackend.customerId.phone ? ` (${orderFromBackend.customerId.phone})` : ""}`
-                : "";
+
+            let customerObj = orderFromBackend?.customerId || orderFromBackend?.customer;
+            const custPhone = customerObj?.phone || orderFromBackend?.customerPhone || takeawayCustPhone;
+            const custId = typeof customerObj === 'string' ? customerObj : (customerObj?._id || customerObj?.id || selectedCustomer?._id);
+            if ((!customerObj || typeof customerObj === 'string' || !customerObj.taxNumber) && (custPhone || custId)) {
+                try {
+                    const searchParam = custPhone || custId;
+                    const res = await customerService.getCustomers({ search: searchParam });
+                    const list = res?.data || (Array.isArray(res) ? res : []);
+                    const found = (custId && list.find(c => String(c._id || c.id) === String(custId))) ||
+                                  (custPhone && list.find(c => c.phone && (c.phone === custPhone || String(c.phone).endsWith(String(custPhone).slice(-10))))) ||
+                                  list[0];
+                    if (found) {
+                        customerObj = {
+                            ...(typeof customerObj === 'object' && customerObj ? customerObj : {}),
+                            ...found,
+                            taxNumber: found.taxNumber || found.taxId || found.gstNumber || found.gstin || customerObj?.taxNumber || ''
+                        };
+                    }
+                } catch (cErr) {
+                    console.warn("Failed to enrich customer for receipt print:", cErr);
+                }
+            }
+
+            const customerLabel = customerObj?.name
+                ? `Customer: ${customerObj.name}${customerObj.phone ? ` (${customerObj.phone})` : ""}`
+                : (orderFromBackend?.customerId?.name
+                    ? `Customer: ${orderFromBackend.customerId.name}${orderFromBackend.customerId.phone ? ` (${orderFromBackend.customerId.phone})` : ""}`
+                    : "");
 
             const billSettings = await loadBillPrintSettings(currentShopId, getResolvedBranchId());
             const extraInfo = buildBillExtraInfo(activeBranch, organization);
@@ -1091,8 +1117,10 @@ const AppContent = () => {
                     orderLabel: orderFromBackend?.orderNumber || "",
                     tableLabel,
                     customerLabel,
+                    customer: customerObj,
                     printedAt: new Date().toLocaleString(),
                 },
+                customer: customerObj,
                 items: itemsForPrint,
                 totals,
                 offers: (orderFromBackend?.appliedOffers || []).map(o => ({
@@ -2354,7 +2382,7 @@ const AppContent = () => {
     }
 
     return (
-        <div className={`flex flex-col-reverse md:flex-row h-screen ${theme.pageBg} overflow-hidden font-sans`}>
+        <div className={`w-full h-full ${theme.pageBg} overflow-hidden font-sans`}>
             {/* Receipt Print Area */}
             <style>{`
                 @media print {

@@ -57,7 +57,7 @@ const Layout = ({
     }
 
     return (
-        <div className={`h-screen w-screen flex flex-col overflow-hidden ${theme.pageBg} font-sans`}>
+        <div className={`h-full w-full flex flex-col overflow-hidden ${theme.pageBg} font-sans`}>
 
             {/* Sidebar + Content */}
             <div className="flex flex-1 overflow-hidden">

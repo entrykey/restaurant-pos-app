@@ -142,12 +142,18 @@ const Parties = ({ hasPermissionFor }) => {
         setCustomerValidationErrors({});
         if (customer) {
             setEditingCustomer(customer);
+            let addr = '';
+            if (typeof customer.address === 'object' && customer.address !== null) {
+                addr = [customer.address?.street, customer.address?.city, customer.address?.state, customer.address?.postalCode].filter(Boolean).join(', ');
+            } else if (typeof customer.address === 'string' && customer.address !== '[object Object]') {
+                addr = customer.address;
+            }
             setCustomerForm({
                 name: customer.name || '',
                 phone: customer.phone || '',
                 email: customer.email || '',
-                address: typeof customer.address === 'object' ? [customer.address?.street, customer.address?.city, customer.address?.state].filter(Boolean).join(', ') : (customer.address || ''),
-                taxNumber: customer.taxNumber || '',
+                address: addr,
+                taxNumber: customer.taxNumber || customer.gstNumber || customer.gstin || '',
                 status: customer.status || 'ACTIVE',
                 discountPercentage: customer.discountPercentage || 0
             });
@@ -204,7 +210,7 @@ const Parties = ({ hasPermissionFor }) => {
                 name: customerForm.name.trim(),
                 phone: normalizedPhone,
                 email: customerForm.email || undefined,
-                taxNumber: customerForm.taxNumber || undefined,
+                taxNumber: customerForm.taxNumber !== undefined ? customerForm.taxNumber.trim() : '',
                 status: customerForm.status,
                 discountPercentage: Number(customerForm.discountPercentage) || 0
             };
