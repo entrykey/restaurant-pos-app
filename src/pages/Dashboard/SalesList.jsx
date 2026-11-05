@@ -617,7 +617,7 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
         setExpandedOrders(prev => ({ ...prev, [orderId]: !prev[orderId] }));
     };
 
-    const [summaryData, setSummaryData] = useState({ totalSale: 0, totalProfit: 0, count: 0, hasPurchaseData: false });
+    const [summaryData, setSummaryData] = useState({ totalSale: 0, totalPaid: 0, totalDue: 0, totalProfit: 0, count: 0, hasPurchaseData: false });
 
     const isTodayFilter = useMemo(() => {
         if (!startDate && !endDate) return false;
@@ -651,13 +651,33 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                     setTotalPages(response.pagination?.totalPages || 1);
                     setTotalItems(response.pagination?.total || 0);
                     if (response.summary) {
-                        setSummaryData(response.summary);
+                        let totalPaid = response.summary.totalPaid;
+                        let totalDue = response.summary.totalDue;
+                        if (totalPaid === undefined || totalDue === undefined) {
+                            totalPaid = 0;
+                            totalDue = 0;
+                            response.data.forEach(order => {
+                                const pay = getOrderPaymentDetails(order);
+                                totalPaid += pay.paidAmount;
+                                totalDue += pay.balanceAmount;
+                            });
+                        }
+                        setSummaryData({
+                            ...response.summary,
+                            totalPaid,
+                            totalDue
+                        });
                     } else {
                         let totalSale = 0;
                         let totalCost = 0;
+                        let totalPaid = 0;
+                        let totalDue = 0;
                         let hasPurchaseData = false;
                         response.data.forEach(order => {
                             totalSale += order.grandTotal || 0;
+                            const pay = getOrderPaymentDetails(order);
+                            totalPaid += pay.paidAmount;
+                            totalDue += pay.balanceAmount;
                             if (order.items?.length) {
                                 order.items.forEach(item => {
                                     const pp = item.itemId?.pricing?.purchasePrice;
@@ -668,7 +688,14 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                 });
                             }
                         });
-                        setSummaryData({ totalSale, totalProfit: totalSale - totalCost, count: response.pagination?.total || response.data.length, hasPurchaseData });
+                        setSummaryData({ 
+                            totalSale, 
+                            totalPaid, 
+                            totalDue, 
+                            totalProfit: totalSale - totalCost, 
+                            count: response.pagination?.total || response.data.length, 
+                            hasPurchaseData 
+                        });
                     }
                 } else {
                     // legacy fallback if server not yet updated
@@ -914,9 +941,9 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
 
             {/* Summary Widgets — only shown for sales tab */}
             {activeTab === 'history' && !loading && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
                     {/* Total Sale */}
-                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
                         <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
                             <Receipt size={20} className="text-indigo-500" />
                         </div>
@@ -929,8 +956,46 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                         </div>
                     </div>
 
+                    {/* Total Amount Paid */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                        <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                            <CheckCircle2 size={20} className="text-emerald-500" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                Total Amount Paid
+                            </p>
+                            <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                                {fmt(summary.totalPaid || 0)}
+                            </p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>
+                                {summary.totalSale > 0 
+                                    ? `${((summary.totalPaid / summary.totalSale) * 100).toFixed(1)}% collected` 
+                                    : 'Amount received'}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Total Due to be Paid */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                        <div className="w-11 h-11 rounded-2xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                            <Clock size={20} className="text-red-500" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                Total Due to be Paid
+                            </p>
+                            <p className={`text-xl font-black ${(summary.totalDue || 0) > 0 ? 'text-red-600 dark:text-red-400' : theme.textHeading}`}>
+                                {fmt(summary.totalDue || 0)}
+                            </p>
+                            <p className={`text-[11px] font-bold ${(summary.totalDue || 0) > 0 ? 'text-red-500 dark:text-red-400 font-bold' : theme.textMuted}`}>
+                                {(summary.totalDue || 0) > 0 ? 'Outstanding balance' : 'No balance due'}
+                            </p>
+                        </div>
+                    </div>
+
                     {/* Total Profit */}
-                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
                         <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${summary.hasPurchaseData ? (summary.totalProfit >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10') : 'bg-amber-500/10'}`}>
                             {summary.hasPurchaseData
                                 ? (summary.totalProfit >= 0
@@ -962,7 +1027,7 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                     </div>
 
                     {/* Avg Order Value */}
-                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4`}>
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
                         <div className="w-11 h-11 rounded-2xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
                             <ShoppingBag size={20} className="text-amber-500" />
                         </div>
@@ -1159,6 +1224,29 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                 )}
                             </div>
                         )
+                    },
+                    {
+                        header: 'Amount Paid',
+                        key: 'paidAmount',
+                        exportValue: (_, order) => {
+                            const { paidAmount } = getPaymentDetails(order);
+                            return fmt(paidAmount);
+                        },
+                        render: (_, order) => {
+                            const { paidAmount, balanceAmount } = getPaymentDetails(order);
+                            return (
+                                <div>
+                                    <p className="font-black text-base text-emerald-600 dark:text-emerald-400">
+                                        {fmt(paidAmount)}
+                                    </p>
+                                    {balanceAmount > 0 && (
+                                        <p className="text-[10px] font-black text-red-500 dark:text-red-400">
+                                            Due: {fmt(balanceAmount)}
+                                        </p>
+                                    )}
+                                </div>
+                            );
+                        }
                     },
                     {
                         header: 'Payment',

@@ -24,9 +24,6 @@ if (typeof window !== 'undefined') {
       (window.matchMedia('(hover: none) and (pointer: coarse)').matches || 'ontouchstart' in window);
     
     if (!isTouchDevice) {
-      if (window.scrollY !== 0 || window.scrollX !== 0) {
-        window.scrollTo(0, 0);
-      }
       return;
     }
 
@@ -45,13 +42,6 @@ if (typeof window !== 'undefined') {
   };
 
   document.addEventListener('focusin', (e) => scrollFocusedInputIntoView(e.target), true);
-
-  // Keep window level scroll at 0 to prevent top gaps from appearing
-  window.addEventListener('scroll', () => {
-    if (window.scrollY !== 0 || window.scrollX !== 0) {
-      window.scrollTo(0, 0);
-    }
-  }, { passive: true });
 
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => {

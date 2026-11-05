@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin } from 'lucide-react';
+import { Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin, Coins, ShoppingBag, CheckCircle2, Clock } from 'lucide-react';
 import CommonTable from '../../components/CommonTable';
 import CommonDialog from '../../components/modals/CommonDialog';
+import SupplierPaymentModal from '../../components/modals/SupplierPaymentModal';
 import { SupplierService } from './SupplierService';
 import { ROUTE_ACCESS } from '../../config/permissionStructure';
 import { useTheme } from '../../context/ThemeContext';
 import { useApp } from '../../context/AppContext';
 import { toast } from 'react-hot-toast';
+import { formatCurrency as defaultFormatCurrency } from '../../utils/format';
 import { validateEmail, sanitizeEmailInput, sanitizeNameInput, sanitizePhoneInput } from '../../utils/validation';
 
 const PAGE_LIMIT = 10;
@@ -23,7 +25,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const [deleteConfirmModal, setDeleteConfirmModal] = useState({ isOpen: false, id: null, name: '' });
     const [validationErrors, setValidationErrors] = useState({});
     const { theme } = useTheme();
-    const { currentShopId } = useApp();
+    const { currentShopId, formatCurrency } = useApp();
 
     const [formData, setFormData] = useState({
         name: "",
@@ -44,6 +46,14 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
     const canEdit = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "edit") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
     const canDelete = hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "delete") || hasPermissionFor?.(supplierAccess.module, supplierAccess.resource, "manage");
 
+    const [summary, setSummary] = useState({ totalSuppliers: 0, totalPurchases: 0, totalPaid: 0, totalDue: 0 });
+    const [paySupplierModal, setPaySupplierModal] = useState({ isOpen: false, supplier: null });
+
+    const openSupplierPaymentModal = (supp = null) => {
+        setPaySupplierModal({ isOpen: true, supplier: supp });
+    };
+    const fmt = formatCurrency || defaultFormatCurrency || ((val) => '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }));
+
     const loadSuppliers = React.useCallback(async (search = "", page = 1) => {
         if (!currentShopId) return;
         setLoading(true);
@@ -53,6 +63,19 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
             setTotalPages(result.pagination?.totalPages || 1);
             setTotalCount(result.pagination?.total || 0);
             setCurrentPage(result.pagination?.page || 1);
+            if (result.summary) {
+                setSummary(result.summary);
+            } else {
+                let totalDue = 0;
+                let totalPurchases = 0;
+                let totalPaid = 0;
+                (result.data || []).forEach(s => {
+                    totalDue += Number(s.totalDue !== undefined ? s.totalDue : (s.balanceAmount || s.currentBalance || 0));
+                    totalPurchases += Number(s.totalPurchases || 0);
+                    totalPaid += Number(s.totalPaid || 0);
+                });
+                setSummary({ totalSuppliers: result.pagination?.total || (result.data || []).length, totalPurchases, totalPaid, totalDue });
+            }
         } catch (error) {
             console.error("Failed to load suppliers", error);
         } finally {
@@ -262,6 +285,34 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
             )
         },
         {
+            header: "Payment Due",
+            key: "totalDue",
+            defaultVisible: true,
+            required: true,
+            headerClassName: "text-right",
+            className: "text-right",
+            exportValue: (_, item) => fmt(item.totalDue !== undefined ? item.totalDue : (item.balanceAmount || item.currentBalance || 0)),
+            render: (_, item) => {
+                const due = Number(item.totalDue !== undefined ? item.totalDue : (item.balanceAmount !== undefined ? item.balanceAmount : (item.currentBalance || 0)));
+                return (
+                    <div
+                        onClick={(e) => { e.stopPropagation(); openSupplierPaymentModal(item); }}
+                        className="text-right cursor-pointer group"
+                        title="Click to Pay Supplier"
+                    >
+                        <span className={`text-sm font-black group-hover:underline ${due > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            {fmt(due)}
+                        </span>
+                        {due > 0 && (
+                            <span className="block text-[9px] font-bold uppercase tracking-wider text-rose-500 group-hover:text-emerald-600 transition-colors">
+                                To Pay • Pay Now
+                            </span>
+                        )}
+                    </div>
+                );
+            }
+        },
+        {
             header: "Status",
             key: "status",
             render: (value, item) => (
@@ -340,10 +391,19 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
             className: "text-right",
             render: (_, item) => (
                 <div className="flex justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openSupplierPaymentModal(item); }}
+                        className="p-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 dark:hover:bg-emerald-600 dark:hover:text-white transition-all shadow-xs"
+                        title="Pay Supplier / Record Payment"
+                    >
+                        <Coins size={16} />
+                    </button>
                     {canEdit && (
                         <button
                             onClick={() => handleOpenModal(item)}
                             className={`p-2 transition-colors rounded-xl ${theme.inputBg} ${theme.primaryIconText} hover:bg-indigo-600 hover:text-white`}
+                            title="Edit Supplier"
                         >
                             <Edit3 size={16} />
                         </button>
@@ -352,6 +412,7 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                         <button
                             onClick={() => openDeleteDialog(item)}
                             className={`p-2 transition-colors rounded-xl ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white`}
+                            title="Delete Supplier"
                         >
                             <Trash2 size={16} />
                         </button>
@@ -393,6 +454,73 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                     </div>
                 )}
 
+                {/* Supplier Summary KPI Widgets */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-5">
+                    {/* Total Suppliers */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                        <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                            <Truck size={20} className="text-indigo-500" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                Total Suppliers
+                            </p>
+                            <p className={`text-xl font-black ${theme.textHeading}`}>{totalCount}</p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>Registered partners</p>
+                        </div>
+                    </div>
+
+                    {/* Total Billed */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                        <div className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                            <ShoppingBag size={20} className="text-blue-500" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                Total Purchases
+                            </p>
+                            <p className={`text-xl font-black ${theme.textHeading}`}>
+                                {fmt(summary.totalPurchases || 0)}
+                            </p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>Gross supplier bills</p>
+                        </div>
+                    </div>
+
+                    {/* Total Paid */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                        <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                            <CheckCircle2 size={20} className="text-emerald-500" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                Total Amount Paid
+                            </p>
+                            <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                                {fmt(summary.totalPaid || 0)}
+                            </p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>Paid to suppliers</p>
+                        </div>
+                    </div>
+
+                    {/* Payment Due (To Pay) */}
+                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                        <div className="w-11 h-11 rounded-2xl bg-rose-500/10 flex items-center justify-center flex-shrink-0">
+                            <Clock size={20} className="text-rose-500" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                Payment Due (To Pay)
+                            </p>
+                            <p className={`text-xl font-black ${(summary.totalDue || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : theme.textHeading}`}>
+                                {fmt(summary.totalDue || 0)}
+                            </p>
+                            <p className={`text-[11px] font-bold ${(summary.totalDue || 0) > 0 ? 'text-rose-500 dark:text-rose-400 font-bold' : theme.textMuted}`}>
+                                {(summary.totalDue || 0) > 0 ? 'Amount we need to pay' : 'Zero balance due'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <div className={`flex flex-row gap-3 w-full ${!isEmbedded ? 'mt-4' : ''}`}>
                     <div className="relative flex-1">
                         <Search className={`absolute left-3 top-3.5 ${theme.textSecondary}`} size={18} />
@@ -403,6 +531,15 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                             className={`w-full pl-10 pr-4 py-3 border-2 border-transparent rounded-2xl shadow-sm outline-none focus:border-indigo-500 transition-all font-medium text-sm ${theme.surfaceBg} ${theme.textPrimary}`}
                         />
                     </div>
+                    <button
+                        type="button"
+                        onClick={() => openSupplierPaymentModal()}
+                        className="flex-shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white px-4 md:px-5 py-3 rounded-2xl font-black shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
+                        title="Pay Supplier / Record Payment"
+                    >
+                        <Coins size={18} />
+                        <span className="hidden sm:inline">Pay Supplier</span>
+                    </button>
                     {canCreate && (
                         <button
                             onClick={() => handleOpenModal()}
@@ -577,6 +714,14 @@ const Supplier = ({ hasPermissionFor, permissionModule, permissionResource, isEm
                     </div>
                 </div>
             )}
+                        <SupplierPaymentModal
+                isOpen={paySupplierModal.isOpen}
+                onClose={() => setPaySupplierModal({ isOpen: false, supplier: null })}
+                supplier={paySupplierModal.supplier}
+                allSuppliers={suppliers}
+                onSuccess={() => loadSuppliers(searchTerm, currentPage)}
+            />
+
             {/* Delete Supplier Confirmation Modal */}
             <CommonDialog
                 isOpen={deleteConfirmModal.isOpen}

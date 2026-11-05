@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin, Gift } from 'lucide-react';
+import { Users, Truck, Plus, Search, Edit3, Trash2, X, Save, Phone, Mail, MapPin, Gift, Coins, ShoppingBag, CheckCircle2, Clock } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
@@ -8,7 +8,9 @@ import { customerService, loyaltyService, api } from '../../services/api';
 import CommonTable from '../../components/CommonTable';
 import CommonDialog from '../../components/modals/CommonDialog';
 import Supplier from '../Suppliers/Supplier';
+import CustomerPaymentCollectModal from '../../components/modals/CustomerPaymentCollectModal';
 import { toast } from 'react-hot-toast';
+import { formatCurrency as defaultFormatCurrency } from '../../utils/format';
 import { validateEmail, sanitizeEmailInput, sanitizeNameInput, sanitizePhoneInput, normalizePhoneNumber, arePhoneNumbersEqual } from '../../utils/validation';
 
 const PARTIES_MODULE = MODULES.PARTIES;
@@ -17,6 +19,7 @@ const PARTIES_MODULE = MODULES.PARTIES;
 const Parties = ({ hasPermissionFor }) => {
     const { theme } = useTheme();
     const { activeBranchId, formatCurrency } = useApp();
+    const fmt = formatCurrency || defaultFormatCurrency || ((val) => '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }));
     const { user } = useAuth();
     const [tab, setTab] = useState('suppliers'); // 'suppliers' | 'customers'
     const [customers, setCustomers] = useState([]);
@@ -107,6 +110,13 @@ const Parties = ({ hasPermissionFor }) => {
         }
     };
 
+    const [customerSummary, setCustomerSummary] = useState({ totalCustomers: 0, totalSales: 0, totalPaid: 0, totalDue: 0 });
+    const [collectPaymentModal, setCollectPaymentModal] = useState({ isOpen: false, customer: null });
+
+    const openCollectPaymentModal = (cust = null) => {
+        setCollectPaymentModal({ isOpen: true, customer: cust });
+    };
+
     const loadCustomers = React.useCallback(async (search = '', page = 1) => {
         if (!activeBranchId) return;
         setCustomerLoading(true);
@@ -116,6 +126,24 @@ const Parties = ({ hasPermissionFor }) => {
             setCustomerTotalPages(result.pagination?.totalPages || 1);
             setCustomerTotalCount(result.pagination?.total || 0);
             setCustomerPage(result.pagination?.page || 1);
+            if (result.summary) {
+                setCustomerSummary(result.summary);
+            } else {
+                let totalDue = 0;
+                let totalSales = 0;
+                let totalPaid = 0;
+                (result.data || []).forEach(c => {
+                    totalDue += Number(c.totalDue !== undefined ? c.totalDue : (c.balance || c.outstandingBalance || 0));
+                    totalSales += Number(c.totalSales || 0);
+                    totalPaid += Number(c.totalPaid || 0);
+                });
+                setCustomerSummary({
+                    totalCustomers: result.pagination?.total || (result.data || []).length,
+                    totalSales,
+                    totalPaid,
+                    totalDue
+                });
+            }
         } catch (e) {
             console.error('Failed to load customers:', e);
             setCustomers([]);
@@ -303,6 +331,34 @@ const Parties = ({ hasPermissionFor }) => {
             )
         },
         {
+            header: 'Payment Due',
+            key: 'totalDue',
+            required: true,
+            defaultVisible: true,
+            headerClassName: 'text-right',
+            className: 'text-right',
+            exportValue: (_, row) => fmt(row.totalDue !== undefined ? row.totalDue : (row.balance || row.outstandingBalance || 0)),
+            render: (_, row) => {
+                const due = Number(row.totalDue !== undefined ? row.totalDue : (row.balance || row.outstandingBalance || 0));
+                return (
+                    <div
+                        onClick={(e) => { e.stopPropagation(); openCollectPaymentModal(row); }}
+                        className="text-right cursor-pointer group"
+                        title="Click to Collect Payment"
+                    >
+                        <span className={`text-sm font-black group-hover:underline ${due > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            {fmt(due)}
+                        </span>
+                        {due > 0 && (
+                            <span className="block text-[9px] font-bold uppercase tracking-wider text-rose-500 group-hover:text-emerald-600 transition-colors">
+                                To Receive • Collect
+                            </span>
+                        )}
+                    </div>
+                );
+            }
+        },
+        {
             header: 'Status',
             key: 'status',
             render: (v, row) => (
@@ -350,7 +406,7 @@ const Parties = ({ hasPermissionFor }) => {
             exportValue: (_, row) => String(row.creditLimit || 0),
             render: (_, row) => (
                 <span className={`text-xs font-bold ${theme.textPrimary}`}>
-                    {row.creditLimit ? `₹${row.creditLimit}` : '—'}
+                    {row.creditLimit ? fmt(row.creditLimit) : '—'}
                 </span>
             )
         },
@@ -365,7 +421,7 @@ const Parties = ({ hasPermissionFor }) => {
                 const bal = row.balance || row.outstandingBalance || 0;
                 return (
                     <span className={`text-xs font-black ${bal > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                        {bal !== 0 ? `₹${bal}` : '₹0'}
+                        {fmt(bal)}
                     </span>
                 );
             }
@@ -381,8 +437,16 @@ const Parties = ({ hasPermissionFor }) => {
             className: 'text-right',
             render: (_, row) => (
                 <div className="flex justify-end gap-2">
-                    {canCustomerEdit && <button type="button" onClick={() => openCustomerModal(row)} className={`p-2 rounded-xl ${theme.inputBg} ${theme.primaryIconText} hover:bg-indigo-600 hover:text-white`}><Edit3 size={16} /></button>}
-                    {canCustomerDelete && <button type="button" onClick={() => openDeleteCustomerDialog(row)} className={`p-2 rounded-xl ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white`}><Trash2 size={16} /></button>}
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openCollectPaymentModal(row); }}
+                        className="p-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 dark:hover:bg-emerald-600 dark:hover:text-white transition-all shadow-xs"
+                        title="Collect Payment from Customer"
+                    >
+                        <Coins size={16} />
+                    </button>
+                    {canCustomerEdit && <button type="button" onClick={() => openCustomerModal(row)} className={`p-2 rounded-xl ${theme.inputBg} ${theme.primaryIconText} hover:bg-indigo-600 hover:text-white`} title="Edit Customer"><Edit3 size={16} /></button>}
+                    {canCustomerDelete && <button type="button" onClick={() => openDeleteCustomerDialog(row)} className={`p-2 rounded-xl ${theme.inputBg} text-red-400 hover:bg-red-500 hover:text-white`} title="Delete Customer"><Trash2 size={16} /></button>}
                 </div>
             )
         });
@@ -449,6 +513,73 @@ const Parties = ({ hasPermissionFor }) => {
 
             {tab === 'customers' && canCustomerView && (
                 <>
+                    {/* Customer Summary KPI Widgets */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-5">
+                        {/* Total Customers */}
+                        <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                            <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                                <Users size={20} className="text-indigo-500" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                    Total Customers
+                                </p>
+                                <p className={`text-xl font-black ${theme.textHeading}`}>{customerTotalCount}</p>
+                                <p className={`text-[11px] font-bold ${theme.textMuted}`}>Registered profiles</p>
+                            </div>
+                        </div>
+
+                        {/* Total Sales Billed */}
+                        <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                            <div className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                                <ShoppingBag size={20} className="text-blue-500" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                    Total Sales
+                                </p>
+                                <p className={`text-xl font-black ${theme.textHeading}`}>
+                                    {fmt(customerSummary.totalSales || 0)}
+                                </p>
+                                <p className={`text-[11px] font-bold ${theme.textMuted}`}>Total customer invoices</p>
+                            </div>
+                        </div>
+
+                        {/* Total Paid */}
+                        <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                            <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                                <CheckCircle2 size={20} className="text-emerald-500" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                    Total Amount Paid
+                                </p>
+                                <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                                    {fmt(customerSummary.totalPaid || 0)}
+                                </p>
+                                <p className={`text-[11px] font-bold ${theme.textMuted}`}>Collected from customers</p>
+                            </div>
+                        </div>
+
+                        {/* Payment Due (To Receive) */}
+                        <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
+                            <div className="w-11 h-11 rounded-2xl bg-rose-500/10 flex items-center justify-center flex-shrink-0">
+                                <Clock size={20} className="text-rose-500" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                                    Payment Due (To Receive)
+                                </p>
+                                <p className={`text-xl font-black ${(customerSummary.totalDue || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : theme.textHeading}`}>
+                                    {fmt(customerSummary.totalDue || 0)}
+                                </p>
+                                <p className={`text-[11px] font-bold ${(customerSummary.totalDue || 0) > 0 ? 'text-rose-500 dark:text-rose-400 font-bold' : theme.textMuted}`}>
+                                    {(customerSummary.totalDue || 0) > 0 ? 'Amount customer needs to pay' : 'Zero balance due'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="flex flex-row gap-3 mb-6">
                         <div className="relative flex-1">
                             <Search className={`absolute left-3 top-3.5 ${theme.textSecondary}`} size={18} />
@@ -469,6 +600,15 @@ const Parties = ({ hasPermissionFor }) => {
                             <span className="hidden sm:inline">
                                 {loyaltySettings ? `${loyaltySettings.conversionRate} = 1 pt` : 'Loyalty'}
                             </span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => openCollectPaymentModal()}
+                            className="flex-shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white px-4 md:px-5 py-3 rounded-2xl font-black shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
+                            title="Collect Due Payment from Customer"
+                        >
+                            <Coins size={18} />
+                            <span className="hidden sm:inline">Collect Payment</span>
                         </button>
                         {canCustomerCreate && (
                             <button
@@ -768,6 +908,13 @@ const Parties = ({ hasPermissionFor }) => {
                 type="error"
                 confirmText="Delete Customer"
                 cancelText="Cancel"
+            />
+            <CustomerPaymentCollectModal
+                isOpen={collectPaymentModal.isOpen}
+                onClose={() => setCollectPaymentModal({ isOpen: false, customer: null })}
+                customer={collectPaymentModal.customer}
+                allCustomers={customers}
+                onSuccess={() => loadCustomers(customerSearch, customerPage)}
             />
         </div>
     );

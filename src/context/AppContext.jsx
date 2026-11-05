@@ -94,6 +94,13 @@ export const AppProvider = ({ children }) => {
         || (branches.find(b => String(b.id || b._id) === String(activeBranchId))?.organizationId) 
         || null, [stableShopId, organization, branches, activeBranchId]);
 
+    useEffect(() => {
+        if (currentShopId && currentShopId !== "null" && currentShopId !== "undefined") {
+            localStorage.setItem("pos_shopId", currentShopId);
+            localStorage.setItem("pos_organizationId", currentShopId);
+        }
+    }, [currentShopId]);
+
     // Reset shop-scoped state immediately whenever stableShopId changes
     useEffect(() => {
         if (!stableShopId) return;
