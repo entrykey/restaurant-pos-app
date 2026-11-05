@@ -22,6 +22,7 @@ import TaxSettings from "./TaxSettings";
 import SaleSettings from "./SaleSettings";
 import BarcodeBillSettings from "./BarcodeBillSettings";
 import DeliverySettings from "./DeliverySettings";
+import TableCustomizationSection, { isTableCustomizationSetting } from "./TableCustomizationSection";
 import { ROUTE_ACCESS } from "../../config/permissionStructure";
 import { useTheme } from "../../context/ThemeContext";
 import CommonTable from "../../components/CommonTable";
@@ -232,6 +233,38 @@ const Settings = ({
         }
     };
 
+    const handleDeleteBackendSetting = async (key) => {
+        try {
+            const shopId = currentShopId || currentUser?.shopId || currentUser?.shop_id || currentUser?.shopId;
+            await settingService.deleteSetting(key, shopId);
+            setBackendSettings(prev => prev.filter(s => s.key !== key));
+            setOriginalSettings(prev => prev.filter(s => s.key !== key));
+            setSettings(prev => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            });
+            return true;
+        } catch (error) {
+            console.error("Failed to delete setting:", error);
+            throw error;
+        }
+    };
+
+    const handleUpdateTableSetting = async (key, nextColumns, originalSetting) => {
+        const shopId = currentShopId || currentUser?.shopId || currentUser?.shop_id || currentUser?.shopId;
+        const updatedSetting = await settingService.updateSetting(key, {
+            value: nextColumns,
+            shopId: shopId
+        });
+        setBackendSettings(prev => prev.map(s => s.key === key ? { ...s, value: nextColumns } : s));
+        setOriginalSettings(prev => prev.map(s => s.key === key ? updatedSetting : s));
+        setSettings(prev => ({
+            ...prev,
+            [key]: nextColumns
+        }));
+    };
+
     if (!canViewGeneral && !canViewAttributes && !canViewBarcodeBill && !isSuperAdmin) {
         return (
             <div className={`p-8 text-center ${theme.textSecondary} font-bold`}>
@@ -408,69 +441,74 @@ const Settings = ({
 
     const renderContent = () => {
         switch (activeTab) {
-            case "general":
+            case "general": {
+                const printSettingsKeys = [
+                    'BARCODE_PRINT_SETTINGS', 'BILL_PRINT_SETTINGS', 'PURCHASE_INVOICE_SETTINGS'
+                ];
+                const saleSettingsKeys = [
+                    'SALE_MARKING_TYPE', 'SALE_MARKING_TIME',
+                    'ENABLE_STOCK_ITEMS', 'ENABLE_MANUFACTURED_ITEMS', 'ENABLE_TRADE_ITEMS',
+                    'ALLOW_CREDIT', 'ALLOW_CREDIT_PAYMENT', 'PREPAID_AUTO_SERVE_ON_PAYMENT'
+                ];
+
+                const filteredGeneralSettings = backendSettings.filter(s => {
+                    if (printSettingsKeys.includes(s.key)) return false;
+                    if (saleSettingsKeys.includes(s.key)) return false;
+                    // Separate table column customizations into dedicated section below
+                    if (isTableCustomizationSetting(s)) return false;
+
+                    // Non-superadmin should not see system settings
+                    if (!isSuperAdmin && s.isSystem) return false;
+
+                    // Hide SHOW_AI_IMAGE_IN_SALE from superadmin (only show to other users in General Settings)
+                    if (s.key === 'SHOW_AI_IMAGE_IN_SALE' && isSuperAdmin) return false;
+
+                    // Filter based on business type features
+                    if (s.key === 'ENABLE_STOCK_ITEMS' && businessTypeData?.features?.sellStockItems === false) return false;
+                    if (s.key === 'ENABLE_MANUFACTURED_ITEMS' && businessTypeData?.features?.sellManufacturedItems === false) return false;
+                    if (s.key === 'ENABLE_TRADE_ITEMS' && businessTypeData?.features?.sellTradeItems === false) return false;
+
+                    return true;
+                });
+
+                const tableCustomizationSettings = backendSettings.filter(isTableCustomizationSetting);
+
                 return (
-                    <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight} space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500`}>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
-                            <h3 className={`text-xl font-bold flex items-center gap-2 ${theme.textHeading}`}>
-                                <Shield className={theme.primaryIconText} /> General System Settings
-                            </h3>
-                            <div className="flex items-center gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => handleSaveAllBackendSettings()}
-                                    disabled={isSavingBackend}
-                                    className={`px-6 py-3 ${theme.buttonBg || 'bg-indigo-600'} ${theme.buttonHoverBg || 'hover:bg-indigo-700'} ${theme.buttonText || 'text-white'} rounded-2xl font-black text-sm shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50`}
-                                >
-                                    <Save size={18} />
-                                    {isSavingBackend ? "Saving..." : "Save Settings"}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={fetchBackendSettings}
-                                    disabled={isLoadingBackend}
-                                    className={`p-3 rounded-2xl ${theme.inputBg} ${theme.textSecondary} hover:${theme.textPrimary} border ${theme.inputBorder} transition-all`}
-                                    title="Refresh Settings"
-                                >
-                                    <RefreshCw size={18} className={isLoadingBackend ? "animate-spin" : ""} />
-                                </button>
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* 1. General System Settings Card */}
+                        <div className={`${theme.surfaceBg} p-6 md:p-8 rounded-[40px] shadow-xl border ${theme.borderLight} space-y-6`}>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
+                                <h3 className={`text-xl font-bold flex items-center gap-2 ${theme.textHeading}`}>
+                                    <Shield className={theme.primaryIconText} /> General System Settings
+                                </h3>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSaveAllBackendSettings()}
+                                        disabled={isSavingBackend}
+                                        className={`px-6 py-3 ${theme.buttonBg || 'bg-indigo-600'} ${theme.buttonHoverBg || 'hover:bg-indigo-700'} ${theme.buttonText || 'text-white'} rounded-2xl font-black text-sm shadow-xl hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50`}
+                                    >
+                                        <Save size={18} />
+                                        {isSavingBackend ? "Saving..." : "Save Settings"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={fetchBackendSettings}
+                                        disabled={isLoadingBackend}
+                                        className={`p-3 rounded-2xl ${theme.inputBg} ${theme.textSecondary} hover:${theme.textPrimary} border ${theme.inputBorder} transition-all`}
+                                        title="Refresh Settings"
+                                    >
+                                        <RefreshCw size={18} className={isLoadingBackend ? "animate-spin" : ""} />
+                                    </button>
+                                </div>
                             </div>
-                        </div>
 
-                        {isLoadingBackend ? (
-                            <div className="py-20 text-center">
-                                <RefreshCw className="animate-spin mx-auto mb-4 text-indigo-500" size={40} />
-                                <p className={`font-bold ${theme.textSecondary}`}>Loading system settings...</p>
-                            </div>
-                        ) : (() => {
-                            const filteredGeneralSettings = backendSettings.filter(s => {
-                                const printSettingsKeys = [
-                                    'BARCODE_PRINT_SETTINGS', 'BILL_PRINT_SETTINGS', 'PURCHASE_INVOICE_SETTINGS'
-                                ];
-                                if (printSettingsKeys.includes(s.key)) return false;
-
-                                const saleSettingsKeys = [
-                                    'SALE_MARKING_TYPE', 'SALE_MARKING_TIME',
-                                    'ENABLE_STOCK_ITEMS', 'ENABLE_MANUFACTURED_ITEMS', 'ENABLE_TRADE_ITEMS',
-                                    'ALLOW_CREDIT', 'ALLOW_CREDIT_PAYMENT', 'PREPAID_AUTO_SERVE_ON_PAYMENT'
-                                ];
-                                if (saleSettingsKeys.includes(s.key)) return false;
-
-                                // Non-superadmin should not see system settings
-                                if (!isSuperAdmin && s.isSystem) return false;
-
-                                // Hide SHOW_AI_IMAGE_IN_SALE from superadmin (only show to other users in General Settings)
-                                if (s.key === 'SHOW_AI_IMAGE_IN_SALE' && isSuperAdmin) return false;
-
-                                // Filter based on business type features
-                                if (s.key === 'ENABLE_STOCK_ITEMS' && businessTypeData?.features?.sellStockItems === false) return false;
-                                if (s.key === 'ENABLE_MANUFACTURED_ITEMS' && businessTypeData?.features?.sellManufacturedItems === false) return false;
-                                if (s.key === 'ENABLE_TRADE_ITEMS' && businessTypeData?.features?.sellTradeItems === false) return false;
-
-                                return true;
-                            });
-
-                            return (
+                            {isLoadingBackend ? (
+                                <div className="py-20 text-center">
+                                    <RefreshCw className="animate-spin mx-auto mb-4 text-indigo-500" size={40} />
+                                    <p className={`font-bold ${theme.textSecondary}`}>Loading system settings...</p>
+                                </div>
+                            ) : (
                                 <div className="grid grid-cols-1 gap-6">
                                     {filteredGeneralSettings.map((setting) => (
                                         <div key={setting.key} className={`p-6 ${theme.inputBg} rounded-3xl border ${theme.inputBorder} flex flex-col md:flex-row md:items-center justify-between gap-4`}>
@@ -491,14 +529,27 @@ const Settings = ({
 
                                     {filteredGeneralSettings.length === 0 && (
                                         <div className="py-10 text-center border-2 border-dashed rounded-3xl border-gray-100 italic text-gray-400 font-bold">
-                                            No general settings found in the system.
+                                            No general system settings found.
                                         </div>
                                     )}
                                 </div>
-                            );
-                        })()}
+                            )}
+                        </div>
+
+                        {/* 2. Dedicated Table Customisation Section with Header & Understandable UI */}
+                        {!isLoadingBackend && (
+                            <TableCustomizationSection
+                                tableSettings={tableCustomizationSettings}
+                                onDeleteSetting={handleDeleteBackendSetting}
+                                onUpdateSetting={handleUpdateTableSetting}
+                                currentShopId={currentShopId}
+                                theme={theme}
+                                themeName={themeName}
+                            />
+                        )}
                     </div>
                 );
+            }
 
             case "sale-settings":
                 return (

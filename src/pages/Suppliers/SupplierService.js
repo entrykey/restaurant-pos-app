@@ -37,6 +37,24 @@ export const SupplierService = {
         }
     },
 
+    paySupplier: async (id, paymentData) => {
+        try {
+            const response = await api.post(`/suppliers/${id}/pay`, paymentData);
+            return response.data;
+        } catch (error) {
+            console.error("Error recording supplier payment:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getDuePurchases: async (id) => {
+        try {
+            const response = await api.get(`/suppliers/${id}/due-purchases`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching supplier due purchases:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
     deleteSupplier: async (id) => {
         try {
             const response = await api.delete(`/suppliers/${id}`);

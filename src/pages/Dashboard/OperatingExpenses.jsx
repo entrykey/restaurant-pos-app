@@ -12,12 +12,13 @@ import {
     ArrowLeft, Plus, X, Building2, ChevronDown, TrendingUp, History, 
     Settings2, Calendar, ShoppingBag, Coins, TrendingDown, FileText, 
     ArrowRightCircle, Trash2, LayoutGrid, Table as TableIcon, Edit3, Search,
-    Sparkles, Camera, Car, Building, Hash, Receipt
+    Sparkles, Camera, Car, Building, Hash, Receipt, Truck
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import CommonSelect from '../../components/ui/CommonSelect';
 import CommonDialog from '../../components/modals/CommonDialog';
 import { PurchaseService } from '../../services/PurchaseService';
+import { SupplierService } from '../Suppliers/SupplierService';
 import { toast } from 'react-hot-toast';
 
 const OperatingExpenses = () => {
@@ -50,6 +51,7 @@ const OperatingExpenses = () => {
     const [profitTimeline, setProfitTimeline] = useState([]);
     const [expandedDate, setExpandedDate] = useState(null);
     const [deletedDefaultCategories, setDeletedDefaultCategories] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
 
     useEffect(() => {
         if (urlTab) {
@@ -62,6 +64,14 @@ const OperatingExpenses = () => {
             setExpandedDate(urlStartDate);
         }
     }, [urlStartDate]);
+
+    useEffect(() => {
+        const shopId = user?.shopId || user?.shop_id;
+        if (!shopId) return;
+        SupplierService.getSuppliers(shopId, '', 1, 500)
+            .then(res => setSuppliers(res?.data || []))
+            .catch(err => console.warn('Could not load suppliers for expenses:', err));
+    }, [user?.shopId, user?.shop_id]);
 
     const defaultCategories = ['Salary', 'Rent', 'Electricity', 'Water'];
 
@@ -239,7 +249,12 @@ const OperatingExpenses = () => {
                 amount: expenseData.amount,
                 term: expenseData.term,
                 isDefault: expenseData.isDefault || false,
-                isDraft: expenseData.isDraft || false
+                isDraft: expenseData.isDraft || false,
+                supplierId: expenseData.supplierId || null,
+                supplierName: expenseData.supplierName || '',
+                paymentStatus: expenseData.paymentStatus || (expenseData.supplierId ? 'UNPAID' : 'PAID'),
+                paidAmount: expenseData.paidAmount !== undefined ? expenseData.paidAmount : (expenseData.paymentStatus === 'PAID' ? expenseData.amount : 0),
+                balanceAmount: expenseData.balanceAmount !== undefined ? expenseData.balanceAmount : (expenseData.paymentStatus === 'PAID' ? 0 : expenseData.amount)
             });
             toast.success(expenseData.isDraft ? "Draft expense saved successfully" : "Expense saved successfully");
             fetchData();
@@ -373,6 +388,11 @@ const OperatingExpenses = () => {
                 <div className="flex flex-col py-1">
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className={`font-black text-sm ${theme.textHeading}`}>{cat}</span>
+                        {(row.supplierName || row.supplierId?.name) && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 rounded-lg flex items-center gap-1">
+                                <Truck size={10} /> {row.supplierName || row.supplierId?.name}
+                            </span>
+                        )}
                         {row.vehicleNumber && (
                             <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-lg flex items-center gap-1">
                                 <Car size={10} /> {row.vehicleNumber}
@@ -413,6 +433,28 @@ const OperatingExpenses = () => {
                     )}
                 </div>
             )
+        },
+        {
+            header: 'Supplier / Vendor',
+            key: 'supplier',
+            render: (_, row) => {
+                const suppName = row.supplierName || row.supplierId?.name;
+                const isLinked = Boolean(suppName);
+                const displayName = suppName || row.vendorName;
+                if (!displayName) return <span className="text-gray-400 text-xs">—</span>;
+                return (
+                    <div className="flex items-center gap-1.5">
+                        <span className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
+                            isLinked
+                                ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800'
+                                : 'bg-gray-100 text-gray-700 dark:bg-white/5 dark:text-gray-300'
+                        }`}>
+                            {isLinked ? <Truck size={12} className="text-purple-600 dark:text-purple-400" /> : <Building size={12} />}
+                            <span className="truncate max-w-[150px]">{displayName}</span>
+                        </span>
+                    </div>
+                );
+            }
         },
         {
             header: 'Billing Term',
@@ -510,6 +552,8 @@ const OperatingExpenses = () => {
             const q = tableSearch.toLowerCase();
             return (exp.category || '').toLowerCase().includes(q) || 
                    (exp.term || '').toLowerCase().includes(q) ||
+                   (exp.supplierName || '').toLowerCase().includes(q) ||
+                   (exp.supplierId?.name || '').toLowerCase().includes(q) ||
                    (exp.vendorName || '').toLowerCase().includes(q) ||
                    (exp.vehicleNumber || '').toLowerCase().includes(q) ||
                    (exp.billNumber || '').toLowerCase().includes(q);
@@ -1063,6 +1107,7 @@ const OperatingExpenses = () => {
                 onDelete={handleDeleteExpense}
                 onMoveToExpense={handleMoveToExpense}
                 existingCategories={expenses.map(e => e.category)}
+                suppliers={suppliers}
             />
 
             {/* Python OCR Bill Scanner Modal */}

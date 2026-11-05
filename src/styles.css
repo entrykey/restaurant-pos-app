@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap');
 
+html {
+  scroll-behavior: smooth;
+}
+
 * {
   font-family: 'Plus Jakarta Sans', sans-serif;
 }
@@ -115,31 +119,27 @@ button {
   box-shadow: none !important;
 }
 
-/* Fully disable page zooming, pinch-to-zoom, and double-tap zoom across all devices */
+/* Page base & root layout */
 html, body {
-  height: 100%;
+  min-height: 100%;
   width: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden;
   touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 #root {
-  height: 100%;
+  min-height: 100%;
   width: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden;
 }
 
 /* Prevent double-tap zoom or gesture scaling on interactive controls and inputs */
 button, input, select, textarea, a, label, [role="tab"], [role="button"] {
   touch-action: manipulation;
 }
-
-

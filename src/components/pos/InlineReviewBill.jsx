@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
     ArrowLeft,
     Search,
@@ -19,7 +19,8 @@ import {
     UserCheck,
     Gift,
     Tag,
-    Award
+    Award,
+    Check
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useTheme } from "../../context/ThemeContext";
@@ -84,6 +85,13 @@ const InlineReviewBill = ({
     // Local Customer State
     const [localCustName, setLocalCustName] = useState(takeawayCustName || "");
     const [localCustPhone, setLocalCustPhone] = useState(takeawayCustPhone || "");
+    const [custSearchTerm, setCustSearchTerm] = useState(
+        (selectedCustomer && typeof selectedCustomer === 'object' ? (selectedCustomer.name || selectedCustomer.phone) : "") ||
+        takeawayCustName || takeawayCustPhone || ""
+    );
+    const [customerSearchResults, setCustomerSearchResults] = useState([]);
+    const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+    const customerSearchContainerRef = useRef(null);
     const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
     const [customerSearchResult, setCustomerSearchResult] = useState(null);
     const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
@@ -122,9 +130,156 @@ const InlineReviewBill = ({
         if (typeof setTakeawayCustPhone === "function") setTakeawayCustPhone(localCustPhone);
     }, [localCustPhone, setTakeawayCustPhone]);
 
-    // Customer search effect
+    // Close customer suggestions dropdown when clicking outside
     useEffect(() => {
-        const normPhone = normalizePhoneNumber(localCustPhone);
+        const handleClickOutside = (e) => {
+            if (customerSearchContainerRef.current && !customerSearchContainerRef.current.contains(e.target)) {
+                setShowCustomerDropdown(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    // Sync with selectedCustomer if already set from POS screen
+    useEffect(() => {
+        if (selectedCustomer && typeof selectedCustomer === 'object' && !customerSearchResult?.customer) {
+            const name = selectedCustomer.name || selectedCustomer.customerName || takeawayCustName || "";
+            const phone = selectedCustomer.phone || selectedCustomer.mobile || takeawayCustPhone || "";
+            if (!custSearchTerm) setCustSearchTerm(name || phone || "");
+            if (!localCustName && name) setLocalCustName(name);
+            if (!localCustPhone && phone) setLocalCustPhone(phone);
+
+            (async () => {
+                let creditDue = 0;
+                try {
+                    const searchTerm = phone || name;
+                    if (searchTerm) {
+                        const ordersRes = await orderService.getOrders({ search: searchTerm, branchId: activeBranchId });
+                        const ordersList = ordersRes?.orders || ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
+                        const pendingOrders = ordersList.filter(o => o.paymentStatus === 'PARTIAL' || o.paymentStatus === 'PENDING');
+                        creditDue = pendingOrders.reduce((sum, o) => {
+                            const paid = Number(o.totalPaid || o.paidAmount || 0);
+                            const total = Number(o.finalTotal || o.totalAmount || o.amount || 0);
+                            return sum + Math.max(0, total - paid);
+                        }, 0);
+                    }
+                } catch (err) {
+                    console.warn("Error fetching initial customer credit due:", err);
+                }
+                setCustomerSearchResult({
+                    found: true,
+                    customer: selectedCustomer,
+                    name,
+                    phone,
+                    creditDue
+                });
+            })();
+        }
+    }, [selectedCustomer, activeBranchId]);
+
+    // Debounced search for customer suggestions as characters are entered
+    useEffect(() => {
+        const query = (custSearchTerm || "").trim();
+        if (!query) {
+            setCustomerSearchResults([]);
+            setIsSearchingCustomer(false);
+            return;
+        }
+
+        setIsSearchingCustomer(true);
+        const timer = setTimeout(async () => {
+            try {
+                const res = await customerService.getCustomers({ search: query, branchId: activeBranchId });
+                const list = res?.data || res?.customers || (Array.isArray(res) ? res : []);
+                setCustomerSearchResults(list);
+                setShowCustomerDropdown(true);
+            } catch (err) {
+                console.error("Error searching customers:", err);
+                setCustomerSearchResults([]);
+            } finally {
+                setIsSearchingCustomer(false);
+            }
+        }, 250);
+
+        return () => clearTimeout(timer);
+    }, [custSearchTerm, activeBranchId]);
+
+    const handleSelectCustomer = async (cust) => {
+        if (!cust) return;
+        const name = cust.name || cust.customerName || "";
+        const phone = cust.phone || cust.mobile || "";
+
+        setCustSearchTerm(name || phone);
+        setLocalCustName(name);
+        setLocalCustPhone(phone);
+        setShowCustomerDropdown(false);
+        setCustomerSearchResults([]);
+
+        let creditDue = 0;
+        try {
+            const searchTerm = phone || name;
+            if (searchTerm) {
+                const ordersRes = await orderService.getOrders({ search: searchTerm, branchId: activeBranchId });
+                const ordersList = ordersRes?.orders || ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
+                const pendingOrders = ordersList.filter(o => o.paymentStatus === 'PARTIAL' || o.paymentStatus === 'PENDING');
+                creditDue = pendingOrders.reduce((sum, o) => {
+                    const paid = Number(o.totalPaid || o.paidAmount || 0);
+                    const total = Number(o.finalTotal || o.totalAmount || o.amount || 0);
+                    return sum + Math.max(0, total - paid);
+                }, 0);
+            }
+        } catch (oErr) {
+            console.warn("Error fetching customer credit due balance:", oErr);
+        }
+
+        setCustomerSearchResult({ found: true, customer: cust, name, phone, creditDue });
+        if (setSelectedCustomer) setSelectedCustomer(cust);
+
+        if (cust.discountPercentage > 0 && activeSetBillDiscount) {
+            activeSetBillDiscount({ type: 'percent', value: cust.discountPercentage });
+        }
+    };
+
+    const handleSearchChange = (e) => {
+        const val = e.target.value;
+        setCustSearchTerm(val);
+        setShowCustomerDropdown(true);
+
+        const trimmed = val.trim();
+        if (/^\d+$/.test(trimmed)) {
+            setLocalCustPhone(sanitizePhoneInput(trimmed));
+            setLocalCustName("");
+        } else {
+            setLocalCustName(val);
+            setLocalCustPhone("");
+        }
+
+        if (customerSearchResult?.customer) {
+            const linkedName = (customerSearchResult.name || "").trim().toLowerCase();
+            const linkedPhone = (customerSearchResult.phone || "").trim().toLowerCase();
+            const valLower = trimmed.toLowerCase();
+            if (valLower !== linkedName && valLower !== linkedPhone) {
+                setCustomerSearchResult(null);
+                if (setSelectedCustomer) setSelectedCustomer(null);
+                setAppliedLoyaltyDiscount({ points: 0, amount: 0 });
+            }
+        }
+    };
+
+    const handleClearCustomer = () => {
+        setCustSearchTerm("");
+        setLocalCustName("");
+        setLocalCustPhone("");
+        setCustomerSearchResult(null);
+        setCustomerSearchResults([]);
+        setShowCustomerDropdown(false);
+        if (setSelectedCustomer) setSelectedCustomer(null);
+        setAppliedLoyaltyDiscount({ points: 0, amount: 0 });
+        if (setTakeawayLoyaltyDiscount) setTakeawayLoyaltyDiscount({ points: 0, amount: 0 });
+    };
+    useEffect(() => {
+        /*
         const cleanName = (localCustName || "").trim();
         const searchQuery = normPhone.length >= 5 ? normPhone : (cleanName.length >= 1 ? cleanName : "");
 
@@ -188,7 +343,8 @@ const InlineReviewBill = ({
             setCustomerSearchResult(null);
             setIsSearchingCustomer(false);
         }
-    }, [localCustPhone, localCustName, activeBranchId, setSelectedCustomer]);
+        */
+    }, []);
 
     // Loyalty Points Fetch
     useEffect(() => {
@@ -379,7 +535,13 @@ const InlineReviewBill = ({
             const res = await customerService.createCustomer(newCustData);
             const created = res?.customer || res?.data || res;
             if (created) {
-                setCustomerSearchResult({ found: true, customer: created, name: created.name, phone: created.phone, creditDue: 0 });
+                const name = created.name || cleanName;
+                const phone = created.phone || cleanPhone;
+                setCustSearchTerm(name || phone);
+                setLocalCustName(name);
+                setLocalCustPhone(phone);
+                setShowCustomerDropdown(false);
+                setCustomerSearchResult({ found: true, customer: created, name, phone, creditDue: 0 });
                 if (setSelectedCustomer) setSelectedCustomer(created);
                 toast.success(`Customer "${created.name || cleanName}" added!`);
             }
@@ -579,14 +741,31 @@ const InlineReviewBill = ({
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <div className="relative flex-1">
+                            <div className="relative flex-1" ref={customerSearchContainerRef}>
                                 <Search size={16} className={`absolute left-3.5 top-3 ${theme.textMuted}`} />
                                 <input
                                     type="text"
-                                    value={localCustPhone || localCustName}
+                                    value={custSearchTerm}
+
+                                    onFocus={() => {
+                                        if (custSearchTerm.trim().length >= 1) {
+                                            setShowCustomerDropdown(true);
+                                        }
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            if (customerSearchResults.length > 0) {
+                                                handleSelectCustomer(customerSearchResults[0]);
+                                            }
+                                        } else if (e.key === 'Escape') {
+                                            setShowCustomerDropdown(false);
+                                        }
+                                    }}
                                     onChange={(e) => {
                                         const val = e.target.value;
-                                        if (/^\d+$/.test(val)) {
+                                        handleSearchChange(e);
+                                        return; if (false) {
                                             setLocalCustPhone(sanitizePhoneInput(val));
                                         } else {
                                             setLocalCustName(val);
@@ -598,7 +777,95 @@ const InlineReviewBill = ({
                                 {isSearchingCustomer && (
                                     <Loader2 size={14} className="animate-spin text-indigo-500 absolute right-3 top-3" />
                                 )}
-                                {(localCustPhone || localCustName) && !isSearchingCustomer && (
+                                {custSearchTerm && !isSearchingCustomer && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearCustomer}
+                                        className={`absolute right-3 top-3 ${theme.textMuted} hover:text-red-500 transition-colors`}
+                                        title="Clear customer search"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
+
+                                {/* Autocomplete Dropdown suggestions list as characters are entered */}
+                                {showCustomerDropdown && custSearchTerm.trim().length >= 1 && (
+                                    <div className={`absolute top-full left-0 right-0 mt-1.5 ${theme.surfaceBg} border ${theme.borderLight} rounded-2xl shadow-2xl z-[70] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150`}>
+                                        {customerSearchResults.length > 0 ? (
+                                            <div>
+                                                <div className="max-h-56 overflow-y-auto custom-scrollbar divide-y divide-gray-100 dark:divide-slate-800">
+                                                    {customerSearchResults.map(cust => (
+                                                        <div
+                                                            key={cust._id || cust.id}
+                                                            onMouseDown={(e) => {
+                                                                e.preventDefault();
+                                                                handleSelectCustomer(cust);
+                                                            }}
+                                                            className={`p-3 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 cursor-pointer transition-colors flex items-center justify-between group`}
+                                                        >
+                                                            <div className="flex-1 min-w-0 pr-2">
+                                                                <div className={`font-bold text-xs sm:text-sm ${theme.textPrimary} group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate`}>
+                                                                    {cust.name}
+                                                                </div>
+                                                                <div className={`text-[11px] ${theme.textMuted} flex items-center gap-2 flex-wrap mt-0.5`}>
+                                                                    {cust.phone && <span>{cust.phone}</span>}
+                                                                    {cust.discountPercentage > 0 && (
+                                                                        <span className="text-emerald-600 font-bold">· {cust.discountPercentage}% disc</span>
+                                                                    )}
+                                                                    {cust.loyaltyPoints > 0 && (
+                                                                        <span className="flex items-center gap-1 text-amber-600 font-bold">
+                                                                            · <Gift size={11} /> {cust.loyaltyPoints} pts
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-50 dark:bg-indigo-900/50 px-2 py-0.5 rounded-full shrink-0">
+                                                                Select
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div className={`p-2 border-t ${theme.borderLight} bg-gray-50/80 dark:bg-slate-900/80`}>
+                                                    <button
+                                                        type="button"
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault();
+                                                            const trimmed = custSearchTerm.trim();
+                                                            const isPhone = /^\d+$/.test(trimmed);
+                                                            setLocalCustName(isPhone ? "" : trimmed);
+                                                            setLocalCustPhone(isPhone ? trimmed : "");
+                                                            setShowCustomerDropdown(false);
+                                                            setIsAddCustomerOpen(true);
+                                                        }}
+                                                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 text-xs font-black hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors shadow-2xs"
+                                                    >
+                                                        <Plus size={14} className="stroke-[3]" /> Add {custSearchTerm.trim() ? `"${custSearchTerm.trim()}"` : "New Customer"} as new customer
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : !isSearchingCustomer ? (
+                                            <div className="p-3 text-center space-y-2">
+                                                <p className={`text-xs font-bold ${theme.textMuted}`}>No customer found for "{custSearchTerm.trim()}"</p>
+                                                <button
+                                                    type="button"
+                                                    onMouseDown={(e) => {
+                                                        e.preventDefault();
+                                                        const trimmed = custSearchTerm.trim();
+                                                        const isPhone = /^\d+$/.test(trimmed);
+                                                        setLocalCustName(isPhone ? "" : trimmed);
+                                                        setLocalCustPhone(isPhone ? trimmed : "");
+                                                        setShowCustomerDropdown(false);
+                                                        setIsAddCustomerOpen(true);
+                                                    }}
+                                                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 text-xs font-black hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors shadow-2xs"
+                                                >
+                                                    <Plus size={14} className="stroke-[3]" /> Add "{custSearchTerm.trim()}" as new customer
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                )}
+                                {false && (
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -616,7 +883,14 @@ const InlineReviewBill = ({
 
                             <button
                                 type="button"
-                                onClick={() => setIsAddCustomerOpen(prev => !prev)}
+                                onClick={() => {
+                                    const trimmed = custSearchTerm.trim();
+                                    if (trimmed && !localCustName && !localCustPhone) {
+                                        if (/^\d+$/.test(trimmed)) setLocalCustPhone(trimmed);
+                                        else setLocalCustName(trimmed);
+                                    }
+                                    setIsAddCustomerOpen(prev => !prev);
+                                }}
                                 className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 shrink-0"
                             >
                                 <Plus size={15} className="stroke-[3]" /> Add

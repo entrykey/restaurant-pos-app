@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTheme } from '../../context/ThemeContext';
-import { Trash2, Save, ArrowRightCircle } from 'lucide-react';
+import { Trash2, Save, ArrowRightCircle, Truck } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/format';
 
@@ -15,7 +15,10 @@ const OperatingExpenseCard = ({
     isSaving,
     isDraft = false,
     onMoveToExpense,
-    isPurchase = false
+    isPurchase = false,
+    supplierName,
+    supplierId,
+    vendorName
 }) => {
     const { theme } = useTheme();
     const { organization } = useApp();
@@ -62,6 +65,16 @@ const OperatingExpenseCard = ({
                         {amount < 0 && (
                             <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 rounded">
                                 Negative Expense
+                            </span>
+                        )}
+                        {(supplierName || supplierId?.name) && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded flex items-center gap-1">
+                                <Truck size={10} /> {supplierName || supplierId?.name}
+                            </span>
+                        )}
+                        {!supplierName && !supplierId?.name && vendorName && (
+                            <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-widest bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 rounded">
+                                {vendorName}
                             </span>
                         )}
                     </div>

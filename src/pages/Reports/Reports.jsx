@@ -617,22 +617,29 @@ const Reports = ({
 
         const ensureMethod = (m) => {
             const key = normalizePaymentMethod(m);
+            if (!key || key === "Split") return null;
             if (!statsMap[key]) {
                 statsMap[key] = {
                     name: key,
                     salesAmount: 0,
                     salesCount: 0,
+                    directSalesAmount: 0,
+                    directSalesCount: 0,
+                    splitSalesAmount: 0,
+                    splitSalesCount: 0,
                     purchaseAmount: 0,
                     purchaseCount: 0,
-                    splitSalesBreakdown: {},
-                    splitPurchaseBreakdown: {},
+                    directPurchaseAmount: 0,
+                    directPurchaseCount: 0,
+                    splitPurchaseAmount: 0,
+                    splitPurchaseCount: 0,
                 };
             }
             return statsMap[key];
         };
 
-        // Standard payment modes initialized
-        ["Cash", "UPI", "Card", "Bank Transfer", "Split"].forEach(ensureMethod);
+        // Standard payment modes initialized (Split is NOT a standalone payment method)
+        ["Cash", "UPI", "Card", "Bank Transfer"].forEach(ensureMethod);
 
         // Process Sales Payments
         salesHistory
@@ -643,36 +650,40 @@ const Reports = ({
                 const isSplit = mainMethod.toUpperCase() === "SPLIT" || (Array.isArray(rawPayments) && rawPayments.length > 1);
 
                 if (isSplit && Array.isArray(rawPayments) && rawPayments.length > 0) {
-                    const splitObj = ensureMethod("Split");
-                    splitObj.salesCount += 1;
-
                     rawPayments.forEach((p) => {
                         const subMethod = normalizePaymentMethod(p.method || p.paymentMethod || p.paymentMode || p.type || "Cash");
+                        const targetMethod = subMethod === "Split" ? "Cash" : subMethod;
                         const amt = Number(p.amount || p.value || 0);
 
-                        splitObj.salesAmount += amt;
-                        splitObj.splitSalesBreakdown[subMethod] = (splitObj.splitSalesBreakdown[subMethod] || 0) + amt;
-
-                        const individualObj = ensureMethod(subMethod);
-                        individualObj.salesAmount += amt;
-                        individualObj.salesCount += 1;
+                        const targetObj = ensureMethod(targetMethod);
+                        if (targetObj) {
+                            targetObj.salesAmount += amt;
+                            targetObj.salesCount += 1;
+                            targetObj.splitSalesAmount += amt;
+                            targetObj.splitSalesCount += 1;
+                        }
                     });
                 } else if (isSplit) {
-                    const splitObj = ensureMethod("Split");
                     const amt = Number(sale.amount || sale.totalAmount || sale.grandTotal || 0);
-                    splitObj.salesCount += 1;
-                    splitObj.salesAmount += amt;
-                    splitObj.splitSalesBreakdown["Cash"] = (splitObj.splitSalesBreakdown["Cash"] || 0) + amt;
-
                     const cashObj = ensureMethod("Cash");
-                    cashObj.salesAmount += amt;
-                    cashObj.salesCount += 1;
+                    if (cashObj) {
+                        cashObj.salesAmount += amt;
+                        cashObj.salesCount += 1;
+                        cashObj.splitSalesAmount += amt;
+                        cashObj.splitSalesCount += 1;
+                    }
                 } else {
-                    const method = mainMethod || "Cash";
+                    const fallbackMethod = (rawPayments && rawPayments[0] && (rawPayments[0].method || rawPayments[0].paymentMethod)) || "Cash";
+                    const rawNorm = normalizePaymentMethod(mainMethod || fallbackMethod);
+                    const targetMethod = rawNorm === "Split" ? "Cash" : rawNorm;
                     const amount = Number(sale.amount || sale.totalAmount || sale.grandTotal || 0);
-                    const obj = ensureMethod(method);
-                    obj.salesAmount += amount;
-                    obj.salesCount += 1;
+                    const obj = ensureMethod(targetMethod);
+                    if (obj) {
+                        obj.salesAmount += amount;
+                        obj.salesCount += 1;
+                        obj.directSalesAmount += amount;
+                        obj.directSalesCount += 1;
+                    }
                 }
             });
 
@@ -686,42 +697,48 @@ const Reports = ({
                 const purAmount = Number(pur.paidAmount !== undefined ? pur.paidAmount : (pur.grandTotal || pur.totalAmount || pur.total || 0));
 
                 if (isSplit && Array.isArray(rawPayments) && rawPayments.length > 0) {
-                    const splitObj = ensureMethod("Split");
-                    splitObj.purchaseCount += 1;
-
                     rawPayments.forEach((p) => {
                         const subMethod = normalizePaymentMethod(p.paymentMethod || p.paymentMode || p.method || p.type || "Cash");
+                        const targetMethod = subMethod === "Split" ? "Cash" : subMethod;
                         const amt = Number(p.amount || p.value || 0);
 
-                        splitObj.purchaseAmount += amt;
-                        splitObj.splitPurchaseBreakdown[subMethod] = (splitObj.splitPurchaseBreakdown[subMethod] || 0) + amt;
-
-                        const individualObj = ensureMethod(subMethod);
-                        individualObj.purchaseAmount += amt;
-                        individualObj.purchaseCount += 1;
+                        const targetObj = ensureMethod(targetMethod);
+                        if (targetObj) {
+                            targetObj.purchaseAmount += amt;
+                            targetObj.purchaseCount += 1;
+                            targetObj.splitPurchaseAmount += amt;
+                            targetObj.splitPurchaseCount += 1;
+                        }
                     });
                 } else if (isSplit) {
-                    const splitObj = ensureMethod("Split");
-                    splitObj.purchaseCount += 1;
-                    splitObj.purchaseAmount += purAmount;
-                    splitObj.splitPurchaseBreakdown["Cash"] = (splitObj.splitPurchaseBreakdown["Cash"] || 0) + purAmount;
-
                     const cashObj = ensureMethod("Cash");
-                    cashObj.purchaseAmount += purAmount;
-                    cashObj.purchaseCount += 1;
+                    if (cashObj) {
+                        cashObj.purchaseAmount += purAmount;
+                        cashObj.purchaseCount += 1;
+                        cashObj.splitPurchaseAmount += purAmount;
+                        cashObj.splitPurchaseCount += 1;
+                    }
                 } else {
-                    const method = mainMethod || "Cash";
-                    const obj = ensureMethod(method);
-                    obj.purchaseAmount += purAmount;
-                    obj.purchaseCount += 1;
+                    const fallbackMethod = (rawPayments && rawPayments[0] && (rawPayments[0].paymentMethod || rawPayments[0].method)) || "Cash";
+                    const rawNorm = normalizePaymentMethod(mainMethod || fallbackMethod);
+                    const targetMethod = rawNorm === "Split" ? "Cash" : rawNorm;
+                    const obj = ensureMethod(targetMethod);
+                    if (obj) {
+                        obj.purchaseAmount += purAmount;
+                        obj.purchaseCount += 1;
+                        obj.directPurchaseAmount += purAmount;
+                        obj.directPurchaseCount += 1;
+                    }
                 }
             });
 
-        return Object.values(statsMap).map((item) => ({
-            ...item,
-            netAmount: item.salesAmount - item.purchaseAmount,
-            totalCount: item.salesCount + item.purchaseCount,
-        }));
+        return Object.values(statsMap)
+            .filter((item) => item.name !== "Split")
+            .map((item) => ({
+                ...item,
+                netAmount: item.salesAmount - item.purchaseAmount,
+                totalCount: item.salesCount + item.purchaseCount,
+            }));
     }, [salesHistory, purchasesHistory, isWithinRange, normalizePaymentMethod]);
 
     const totalSalesPayments = React.useMemo(() => {
@@ -1255,29 +1272,28 @@ const Reports = ({
                 ];
             });
         } else if (reportCategory === "payments") {
-            const methods = ["Cash", "UPI", "Card", "Bank Transfer", "Split"];
-            columns = ["Payment Method", "Sales Count", "Sales Amount", "Purchases Count", "Purchases Amount", "Net Cash Flow"];
-            const sales = salesHistory.filter((s) => isWithinRange(s.date));
-            const purchases = purchasesHistory ? purchasesHistory.filter((p) => isWithinRange(p.date)) : [];
-
-            rows = methods.map((method) => {
-                const methodSales = sales.filter((s) => normalizePaymentMethod(s.method) === method);
-                const salesTot = methodSales.reduce((a, b) => a + (b.amount || 0), 0);
-                const salesCnt = methodSales.length;
-
-                const methodPurchases = purchases.filter((p) => normalizePaymentMethod(p.paymentMethod) === method);
-                const purchTot = methodPurchases.reduce((a, b) => a + (b.totalAmount || b.amount || 0), 0);
-                const purchCnt = methodPurchases.length;
-
-                return [
-                    method,
-                    salesCnt,
-                    formatCurrency(salesTot, currency),
-                    purchCnt,
-                    formatCurrency(purchTot, currency),
-                    formatCurrency(salesTot - purchTot, currency)
-                ];
-            }).filter(r => r[1] > 0 || r[3] > 0);
+            columns = [
+                "Payment Method",
+                "Sales Count",
+                "Sales Amount",
+                "Split Details (Sales)",
+                "Purchases Count",
+                "Purchases Amount",
+                "Split Details (Purchases)",
+                "Net Cash Flow"
+            ];
+            rows = paymentMethodStats
+                .filter((item) => item.totalCount > 0 || item.salesAmount > 0 || item.purchaseAmount > 0)
+                .map((item) => [
+                    item.name,
+                    item.salesCount,
+                    formatCurrency(item.salesAmount, currency),
+                    item.splitSalesAmount > 0 ? `Includes ${formatCurrency(item.splitSalesAmount, currency)} (${item.splitSalesCount} split txns)` : "-",
+                    item.purchaseCount,
+                    formatCurrency(item.purchaseAmount, currency),
+                    item.splitPurchaseAmount > 0 ? `Includes ${formatCurrency(item.splitPurchaseAmount, currency)} (${item.splitPurchaseCount} split txns)` : "-",
+                    formatCurrency(item.netAmount, currency)
+                ]);
         } else if (reportCategory === "staff_report") {
             columns = ["Staff Name", "Role", "Sales Orders", "Sales Value", "Cash Collected", "Purchases Entered", "Purchase Value"];
             rows = performanceReport.map((p) => [
@@ -3436,14 +3452,19 @@ const Reports = ({
                                                                 ? "bg-indigo-600 text-white"
                                                                 : name === "Card"
                                                                     ? "bg-blue-600 text-white"
-                                                                    : name === "Split"
-                                                                        ? "bg-purple-600 text-white"
-                                                                        : "bg-sky-600 text-white"
+                                                                    : "bg-sky-600 text-white"
                                                     }`}>
-                                                        {name === "Cash" ? <Coins size={20} /> : name === "UPI" ? <Zap size={20} /> : name === "Card" ? <CreditCard size={20} /> : name === "Split" ? <GitFork size={20} /> : <Landmark size={20} />}
+                                                        {name === "Cash" ? <Coins size={20} /> : name === "UPI" ? <Zap size={20} /> : name === "Card" ? <CreditCard size={20} /> : <Landmark size={20} />}
                                                     </div>
                                                     <div>
-                                                        <h4 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{name}</h4>
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{name}</h4>
+                                                            {(item.splitSalesAmount > 0 || item.splitPurchaseAmount > 0) && (
+                                                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                                                                    <GitFork size={10} /> Includes Splits
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
                                                             {displayCount} {displayCount === 1 ? 'Transaction' : 'Transactions'} Total
                                                         </p>
@@ -3533,53 +3554,73 @@ const Reports = ({
                                                 )}
                                             </div>
 
-                                            {/* Differentiated Payment Mode Breakdown (ONLY FOR SPLIT PAYMENT) */}
-                                            {name === "Split" && (
+                                            {/* Differentiated Split vs Direct Payment Breakdown inside each method */}
+                                            {(item.splitSalesAmount > 0 || item.splitPurchaseAmount > 0) && (
                                                 <div className={`p-4 rounded-xl border space-y-3 mt-3 ${
-                                                    isDark ? 'bg-purple-950/30 border-purple-800/60' : 'bg-purple-50/70 border-purple-200'
+                                                    isDark ? 'bg-purple-950/20 border-purple-800/40' : 'bg-purple-50/60 border-purple-200/80'
                                                 }`}>
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-xs font-black uppercase tracking-wider text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
-                                                            <GitFork size={15} className="text-purple-600 dark:text-purple-400" />
-                                                            Split Payment Differentiated Breakdown
+                                                            <GitFork size={14} className="text-purple-600 dark:text-purple-400" />
+                                                            {name} Payment Source Breakdown
                                                         </span>
                                                         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 uppercase">
-                                                            Split Breakdown
+                                                            Includes Split Transactions
                                                         </span>
                                                     </div>
 
-                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                                        {/* Sales Split Sub-Methods */}
-                                                        {(paymentFilter === "all" || paymentFilter === "sales") &&
-                                                            Object.entries(item.splitSalesBreakdown || {}).map(([subMethod, amt]) => (
-                                                                <div key={`sales-${subMethod}`} className={`p-3 rounded-xl border ${
-                                                                    isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-white border-purple-100 shadow-2xs'
-                                                                }`}>
-                                                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                                                                        Split {subMethod} (Sales)
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                                        {/* Sales breakdown */}
+                                                        {(paymentFilter === "all" || paymentFilter === "sales") && item.salesAmount > 0 && (
+                                                            <div className={`p-3 rounded-xl border ${
+                                                                isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-purple-100 shadow-2xs'
+                                                            }`}>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
+                                                                        Sales Inflow Total
                                                                     </span>
-                                                                    <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-0.5 block">
-                                                                        {formatCurrency(amt, currency)}
+                                                                    <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
+                                                                        {formatCurrency(item.salesAmount, currency)}
                                                                     </span>
                                                                 </div>
-                                                            ))
-                                                        }
+                                                                <div className="space-y-1.5 text-[11px] pt-1.5 border-t border-dashed border-gray-200 dark:border-slate-800">
+                                                                    <div className="flex items-center justify-between text-gray-600 dark:text-slate-300">
+                                                                        <span>Direct {name} Sales:</span>
+                                                                        <span className="font-semibold">{formatCurrency(item.directSalesAmount, currency)} ({item.directSalesCount} {item.directSalesCount === 1 ? 'txn' : 'txns'})</span>
+                                                                    </div>
+                                                                    <div className="flex items-center justify-between text-purple-700 dark:text-purple-300 font-medium">
+                                                                        <span className="flex items-center gap-1"><GitFork size={12} /> From Split Payments:</span>
+                                                                        <span className="font-bold">{formatCurrency(item.splitSalesAmount, currency)} ({item.splitSalesCount} {item.splitSalesCount === 1 ? 'txn' : 'txns'})</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
 
-                                                        {/* Purchases Split Sub-Methods */}
-                                                        {(paymentFilter === "all" || paymentFilter === "purchases") &&
-                                                            Object.entries(item.splitPurchaseBreakdown || {}).map(([subMethod, amt]) => (
-                                                                <div key={`purchases-${subMethod}`} className={`p-3 rounded-xl border ${
-                                                                    isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-white border-purple-100 shadow-2xs'
-                                                                }`}>
-                                                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                                                                        Split {subMethod} (Purchases)
+                                                        {/* Purchases breakdown */}
+                                                        {(paymentFilter === "all" || paymentFilter === "purchases") && item.purchaseAmount > 0 && (
+                                                            <div className={`p-3 rounded-xl border ${
+                                                                isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-purple-100 shadow-2xs'
+                                                            }`}>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>
+                                                                        Purchases Outflow Total
                                                                     </span>
-                                                                    <span className="text-sm font-black text-amber-600 dark:text-amber-400 mt-0.5 block">
-                                                                        {formatCurrency(amt, currency)}
+                                                                    <span className="text-sm font-extrabold text-amber-600 dark:text-amber-400">
+                                                                        {formatCurrency(item.purchaseAmount, currency)}
                                                                     </span>
                                                                 </div>
-                                                            ))
-                                                        }
+                                                                <div className="space-y-1.5 text-[11px] pt-1.5 border-t border-dashed border-gray-200 dark:border-slate-800">
+                                                                    <div className="flex items-center justify-between text-gray-600 dark:text-slate-300">
+                                                                        <span>Direct {name} Purchases:</span>
+                                                                        <span className="font-semibold">{formatCurrency(item.directPurchaseAmount, currency)} ({item.directPurchaseCount} {item.directPurchaseCount === 1 ? 'txn' : 'txns'})</span>
+                                                                    </div>
+                                                                    <div className="flex items-center justify-between text-purple-700 dark:text-purple-300 font-medium">
+                                                                        <span className="flex items-center gap-1"><GitFork size={12} /> From Split Purchases:</span>
+                                                                        <span className="font-bold">{formatCurrency(item.splitPurchaseAmount, currency)} ({item.splitPurchaseCount} {item.splitPurchaseCount === 1 ? 'txn' : 'txns'})</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
