@@ -19,6 +19,10 @@ api.interceptors.request.use(
         if (activeBranchId && activeBranchId !== 'null' && activeBranchId !== 'undefined') {
             config.headers['x-branch-id'] = activeBranchId;
         }
+        const activeShopId = localStorage.getItem('pos_shopId') || localStorage.getItem('pos_organizationId');
+        if (activeShopId && activeShopId !== 'null' && activeShopId !== 'undefined') {
+            config.headers['x-shop-id'] = activeShopId;
+        }
         return config;
     },
     (error) => Promise.reject(error)
@@ -622,6 +626,24 @@ export const customerService = {
             throw error.response ? error.response.data : error;
         }
     },
+    collectPayment: async (id, payload) => {
+        try {
+            const response = await api.post(`/customers/${id}/payments`, payload);
+            return response.data;
+        } catch (error) {
+            console.error("Error collecting customer payment:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    getDueOrders: async (id) => {
+        try {
+            const response = await api.get(`/customers/${id}/due-orders`);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching customer due orders:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
     deleteCustomer: async (id) => {
         try {
             const response = await api.delete(`/customers/${id}`);
@@ -729,6 +751,17 @@ export const settingService = {
             return response.data;
         } catch (error) {
             console.error("Error updating setting:", error);
+            throw error.response ? error.response.data : error;
+        }
+    },
+    deleteSetting: async (key, shopId) => {
+        try {
+            const params = {};
+            if (shopId) params.shopId = shopId;
+            const response = await api.delete(`/settings/${key}`, { params });
+            return response.data;
+        } catch (error) {
+            console.error("Error deleting setting:", error);
             throw error.response ? error.response.data : error;
         }
     },

@@ -309,6 +309,10 @@ const AppContent = () => {
                     console.log("AppContent: Fetched dynamic organization & branches:", { org, brs });
                     setOrganization(org);
                     setBranches(brs);
+                    if (org?.id || org?._id) {
+                        localStorage.setItem('pos_shopId', org.id || org._id);
+                        localStorage.setItem('pos_organizationId', org.id || org._id);
+                    }
                 } catch (error) {
                     console.error("Failed to fetch organization data:", error);
                 }
@@ -865,6 +869,8 @@ const AppContent = () => {
             localStorage.removeItem("pos_active_tab_id");
             localStorage.removeItem("pos_active_tabs_shop");
             localStorage.removeItem("subscription_notified");
+            localStorage.setItem("pos_shopId", shopId);
+            localStorage.setItem("pos_organizationId", shopId);
             setActiveBranchId(null);
 
             const data = await shopService.switchShop(shopId);
@@ -2382,7 +2388,7 @@ const AppContent = () => {
     }
 
     return (
-        <div className={`w-full h-full ${theme.pageBg} overflow-hidden font-sans`}>
+        <div className={`w-full h-screen ${theme.pageBg} overflow-hidden font-sans`}>
             {/* Receipt Print Area */}
             <style>{`
                 @media print {

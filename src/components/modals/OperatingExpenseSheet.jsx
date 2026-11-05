@@ -20,10 +20,12 @@ import {
     Hash,
     Car,
     CreditCard,
-    Receipt
+    Receipt,
+    Truck
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { scanExpenseBill } from '../../utils/expenseOcrHelper';
+import CommonSelect from '../ui/CommonSelect';
 
 const terms = [
     { value: 'daily', label: 'Daily', days: 1 },
@@ -55,7 +57,8 @@ const OperatingExpenseSheet = ({
     isDraftMode = false,
     onDelete,
     onMoveToExpense,
-    existingCategories = []
+    existingCategories = [],
+    suppliers = []
 }) => {
     const { theme } = useTheme();
     const { organization, formatCurrency } = useApp();
@@ -74,10 +77,13 @@ const OperatingExpenseSheet = ({
     const [scanStatus, setScanStatus] = useState('');
 
     // Enterprise bill details
+    const [supplierId, setSupplierId] = useState('');
+    const [supplierName, setSupplierName] = useState('');
     const [vendorName, setVendorName] = useState('');
     const [billNumber, setBillNumber] = useState('');
     const [vehicleNumber, setVehicleNumber] = useState('');
     const [paymentMode, setPaymentMode] = useState('CASH');
+    const [paymentStatus, setPaymentStatus] = useState('UNPAID');
     const [notes, setNotes] = useState('');
 
     const handleOcrFileSelect = async (e) => {
@@ -93,7 +99,15 @@ const OperatingExpenseSheet = ({
             if (result.category) setCategory(result.category);
             if (result.amount) setAmount(String(result.amount));
             setTerm(result.term || 'daily');
-            if (result.vendorName || result.supplierName) setVendorName(result.vendorName || result.supplierName);
+            if (result.vendorName || result.supplierName) {
+                const detected = result.vendorName || result.supplierName;
+                setVendorName(detected);
+                const matched = (suppliers || []).find(s => s.name && detected && s.name.toLowerCase().includes(detected.toLowerCase()));
+                if (matched) {
+                    setSupplierId(String(matched._id || matched.id));
+                    setSupplierName(matched.name);
+                }
+            }
             if (result.invoiceNumber) setBillNumber(result.invoiceNumber);
             if (result.vehicleNumber) setVehicleNumber(result.vehicleNumber);
             if (result.paymentMode) setPaymentMode(result.paymentMode);
@@ -116,25 +130,49 @@ const OperatingExpenseSheet = ({
                 setAmount(expense.amount !== undefined && expense.amount !== null ? String(expense.amount) : '');
                 setTerm(expense.term || 'monthly');
                 setIsDraft(Boolean(expense.isDraft || isDraftMode));
-                setVendorName(expense.vendorName || expense.supplierName || '');
+                const suppId = expense.supplierId?._id || expense.supplierId || '';
+                const suppNm = expense.supplierName || expense.supplierId?.name || '';
+                setSupplierId(suppId ? String(suppId) : '');
+                setSupplierName(suppNm);
+                setVendorName(expense.vendorName || suppNm || '');
                 setBillNumber(expense.billNumber || expense.invoiceNumber || '');
                 setVehicleNumber(expense.vehicleNumber || '');
                 setPaymentMode(expense.paymentMode || 'CASH');
+                setPaymentStatus(expense.paymentStatus || (suppId ? 'UNPAID' : 'PAID'));
                 setNotes(expense.notes || '');
             } else {
                 setCategory('');
                 setAmount('');
                 setTerm('monthly');
                 setIsDraft(isDraftMode);
+                setSupplierId('');
+                setSupplierName('');
                 setVendorName('');
                 setBillNumber('');
                 setVehicleNumber('');
                 setPaymentMode('CASH');
+                setPaymentStatus('UNPAID');
                 setNotes('');
             }
             setError(null);
         }
     }, [isOpen, expense, isDraftMode]);
+
+    const supplierOptions = React.useMemo(() => {
+        const list = [
+            { label: '— No Supplier Linked (Optional) —', value: '' }
+        ];
+        (suppliers || []).forEach(s => {
+            const id = String(s._id || s.id);
+            const label = s.name + (s.phone ? ` (${s.phone})` : '');
+            list.push({
+                label,
+                value: id,
+                supplier: s
+            });
+        });
+        return list;
+    }, [suppliers]);
 
     if (!isOpen) return null;
 
@@ -172,6 +210,11 @@ const OperatingExpenseSheet = ({
                 term,
                 isDefault: expense?.isDefault || false,
                 isDraft: isDraft,
+                supplierId: supplierId || null,
+                supplierName: supplierName.trim(),
+                paymentStatus: supplierId ? paymentStatus : 'PAID',
+                paidAmount: (supplierId && paymentStatus === 'PAID') ? numAmount : (expense?.paidAmount || 0),
+                balanceAmount: (supplierId && paymentStatus === 'PAID') ? 0 : numAmount,
                 vendorName: vendorName.trim(),
                 billNumber: billNumber.trim(),
                 vehicleNumber: vehicleNumber.trim(),
@@ -418,6 +461,100 @@ const OperatingExpenseSheet = ({
                                 Optional Details
                             </span>
                         </div>
+
+                        {/* Linked Supplier (Optional) using CommonSelect */}
+                        <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <label className={`text-[11px] font-bold ${theme.textMuted} flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400`}>
+                                    <Truck size={13} /> Linked Supplier (Optional)
+                                </label>
+                                {supplierId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSupplierId('');
+                                            setSupplierName('');
+                                        }}
+                                        className="text-[10px] text-red-500 hover:underline font-bold"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                            <CommonSelect
+                                options={supplierOptions}
+                                value={supplierId}
+                                onChange={(val) => {
+                                    setSupplierId(val);
+                                    const found = (suppliers || []).find(s => String(s._id || s.id) === String(val));
+                                    if (found) {
+                                        setSupplierName(found.name || '');
+                                        if (!vendorName || vendorName === supplierName) {
+                                            setVendorName(found.name || '');
+                                        }
+                                        if (!isEditMode) {
+                                            setPaymentStatus('UNPAID');
+                                        }
+                                    } else {
+                                        setSupplierName('');
+                                    }
+                                }}
+                                placeholder="Search & link supplier (optional)..."
+                                searchPlaceholder="Search registered suppliers..."
+                                searchable={true}
+                                size="sm"
+                            />
+                            <p className={`text-[10px] mt-1 ${theme.textMuted}`}>
+                                Link recurring daily or periodic expenses directly to registered suppliers.
+                            </p>
+                        </div>
+
+                        {/* Supplier Payment Status Toggle */}
+                        {supplierId && (
+                            <div className={`p-3 rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} space-y-2`}>
+                                <div className="flex items-center justify-between">
+                                    <label className={`text-[11px] font-bold ${theme.textSecondary}`}>
+                                        Supplier Payment Status
+                                    </label>
+                                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                        paymentStatus === 'UNPAID'
+                                            ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400'
+                                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+                                    }`}>
+                                        {paymentStatus === 'UNPAID' ? 'Adds to Amount To Pay' : 'Already Settled'}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPaymentStatus('UNPAID')}
+                                        className={`py-2 px-3 rounded-xl text-xs font-bold border-2 transition-all flex items-center justify-center ${
+                                            paymentStatus === 'UNPAID'
+                                                ? 'bg-red-500/10 border-red-500 text-red-600 dark:text-red-400 shadow-sm font-black'
+                                                : `${theme.surfaceBg} ${theme.borderLight} ${theme.textSecondary} hover:border-gray-300`
+                                        }`}
+                                    >
+                                        To Pay (Payment Due)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPaymentStatus('PAID')}
+                                        className={`py-2 px-3 rounded-xl text-xs font-bold border-2 transition-all flex items-center justify-center ${
+                                            paymentStatus === 'PAID'
+                                                ? 'bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400 shadow-sm font-black'
+                                                : `${theme.surfaceBg} ${theme.borderLight} ${theme.textSecondary} hover:border-gray-300`
+                                        }`}
+                                    >
+                                        Already Paid
+                                    </button>
+                                </div>
+                                <p className={`text-[10px] font-medium ${paymentStatus === 'UNPAID' ? 'text-red-500' : 'text-emerald-600'}`}>
+                                    {paymentStatus === 'UNPAID'
+                                        ? '• This amount will be added to the supplier\'s Payment Due to be paid.'
+                                        : '• Settled immediately. Will not increase the supplier\'s Payment Due.'}
+                                </p>
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-2 gap-3">
                             <div>
