@@ -198,9 +198,21 @@ const ReturnPage = () => {
                                     <Receipt size={24} />
                                 </div>
                                 <div>
-                                    <h2 className={`text-xl font-black ${theme.textHeading}`}>
-                                        {selectedOrder.invoiceNumber || `Order #${selectedOrder.orderNumber}`}
-                                    </h2>
+                                    <div className="flex items-center gap-2">
+                                        <h2 className={`text-xl font-black ${theme.textHeading}`}>
+                                            {selectedOrder.invoiceNumber || `Order #${selectedOrder.orderNumber}`}
+                                        </h2>
+                                        {(selectedOrder.isFullyReturned || selectedOrder.returnStatus === 'FULL') && (
+                                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400">
+                                                Fully Returned
+                                            </span>
+                                        )}
+                                        {selectedOrder.returnStatus === 'PARTIAL' && (
+                                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400">
+                                                Partially Returned
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className={`text-sm font-medium ${theme.textMuted}`}>
                                         #{selectedOrder.orderNumber} • {selectedOrder.customerId?.name || 'Walk-in'} • {formatDate(selectedOrder.createdAt)}
                                     </p>

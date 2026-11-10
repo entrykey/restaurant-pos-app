@@ -1880,17 +1880,6 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                     <div className="flex flex-wrap items-center gap-2">
                         {!isEditing && (asDialog || sourcePage === 'purchase') && (
                             <div className={`flex flex-wrap gap-1 p-1 rounded-2xl shadow-sm border ${theme.borderLight} ${theme.surfaceBg} w-full sm:w-auto`}>
-                                {businessTypeData?.features?.sellManufacturedItems !== false && sourcePage !== 'purchase' && canViewMenu !== false && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setCurrentTab('menu')}
-                                        className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'menu' 
-                                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
-                                            : `${theme.textMuted} hover:opacity-70`}`}
-                                    >
-                                        <Layers size={13} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured')}
-                                    </button>
-                                )}
                                 {canViewItems !== false && (
                                     <button
                                         type="button"
@@ -1900,6 +1889,17 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                             : `${theme.textMuted} hover:opacity-70`}`}
                                     >
                                         <Plus size={13} /> Stock
+                                    </button>
+                                )}
+                                {businessTypeData?.features?.sellManufacturedItems !== false && sourcePage !== 'purchase' && canViewMenu !== false && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentTab('menu')}
+                                        className={`flex-1 sm:flex-none px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${currentTab === 'menu' 
+                                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
+                                            : `${theme.textMuted} hover:opacity-70`}`}
+                                    >
+                                        <Layers size={13} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured')}
                                     </button>
                                 )}
                                 {businessTypeData?.features?.sellTradeItems !== false && canViewTradeItems !== false && (

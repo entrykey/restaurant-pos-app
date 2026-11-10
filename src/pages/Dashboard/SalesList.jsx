@@ -121,16 +121,36 @@ const ReturnDetailModal = ({ isOpen, onClose, returnData, theme, formatCurrency,
                                 <RotateCcw size={16} /> Returned Items
                             </h3>
                             <div className={`rounded-3xl border ${theme.borderLight} overflow-hidden divide-y ${theme.borderLight}`}>
-                                {returnData.items?.map((item, idx) => (
-                                    <div key={idx} className="p-4 flex justify-between items-center bg-orange-50/20 dark:bg-orange-900/5 hover:bg-orange-50/40 transition-colors">
-                                        <div>
-                                            <p className={`font-black ${theme.textPrimary}`}>{item.itemName}</p>
-                                            <p className={`text-xs font-bold ${theme.textMuted}`}>Quantity: {item.quantity} x {formatCurrency(item.price)}</p>
-                                            {item.isDamaged && <span className="text-[10px] font-black uppercase text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-0.5 rounded ml-1">Damaged</span>}
+                                {returnData.items?.map((item, idx) => {
+                                    const damagedQty = Number(item.damagedQuantity) || (item.isDamaged ? item.quantity : 0);
+                                    const restockQty = Number(item.restockableQuantity) || Math.max(0, item.quantity - damagedQty);
+                                    return (
+                                        <div key={idx} className="p-4 flex justify-between items-center bg-orange-50/20 dark:bg-orange-900/5 hover:bg-orange-50/40 transition-colors">
+                                            <div>
+                                                <p className={`font-black ${theme.textPrimary}`}>{item.itemName}</p>
+                                                <p className={`text-xs font-bold ${theme.textMuted}`}>Quantity: {item.quantity} x {formatCurrency(item.price)}</p>
+                                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                    {damagedQty > 0 && (
+                                                        <span className="text-[10px] font-black uppercase text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-900/40">
+                                                            {damagedQty} Damaged
+                                                        </span>
+                                                    )}
+                                                    {restockQty > 0 && (
+                                                        <span className="text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/40">
+                                                            {restockQty} Restocked
+                                                        </span>
+                                                    )}
+                                                    {item.returnReason && (
+                                                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                                                            &bull; Reason: {item.returnReason}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <p className="font-black text-orange-600">{formatCurrency(item.price * item.quantity)}</p>
                                         </div>
-                                        <p className="font-black text-orange-600">{formatCurrency(item.price * item.quantity)}</p>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -730,6 +750,88 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
         setCurrentPage(1);
     };
 
+    const formatLocalDate = (d) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const handleDatePreset = (preset) => {
+        const now = new Date();
+        if (preset === 'today') {
+            const today = formatLocalDate(now);
+            setStartDate(today);
+            setEndDate(today);
+        } else if (preset === 'yesterday') {
+            const y = new Date(now);
+            y.setDate(y.getDate() - 1);
+            const yStr = formatLocalDate(y);
+            setStartDate(yStr);
+            setEndDate(yStr);
+        } else if (preset === 'this_week') {
+            const day = now.getDay();
+            const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+            const monday = new Date(now);
+            monday.setDate(diff);
+            setStartDate(formatLocalDate(monday));
+            setEndDate(formatLocalDate(now));
+        } else if (preset === 'this_month') {
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            setStartDate(formatLocalDate(firstDay));
+            setEndDate(formatLocalDate(lastDay));
+        } else if (preset === 'this_year') {
+            const firstDay = new Date(now.getFullYear(), 0, 1);
+            const lastDay = new Date(now.getFullYear(), 11, 31);
+            setStartDate(formatLocalDate(firstDay));
+            setEndDate(formatLocalDate(lastDay));
+        } else if (preset === 'all') {
+            setStartDate('');
+            setEndDate('');
+        }
+    };
+
+    const activeDatePreset = useMemo(() => {
+        if (!startDate && !endDate) return 'all';
+        const now = new Date();
+        const today = formatLocalDate(now);
+        if (startDate === today && endDate === today) return 'today';
+
+        const y = new Date(now);
+        y.setDate(y.getDate() - 1);
+        const yStr = formatLocalDate(y);
+        if (startDate === yStr && endDate === yStr) return 'yesterday';
+
+        const day = now.getDay();
+        const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+        const monday = new Date(now);
+        monday.setDate(diff);
+        const mondayStr = formatLocalDate(monday);
+        if (startDate === mondayStr && endDate === today) return 'this_week';
+
+        const firstMonthDay = formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+        const lastMonthDay = formatLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+        if (startDate === firstMonthDay && (endDate === lastMonthDay || endDate === today)) return 'this_month';
+
+        const firstYearDay = formatLocalDate(new Date(now.getFullYear(), 0, 1));
+        const lastYearDay = formatLocalDate(new Date(now.getFullYear(), 11, 31));
+        if (startDate === firstYearDay && (endDate === lastYearDay || endDate === today)) return 'this_year';
+
+        return 'custom';
+    }, [startDate, endDate]);
+
+    const dateBannerLabel = useMemo(() => {
+        if (!startDate && !endDate) return '';
+        if (activeDatePreset === 'today') return `Today (${startDate})`;
+        if (activeDatePreset === 'yesterday') return `Yesterday (${startDate})`;
+        if (activeDatePreset === 'this_week') return `This Week (${startDate} → ${endDate})`;
+        if (activeDatePreset === 'this_month') return `This Month (${startDate} → ${endDate})`;
+        if (activeDatePreset === 'this_year') return `This Year (${startDate} → ${endDate})`;
+        if (startDate === endDate) return `Date: ${startDate}`;
+        return `${startDate || 'Start'} → ${endDate || 'End'}`;
+    }, [startDate, endDate, activeDatePreset]);
+
     const handleClearFilters = () => {
         setSortBy('createdAt');
         setSortOrder('desc');
@@ -743,13 +845,16 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
 
     const activeFilterCount = [
         sortBy !== 'createdAt' || sortOrder !== 'desc',
-        !!startDate,
-        !!endDate,
+        !!(startDate || endDate),
         !!filterPaymentStatus,
         !!filterPaymentMethod,
     ].filter(Boolean).length;
 
     const handleProcessReturn = (order) => {
+        if (order.returnStatus === 'FULL' || order.isFullyReturned) {
+            toast.error('This invoice has already been fully returned. Further returns cannot be processed.');
+            return;
+        }
         setSelectedOrder(order);
         setIsReturnSheetOpen(true);
     };
@@ -779,12 +884,12 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                     </p>
                     {/* Date filter banner — shown when navigated from dashboard */}
                     {(startDate || endDate) && (
-                        <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 text-[11px] font-black uppercase tracking-widest">
-                            <Calendar size={12} />
-                            {startDate === endDate ? `Showing: ${startDate}` : `${startDate || '—'} → ${endDate || '—'}`}
+                        <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 text-[11px] font-black uppercase tracking-widest shadow-xs">
+                            <Calendar size={13} />
+                            <span>Showing: {dateBannerLabel}</span>
                             <button
                                 onClick={() => { setStartDate(''); setEndDate(''); setSearchParams({ startDate: '', endDate: '' }); }}
-                                className="ml-1 hover:text-red-500 transition-colors"
+                                className="ml-1 p-0.5 rounded-md hover:bg-rose-100 hover:text-rose-600 dark:hover:bg-rose-950/40 transition-colors"
                                 title="Clear date filter"
                             >
                                 <X size={12} />
@@ -820,56 +925,121 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                         </button>
 
                         {showFilter && (
-                            <div className={`absolute right-0 top-full mt-2 z-50 w-72 rounded-3xl shadow-2xl border p-4 space-y-4 ${theme.surfaceBg} ${theme.borderLight}`}>
-                                <div className="flex items-center justify-between">
-                                    <span className={`text-xs font-black uppercase tracking-widest ${theme.textSecondary}`}>Filters & Sort</span>
-                                    {activeFilterCount > 0 && (
-                                        <button onClick={handleClearFilters} className="text-[10px] font-black text-indigo-500 hover:text-indigo-700">Clear all</button>
-                                    )}
-                                </div>
-
-                                {/* Sort by */}
-                                <div>
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Sort by</label>
-                                    <div className="grid grid-cols-3 gap-1.5">
-                                        {[
-                                            { value: 'createdAt', label: 'Date' },
-                                            { value: 'invoiceNumber', label: 'Invoice' },
-                                            { value: 'grandTotal', label: 'Amount' },
-                                        ].map(opt => (
+                            <div className={`absolute right-0 top-full mt-2.5 z-50 w-[340px] sm:w-[380px] max-w-[calc(100vw-2rem)] rounded-3xl shadow-2xl border p-4 sm:p-5 space-y-4 ${theme.surfaceBg} ${theme.borderLight} ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-md animate-in fade-in zoom-in-95 duration-150`}>
+                                {/* Header */}
+                                <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-slate-800">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                                            <SlidersHorizontal size={15} />
+                                        </div>
+                                        <div>
+                                            <span className={`text-xs font-black uppercase tracking-wider block ${theme.textHeading}`}>Filters &amp; Sort</span>
+                                            <span className="text-[10px] text-slate-400 font-medium">Quick presets &amp; custom view</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        {activeFilterCount > 0 && (
                                             <button
-                                                key={opt.value}
-                                                onClick={() => setSortBy(opt.value)}
-                                                className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${sortBy === opt.value ? 'bg-indigo-600 text-white' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                                type="button"
+                                                onClick={handleClearFilters}
+                                                className="text-[11px] font-black text-rose-500 hover:text-rose-600 px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
                                             >
-                                                {opt.label}
+                                                Reset all
                                             </button>
-                                        ))}
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowFilter(false)}
+                                            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                                            title="Close"
+                                        >
+                                            <X size={15} />
+                                        </button>
                                     </div>
                                 </div>
 
-                                {/* Sort order */}
+                                {/* Quick Date Presets */}
                                 <div>
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Order</label>
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        {[
-                                            { value: 'desc', label: '↓ Newest first' },
-                                            { value: 'asc', label: '↑ Oldest first' },
-                                        ].map(opt => (
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${theme.textSecondary}`}>
+                                            <Calendar size={12} className="text-indigo-500" />
+                                            Date Period
+                                        </label>
+                                        {(startDate || endDate) && (
                                             <button
-                                                key={opt.value}
-                                                onClick={() => setSortOrder(opt.value)}
-                                                className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${sortOrder === opt.value ? 'bg-indigo-600 text-white' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                                type="button"
+                                                onClick={() => { setStartDate(''); setEndDate(''); }}
+                                                className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
                                             >
-                                                {opt.label}
+                                                Clear dates
                                             </button>
-                                        ))}
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        {[
+                                            { id: 'today', label: 'Today' },
+                                            { id: 'this_month', label: 'This Month' },
+                                            { id: 'this_year', label: 'This Year' },
+                                            { id: 'yesterday', label: 'Yesterday' },
+                                            { id: 'this_week', label: 'This Week' },
+                                            { id: 'all', label: 'All Time' },
+                                        ].map(preset => {
+                                            const isActive = activeDatePreset === preset.id;
+                                            return (
+                                                <button
+                                                    key={preset.id}
+                                                    type="button"
+                                                    onClick={() => handleDatePreset(preset.id)}
+                                                    className={`py-2 px-1 rounded-xl text-[11px] font-black transition-all flex items-center justify-center text-center ${
+                                                        isActive
+                                                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-2 ring-indigo-600/20'
+                                                            : `${theme.inputBg} ${theme.textSecondary} hover:bg-indigo-50 dark:hover:bg-indigo-950/30 hover:text-indigo-600`
+                                                    }`}
+                                                >
+                                                    {preset.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Custom Range Inputs */}
+                                    <div className={`mt-2.5 p-2.5 rounded-2xl border ${theme.borderLight} bg-gray-50/70 dark:bg-slate-800/40 space-y-1.5`}>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Custom Date Range</span>
+                                            {activeDatePreset === 'custom' && (
+                                                <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded-md">Custom active</span>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <span className={`text-[9px] font-bold uppercase ${theme.textMuted} mb-1 block`}>From</span>
+                                                <input
+                                                    type="date"
+                                                    value={startDate}
+                                                    onChange={e => setStartDate(e.target.value)}
+                                                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold border outline-none transition-all ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500`}
+                                                />
+                                            </div>
+                                            <div>
+                                                <span className={`text-[9px] font-bold uppercase ${theme.textMuted} mb-1 block`}>To</span>
+                                                <input
+                                                    type="date"
+                                                    value={endDate}
+                                                    onChange={e => setEndDate(e.target.value)}
+                                                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold border outline-none transition-all ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500`}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
                                 {/* Payment Method */}
                                 <div>
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Payment Method</label>
+                                    <label className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${theme.textSecondary} mb-1.5 block`}>
+                                        <CreditCard size={12} className="text-indigo-500" />
+                                        Payment Method
+                                    </label>
                                     <div className="grid grid-cols-3 gap-1.5">
                                         {[
                                             { value: '', label: 'All' },
@@ -881,8 +1051,13 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                         ].map(opt => (
                                             <button
                                                 key={opt.value}
+                                                type="button"
                                                 onClick={() => setFilterPaymentMethod(opt.value)}
-                                                className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${filterPaymentMethod === opt.value ? 'bg-indigo-600 text-white' : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`}`}
+                                                className={`py-1.5 rounded-xl text-[11px] font-black transition-all ${
+                                                    filterPaymentMethod === opt.value
+                                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-2 ring-indigo-600/20'
+                                                        : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`
+                                                }`}
                                             >
                                                 {opt.label}
                                             </button>
@@ -890,37 +1065,82 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                     </div>
                                 </div>
 
-                                {/* Date range */}
-                                <div>
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-1.5 block`}>Date range</label>
-                                    <div className="space-y-2">
-                                        <div>
-                                            <span className={`text-[9px] font-bold uppercase ${theme.textMuted} mb-0.5 block`}>From</span>
-                                            <input
-                                                type="date"
-                                                value={startDate}
-                                                onChange={e => setStartDate(e.target.value)}
-                                                className={`w-full px-3 py-2 rounded-xl text-sm font-bold border outline-none ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500`}
-                                            />
+                                {/* Sort by & Order */}
+                                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100 dark:border-slate-800">
+                                    <div>
+                                        <label className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${theme.textSecondary} mb-1.5 block`}>
+                                            <ArrowUpDown size={11} className="text-indigo-500" />
+                                            Sort By
+                                        </label>
+                                        <div className="space-y-1">
+                                            {[
+                                                { value: 'createdAt', label: 'Date' },
+                                                { value: 'invoiceNumber', label: 'Invoice' },
+                                                { value: 'grandTotal', label: 'Amount' },
+                                            ].map(opt => (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    onClick={() => setSortBy(opt.value)}
+                                                    className={`w-full py-1.5 px-2.5 rounded-xl text-[11px] font-black text-left transition-all flex items-center justify-between ${
+                                                        sortBy === opt.value
+                                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                                            : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`
+                                                    }`}
+                                                >
+                                                    <span>{opt.label}</span>
+                                                    {sortBy === opt.value && <span className="text-[10px]">✓</span>}
+                                                </button>
+                                            ))}
                                         </div>
-                                        <div>
-                                            <span className={`text-[9px] font-bold uppercase ${theme.textMuted} mb-0.5 block`}>To</span>
-                                            <input
-                                                type="date"
-                                                value={endDate}
-                                                onChange={e => setEndDate(e.target.value)}
-                                                className={`w-full px-3 py-2 rounded-xl text-sm font-bold border outline-none ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500`}
-                                            />
+                                    </div>
+
+                                    <div>
+                                        <label className={`text-[10px] font-black uppercase tracking-wider ${theme.textSecondary} mb-1.5 block`}>
+                                            Order
+                                        </label>
+                                        <div className="space-y-1">
+                                            {[
+                                                { value: 'desc', label: '↓ Newest' },
+                                                { value: 'asc', label: '↑ Oldest' },
+                                            ].map(opt => (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    onClick={() => setSortOrder(opt.value)}
+                                                    className={`w-full py-1.5 px-2.5 rounded-xl text-[11px] font-black text-left transition-all flex items-center justify-between ${
+                                                        sortOrder === opt.value
+                                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                                            : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`
+                                                    }`}
+                                                >
+                                                    <span>{opt.label}</span>
+                                                    {sortOrder === opt.value && <span className="text-[10px]">✓</span>}
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
 
-                                <button
-                                    onClick={() => setShowFilter(false)}
-                                    className="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all"
-                                >
-                                    Apply
-                                </button>
+                                {/* Footer Actions */}
+                                <div className="pt-2 border-t border-gray-100 dark:border-slate-800 flex items-center gap-2">
+                                    {activeFilterCount > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={handleClearFilters}
+                                            className={`py-2.5 px-3.5 rounded-xl text-xs font-black uppercase tracking-wider border ${theme.borderLight} ${theme.textSecondary} hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all`}
+                                        >
+                                            Reset
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFilter(false)}
+                                        className="flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-600/25 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                                    >
+                                        Apply Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
