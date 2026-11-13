@@ -498,10 +498,10 @@ const Navbar = ({
                                 />
                                 <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900"></span>
                             </div>
-                            <span className={`hidden md:inline text-xs font-black ${theme.textPrimary} max-w-[90px] truncate`}>
+                            <span className="hidden md:inline text-xs font-black text-white max-w-[100px] truncate">
                                 {currentUser?.name || currentUser?.username || 'Profile'}
                             </span>
-                            <ChevronDown size={14} className={`hidden md:inline ${theme.textMuted} transition-transform ${isProfileDropdownOpen ? 'rotate-180' : ''}`} />
+                            <ChevronDown size={14} className={`hidden md:inline text-white/80 group-hover:text-white transition-transform ${isProfileDropdownOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {/* Profile Dropdown Popup Menu */}

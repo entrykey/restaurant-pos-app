@@ -87,10 +87,10 @@ export const OrderProvider = ({ children }) => {
         if (discVal > 0) {
             const discType = item.itemDiscountType || 'percent';
             if (discType === 'percent') {
-                const clampedDisc = Math.min(100, discVal);
-                itemDiscAmount = (baseCost * clampedDisc) / 100;
+                const clampedPct = Math.min(100, Math.max(0, discVal));
+                itemDiscAmount = (baseCost * clampedPct) / 100;
             } else {
-                itemDiscAmount = Math.min(baseCost, discVal);
+                itemDiscAmount = Math.min(baseCost, Math.max(0, discVal));
             }
         }
 
@@ -113,12 +113,15 @@ export const OrderProvider = ({ children }) => {
         autoRound = true,
         exchangeCredit = 0,
         branchStateCode = null,
-        customerStateCode = null
+        customerStateCode = null,
+        loyaltyDiscountAmount = 0
     ) => {
         if (!orderItems || orderItems.length === 0)
             return {
                 subtotal: 0,
                 discountAmount: 0,
+                loyaltyDiscountAmount: 0,
+                totalDiscount: 0,
                 offerDiscountTotal: 0,
                 appliedOffers: [],
                 taxableAmount: 0,
@@ -403,11 +406,31 @@ export const OrderProvider = ({ children }) => {
             });
         }
 
+        let discountAmount = 0;
+        const netSubtotal = Math.max(0, subtotal - offerDiscountTotal);
+        if (discount.type === "percent") {
+            const clampedPct = Math.min(100, Math.max(0, Number(discount.value) || 0));
+            discountAmount = parseFloat(((netSubtotal * clampedPct) / 100).toFixed(4));
+        } else {
+            const flatVal = Math.max(0, Number(discount.value) || 0);
+            discountAmount = Math.min(flatVal, netSubtotal);
+        }
+
+        const validLoyaltyDiscount = Math.min(
+            Math.max(0, Number(loyaltyDiscountAmount) || 0),
+            Math.max(0, netSubtotal - discountAmount)
+        );
+
+        const totalDiscount = discountAmount + validLoyaltyDiscount + offerDiscountTotal;
+        let finalDiscount = Math.min(subtotal, Math.max(0, totalDiscount));
+
+        const taxableAmount = Math.max(0, subtotal - finalDiscount);
         // GST Logic: Compare states
         const isIntraState = !branchStateCode || !customerStateCode || branchStateCode === customerStateCode;
 
         const taxBreakdown = { cgst: 0, sgst: 0, igst: 0 };
 
+        const discountFactor = subtotal > 0 ? Math.max(0, 1 - finalDiscount / subtotal) : 1;
         const totalTaxAmount = parseFloat(orderItems.reduce((acc, item) => {
             const originalLineTotal = calculateItemTotal(item);
             const lineRate = (item.taxPercent !== undefined && item.taxPercent !== null)
@@ -445,29 +468,9 @@ export const OrderProvider = ({ children }) => {
             return acc + itemTax;
         }, 0).toFixed(4));
 
-        const grossTotal = subtotal + totalTaxAmount;
-        const netGross = Math.max(0, grossTotal - offerDiscountTotal);
-        const rawDiscVal = Math.max(0, Number(discount?.value !== undefined ? discount.value : (typeof discount === 'number' ? discount : 0)));
-        const discType = String(discount?.type || 'flat').toLowerCase();
-        const isFlat = discType === 'flat';
-
-        let discountAmount = 0;
-        if (isFlat) {
-            discountAmount = Math.min(netGross, rawDiscVal);
-        } else {
-            const discPercent = Math.min(100, rawDiscVal);
-            discountAmount = parseFloat(((netGross * discPercent) / 100).toFixed(4));
-        }
-
-        const totalDiscount = discountAmount + offerDiscountTotal;
-        let finalDiscount = totalDiscount;
-        if (finalDiscount > grossTotal) finalDiscount = grossTotal;
-
-        const taxableAmount = Math.max(0, subtotal - finalDiscount);
-
         // Deduct exchange credit from total
-        const totalBeforeCredit = parseFloat((grossTotal - finalDiscount).toFixed(4));
-        const total = parseFloat((totalBeforeCredit - exchangeCredit).toFixed(4));
+        const totalBeforeCredit = parseFloat(Math.max(0, taxableAmount + totalTaxAmount).toFixed(4));
+        const total = parseFloat(Math.max(0, totalBeforeCredit - exchangeCredit).toFixed(4));
 
         let roundOff = 0;
         let finalTotal = total;
@@ -480,6 +483,8 @@ export const OrderProvider = ({ children }) => {
         return {
             subtotal,
             discountAmount,
+            loyaltyDiscountAmount: validLoyaltyDiscount,
+            totalDiscount: finalDiscount,
             offerDiscountTotal,
             appliedOffers: currentAppliedOffers,
             taxableAmount,

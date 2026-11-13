@@ -23,7 +23,8 @@ import {
     Tag as TagIcon,
     ChevronDown,
     UserPlus,
-    AlertTriangle
+    AlertTriangle,
+    Sliders
 } from "lucide-react";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import FoodItemCard from "../../components/FoodItemCard";
@@ -45,6 +46,8 @@ import {
     isItemTypeAllowedOnSale,
 } from "../../utils/cartStockUtils";
 import InlineReviewBill from "../../components/pos/InlineReviewBill";
+import CartItemEditModal from "../../components/modals/CartItemEditModal";
+import { syncItemBogoQuantity } from "../../utils/posOfferHelpers";
 
 const TakeawayOrder = ({
     view,
@@ -145,6 +148,9 @@ const TakeawayOrder = ({
     const [showAvailableOffers, setShowAvailableOffers] = useState(false);
     const [isCartBreakdownExpanded, setIsCartBreakdownExpanded] = useState(true);
     const [priceInputs, setPriceInputs] = useState({});
+    const [editingCartItem, setEditingCartItem] = useState(null);
+    const [editingCartIndex, setEditingCartIndex] = useState(null);
+    const [qtyInputs, setQtyInputs] = useState({});
     const [quickViewItem, setQuickViewItem] = useState(null);
     const [expandedItemId, setExpandedItemId] = useState(null);
 
@@ -700,6 +706,125 @@ const TakeawayOrder = ({
         }
     }, [currentOrder?.items, removeItemFromCart, updateItemQuantity]);
 
+    const handleSetExactItemQuantity = useCallback((itemIndex, exactQty) => {
+        let q = parseFloat(exactQty);
+        if (isNaN(q) || q <= 0) return;
+
+        if (setTakeawayOrder) {
+            setTakeawayOrder((prev) => {
+                const items = [...(prev?.items || [])];
+                const item = items[itemIndex];
+                if (!item) return prev;
+
+                const baseUpdated = {
+                    ...item,
+                    quantity: q,
+                    paidQuantity: q,
+                };
+                const updatedItem = syncItemBogoQuantity ? syncItemBogoQuantity(baseUpdated, offers) : baseUpdated;
+                items[itemIndex] = updatedItem;
+                return {
+                    ...prev,
+                    items,
+                };
+            });
+        }
+    }, [setTakeawayOrder, offers]);
+
+    const handleCommitQuantity = useCallback((item, idx, rawValue) => {
+        const targetIdx = item._originalIndex !== undefined ? item._originalIndex : idx;
+        const itemKey = (item.id || item._id || 'item') + '_' + idx;
+        let parsed = parseFloat(rawValue);
+
+        if (isNaN(parsed) || parsed <= 0) {
+            setQtyInputs(prev => {
+                const next = { ...prev };
+                delete next[itemKey];
+                return next;
+            });
+            return;
+        }
+
+        if (item.sellingType === "Weight" && item.enteredUnit === "g") {
+            parsed = parsed / 1000;
+        }
+
+        if (parsed > item.quantity) {
+            const addQty = parsed - item.quantity;
+            if (!canAddToCart(item, allCartItems, baseStockMap, addQty, item.selectedVariant)) {
+                toast.error(`Insufficient stock for ${item.name}`);
+                setQtyInputs(prev => {
+                    const next = { ...prev };
+                    delete next[itemKey];
+                    return next;
+                });
+                return;
+            }
+        }
+
+        handleSetExactItemQuantity(targetIdx, parsed);
+        setQtyInputs(prev => {
+            const next = { ...prev };
+            delete next[itemKey];
+            return next;
+        });
+    }, [allCartItems, baseStockMap, handleSetExactItemQuantity]);
+
+    const handleOpenItemEditModal = useCallback((item, idx) => {
+        const targetIdx = item._originalIndex !== undefined ? item._originalIndex : idx;
+        setEditingCartItem(item);
+        setEditingCartIndex(targetIdx);
+    }, []);
+
+    const handleSaveItemEdit = useCallback((editedData) => {
+        if (editingCartIndex === null) return;
+        if (setTakeawayOrder) {
+            setTakeawayOrder((prev) => {
+                const items = [...(prev?.items || [])];
+                const target = items[editingCartIndex];
+                if (!target) return prev;
+
+                const basePrice = Number(editedData.price) >= 0 ? Number(editedData.price) : (target.price || 0);
+                const updated = {
+                    ...target,
+                    quantity: editedData.quantity,
+                    paidQuantity: editedData.quantity,
+                    price: basePrice,
+                    sellingPrice: basePrice,
+                    selectedVariant: editedData.selectedVariant || target.selectedVariant,
+                    itemDiscount: editedData.itemDiscount,
+                    itemDiscountType: editedData.itemDiscountType,
+                    suggestion: editedData.suggestion,
+                    selectedUnit: editedData.selectedUnit || target.selectedUnit,
+                    enteredUnit: editedData.enteredUnit || target.enteredUnit
+                };
+                if (updated.selectedVariant) {
+                    updated.selectedVariant = {
+                        ...updated.selectedVariant,
+                        price: basePrice
+                    };
+                }
+                if (updated.sellingType === "Weight") {
+                    updated.pricePerUnit = basePrice;
+                }
+                const finalItem = syncItemBogoQuantity ? syncItemBogoQuantity(updated, offers) : updated;
+                items[editingCartIndex] = finalItem;
+                return {
+                    ...prev,
+                    items
+                };
+            });
+        }
+        setEditingCartItem(null);
+        setEditingCartIndex(null);
+    }, [editingCartIndex, setTakeawayOrder, offers]);
+
+    const sourceMenuItem = useMemo(() => {
+        if (!editingCartItem) return null;
+        const targetId = editingCartItem._id || editingCartItem.id || editingCartItem.itemId;
+        return (displayMenu || []).find(m => String(m._id || m.id) === String(targetId)) || editingCartItem;
+    }, [editingCartItem, displayMenu]);
+
     // Global Barcode Listener for POS
     const handleBarcodeSearch = useCallback(async (code) => {
         if (!code) return;
@@ -912,6 +1037,9 @@ const TakeawayOrder = ({
                     calculateBillDetails={calculateBillDetails}
                     formatCurrency={formatCurrency}
                     orderType={displayTitle}
+                    billDiscount={billDiscount}
+                    loyaltyDiscount={loyaltyDiscount}
+                    selectedCustomer={selectedCustomer}
                 />
             ) : (
                 <div className="flex-1 min-w-0 w-full flex flex-col lg:flex-row overflow-hidden">
@@ -1484,8 +1612,16 @@ const TakeawayOrder = ({
                                                         </span>
                                                         <button
                                                             type="button"
+                                                            onClick={() => handleOpenItemEditModal(item, idx)}
+                                                            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors cursor-pointer"
+                                                            title="Edit item details"
+                                                        >
+                                                            <Sliders size={14} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
                                                             onClick={() => handleRemoveItem(item._originalIndex !== undefined ? item._originalIndex : idx)}
-                                                            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors"
+                                                            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer"
                                                             title="Remove item from cart"
                                                         >
                                                             <Trash2 size={16} />
@@ -1627,32 +1763,84 @@ const TakeawayOrder = ({
                                                 </div>
                                             )}
 
-                                            {/* Bottom Controls Row: Horizontal Quantity Pill + Note + Discount Input */}
+                                            {/* Bottom Controls Row: Horizontal Quantity Pill + Edit Option + Note + Discount Input */}
                                             <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-gray-100 dark:border-gray-800">
-                                                {/* Quantity Horizontal Control: [ - ] 1 [ + ] */}
+                                                {/* Quantity Horizontal Control: [ - ] [ input ] [ + ] */}
                                                 <div className={`inline-flex items-center rounded-lg border ${theme.borderLight} ${theme.pageBg} p-0.5 shadow-2xs`}>
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, -1)}
-                                                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gradient-to-br from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 transition-all active:scale-90 shadow-2xs"
+                                                        onClick={() => {
+                                                            setQtyInputs(prev => {
+                                                                const next = { ...prev };
+                                                                delete next[itemKey];
+                                                                return next;
+                                                            });
+                                                            handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, -1);
+                                                        }}
+                                                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gradient-to-br from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 transition-all active:scale-90 shadow-2xs cursor-pointer"
                                                         title="Decrease quantity"
                                                     >
                                                         <Minus size={14} strokeWidth={3} />
                                                     </button>
-                                                    <span className={`w-7 text-center font-black text-xs ${theme.textPrimary}`}>
-                                                        {item.sellingType === "Weight" && item.enteredUnit === "g"
-                                                            ? `${parseFloat((item.quantity * 1000).toFixed(0))}`
-                                                            : item.quantity}
-                                                    </span>
+                                                    <input
+                                                        type="number"
+                                                        min="0.001"
+                                                        step={item.sellingType === "Weight" ? "0.01" : "1"}
+                                                        value={qtyInputs[itemKey] !== undefined ? qtyInputs[itemKey] : (
+                                                            item.sellingType === "Weight" && item.enteredUnit === "g"
+                                                                ? `${parseFloat((item.quantity * 1000).toFixed(0))}`
+                                                                : item.quantity
+                                                        )}
+                                                        onFocus={(e) => {
+                                                            e.target.select();
+                                                            setQtyInputs(prev => ({
+                                                                ...prev,
+                                                                [itemKey]: String(item.sellingType === "Weight" && item.enteredUnit === "g" ? Math.round(item.quantity * 1000) : item.quantity)
+                                                            }));
+                                                        }}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setQtyInputs(prev => ({ ...prev, [itemKey]: val }));
+                                                        }}
+                                                        onBlur={(e) => {
+                                                            handleCommitQuantity(item, idx, e.target.value);
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                e.target.blur();
+                                                            }
+                                                        }}
+                                                        className={`w-10 px-0.5 text-center font-black text-xs ${theme.textPrimary} bg-transparent outline-none focus:bg-white dark:focus:bg-slate-800 rounded focus:ring-1 focus:ring-indigo-500 transition-all`}
+                                                        title="Click to type exact quantity"
+                                                    />
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, 1)}
-                                                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 transition-all active:scale-90 shadow-2xs"
+                                                        onClick={() => {
+                                                            setQtyInputs(prev => {
+                                                                const next = { ...prev };
+                                                                delete next[itemKey];
+                                                                return next;
+                                                            });
+                                                            handleUpdateItemQuantity(item._originalIndex !== undefined ? item._originalIndex : idx, 1);
+                                                        }}
+                                                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 transition-all active:scale-90 shadow-2xs cursor-pointer"
                                                         title="Increase quantity"
                                                     >
                                                         <Plus size={14} strokeWidth={3} />
                                                     </button>
                                                 </div>
+
+                                                {/* Edit Item Option Button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenItemEditModal(item, idx)}
+                                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors shadow-2xs cursor-pointer"
+                                                    title="Edit item price, quantity, variant & notes"
+                                                >
+                                                    <Sliders size={11} className="stroke-[2.5]" />
+                                                    <span>Edit</span>
+                                                </button>
 
                                                 {/* Add / Edit Note Button */}
                                                 <button
@@ -2208,6 +2396,25 @@ const TakeawayOrder = ({
                     formatCurrency={formatCurrency}
                 />
             )}
+
+            {/* Cart Item Edit Modal */}
+            <CartItemEditModal
+                isOpen={!!editingCartItem}
+                onClose={() => {
+                    setEditingCartItem(null);
+                    setEditingCartIndex(null);
+                }}
+                item={editingCartItem}
+                itemIndex={editingCartIndex}
+                menuItem={sourceMenuItem}
+                onSave={handleSaveItemEdit}
+                onRemove={() => {
+                    if (editingCartIndex !== null) {
+                        handleRemoveItem(editingCartIndex);
+                    }
+                }}
+                currency={currentOrder?.currency || 'INR'}
+            />
         </div>
     );
 };

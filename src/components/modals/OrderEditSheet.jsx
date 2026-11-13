@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { formatCurrency, getCurrencySymbol } from '../../utils/format';
-import { X, Save, Plus, Minus, Trash2, Search, CheckCircle2, AlertCircle, ShoppingBag, Loader2 } from 'lucide-react';
+import { X, Save, Plus, Minus, Trash2, Search, CheckCircle2, AlertCircle, ShoppingBag, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { orderService, itemService } from '../../services/api';
 
 const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
@@ -14,6 +14,7 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
     const [discountTotal, setDiscountTotal] = useState(0);
     const [discountType, setDiscountType] = useState('flat'); // 'flat' | 'percent'
     const [discountInput, setDiscountInput] = useState('');
+    const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
     
     // Search state
     const [searchQuery, setSearchQuery] = useState('');
@@ -36,6 +37,7 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
             setDiscountTotal(existingDiscount);
             setDiscountInput(existingDiscount > 0 ? String(existingDiscount) : '');
             setDiscountType('flat');
+            setIsBreakdownOpen(false);
             setError(null);
             setSearchQuery('');
             setSearchResults([]);
@@ -89,7 +91,11 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
     const updateQty = (itemId, delta) => {
         setItems(prev => prev.map(i => {
             if (String(i.itemId) === String(itemId)) {
-                return { ...i, quantity: Math.max(1, i.quantity + delta) };
+                const isWeight = i.weightBased || (Number(i.quantity) % 1 !== 0);
+                const step = isWeight ? 0.1 : 1;
+                const minQty = isWeight ? 0.001 : 1;
+                const newQty = Math.max(minQty, parseFloat((Number(i.quantity) + (delta * step)).toFixed(3)));
+                return { ...i, quantity: newQty };
             }
             return i;
         }));
@@ -122,11 +128,13 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
 
         subtotal = parseFloat(subtotal.toFixed(4));
         taxTotal = parseFloat(taxTotal.toFixed(4));
-        const discVal = Math.max(0, discountTotal);
-        const discPercent = Math.min(100, discVal);
+        // Apply discount
+        const clampedDiscTotal = discountType === 'percent'
+            ? Math.min(100, Math.max(0, discountTotal))
+            : Math.min(subtotal, Math.max(0, discountTotal));
         const disc = discountType === 'percent'
-            ? parseFloat(((subtotal * discPercent) / 100).toFixed(4))
-            : Math.min(subtotal + taxTotal, discVal);
+            ? parseFloat(((subtotal * clampedDiscTotal) / 100).toFixed(4))
+            : clampedDiscTotal;
         const grandTotal = parseFloat(Math.max(0, subtotal + taxTotal - disc).toFixed(4));
         return { subtotal, taxTotal, grandTotal, discountTotal: disc, taxBreakdown: Object.values(taxBreakdown) };
     };
@@ -135,17 +143,22 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
 
     const applyDiscount = (type, raw) => {
         let val = parseFloat(raw);
-        if (isNaN(val) || val < 0) val = 0;
+        if (isNaN(val) || val < 0) {
+            val = 0;
+            raw = "";
+        }
         let cleanRaw = raw;
-        if (type === 'percent' && val > 100) {
-            val = 100;
-            cleanRaw = "100";
-            setError("Percentage discount cannot exceed 100%");
-        } else if (error && error.includes("Percentage discount")) {
-            setError(null);
+        if (type === 'percent') {
+            if (val > 100) {
+                val = 100;
+                cleanRaw = "100";
+                setError("Percentage discount cannot exceed 100%");
+            } else if (error && error.includes("Percentage discount")) {
+                setError(null);
+            }
         }
         setDiscountType(type);
-        setDiscountInput(raw === "" ? "" : cleanRaw);
+        setDiscountInput(cleanRaw);
         setDiscountTotal(val);
     };
 
@@ -261,7 +274,7 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
                                     <div className="flex items-center gap-6">
                                         <div className={`flex items-center gap-3 p-1 rounded-xl border ${theme.borderLight} ${theme.mode === 'dark' ? 'bg-white/5' : 'bg-gray-50'}`}>
                                             <button onClick={() => updateQty(item.itemId, -1)} className={`w-8 h-8 rounded-lg flex items-center justify-center bg-white dark:bg-slate-800 border ${theme.borderLight} ${theme.textPrimary} shadow-sm`}>-</button>
-                                            <span className={`w-8 text-center font-black ${theme.textPrimary}`}>{item.quantity}</span>
+                                            <span className={`min-w-8 px-1 text-center font-black ${theme.textPrimary}`}>{item.quantity}</span>
                                             <button onClick={() => updateQty(item.itemId, 1)} className={`w-8 h-8 rounded-lg flex items-center justify-center bg-white dark:bg-slate-800 border ${theme.borderLight} ${theme.textPrimary} shadow-sm`}>+</button>
                                         </div>
                                         
@@ -299,50 +312,100 @@ const OrderEditSheet = ({ isOpen, onClose, order, onSuccess }) => {
                 </div>
 
                 {/* Footer / Summary */}
-                <div className={`p-6 border-t ${theme.borderLight} ${theme.surfaceBg} bg-gradient-to-b from-transparent to-gray-50/10 dark:to-white/2`}>
-                    <div className="space-y-2 mb-6">
-                        <div className="flex justify-between items-center text-sm font-bold">
-                            <span className={theme.textMuted}>Subtotal</span>
-                            <span className={theme.textPrimary}>{formatCurrency(totals.subtotal)}</span>
-                        </div>
-                        {/* Discount input */}
-                        <div className={`rounded-xl border ${theme.borderLight} ${theme.inputBg} overflow-hidden`}>
-                            <div className={`flex items-center border-b ${theme.borderLight}`}>
-                                <span className={`px-3 text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Discount</span>
-                                <div className="ml-auto flex">
-                                    <button type="button" onClick={() => applyDiscount('flat', discountInput)}
-                                        className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}>
-                                        {currencySymbol || '₹'} Flat
-                                    </button>
-                                    <button type="button" onClick={() => applyDiscount('percent', discountInput)}
-                                        className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'percent' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}>
-                                        % Off
-                                    </button>
-                                </div>
-                            </div>
-                            <input type="number" min="0" max={discountType === 'percent' ? "100" : undefined}
-                                value={discountInput}
-                                onChange={e => applyDiscount(discountType, e.target.value)}
-                                placeholder={discountType === 'percent' ? "Enter % (Max 100)" : "Enter amount"}
-                                className={`w-full px-3 py-2 text-sm font-black outline-none bg-transparent ${theme.textPrimary}`}
-                            />
-                        </div>
-                        {totals.discountTotal > 0 && (
-                            <div className="flex justify-between items-center text-sm font-bold text-emerald-600">
-                                <span>Discount Applied</span>
-                                <span>-{formatCurrency(totals.discountTotal)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between items-center text-sm font-bold">
-                            <span className={theme.textMuted}>Tax Total</span>
-                            <span className={theme.textPrimary}>{formatCurrency(totals.taxTotal)}</span>
-                        </div>
-                        <div className={`flex justify-between items-center pt-2 mt-2 border-t border-dashed ${theme.borderLight}`}>
-                            <span className={`text-lg font-black ${theme.textPrimary}`}>Grand Total</span>
-                            <span className={`text-2xl font-black ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{formatCurrency(totals.grandTotal)}</span>
-                        </div>
-                    </div>
+                <div className={`p-5 lg:p-6 border-t ${theme.borderLight} ${theme.surfaceBg} bg-gradient-to-b from-transparent to-gray-50/10 dark:to-white/2`}>
                     
+                    {/* Collapsible Accordion Header */}
+                    <button
+                        type="button"
+                        onClick={() => setIsBreakdownOpen(prev => !prev)}
+                        className={`flex items-center justify-between w-full py-1 text-xs font-black ${theme.textMuted} hover:${theme.textPrimary} transition-colors cursor-pointer border-b ${theme.borderLight} pb-2 mb-3`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <span className="uppercase tracking-wider text-[11px] font-black text-indigo-600 dark:text-indigo-400">
+                                Bill Breakdown & Discount
+                            </span>
+                            {!isBreakdownOpen && totals.discountTotal > 0 && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300">
+                                    Discount: -{formatCurrency(totals.discountTotal)}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500 dark:text-gray-400">
+                            <span>{isBreakdownOpen ? "Hide" : "Expand Details"}</span>
+                            <ChevronDown size={15} className={`transition-transform duration-200 text-indigo-600 dark:text-indigo-400 ${isBreakdownOpen ? 'rotate-180' : ''}`} />
+                        </div>
+                    </button>
+
+                    {/* Collapsible Section (Subtotal, Discount, Tax) */}
+                    {isBreakdownOpen && (
+                        <div className="space-y-2.5 mb-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="flex justify-between items-center text-sm font-bold">
+                                <span className={theme.textMuted}>Subtotal</span>
+                                <span className={theme.textPrimary}>{formatCurrency(totals.subtotal)}</span>
+                            </div>
+
+                            {/* Discount input */}
+                            <div className={`rounded-xl border ${theme.borderLight} ${theme.inputBg} overflow-hidden`}>
+                                <div className={`flex items-center border-b ${theme.borderLight}`}>
+                                    <span className={`px-3 text-[10px] font-black uppercase tracking-wider ${theme.textMuted}`}>Discount</span>
+                                    <div className="ml-auto flex">
+                                        <button
+                                            type="button"
+                                            onClick={() => applyDiscount('flat', discountInput)}
+                                            className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'flat' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}
+                                        >
+                                            ₹ Flat
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => applyDiscount('percent', discountInput)}
+                                            className={`px-3 py-1.5 text-[10px] font-black transition-all ${discountType === 'percent' ? 'bg-indigo-600 text-white' : `${theme.textMuted} hover:opacity-80`}`}
+                                        >
+                                            % Off
+                                        </button>
+                                    </div>
+                                </div>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max={discountType === 'percent' ? "100" : undefined}
+                                    value={discountInput}
+                                    onChange={e => applyDiscount(discountType, e.target.value)}
+                                    placeholder={discountType === 'percent' ? "Enter % (max 100)" : "Enter amount"}
+                                    className={`w-full px-3 py-2 text-sm font-black outline-none bg-transparent ${theme.textPrimary}`}
+                                />
+                            </div>
+
+                            {totals.discountTotal > 0 && (
+                                <div className="flex justify-between items-center text-sm font-bold text-emerald-600">
+                                    <span>Discount Applied</span>
+                                    <span>-{formatCurrency(totals.discountTotal)}</span>
+                                </div>
+                            )}
+
+                            <div className="flex justify-between items-center text-sm font-bold">
+                                <span className={theme.textMuted}>Tax Total</span>
+                                <span className={theme.textPrimary}>{formatCurrency(totals.taxTotal)}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Grand Total Row */}
+                    <div className={`flex justify-between items-center mb-4 ${isBreakdownOpen ? `pt-2.5 border-t border-dashed ${theme.borderLight}` : ''}`}>
+                        <div className="flex flex-col">
+                            <span className={`text-base font-black ${theme.textPrimary}`}>Grand Total</span>
+                            {!isBreakdownOpen && (
+                                <span className={`text-xs font-semibold ${theme.textMuted}`}>
+                                    Subtotal: {formatCurrency(totals.subtotal)}
+                                    {totals.taxTotal > 0 && ` • Tax: ${formatCurrency(totals.taxTotal)}`}
+                                </span>
+                            )}
+                        </div>
+                        <span className={`text-2xl font-black ${theme.mode === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                            {formatCurrency(totals.grandTotal)}
+                        </span>
+                    </div>
+
                     <button
                         onClick={handleSave}
                         disabled={loading || items.length === 0}

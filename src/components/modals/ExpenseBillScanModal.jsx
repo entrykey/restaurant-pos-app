@@ -8,7 +8,7 @@ import {
     Hash, Building, Tag, Calendar
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { scanExpenseBill, COMMON_EXPENSE_CATEGORIES, FUEL_CATEGORIES } from '../../utils/expenseOcrHelper';
+import { scanExpenseBill, generatePdfThumbnail, COMMON_EXPENSE_CATEGORIES, FUEL_CATEGORIES } from '../../utils/expenseOcrHelper';
 
 const CATEGORY_ICONS = {
     'Diesel': Fuel,
@@ -97,9 +97,14 @@ const ExpenseBillScanModal = ({
     const handleFileSelect = (selectedFile) => {
         if (!selectedFile) return;
 
-        // Check file type
-        const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'application/pdf'];
-        if (!validTypes.includes(selectedFile.type)) {
+        // Check file type (support standard mime types and extension fallback)
+        const isPdfFile = selectedFile.type === 'application/pdf' || 
+            selectedFile.type === 'application/x-pdf' || 
+            (typeof selectedFile.name === 'string' && selectedFile.name.toLowerCase().endsWith('.pdf'));
+        const isImgFile = selectedFile.type.startsWith('image/') || 
+            /\.(jpe?g|png|webp|bmp)$/i.test(selectedFile.name || '');
+
+        if (!isPdfFile && !isImgFile) {
             toast.error('Please upload an image (JPG, PNG, WebP) or PDF bill');
             return;
         }
@@ -108,11 +113,17 @@ const ExpenseBillScanModal = ({
         setError(null);
         setScannedData(null);
 
-        if (selectedFile.type.startsWith('image/')) {
+        if (isImgFile) {
             const url = URL.createObjectURL(selectedFile);
             setPreviewUrl(url);
         } else {
             setPreviewUrl(null);
+            // Generate page 1 thumbnail preview for PDF documents
+            generatePdfThumbnail(selectedFile)
+                .then(thumb => {
+                    if (thumb) setPreviewUrl(thumb);
+                })
+                .catch(() => {});
         }
 
         // Auto trigger scan
@@ -130,6 +141,10 @@ const ExpenseBillScanModal = ({
                 setScanProgress(pct);
                 if (status) setScanStatusText(status);
             });
+
+            if (result.thumbnailUrl) {
+                setPreviewUrl(result.thumbnailUrl);
+            }
 
             setScannedData(result);
             setCategory(result.category || 'Petrol');
@@ -153,7 +168,7 @@ const ExpenseBillScanModal = ({
         } catch (err) {
             console.error('Scan error:', err);
             setError(err.message || 'Failed to scan bill. Please enter details manually.');
-            toast.error('Could not auto-read text from bill. Please enter manually.');
+            toast.error(err.message || 'Could not auto-read text from bill. Please enter manually.');
         } finally {
             setIsScanning(false);
         }

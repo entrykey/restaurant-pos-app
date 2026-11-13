@@ -83,14 +83,14 @@ const Inventory = ({
         const fromUrl = searchParams.get('tab');
         const preferred = fromState || fromUrl;
 
-        if (preferred === "menu" && canViewMenu) return "menu";
         if (preferred === "raw" && canViewItems) return "raw";
+        if (preferred === "menu" && canViewMenu) return "menu";
         if (preferred === "trade" && canViewTradeItems) return "trade";
 
-        if (canViewMenu) return "menu";
         if (canViewItems) return "raw";
+        if (canViewMenu) return "menu";
         if (canViewTradeItems) return "trade";
-        return "menu"; // Fallback
+        return "raw"; // Fallback
     });
 
     const handleTabChange = (tabKey) => {
@@ -198,15 +198,15 @@ const Inventory = ({
 
     // Ensure activeTab is valid if features change
     useEffect(() => {
-        if (activeTab === "menu" && !canViewMenu) {
+        if (activeTab === "raw" && !canViewItems) {
+            if (canViewMenu) setActiveTab("menu");
+            else if (canViewTradeItems) setActiveTab("trade");
+        } else if (activeTab === "menu" && !canViewMenu) {
             if (canViewItems) setActiveTab("raw");
             else if (canViewTradeItems) setActiveTab("trade");
-        } else if (activeTab === "raw" && !canViewItems) {
-            if (canViewMenu) setActiveTab("menu");
-            else if (canViewTradeItems) setActiveTab("trade");
         } else if (activeTab === "trade" && !canViewTradeItems) {
-            if (canViewMenu) setActiveTab("menu");
-            else if (canViewItems) setActiveTab("raw");
+            if (canViewItems) setActiveTab("raw");
+            else if (canViewMenu) setActiveTab("menu");
         }
     }, [canViewMenu, canViewItems, canViewTradeItems, activeTab]);
 
@@ -1831,17 +1831,6 @@ const Inventory = ({
             {/* Tabs + Category Filter */}
             <div className="px-4 md:px-6 mb-6 flex-shrink-0 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                 <div className={`flex flex-row flex-wrap gap-1 p-1.5 rounded-2xl shadow-sm w-full lg:w-fit ${theme.surfaceBg}`}>
-                    {canViewMenu && (
-                        <button
-                            onClick={() => handleTabChange("menu")}
-                            className={`flex-1 lg:flex-none px-3 md:px-5 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${activeTab === "menu"
-                                ? `${theme.primaryIconBg} ${theme.primaryIconText}`
-                                : `${theme.textSecondary} hover:opacity-80`
-                                }`}
-                        >
-                            <Layers size={16} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured Items')}
-                        </button>
-                    )}
                     {canViewItems && (
                         <button
                             onClick={() => handleTabChange("raw")}
@@ -1851,6 +1840,17 @@ const Inventory = ({
                                 }`}
                         >
                             <Boxes size={16} /> {t('INVENTORY', 'items_tab', 'Stock Items')}
+                        </button>
+                    )}
+                    {canViewMenu && (
+                        <button
+                            onClick={() => handleTabChange("menu")}
+                            className={`flex-1 lg:flex-none px-3 md:px-5 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all flex items-center justify-center gap-1.5 ${activeTab === "menu"
+                                ? `${theme.primaryIconBg} ${theme.primaryIconText}`
+                                : `${theme.textSecondary} hover:opacity-80`
+                                }`}
+                        >
+                            <Layers size={16} /> {t('INVENTORY', 'menu_items_tab', 'Manufactured Items')}
                         </button>
                     )}
                     {canViewTradeItems && (

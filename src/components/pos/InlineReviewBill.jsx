@@ -34,6 +34,8 @@ import { toast } from "react-hot-toast";
 
 const InlineReviewBill = ({
     onBack,
+    onClose,
+    isModal = false,
     isTakeaway,
     activeTableId,
     tableName,
@@ -49,34 +51,45 @@ const InlineReviewBill = ({
     setTakeawayCustPhone = () => {},
     updateItemQuantity,
     removeItemFromCart,
-    calculateItemTotal,
-    calculateBillDetails,
-    formatCurrency,
+    calculateItemTotal: propCalculateItemTotal,
+    calculateBillDetails: propCalculateBillDetails,
+    formatCurrency: propFormatCurrency,
     orderType = "DIRECT_SALE",
+    billDiscount: propBillDiscount,
+    loyaltyDiscount: propLoyaltyDiscount,
+    selectedCustomer: propSelectedCustomer,
 }) => {
     const { theme } = useTheme();
-    const { activeBranchId, branches, organization, user, settings: appSettings } = useApp();
+    const { activeBranchId, branches, organization, user, settings: appSettings, formatCurrency: appFormatCurrency } = useApp();
     const activeSettings = settings || appSettings;
     const showAiImage = activeSettings?.SHOW_AI_IMAGE_IN_SALE !== false && String(activeSettings?.SHOW_AI_IMAGE_IN_SALE).toLowerCase() !== 'false';
+    const orderContext = useOrder();
     const {
         isExchange, exchangeCredit, originalOrderId, returnedItems,
         couponCode, setCouponCode,
         couponStatus, setCouponStatus,
-        applyCoupon, dismissOffer
-    } = useOrder();
+        applyCoupon, dismissOffer,
+        calculateItemTotal: contextCalculateItemTotal,
+        calculateBillDetails: contextCalculateBillDetails,
+    } = orderContext || {};
+
+    const calculateItemTotal = propCalculateItemTotal || contextCalculateItemTotal || (() => 0);
+    const calculateBillDetails = propCalculateBillDetails || contextCalculateBillDetails;
+    const formatCurrency = propFormatCurrency || appFormatCurrency || ((v) => `${Number(v).toFixed(2)} INR`);
 
     const takeawayContext = useTakeaway();
     const {
-        selectedCustomer, setSelectedCustomer,
+        selectedCustomer: contextSelectedCustomer, setSelectedCustomer,
         tabs, activeTabId, setActiveTabId,
         addNewTab, closeTab,
         billDiscount: takeawayBillDiscount, setBillDiscount: setTakeawayBillDiscount,
         loyaltyDiscount: takeawayLoyaltyDiscount, setLoyaltyDiscount: setTakeawayLoyaltyDiscount
     } = takeawayContext || {};
 
-    const activeBillDiscount = takeawayBillDiscount || { type: "flat", value: 0 };
+    const selectedCustomer = propSelectedCustomer || contextSelectedCustomer;
+    const activeBillDiscount = propBillDiscount || takeawayBillDiscount || { type: "flat", value: 0 };
     const activeSetBillDiscount = setTakeawayBillDiscount || (() => {});
-    const activeLoyaltyDiscountProp = takeawayLoyaltyDiscount || { points: 0, amount: 0 };
+    const activeLoyaltyDiscountProp = propLoyaltyDiscount || takeawayLoyaltyDiscount || { points: 0, amount: 0 };
 
     const activeBranch = branches.find(b => b._id === activeBranchId);
     const resolvedUpiId = activeBranch?.upiId || organization?.defaultUpiId;
@@ -106,6 +119,8 @@ const InlineReviewBill = ({
     const [splitAmounts, setSplitAmounts] = useState({ cash: 0, card: 0, upi: 0 });
     const [printFormat, setPrintFormat] = useState("thermal"); // 'thermal' | 'a4'
     const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+    const [checkoutWithoutPrint, setCheckoutWithoutPrint] = useState(false);
+    const [qtyInputs, setQtyInputs] = useState({});
     
     // Collapsible Bill Breakdown (Default FALSE = Collapsed for maximum items height!)
     const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
@@ -434,6 +449,11 @@ const InlineReviewBill = ({
 
     const [isAutoRoundOff, setIsAutoRoundOff] = useState(true);
 
+    const activeLoyaltyDiscount = (appliedLoyaltyDiscount && Number(appliedLoyaltyDiscount.amount) > 0)
+        ? appliedLoyaltyDiscount
+        : activeLoyaltyDiscountProp;
+    const loyaltyDiscountAmt = Number(activeLoyaltyDiscount?.amount || 0);
+
     // Bill Calculations
     const rawBillDetails = typeof calculateBillDetails === "function" ? calculateBillDetails(
         orderItems,
@@ -442,20 +462,12 @@ const InlineReviewBill = ({
         isAutoRoundOff,
         exchangeCredit || 0,
         branchStateCode,
-        null
+        null,
+        loyaltyDiscountAmt || 0
     ) : null;
 
     const billDetails = rawBillDetails || { subtotal: 0, discountAmount: 0, taxAmount: 0, finalTotal: 0 };
-
-    const activeLoyaltyDiscount = (appliedLoyaltyDiscount && Number(appliedLoyaltyDiscount.amount) > 0)
-        ? appliedLoyaltyDiscount
-        : activeLoyaltyDiscountProp;
-    const loyaltyDiscountAmt = Number(activeLoyaltyDiscount?.amount || 0);
-
-    const finalBillDetails = loyaltyDiscountAmt > 0 ? {
-        ...billDetails,
-        finalTotal: Math.max(0, (billDetails.finalTotal || 0) - loyaltyDiscountAmt)
-    } : billDetails;
+    const finalBillDetails = billDetails;
 
     const zeroPriceItem = deduplicatedItems.find(item => {
         const lineTotal = calculateItemTotal(item);
@@ -624,6 +636,15 @@ const InlineReviewBill = ({
 
             const primaryMethod = selectedPayments[0]?.method?.id?.toUpperCase() || activeMethodId.toUpperCase();
 
+            // Automatically generate bill print upon checkout unless "Checkout without print" is enabled
+            if (!checkoutWithoutPrint && onPrintBill) {
+                try {
+                    await onPrintBill(printFormat);
+                } catch (printErr) {
+                    console.error("Auto print failed on checkout:", printErr);
+                }
+            }
+
             await onFinalizePayment(
                 primaryMethod,
                 finalBillWithCustomer,
@@ -649,8 +670,8 @@ const InlineReviewBill = ({
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
-                        onClick={onBack}
-                        title="Back to Order Menu"
+                        onClick={onBack || onClose}
+                        title={isModal ? "Close" : "Back to Order Menu"}
                         className="p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-400 transition-all active:scale-95 border border-indigo-200/50 dark:border-indigo-800/50"
                     >
                         <ArrowLeft size={20} className="stroke-[2.5]" />
@@ -673,56 +694,71 @@ const InlineReviewBill = ({
                     </div>
                 </div>
 
-                {/* Tabs & Multi-Order Pills (matching PosTabBar style) */}
-                <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar max-w-md xl:max-w-lg py-1">
-                    {tabs && tabs.map((tab, index) => {
-                        const isActive = tab.id === activeTabId;
-                        const tabLabel = tab.orderName || `ORD-${String(tab.id).slice(-5)}`;
-                        const isMain = index === 0;
+                <div className="flex items-center gap-2">
+                    {/* Tabs & Multi-Order Pills (matching PosTabBar style) */}
+                    {tabs && tabs.length > 0 && (
+                        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar max-w-md xl:max-w-lg py-1">
+                            {tabs.map((tab, index) => {
+                                const isActive = tab.id === activeTabId;
+                                const tabLabel = tab.orderName || `ORD-${String(tab.id).slice(-5)}`;
+                                const isMain = index === 0;
 
-                        return (
-                            <div
-                                key={tab.id}
-                                onClick={() => setActiveTabId && setActiveTabId(tab.id)}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-xs cursor-pointer transition-all shrink-0 border ${
-                                    isActive
-                                        ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/20"
-                                        : `${theme.surfaceBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-300`
-                                }`}
-                            >
-                                <span className="font-extrabold text-[11px] opacity-80">({index + 1})</span>
-                                <span className="truncate max-w-[90px]">{tabLabel}</span>
-                                {!isMain && tabs.length > 1 && (
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            closeTab && closeTab(tab.id);
-                                        }}
-                                        className="p-0.5 hover:bg-black/20 rounded-full transition-colors"
+                                return (
+                                    <div
+                                        key={tab.id}
+                                        onClick={() => setActiveTabId && setActiveTabId(tab.id)}
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-xs cursor-pointer transition-all shrink-0 border ${
+                                            isActive
+                                                ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/20"
+                                                : `${theme.surfaceBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-300`
+                                        }`}
                                     >
-                                        <X size={12} />
-                                    </button>
-                                )}
-                            </div>
-                        );
-                    })}
+                                        <span className="font-extrabold text-[11px] opacity-80">({index + 1})</span>
+                                        <span className="truncate max-w-[90px]">{tabLabel}</span>
+                                        {!isMain && tabs.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    closeTab && closeTab(tab.id);
+                                                }}
+                                                className="p-0.5 hover:bg-black/20 rounded-full transition-colors"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
 
-                    {addNewTab && (
+                            {addNewTab && (
+                                <button
+                                    type="button"
+                                    onClick={addNewTab}
+                                    title="Open New Order Tab"
+                                    className="p-2 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 hover:bg-indigo-100 border border-indigo-200/50 shrink-0 transition-all active:scale-95"
+                                >
+                                    <Plus size={16} className="stroke-[3]" />
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {isModal && (
                         <button
                             type="button"
-                            onClick={addNewTab}
-                            title="Open New Order Tab"
-                            className="p-2 rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 hover:bg-indigo-100 border border-indigo-200/50 shrink-0 transition-all active:scale-95"
+                            onClick={onClose || onBack}
+                            title="Close"
+                            className="p-2.5 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-white/10 dark:hover:bg-white/20 dark:text-gray-300 transition-all active:scale-95 border border-transparent shrink-0"
                         >
-                            <Plus size={16} className="stroke-[3]" />
+                            <X size={20} className="stroke-[2.5]" />
                         </button>
                     )}
                 </div>
             </div>
 
             {/* Main Content Split: Left (Customer + Items + Collapsible Breakdown) & Right (Settlement + Action Buttons) */}
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
                 
                 {/* LEFT PANEL: Customer Selection (Fixed) + Items To Bill (Scrollable) + Bill Breakdown (Collapsible) */}
                 <div className="flex-1 flex flex-col h-full overflow-hidden p-4 xl:p-6 space-y-4 xl:space-y-6">
@@ -1071,18 +1107,57 @@ const InlineReviewBill = ({
                                                     <div className={`flex items-center gap-0.5 ${theme.pageBg} p-0.5 rounded-lg border ${theme.borderLight}`}>
                                                         <button
                                                             type="button"
-                                                            onClick={() => updateItemQuantity && updateItemQuantity(primaryIndex, -1)}
-                                                            className={`w-6 h-6 rounded ${theme.surfaceBg} ${theme.textPrimary} flex items-center justify-center font-black shadow-2xs hover:bg-indigo-50 hover:text-indigo-600 transition-colors`}
+                                                            onClick={() => {
+                                                                const k = (item.id || item._id) + "_" + idx;
+                                                                setQtyInputs(prev => { const n = { ...prev }; delete n[k]; return n; });
+                                                                updateItemQuantity && updateItemQuantity(primaryIndex, -1);
+                                                            }}
+                                                            className={`w-6 h-6 rounded ${theme.surfaceBg} ${theme.textPrimary} flex items-center justify-center font-black shadow-2xs hover:bg-indigo-50 hover:text-indigo-600 transition-colors cursor-pointer`}
                                                         >
                                                             <Minus size={11} />
                                                         </button>
-                                                        <span className={`w-6 text-center text-xs font-black ${theme.textPrimary}`}>
-                                                            {item.quantity}
-                                                        </span>
+                                                        <input
+                                                            type="number"
+                                                            min="0.001"
+                                                            step="any"
+                                                            value={qtyInputs[(item.id || item._id) + "_" + idx] !== undefined ? qtyInputs[(item.id || item._id) + "_" + idx] : item.quantity}
+                                                            onFocus={(e) => {
+                                                                e.target.select();
+                                                                const k = (item.id || item._id) + "_" + idx;
+                                                                setQtyInputs(prev => ({ ...prev, [k]: String(item.quantity) }));
+                                                            }}
+                                                            onChange={(e) => {
+                                                                const k = (item.id || item._id) + "_" + idx;
+                                                                setQtyInputs(prev => ({ ...prev, [k]: e.target.value }));
+                                                            }}
+                                                            onBlur={(e) => {
+                                                                const k = (item.id || item._id) + "_" + idx;
+                                                                let parsed = parseFloat(e.target.value);
+                                                                if (!isNaN(parsed) && parsed > 0) {
+                                                                    const delta = parsed - item.quantity;
+                                                                    if (delta !== 0 && updateItemQuantity) {
+                                                                        updateItemQuantity(primaryIndex, delta);
+                                                                    }
+                                                                }
+                                                                setQtyInputs(prev => { const n = { ...prev }; delete n[k]; return n; });
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    e.target.blur();
+                                                                }
+                                                            }}
+                                                            className={`w-8 px-0.5 text-center text-xs font-black ${theme.textPrimary} bg-transparent outline-none focus:bg-white dark:focus:bg-slate-800 rounded focus:ring-1 focus:ring-indigo-500`}
+                                                            title="Click to type quantity"
+                                                        />
                                                         <button
                                                             type="button"
-                                                            onClick={() => updateItemQuantity && updateItemQuantity(primaryIndex, 1)}
-                                                            className="w-6 h-6 rounded bg-indigo-600 text-white flex items-center justify-center font-black shadow-2xs hover:bg-indigo-700 transition-colors"
+                                                            onClick={() => {
+                                                                const k = (item.id || item._id) + "_" + idx;
+                                                                setQtyInputs(prev => { const n = { ...prev }; delete n[k]; return n; });
+                                                                updateItemQuantity && updateItemQuantity(primaryIndex, 1);
+                                                            }}
+                                                            className="w-6 h-6 rounded bg-indigo-600 text-white flex items-center justify-center font-black shadow-2xs hover:bg-indigo-700 transition-colors cursor-pointer"
                                                         >
                                                             <Plus size={11} />
                                                         </button>
@@ -1346,8 +1421,8 @@ const InlineReviewBill = ({
                     </div>
                 </div>
 
-                {/* RIGHT PANEL: PAYMENT METHOD & SETTLEMENT (MATCHING PAYMENTMODAL FLOW) */}
-                <div className={`w-[400px] xl:w-[460px] 2xl:w-[500px] border-l ${theme.borderLight} ${theme.surfaceBg} flex flex-col shrink-0 h-full overflow-hidden`}>
+                {/* RIGHT PANEL: PAYMENT METHOD & SETTLEMENT */}
+                <div className={`w-full lg:w-[400px] xl:w-[460px] 2xl:w-[500px] border-t lg:border-t-0 lg:border-l ${theme.borderLight} ${theme.surfaceBg} flex flex-col shrink-0 h-full overflow-hidden`}>
                     
                     {/* TOP HEADER */}
                     <div className={`p-4 xl:p-5 border-b ${theme.borderLight} flex items-center justify-between shrink-0 shadow-2xs`}>
@@ -1604,21 +1679,46 @@ const InlineReviewBill = ({
                     </div>
 
                     {/* FIXED/STICKY BOTTOM ACTION FOOTER (ALWAYS VISIBLE, NO SCROLL REQUIRED) */}
-                    <div className={`p-4 xl:p-5 border-t ${theme.borderLight} ${theme.surfaceBg} shrink-0 shadow-lg`}>
-                        <div className="grid grid-cols-2 gap-3">
+                    <div className={`p-2.5 xl:p-3.5 border-t ${theme.borderLight} ${theme.surfaceBg} shrink-0 shadow-lg`}>
+                        {/* Compact toggle: Checkout without print */}
+                        <div className="flex items-center justify-between pb-2 px-1">
+                            <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
+                                <span className="relative inline-flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={checkoutWithoutPrint}
+                                        onChange={(e) => setCheckoutWithoutPrint(e.target.checked)}
+                                        className="sr-only peer"
+                                    />
+                                    <span className="w-7 h-4 bg-gray-300 dark:bg-gray-600 rounded-full peer peer-checked:bg-emerald-600 dark:peer-checked:bg-emerald-500 transition-colors block relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-3 shadow-xs"></span>
+                                </span>
+                                <span className={`text-[11px] font-black tracking-tight transition-colors ${checkoutWithoutPrint ? theme.textPrimary : theme.textMuted} group-hover:opacity-90`}>
+                                    Checkout without print
+                                </span>
+                            </label>
+                            {checkoutWithoutPrint && (
+                                <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-900/40">
+                                    No Print
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-2 xl:gap-3 w-full">
                             <button
                                 type="button"
                                 onClick={() => onPrintBill && onPrintBill(printFormat)}
-                                className={`py-3.5 ${theme.mode === 'dark' ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-slate-900 hover:bg-slate-800 text-white'} rounded-2xl font-black text-sm uppercase tracking-wider shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer`}
+                                className={`py-3 xl:py-3.5 px-3 sm:px-4 xl:px-5 shrink-0 ${theme.mode === 'dark' ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-slate-900 hover:bg-slate-800 text-white'} rounded-xl xl:rounded-2xl font-black text-xs xl:text-sm uppercase tracking-wide shadow-md flex items-center justify-center gap-1.5 xl:gap-2 transition-all active:scale-95 cursor-pointer whitespace-nowrap`}
+                                title="Print Bill without checking out"
                             >
-                                <Printer size={18} /> Print Bill
+                                <Printer size={16} className="shrink-0" />
+                                <span>Print Bill</span>
                             </button>
 
                             <button
                                 type="button"
                                 onClick={handleCheckoutSubmit}
                                 disabled={isProcessingPayment || !!zeroPriceItem}
-                                className={`py-3.5 rounded-2xl font-black text-sm uppercase tracking-wider text-white shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                                className={`flex-1 min-w-0 py-3 xl:py-3.5 px-3 xl:px-4 rounded-xl xl:rounded-2xl font-black text-xs xl:text-sm uppercase tracking-tight xl:tracking-wide text-white shadow-lg flex items-center justify-center gap-1.5 xl:gap-2 transition-all cursor-pointer ${
                                     isProcessingPayment || !!zeroPriceItem
                                         ? "bg-gray-400 cursor-not-allowed opacity-75"
                                         : isCreditPurchase
@@ -1627,17 +1727,23 @@ const InlineReviewBill = ({
                                 }`}
                             >
                                 {isProcessingPayment ? (
-                                    <>
-                                        <Loader2 size={18} className="animate-spin" /> Processing...
-                                    </>
+                                    <div className="flex items-center justify-center gap-2">
+                                        <Loader2 size={16} className="animate-spin shrink-0" />
+                                        <span>Processing...</span>
+                                    </div>
                                 ) : isCreditPurchase ? (
-                                    <>
-                                        Finalize Credit Purchase
-                                    </>
+                                    <div className="flex items-center justify-center gap-2 min-w-0">
+                                        {!checkoutWithoutPrint && <Printer size={16} className="shrink-0" />}
+                                        <span className="truncate">{checkoutWithoutPrint ? "Finalize" : "Finalize & Print"}</span>
+                                    </div>
                                 ) : (
-                                    <>
-                                        Checkout • {formatCurrency(finalBillDetails.finalTotal)}
-                                    </>
+                                    <div className="flex items-center justify-center gap-1.5 xl:gap-2 min-w-0 w-full">
+                                        {!checkoutWithoutPrint && <Printer size={16} className="shrink-0" />}
+                                        <span className="truncate">{checkoutWithoutPrint ? "Checkout" : "Checkout & Print"}</span>
+                                        <span className="shrink-0 whitespace-nowrap bg-black/20 text-white px-2 py-0.5 rounded-lg text-xs font-black">
+                                            {formatCurrency(finalBillDetails.finalTotal)}
+                                        </span>
+                                    </div>
                                 )}
                             </button>
                         </div>
