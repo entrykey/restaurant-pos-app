@@ -25,7 +25,8 @@ const TableCard = ({
   onSelect,
   totalLabel,
   onMarkArrived,
-  onCancelReservation
+  onCancelReservation,
+  onContextMenu
 }) => {
   const { theme, themeName } = useTheme();
   const { canModule } = usePermission();
@@ -40,6 +41,12 @@ const TableCard = ({
       onClick={() => {
         if (table.isMaintenance && !isAdmin) return;
         onSelect?.(table);
+      }}
+      onContextMenu={(e) => {
+        if (table.isMaintenance && !isAdmin) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onContextMenu?.(e, table);
       }}
       className={`min-h-[140px] md:min-h-[160px] p-5 rounded-[32px] cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg flex flex-col relative group ${table.isMaintenance
         ? (themeName === 'dark' ? "bg-red-900/20 border-2 border-red-800/50" : "bg-red-50 border-2 border-red-200")

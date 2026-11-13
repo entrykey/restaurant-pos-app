@@ -86,8 +86,63 @@ const CATEGORY_RULES = [
         ],
         icon: 'FileText',
         color: 'slate'
+    },
+    {
+        name: 'Rent',
+        keywords: [
+            'rent', 'room rent', 'shop rent', 'building rent', 'lease', 
+            'rental', 'landlord', 'tenancy', 'premise'
+        ],
+        icon: 'Building',
+        color: 'indigo'
+    },
+    {
+        name: 'Salary',
+        keywords: [
+            'salary', 'wages', 'advance', 'payroll', 'staff salary', 
+            'employee', 'bonus', 'stipend'
+        ],
+        icon: 'Coins',
+        color: 'emerald'
+    },
+    {
+        name: 'LPG Gas',
+        keywords: [
+            'cylinder', 'gas cylinder', 'commercial cylinder', 'indane', 
+            'bharat gas', 'hp gas', 'super gas', 'lpg'
+        ],
+        icon: 'Flame',
+        color: 'orange'
     }
 ];
+
+/**
+ * Normalizes any date string (DD/MM/YYYY, DD-MM-YYYY, YYYY/MM/DD, etc.) into YYYY-MM-DD
+ * so it cleanly binds to HTML5 <input type="date"> elements.
+ */
+export const normalizeToIsoDate = (rawDateStr) => {
+    if (!rawDateStr) return new Date().toISOString().split('T')[0];
+    const s = String(rawDateStr).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const ymd = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (ymd) {
+        return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
+    }
+    const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+    if (dmy) {
+        return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+    }
+    const dmyShort = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2})$/);
+    if (dmyShort) {
+        const fullYear = parseInt(dmyShort[3], 10) > 50 ? `19${dmyShort[3]}` : `20${dmyShort[3]}`;
+        return `${fullYear}-${dmyShort[2].padStart(2, '0')}-${dmyShort[1].padStart(2, '0')}`;
+    }
+    const parsed = new Date(s);
+    if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString().split('T')[0];
+    }
+    return new Date().toISOString().split('T')[0];
+};
 
 /**
  * Extract amount, date, category and supplier from raw OCR text & Python metadata
@@ -149,7 +204,7 @@ export const parseExpenseOcrData = (rawText = '', extractedMeta = {}) => {
     const amountCandidates = [];
 
     // Pattern 1: Rs. Ps. Two-column format (e.g. "4698 45", "4698.45", "4698|45", "4698 - 45", "4698/45")
-    const twoColRegex = /\b([1-9]\d{2,5})\s*[|\./\-\s]\s*(\d{2})\b/g;
+    const twoColRegex = /\b([1-9]\d{2,5})\s*[|./\-\s]\s*(\d{2})\b/g;
     let mTwoCol;
     while ((mTwoCol = twoColRegex.exec(cleanNumbersText)) !== null) {
         const rupees = parseFloat(mTwoCol[1]);
@@ -160,8 +215,8 @@ export const parseExpenseOcrData = (rawText = '', extractedMeta = {}) => {
         }
     }
 
-    // Pattern 2: Explicit amount labels (e.g. Amount Rs. 4698.45, Net: 4698, Total: 4698)
-    const labelRegex = /(?:total|amount|amt|net|sale|cash|inr|rs|paid|grand total)[^\d\n]*?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/gi;
+    // Pattern 2: Explicit amount labels (e.g. Amount Rs. 4698.45, Net: 4698, Total: 4698, ₹20,000)
+    const labelRegex = /(?:total|amount|amt|net|sale|cash|inr|rs|paid|grand total|bill amount|total payable|net payable|invoice total|payable|₹)[^\d\n]*?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/gi;
     let mLabel;
     while ((mLabel = labelRegex.exec(cleanNumbersText)) !== null) {
         const val = parseFloat(mLabel[1].replace(/,/g, ''));
@@ -192,7 +247,7 @@ export const parseExpenseOcrData = (rawText = '', extractedMeta = {}) => {
     const qtyCandidates = [];
 
     // Pattern Q1: Explicit Qty / Litres labels (e.g. "Diesel 45.00 Litre", "Qty 45.00", "45.00 Ltr")
-    const qtyLabelRegex = /(?:qty|quantity|litres?|ltrs?|volume|vol|petrol|diesel)[^\d\n]*?(\d+(?:[\.\-]\d{1,3})?)/gi;
+    const qtyLabelRegex = /(?:qty|quantity|litres?|ltrs?|volume|vol|petrol|diesel)[^\d\n]*?(\d+(?:[.\-]\d{1,3})?)/gi;
     let mQtyLabel;
     while ((mQtyLabel = qtyLabelRegex.exec(cleanNumbersText)) !== null) {
         const val = parseFloat(mQtyLabel[1].replace('-', '.'));
@@ -202,7 +257,7 @@ export const parseExpenseOcrData = (rawText = '', extractedMeta = {}) => {
     }
 
     // Pattern Q2: Float or dash-decimals with .00 or -00 e.g. 45.00, 45-00, 45 00
-    const qtyFloatRegex = /\b([1-9]\d{0,2})[\.\-\s](00|50|0)\b/g;
+    const qtyFloatRegex = /\b([1-9]\d{0,2})[.\-\s](00|50|0)\b/g;
     let mQtyFloat;
     while ((mQtyFloat = qtyFloatRegex.exec(cleanNumbersText)) !== null) {
         const val = parseFloat(mQtyFloat[1]);
@@ -260,11 +315,12 @@ export const parseExpenseOcrData = (rawText = '', extractedMeta = {}) => {
             date = new Date().toISOString().split('T')[0];
         }
     }
+    date = normalizeToIsoDate(date);
 
     // 4. Extract Bill / Receipt / Invoice Number
     let invoiceNumber = extractedMeta?.invoiceNumber || '';
     if (!invoiceNumber) {
-        const invMatch = text.match(/(?:inv(?:oice)?|bill|rcpt|receipt|slip|memo|no)\s*(?:no|#|num)?[:.\s]*([A-Z0-9\-_/]+)/i);
+        const invMatch = text.match(/(?:inv(?:oice)?|bill|rcpt|receipt|slip|memo|consumer|rr|account|no)\s*(?:no|#|num)?[:.\s]*([A-Z0-9\-_/]+)/i);
         if (invMatch) {
             invoiceNumber = invMatch[1].trim();
         } else {
@@ -314,7 +370,7 @@ export const parseExpenseOcrData = (rawText = '', extractedMeta = {}) => {
     // 9. Vendor / Supplier Name
     let vendorName = extractedMeta?.supplierName || supplierName || '';
     if (!vendorName) {
-        const vendorMatch = text.match(/((?:M\/[Ss]\.?\s*)?[A-Za-z0-9\s\.\-&]+?(?:Fuels|Petroleum|Dealer|Station|Service|Bakers|Restaurant|Cafe|Stores|Automobile))/i);
+        const vendorMatch = text.match(/((?:M\/[Ss]\.?\s*)?[A-Za-z0-9\s.\-&]+?(?:Fuels|Petroleum|Dealer|Station|Service|Bakers|Restaurant|Cafe|Stores|Automobile|Electricity|Power|Board|Corporation|Ltd|Limited|Enterprises|Agency|Traders|Pvt\s*Ltd))/i);
         if (vendorMatch) {
             vendorName = vendorMatch[1].trim();
         } else if (cleanLowerText.includes('petrol') || cleanLowerText.includes('fuels') || cleanLowerText.includes('diesel')) {
@@ -371,11 +427,208 @@ export const parseExpenseOcrData = (rawText = '', extractedMeta = {}) => {
 };
 
 /**
- * Scan an expense bill or receipt image/PDF.
- * Tries the project's Python OCR microservice first.
- * If Python OCR service is offline, automatically falls back to browser-side Tesseract.js.
+ * Generate a preview thumbnail (Data URL) of page 1 of any PDF document.
+ */
+export const generatePdfThumbnail = async (file) => {
+    try {
+        if (!file || typeof document === 'undefined') return null;
+        const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
+        if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions?.workerSrc) {
+            try {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = window.location.origin + '/pdf.worker.min.js';
+            } catch (_) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
+            }
+        }
+        const arrayBuffer = file.arrayBuffer ? await file.arrayBuffer() : await new Response(file).arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({
+            data: new Uint8Array(arrayBuffer)
+        });
+        const pdfDoc = await loadingTask.promise;
+        const page = await pdfDoc.getPage(1);
+        const viewport = page.getViewport({ scale: 1.2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        return canvas.toDataURL('image/jpeg', 0.82);
+    } catch (err) {
+        console.warn('Could not generate PDF thumbnail:', err);
+        return null;
+    }
+};
+
+/**
+ * Extract digital text and/or OCR from PDF pages using pdfjs-dist and Tesseract.js.
+ * Handles both:
+ * 1. Digital vector PDFs (instant text layer extraction)
+ * 2. Scanned image/thermal slips saved as PDF (rasterizes pages to canvas and runs Tesseract OCR)
+ */
+export const extractPdfBillData = async (file, onProgress) => {
+    if (onProgress) onProgress(15, 'Reading PDF document...');
+
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
+    if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions?.workerSrc) {
+        try {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = window.location.origin + '/pdf.worker.min.js';
+        } catch (_) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
+        }
+    }
+
+    const arrayBuffer = file.arrayBuffer ? await file.arrayBuffer() : await new Response(file).arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(arrayBuffer)
+    });
+    const pdfDoc = await loadingTask.promise;
+    const numPages = Math.min(pdfDoc.numPages || 1, 4);
+
+    let digitalText = '';
+    let thumbnailDataUrl = null;
+    const pagesList = [];
+
+    if (onProgress) onProgress(25, `Inspecting ${numPages} page(s)...`);
+
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdfDoc.getPage(pageNum);
+        pagesList.push(page);
+
+        // A. Extract embedded digital text
+        try {
+            const textContent = await page.getTextContent();
+            const pageText = (textContent?.items || [])
+                .map(it => it.str || '')
+                .filter(Boolean)
+                .join(' ');
+            if (pageText.trim()) {
+                digitalText += pageText + '\n';
+            }
+        } catch (textErr) {
+            console.warn(`Could not extract digital text from page ${pageNum}:`, textErr);
+        }
+
+        // B. Generate preview thumbnail from page 1
+        if (pageNum === 1 && typeof document !== 'undefined') {
+            try {
+                const thumbViewport = page.getViewport({ scale: 1.2 });
+                const thumbCanvas = document.createElement('canvas');
+                thumbCanvas.width = Math.floor(thumbViewport.width);
+                thumbCanvas.height = Math.floor(thumbViewport.height);
+                const thumbCtx = thumbCanvas.getContext('2d');
+                await page.render({ canvasContext: thumbCtx, viewport: thumbViewport }).promise;
+                thumbnailDataUrl = thumbCanvas.toDataURL('image/jpeg', 0.82);
+            } catch (thumbErr) {
+                console.warn('Could not generate PDF thumbnail:', thumbErr);
+            }
+        }
+    }
+
+    // If the PDF has readable digital text (e.g. utility bills, generated GST invoices, petrol slips)
+    if (digitalText.trim().length >= 25) {
+        if (onProgress) onProgress(85, 'Extracted text from digital invoice...');
+        return {
+            text: digitalText,
+            thumbnailUrl: thumbnailDataUrl,
+            mode: 'digital-pdf'
+        };
+    }
+
+    // Otherwise, this PDF contains a scanned image (thermal slip photo, paper receipt scanned into PDF).
+    // Render page(s) to canvas at 2x scale and run Tesseract OCR!
+    if (onProgress) onProgress(40, 'Scanned PDF detected. Running OCR on pages...');
+    const Tesseract = await import('tesseract.js');
+    let ocrText = '';
+
+    for (let i = 0; i < pagesList.length; i++) {
+        const page = pagesList[i];
+        if (onProgress) onProgress(45 + Math.round((i / pagesList.length) * 45), `Scanning receipt page ${i + 1}...`);
+
+        if (typeof document !== 'undefined') {
+            const renderViewport = page.getViewport({ scale: 2.0 });
+            const ocrCanvas = document.createElement('canvas');
+            ocrCanvas.width = Math.floor(renderViewport.width);
+            ocrCanvas.height = Math.floor(renderViewport.height);
+            const ocrCtx = ocrCanvas.getContext('2d');
+            await page.render({ canvasContext: ocrCtx, viewport: renderViewport }).promise;
+
+            if (!thumbnailDataUrl && i === 0) {
+                thumbnailDataUrl = ocrCanvas.toDataURL('image/jpeg', 0.82);
+            }
+
+            const ocrResult = await Tesseract.recognize(ocrCanvas, 'eng', {
+                logger: (m) => {
+                    if (m.status === 'recognizing text' && onProgress) {
+                        const pct = Math.round(50 + (m.progress || 0) * 40);
+                        onProgress(pct, `Scanning bill text (${Math.round((m.progress || 0) * 100)}%)...`);
+                    }
+                }
+            });
+
+            if (ocrResult?.data?.text) {
+                ocrText += ocrResult.data.text + '\n';
+            }
+        }
+    }
+
+    return {
+        text: ocrText.trim() || digitalText.trim(),
+        thumbnailUrl: thumbnailDataUrl,
+        mode: 'scanned-pdf-ocr'
+    };
+};
+
+/**
+ * Scan an expense bill or receipt (Image or PDF).
+ * 1. For PDF files: Uses Filepe AI or browser-side pdfjs extractor + OCR.
+ * 2. For Image files: Uses Filepe AI or browser-side Tesseract.js.
  */
 export const scanExpenseBill = async (file, onProgress) => {
+    const isPdf = file?.type === 'application/pdf' || 
+                  (typeof file?.name === 'string' && file.name.toLowerCase().endsWith('.pdf'));
+
+    // ── Case A: PDF Document (Digital vector PDF or Scanned raster PDF) ───
+    if (isPdf) {
+        // Attempt 1: Try Python OCR microservice if reachable
+        try {
+            if (onProgress) onProgress(15, 'Scanning invoice with Filepe AI...');
+            const response = await PurchaseService.scanInvoice(file);
+
+            if (response && response.success) {
+                if (onProgress) onProgress(90, 'Processing extracted expense parameters...');
+                const parsed = parseExpenseOcrData(
+                    response.raw_text || '',
+                    response.extracted_data || {}
+                );
+                const thumb = await generatePdfThumbnail(file);
+                return {
+                    ...parsed,
+                    thumbnailUrl: thumb,
+                    source: 'python-ocr'
+                };
+            }
+        } catch (pythonErr) {
+            console.warn('Python OCR unreachable for PDF, using intelligent browser PDF extractor:', pythonErr?.message);
+        }
+
+        // Attempt 2: Intelligent Browser PDF Extractor
+        try {
+            const pdfResult = await extractPdfBillData(file, onProgress);
+            if (onProgress) onProgress(92, 'Categorizing expense bill...');
+            const parsed = parseExpenseOcrData(pdfResult.text, {});
+
+            return {
+                ...parsed,
+                thumbnailUrl: pdfResult.thumbnailUrl,
+                source: pdfResult.mode || 'pdf-extractor'
+            };
+        } catch (pdfErr) {
+            console.error('All PDF parsing methods failed:', pdfErr);
+            throw new Error('Could not auto-read text from PDF bill. Please enter the amount and category manually.');
+        }
+    }
+
+    // ── Case B: Image Files (JPG, PNG, WebP) ──────────────────────────────
     // Attempt 1: Project's Python OCR service via backend proxy
     try {
         if (onProgress) onProgress(20, 'Processing with Filepe AI...');
@@ -396,7 +649,7 @@ export const scanExpenseBill = async (file, onProgress) => {
         console.warn('Python OCR service unreachable or returned error, falling back to Tesseract OCR:', pythonErr?.message);
     }
 
-    // Attempt 2: Client-side Tesseract.js fallback
+    // Attempt 2: Client-side Tesseract.js fallback for images
     try {
         if (onProgress) onProgress(40, 'Using smart fallback OCR engine...');
         const Tesseract = await import('tesseract.js');
@@ -445,5 +698,6 @@ export const COMMON_EXPENSE_CATEGORIES = [
     'Stationery & Office',
     'Salary',
     'Rent',
+    'LPG Gas',
     'Marketing'
 ];

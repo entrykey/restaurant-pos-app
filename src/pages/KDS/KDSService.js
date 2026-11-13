@@ -10,6 +10,10 @@ export const kdsService = {
         const response = await api.put(`/kitchen/kots/${kotId}/status`, { status, estimatedTime });
         return response.data;
     },
+    updateItemStatus: async (kotId, itemId, status) => {
+        const response = await api.put(`/kitchen/kots/${kotId}/items/${itemId}/status`, { status });
+        return response.data;
+    },
     markReady: async (kotId) => {
         const response = await api.put(`/kitchen/kots/${kotId}/status`, { status: 'READY' });
         return response.data;

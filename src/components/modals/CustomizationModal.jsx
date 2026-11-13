@@ -4,6 +4,7 @@ import Modal from "../ui/Modal";
 import { formatCurrency } from "../../utils/format";
 import { useTheme } from "../../context/ThemeContext";
 import { useScale } from "../../context/ScaleContext";
+import toast from "react-hot-toast";
 
 const CustomizationModal = ({
     isOpen,
@@ -265,7 +266,7 @@ const CustomizationModal = ({
                                             if (customWeightUnit === "g") {
                                                 const currentVal = parseFloat(customWeightInput);
                                                 if (!isNaN(currentVal) && currentVal > 0) {
-                                                    setCustomWeightInput(parseFloat((currentVal / 1000).toFixed(4)));
+                                                    setCustomWeightInput(String(parseFloat((currentVal / 1000).toFixed(4))));
                                                 }
                                                 setCustomWeightUnit("kg");
                                             }
@@ -283,7 +284,7 @@ const CustomizationModal = ({
                                             if (customWeightUnit === "kg") {
                                                 const currentVal = parseFloat(customWeightInput);
                                                 if (!isNaN(currentVal) && currentVal > 0) {
-                                                    setCustomWeightInput(parseFloat((currentVal * 1000).toFixed(2)));
+                                                    setCustomWeightInput(String(parseFloat((currentVal * 1000).toFixed(2))));
                                                 }
                                                 setCustomWeightUnit("g");
                                             }
@@ -311,15 +312,12 @@ const CustomizationModal = ({
                                     type="number"
                                     value={customWeightInput}
                                     onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (val === "") {
-                                            setCustomWeightInput("");
-                                        } else {
-                                            setCustomWeightInput(parseFloat(val));
-                                        }
+                                        setCustomWeightInput(e.target.value);
                                     }}
-                                    className={`flex-1 bg-transparent text-3xl font-black ${theme.textPrimary} outline-none w-20`}
-                                    step="0.05"
+                                    className={`flex-1 bg-transparent text-3xl font-black ${theme.textPrimary} outline-none w-28`}
+                                    step="any"
+                                    min="0.001"
+                                    placeholder="0.000"
                                     autoFocus
                                 />
                                 <span className={`font-bold ${theme.textMuted} uppercase`}>
@@ -412,7 +410,19 @@ const CustomizationModal = ({
 
                 <div className={`mt-6 pt-6 border-t ${theme.borderLight} ${theme.pageBg} -mx-6 -mb-6 p-6 md:rounded-b-[40px]`}>
                     <button
-                        onClick={onConfirm}
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.currentTarget?.blur();
+                            if (item.sellingType === "Weight") {
+                                const w = parseFloat(customWeightInput);
+                                if (isNaN(w) || w <= 0) {
+                                    toast.error("Please enter a valid weight greater than zero");
+                                    return;
+                                }
+                            }
+                            onConfirm();
+                        }}
                         className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-xl flex justify-between px-8 hover:bg-indigo-700 active:scale-95 transition-all"
                     >
                         <span>Add to Order</span>

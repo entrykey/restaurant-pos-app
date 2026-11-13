@@ -44,7 +44,8 @@ import PayInSheet from '../../components/modals/PayInSheet';
 import CommonTable from '../../components/CommonTable';
 import CommonDialog from '../../components/modals/CommonDialog';
 import ShareInvoiceModal from '../../components/modals/ShareInvoiceModal';
-import { printBillA4 } from '../../utils/print';
+import { printBill, printBillA4 } from '../../utils/print';
+import PrintFormatModal from '../../components/modals/PrintFormatModal';
 import { loadBillPrintSettings, buildPrintHeader, buildBillExtraInfo } from '../../utils/printSettingsUtils';
 import { getOrderPaymentDetails } from '../../utils/paymentUtils';
 
@@ -484,6 +485,8 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
     const [isPayInOpen, setIsPayInOpen] = useState(false);
     const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', type: 'danger', confirmText: '', onConfirm: null });
     const [expandedOrders, setExpandedOrders] = useState({});
+    const [printModalOrder, setPrintModalOrder] = useState(null);
+    const [isPrintLoading, setIsPrintLoading] = useState(false);
 
     const handleShareOrder = async (order) => {
         try {
@@ -501,8 +504,9 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
         }
     };
 
-    const handlePrintBill = async (order) => {
+    const handlePrintBill = async (order, format = 'thermal') => {
         try {
+            setIsPrintLoading(true);
             const orderFromBackend = await orderService.getOrderById(order._id);
             const activeBranch = branches?.find(b => b._id === (orderFromBackend?.branchId?._id || orderFromBackend?.branchId)) || branches?.[0];
             const extraInfo = buildBillExtraInfo(activeBranch, organization);
@@ -572,7 +576,8 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 ? payDetails.paymentMethod
                 : (payDetails.paymentStatus === 'PAID' ? (payDetails.paymentMethod || 'CASH') : null);
 
-            printBillA4({
+            const printer = format === 'a4' ? printBillA4 : printBill;
+            printer({
                 header,
                 meta,
                 customer: customerObj,
@@ -586,10 +591,12 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 paymentMethod: effectivePaymentMethod,
                 paymentStatus: payDetails.paymentStatus
             });
-            toast.success("Printing invoice...");
+            toast.success(`Printing ${format === 'a4' ? 'A4 invoice' : 'thermal receipt'}...`);
         } catch (err) {
             console.error("Print bill error:", err);
             toast.error("Failed to print bill: " + (err?.message || "Unknown error"));
+        } finally {
+            setIsPrintLoading(false);
         }
     };
 
@@ -1599,7 +1606,7 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                     )}
                                     {/* 🖨 Print bill */}
                                     <button
-                                        onClick={e => { e.stopPropagation(); handlePrintBill(order); }}
+                                        onClick={e => { e.stopPropagation(); setPrintModalOrder(order); }}
                                         className="p-2 text-blue-500 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 rounded-xl transition-all shadow-sm"
                                         title="Print receipt / bill"
                                     >
@@ -1801,7 +1808,7 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                         <CreditCard size={14} />
                                     </button>
                                 )}
-                                <button onClick={e => { e.stopPropagation(); handlePrintBill(order); }} className="p-1.5 text-blue-500 bg-blue-50 dark:bg-blue-900/30 rounded-lg" title="Print receipt">
+                                <button onClick={e => { e.stopPropagation(); setPrintModalOrder(order); }} className="p-1.5 text-blue-500 bg-blue-50 dark:bg-blue-900/30 rounded-lg" title="Print receipt">
                                     <Printer size={14} />
                                 </button>
                                 <button onClick={e => { e.stopPropagation(); handleShareOrder(order); }} className="p-1.5 text-purple-600 bg-purple-50 dark:bg-purple-900/30 rounded-lg" title="Share invoice">
@@ -1866,8 +1873,20 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 theme={theme}
                 formatCurrency={fmt}
                 formatDate={formatDate}
-                onPrint={handlePrintBill}
+                onPrint={(order) => setPrintModalOrder(order)}
                 onShare={handleShareOrder}
+            />
+
+            <PrintFormatModal
+                isOpen={!!printModalOrder}
+                onClose={() => setPrintModalOrder(null)}
+                order={printModalOrder}
+                loading={isPrintLoading}
+                onSelectFormat={async (format) => {
+                    const target = printModalOrder;
+                    setPrintModalOrder(null);
+                    await handlePrintBill(target, format);
+                }}
             />
 
             <ShareInvoiceModal
