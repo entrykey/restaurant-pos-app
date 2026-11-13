@@ -1019,10 +1019,12 @@ const TakeawayOrder = ({
                     orderItems={currentOrder.items}
                     settings={settings}
                     onFinalizePayment={async (method, billDetails, totalPaid, custName, custPhone, payments) => {
+                        let res = null;
                         if (onFinalizePayment) {
-                            await onFinalizePayment(method, billDetails, totalPaid, custName, custPhone, payments);
+                            res = await onFinalizePayment(method, billDetails, totalPaid, custName, custPhone, payments);
                         }
                         setIsInlineCheckout(false);
+                        return res;
                     }}
                     onPrintBill={handlePrintReceipt}
                     hasPermission={hasPermission}

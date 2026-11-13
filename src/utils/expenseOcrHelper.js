@@ -247,7 +247,7 @@ export const parseExpenseOcrData = (rawText = '', extractedMeta = {}) => {
     const qtyCandidates = [];
 
     // Pattern Q1: Explicit Qty / Litres labels (e.g. "Diesel 45.00 Litre", "Qty 45.00", "45.00 Ltr")
-    const qtyLabelRegex = /(?:qty|quantity|litres?|ltrs?|volume|vol|petrol|diesel)[^\d\n]*?(\d+(?:[.\-]\d{1,3})?)/gi;
+    const qtyLabelRegex = /(?:qty|quantity|litres?|ltrs?|volume|vol|petrol|diesel)[^\d\n]*?(\d+(?:[.-]\d{1,3})?)/gi;
     let mQtyLabel;
     while ((mQtyLabel = qtyLabelRegex.exec(cleanNumbersText)) !== null) {
         const val = parseFloat(mQtyLabel[1].replace('-', '.'));
