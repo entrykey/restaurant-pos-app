@@ -1007,48 +1007,63 @@ const AppContent = () => {
         };
     };
 
-    const handlePrintReceipt = async (format = "thermal") => {
+    const handlePrintReceipt = async (format = "thermal", specificOrderId = null, overridePaymentDetails = null) => {
         try {
-            const table = !isTakeaway
-                ? tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))
-                : null;
-            const currentOrder = isTakeaway ? takeawayOrder : (table?.order || { items: [] });
-            const orderItems = currentOrder.items || activeOrderItems || [];
-            if (orderItems.length === 0) return;
+            let orderId = specificOrderId;
+            let orderFromBackend = null;
 
-            let orderId = currentOrder.orderId;
-            if (!orderId) {
-                const activeDiscount = (isTakeaway ? takeawayBillDiscount : billDiscount) || { type: 'flat', value: 0 };
-                const billDetails = calculateBillDetails(
-                    orderItems,
-                    activeDiscount,
-                    settings?.defaultTaxPercent || 0,
-                    true, // autoRound
-                    isTakeaway ? exchangeCredit : 0,
-                    branchStateCode,
-                    null,
-                    loyaltyDiscount?.amount || 0
-                );
-
-                const created = await orderService.createOrder({
-                    shopId: currentShopId,
-                    branchId: getResolvedBranchId(),
-                    businessType: businessType || "RESTAURANT",
-                    orderType: activeOrderType,
-                    customerId: selectedCustomer?._id || null,
-                    tableId: !isTakeaway ? table?._id || table?.id : null,
-                    items: buildOrderPayloadItems(orderItems),
-                    ...buildOrderTotalsFromBill(billDetails),
-                    createdBy: currentUser._id,
-                    customerName: takeawayCustName || "",
-                    customerPhone: takeawayCustPhone || ""
-                });
-
-                orderId = created?._id;
+            if (orderId) {
+                try {
+                    orderFromBackend = await orderService.getOrderById(orderId);
+                } catch (fetchErr) {
+                    console.warn("Could not fetch order by specificOrderId:", fetchErr);
+                }
             }
 
-            if (!orderId) return;
-            const orderFromBackend = await orderService.getOrderById(orderId);
+            if (!orderFromBackend) {
+                const table = !isTakeaway
+                    ? tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))
+                    : null;
+                const currentOrder = isTakeaway ? takeawayOrder : (table?.order || { items: [] });
+                const orderItems = currentOrder.items || activeOrderItems || [];
+                if (orderItems.length === 0 && !specificOrderId) return;
+
+                orderId = currentOrder.orderId;
+                if (!orderId) {
+                    const activeDiscount = (isTakeaway ? takeawayBillDiscount : billDiscount) || { type: 'flat', value: 0 };
+                    const billDetails = calculateBillDetails(
+                        orderItems,
+                        activeDiscount,
+                        settings?.defaultTaxPercent || 0,
+                        true, // autoRound
+                        isTakeaway ? exchangeCredit : 0,
+                        branchStateCode,
+                        null,
+                        loyaltyDiscount?.amount || 0
+                    );
+
+                    const created = await orderService.createOrder({
+                        shopId: currentShopId,
+                        branchId: getResolvedBranchId(),
+                        businessType: businessType || "RESTAURANT",
+                        orderType: activeOrderType,
+                        customerId: selectedCustomer?._id || null,
+                        tableId: !isTakeaway ? table?._id || table?.id : null,
+                        items: buildOrderPayloadItems(orderItems),
+                        ...buildOrderTotalsFromBill(billDetails),
+                        createdBy: currentUser._id,
+                        customerName: takeawayCustName || "",
+                        customerPhone: takeawayCustPhone || ""
+                    });
+
+                    orderId = created?._id;
+                }
+
+                if (!orderId) return;
+                orderFromBackend = await orderService.getOrderById(orderId);
+            }
+
+            if (!orderFromBackend) return;
 
             const backendItems = orderFromBackend?.items || [];
             const itemsForPrint = backendItems.map((it) => ({
@@ -1061,6 +1076,12 @@ const AppContent = () => {
             const payDetails = getOrderPaymentDetails(orderFromBackend);
             const backendGrand = Number(orderFromBackend?.grandTotal || 0);
 
+            // Prioritize overridePaymentDetails if provided (e.g. fresh from checkout)
+            const finalPayStatus = overridePaymentDetails?.paymentStatus || payDetails.paymentStatus;
+            const finalPaidAmt = overridePaymentDetails?.paidAmount !== undefined ? overridePaymentDetails.paidAmount : payDetails.paidAmount;
+            const finalBalAmt = overridePaymentDetails?.balanceAmount !== undefined ? overridePaymentDetails.balanceAmount : payDetails.balanceAmount;
+            const finalPayMethod = overridePaymentDetails?.paymentMethod || payDetails.paymentMethod;
+
             const totals = {
                 subtotal: orderFromBackend?.subtotal ?? 0,
                 discountAmount: orderFromBackend?.discountTotal ?? 0,
@@ -1068,15 +1089,17 @@ const AppContent = () => {
                 taxBreakdown: orderFromBackend?.taxBreakdown ?? null,
                 roundOff: 0,
                 finalTotal: backendGrand,
-                paidAmount: payDetails.paidAmount,
-                remainingBalance: payDetails.balanceAmount,
-                paymentStatus: payDetails.paymentStatus,
+                paidAmount: finalPaidAmt,
+                remainingBalance: finalBalAmt,
+                paymentStatus: finalPayStatus,
             };
 
             const orderType = orderFromBackend?.orderType || activeOrderType;
             const isDirectOrWholesale = orderType === "DIRECT_SALE" || orderType === "WHOLESALE";
+            const orderTableId = orderFromBackend?.tableId?._id || orderFromBackend?.tableId || activeTableId;
+            const matchedTable = orderTableId ? tables.find(t => String(t._id || t.id) === String(orderTableId)) : null;
             const tableLabelName = !isDirectOrWholesale
-                ? (!isTakeaway ? (table?.name || activeTable?.name || "") : (orderType === "TAKEAWAY" ? "Takeaway" : ""))
+                ? (matchedTable?.name || orderFromBackend?.tableName || (orderType === "TAKEAWAY" ? "Takeaway" : ""))
                 : "";
 
             const tableLabel = tableLabelName ? `Table: ${tableLabelName}` : "";
@@ -1113,9 +1136,9 @@ const AppContent = () => {
             const billSettings = await loadBillPrintSettings(currentShopId, getResolvedBranchId());
             const extraInfo = buildBillExtraInfo(activeBranch, organization);
 
-            const effectivePaymentMethod = payDetails.paidAmount > 0
-                ? payDetails.paymentMethod
-                : (payDetails.paymentStatus === 'PAID' ? (payDetails.paymentMethod || 'CASH') : null);
+            const effectivePaymentMethod = finalPaidAmt > 0
+                ? finalPayMethod
+                : (finalPayStatus === 'PAID' ? (finalPayMethod || 'CASH') : null);
 
             const printer = format === "a4" ? printBillA4 : printBill;
             printer({
@@ -1140,7 +1163,7 @@ const AppContent = () => {
                 billSettings,
                 extraInfo,
                 paymentMethod: effectivePaymentMethod,
-                paymentStatus: payDetails.paymentStatus,
+                paymentStatus: finalPayStatus,
             });
         } catch (e) {
             console.error("Print bill failed:", e);
@@ -2361,9 +2384,21 @@ const AppContent = () => {
             if (!selectedCustomer?._id) {
                 toast.success("Order completed successfully!");
             }
+
+            return {
+                success: true,
+                orderId: currentOrderId,
+                _id: currentOrderId,
+                paymentStatus,
+                paidAmount: finalPaidAmount,
+                totalAmount: billDetails.finalTotal,
+                paymentMethod: method,
+                payments
+            };
         } catch (err) {
             console.error("Failed to finalize order / payment:", err);
             setSalesHistory((prev) => [...prev, saleRecord]);
+            throw err;
         }
     };
 
