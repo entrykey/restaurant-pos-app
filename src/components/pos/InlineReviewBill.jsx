@@ -636,16 +636,8 @@ const InlineReviewBill = ({
 
             const primaryMethod = selectedPayments[0]?.method?.id?.toUpperCase() || activeMethodId.toUpperCase();
 
-            // Automatically generate bill print upon checkout unless "Checkout without print" is enabled
-            if (!checkoutWithoutPrint && onPrintBill) {
-                try {
-                    await onPrintBill(printFormat);
-                } catch (printErr) {
-                    console.error("Auto print failed on checkout:", printErr);
-                }
-            }
-
-            await onFinalizePayment(
+            // 1. Finalize payment in backend first so order is paid and completed
+            const finalizeResult = await onFinalizePayment(
                 primaryMethod,
                 finalBillWithCustomer,
                 totalPaidAmount,
@@ -653,6 +645,23 @@ const InlineReviewBill = ({
                 localCustPhone,
                 paymentsPayload
             );
+
+            // 2. Automatically generate bill print upon checkout with the finalized paid details
+            if (!checkoutWithoutPrint && onPrintBill) {
+                try {
+                    const finalizedOrderId = finalizeResult?.orderId || finalizeResult?._id || finalizeResult?.id;
+                    const isFullyPaid = totalPaidAmount >= (finalBillDetails.finalTotal - 0.01);
+                    await onPrintBill(printFormat, finalizedOrderId, {
+                        paymentStatus: isFullyPaid ? 'PAID' : (totalPaidAmount > 0 ? 'PARTIAL' : 'PENDING'),
+                        paidAmount: totalPaidAmount,
+                        balanceAmount: Math.max(0, finalBillDetails.finalTotal - totalPaidAmount),
+                        paymentMethod: primaryMethod,
+                        payments: paymentsPayload
+                    });
+                } catch (printErr) {
+                    console.error("Auto print failed on checkout:", printErr);
+                }
+            }
 
             toast.success(isCreditPurchase ? "Credit Purchase Finalized!" : "Order Checkout Completed Successfully!");
         } catch (err) {

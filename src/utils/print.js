@@ -304,7 +304,7 @@ export function printBill({
     formatSettings.includeTable !== false ? meta?.tableLabel : null,
     formatSettings.includeCustomer !== false ? meta?.customerLabel : null,
     meta?.printedAt,
-    formatSettings.includePaymentMethod && paymentMethod ? `Payment: ${paymentMethod}` : null,
+    formatSettings.includePaymentMethod !== false && paymentMethod ? `Payment: ${paymentMethod}` : null,
   ].filter(Boolean);
 
   const rows = (items || []).map((it, idx) => {
@@ -388,7 +388,8 @@ export function printBill({
   }
 
   const settlementHtml = isFullyPaid
-    ? `<div class="row bold" style="margin-top:6px; color:#16a34a;"><span>Payment Status</span><span>FULLY PAID</span></div>`
+    ? `<div class="row bold" style="margin-top:6px; color:#16a34a;"><span>Payment Status</span><span>FULLY PAID</span></div>
+       ${paymentMethod ? `<div class="row" style="margin-top:2px;"><span class="muted">Payment Mode</span><span>${escapeHtml(paymentMethod)}</span></div>` : ""}`
     : `<div class="row bold" style="margin-top:6px; color:${statusColor};"><span>Payment Status</span><span>${escapeHtml(statusText)}</span></div>
        ${paidAmt > 0 ? `<div class="row" style="margin-top:2px;"><span class="muted">Amount Paid</span><span>${escapeHtml(formatCurrency(paidAmt))}</span></div>` : ""}
        <div class="row bold" style="color:#dc2626; margin-top:2px;"><span>Balance Due</span><span>${escapeHtml(formatCurrency(remainingBal))}</span></div>`;
@@ -538,15 +539,16 @@ export function getBillA4Html({
     isFullyPaidA4 = true;
   }
 
-  const settlementHtmlA4 = isFullyPaidA4
-    ? `<div class="row bold" style="margin-top:8px; color:#16a34a; font-weight:900;"><span>Payment Status</span><span>FULLY PAID</span></div>`
-    : `<div class="row bold" style="margin-top:8px; color:${statusColorA4}; font-weight:900;"><span>Payment Status</span><span>${escapeHtml(statusTextA4)}</span></div>
-       ${paidAmtA4 > 0 ? `<div class="row" style="margin-top:4px;"><span class="muted">Amount Paid</span><span>${escapeHtml(formatCurrency(paidAmtA4))}</span></div>` : ''}
-       <div class="row bold" style="color:#dc2626; font-weight:900; margin-top:4px;"><span>Balance Due</span><span>${escapeHtml(formatCurrency(remainingBalA4))}</span></div>`;
-
   const paymentMethodLabel = (paidAmtA4 > 0 || isFullyPaidA4)
     ? (paymentMethod || 'CASH')
     : null;
+
+  const settlementHtmlA4 = isFullyPaidA4
+    ? `<div class="row bold" style="margin-top:8px; color:#16a34a; font-weight:900;"><span>Payment Status</span><span>FULLY PAID</span></div>
+       ${paymentMethodLabel ? `<div class="row" style="margin-top:4px;"><span class="muted">Payment Mode</span><span>${escapeHtml(paymentMethodLabel)}</span></div>` : ""}`
+    : `<div class="row bold" style="margin-top:8px; color:${statusColorA4}; font-weight:900;"><span>Payment Status</span><span>${escapeHtml(statusTextA4)}</span></div>
+       ${paidAmtA4 > 0 ? `<div class="row" style="margin-top:4px;"><span class="muted">Amount Paid</span><span>${escapeHtml(formatCurrency(paidAmtA4))}</span></div>` : ''}
+       <div class="row bold" style="color:#dc2626; font-weight:900; margin-top:4px;"><span>Balance Due</span><span>${escapeHtml(formatCurrency(remainingBalA4))}</span></div>`;
 
   return `<!DOCTYPE html>
 <html>

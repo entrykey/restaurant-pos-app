@@ -61,10 +61,12 @@ const PaymentModal = ({
                     orderItems={orderItems}
                     settings={settings}
                     onFinalizePayment={async (...args) => {
+                        let res = null;
                         if (onFinalizePayment) {
-                            await onFinalizePayment(...args);
+                            res = await onFinalizePayment(...args);
                         }
                         if (onClose) onClose();
+                        return res;
                     }}
                     onPrintBill={onPrintBill}
                     hasPermission={hasPermission}
