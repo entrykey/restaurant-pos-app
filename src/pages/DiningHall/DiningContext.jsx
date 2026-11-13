@@ -177,6 +177,22 @@ export const DiningProvider = ({ children }) => {
                         return String(kotOrderId) === String(activeOrderForTable._id);
                     });
 
+                    // Build accurate sent quantity map from existing KOTs for this order
+                    const sentQtyByItem = new Map();
+                    tableKots.forEach(kot => {
+                        (kot.items || []).forEach(kItem => {
+                            const kId = String(kItem.itemId?._id || kItem.itemId || kItem.id || '');
+                            const kName = String(kItem.itemName || kItem.itemId?.name || '').trim().toLowerCase();
+                            const qty = Number(kItem.quantity) || 0;
+                            if (kId) {
+                                sentQtyByItem.set(kId, (sentQtyByItem.get(kId) || 0) + qty);
+                            }
+                            if (kName) {
+                                sentQtyByItem.set(`name:${kName}`, (sentQtyByItem.get(`name:${kName}`) || 0) + qty);
+                            }
+                        });
+                    });
+
                     // Determine overall preparation status for the UI
                     let kotStatus = "pending";
                     if (tableKots.some(kot => kot.status === "PREPARING")) {
@@ -189,15 +205,30 @@ export const DiningProvider = ({ children }) => {
                         kotStatus = "preparing"; // Default to preparing if anything is pending
                     }
 
-                    const rawItems = (activeOrderForTable.items || []).map(item => ({
-                        ...item,
-                        id: item.itemId?._id || item.itemId,
-                        name: item.itemId?.name || item.itemName,
-                        price: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
-                        sellingPrice: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
-                        taxPercent: item.taxPercent ?? 0,
-                        sentQuantity: (tableKots.length > 0 ? (item.quantity ?? 0) : (item.sentQuantity ?? 0)),
-                    }));
+                    const rawItems = (activeOrderForTable.items || []).map(item => {
+                        const itemIdStr = String(item.itemId?._id || item.itemId || item.id || '');
+                        const itemNameStr = String(item.itemId?.name || item.itemName || item.name || '').trim().toLowerCase();
+                        let sentQty = 0;
+                        if (tableKots.length > 0) {
+                            if (itemIdStr && sentQtyByItem.has(itemIdStr)) {
+                                sentQty = sentQtyByItem.get(itemIdStr);
+                            } else if (itemNameStr && sentQtyByItem.has(`name:${itemNameStr}`)) {
+                                sentQty = sentQtyByItem.get(`name:${itemNameStr}`);
+                            } else if (item.sentQuantity !== undefined && item.sentQuantity !== null) {
+                                sentQty = Number(item.sentQuantity);
+                            }
+                        }
+
+                        return {
+                            ...item,
+                            id: item.itemId?._id || item.itemId,
+                            name: item.itemId?.name || item.itemName,
+                            price: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
+                            sellingPrice: item.price ?? item.itemId?.pricing?.sellingPrice ?? 0,
+                            taxPercent: item.taxPercent ?? 0,
+                            sentQuantity: sentQty,
+                        };
+                    });
 
                     // Deduplicate items to fix any duplicates from backend
                     const deduplicatedItems = deduplicateCartItems(rawItems);
@@ -399,10 +430,13 @@ export const DiningProvider = ({ children }) => {
     };
 
     const joinTables = async (tableIds) => {
-        if (!tableIds || tableIds.length < 2) return;
+        const uniqueIds = Array.from(new Set(tableIds || []));
+        if (uniqueIds.length < 2) return;
 
-        const primaryTableId = tableIds[0];
-        const secondaryTableIds = tableIds.slice(1);
+        // If one of the tables already has an active order, prioritize it as primary table to preserve order
+        const tableWithOrder = tables.find(t => uniqueIds.includes(t.id) && t.order);
+        const primaryTableId = tableWithOrder ? tableWithOrder.id : uniqueIds[0];
+        const secondaryTableIds = uniqueIds.filter(id => String(id) !== String(primaryTableId));
 
         try {
             await tableMergeService.mergeTables({

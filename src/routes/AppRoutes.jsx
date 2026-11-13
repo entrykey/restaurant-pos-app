@@ -219,6 +219,15 @@ const AppRoutes = (props) => {
   return (
     <div className="h-full flex-1 flex flex-col">
       <Routes>
+        <Route
+          path={`${prefix}/profile`}
+          element={<ProfileSettings />}
+        />
+        <Route
+          path="/profile"
+          element={<ProfileSettings />}
+        />
+
         {/* Generic Dashboard Route */}
         <Route
           path={`${prefix}/dashboard`}
@@ -447,7 +456,8 @@ const AppRoutes = (props) => {
           element={
             <ProtectedRoute routeKey="KDS">
               <KDS
-                tables={tables}
+                tables={props.tables || tables}
+                categories={props.categories || []}
                 onlineOrders={onlineOrders}
                 handleCompleteKOT={handleCompleteKOT}
                 handleCompleteOnlineKOT={handleCompleteOnlineKOT}

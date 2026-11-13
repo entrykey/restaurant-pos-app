@@ -1018,14 +1018,16 @@ const AppContent = () => {
 
             let orderId = currentOrder.orderId;
             if (!orderId) {
+                const activeDiscount = (isTakeaway ? takeawayBillDiscount : billDiscount) || { type: 'flat', value: 0 };
                 const billDetails = calculateBillDetails(
                     orderItems,
-                    billDiscount || { type: 'flat', value: 0 },
+                    activeDiscount,
                     settings?.defaultTaxPercent || 0,
                     true, // autoRound
                     isTakeaway ? exchangeCredit : 0,
                     branchStateCode,
-                    null // TODO: Get customer state code if possible
+                    null,
+                    loyaltyDiscount?.amount || 0
                 );
 
                 const created = await orderService.createOrder({
@@ -1169,7 +1171,7 @@ const AppContent = () => {
 
     const buildOrderTotalsFromBill = (billDetails) => ({
         subtotal: billDetails.subtotal,
-        discountTotal: billDetails.discountAmount || 0,
+        discountTotal: (billDetails.discountAmount || 0) + (billDetails.loyaltyDiscountAmount || 0),
         offerDiscountTotal: billDetails.offerDiscountTotal || 0,
         appliedOffers: mapAppliedOffersForApi(billDetails.appliedOffers),
         taxTotal: billDetails.taxAmount || 0,
@@ -1184,8 +1186,11 @@ const AppContent = () => {
                 ? Number(item.taxPercent)
                 : (settings?.defaultTaxPercent || 0);
             
-            const basePrice = item.selectedVariant ? item.selectedVariant.price : (item.price || item.sellingPrice || 0);
-            const qty = item.quantity || 1;
+            const basePrice = item.selectedVariant 
+                ? item.selectedVariant.price 
+                : (item.sellingType === "Weight" ? (item.pricePerUnit || item.price || item.sellingPrice || 0) : (item.price || item.sellingPrice || 0));
+            const rawQty = Number(item.quantity);
+            const qty = !isNaN(rawQty) && rawQty > 0 ? rawQty : 1;
             const lineBaseCost = basePrice * qty;
             let discVal = Number(item.itemDiscount !== undefined && item.itemDiscount !== null && item.itemDiscount !== "" ? item.itemDiscount : 0);
             discVal = Math.max(0, discVal);
@@ -1195,10 +1200,11 @@ const AppContent = () => {
             let itemDiscPercent = 0;
             if (discVal > 0) {
                 if (discType === 'percent') {
-                    itemDiscPercent = Math.min(100, discVal);
-                    itemDiscAmount = (lineBaseCost * itemDiscPercent) / 100;
+                    const clampedDisc = Math.min(100, Math.max(0, discVal));
+                    itemDiscPercent = clampedDisc;
+                    itemDiscAmount = (lineBaseCost * clampedDisc) / 100;
                 } else {
-                    itemDiscAmount = Math.min(lineBaseCost, discVal);
+                    itemDiscAmount = Math.min(lineBaseCost, Math.max(0, discVal));
                     itemDiscPercent = lineBaseCost > 0 ? (itemDiscAmount / lineBaseCost) * 100 : 0;
                 }
             }
@@ -1279,14 +1285,16 @@ const AppContent = () => {
                     return;
                 }
 
+                const activeDiscount = (isTakeaway ? takeawayBillDiscount : billDiscount) || { type: "flat", value: 0 };
                 const billDetails = calculateBillDetails(
                     orderItems,
-                    billDiscount || { type: "flat", value: 0 },
+                    activeDiscount,
                     settings?.defaultTaxPercent || 0,
                     true,
                     exchangeCredit,
                     branchStateCode,
-                    null
+                    null,
+                    loyaltyDiscount?.amount || 0
                 );
                 const payloadItems = buildOrderPayloadItems(orderItems);
                 const payload = {
@@ -1420,14 +1428,16 @@ const AppContent = () => {
                     return;
                 }
 
+                const activeDiscount = (isTakeaway ? takeawayBillDiscount : billDiscount) || { type: "flat", value: 0 };
                 const billDetails = calculateBillDetails(
                     orderItems,
-                    billDiscount || { type: "flat", value: 0 },
+                    activeDiscount,
                     settings?.defaultTaxPercent || 0,
                     true,
                     exchangeCredit,
                     branchStateCode,
-                    null
+                    null,
+                    loyaltyDiscount?.amount || 0
                 );
                 const payloadItems = buildOrderPayloadItems(orderItems);
                 const tableLabel = table?.name || table?.tableNumber || tableId;
@@ -1544,7 +1554,8 @@ const AppContent = () => {
             _id: stableId,
         };
 
-        const basePaidQty = parseFloat(quantity) || 1;
+        const parsedQty = parseFloat(quantity);
+        const basePaidQty = !isNaN(parsedQty) && parsedQty > 0 ? parsedQty : 1;
         announceItemAdded(normalizedItem.name, basePaidQty);
 
         // --- Advanced Offer Logic (Cross-item auto-add) ---
@@ -1705,7 +1716,7 @@ const AppContent = () => {
                 setCustomVariant(defVariant);
                 setCustomWeightInput(quantity);
             } else if (isWeightItem) {
-                setCustomWeightInput(quantity);
+                setCustomWeightInput(quantity > 0 ? String(quantity) : "1");
                 setCustomWeightUnit("kg");
                 setCustomVariant(null);
             } else {
@@ -1728,10 +1739,13 @@ const AppContent = () => {
             });
 
         let finalQuantity = typeof customWeightInput === "number" ? customWeightInput : parseFloat(customWeightInput);
-        if (isNaN(finalQuantity)) finalQuantity = 0;
+        if (isNaN(finalQuantity) || finalQuantity <= 0) {
+            toast.error("Please enter a valid weight greater than 0");
+            return;
+        }
 
         if (customizingItem.sellingType === "Weight" && customWeightUnit === "g") {
-            finalQuantity = finalQuantity / 1000;
+            finalQuantity = parseFloat((finalQuantity / 1000).toFixed(4));
         }
 
         addToCart(customizingItem, finalQuantity, customVariant, extrasList, customWeightUnit);
@@ -1744,7 +1758,7 @@ const AppContent = () => {
             const currentPaidQty = item.paidQuantity !== undefined ? item.paidQuantity : item.quantity;
             let step = delta;
             if (item.sellingType === "Weight") {
-                step = delta * 0.25;
+                step = delta * 0.1;
             }
             let newPaidQty = currentPaidQty + step;
             if (newPaidQty <= 0.001) {
@@ -1945,9 +1959,15 @@ const AppContent = () => {
         }
     };
 
+    const isSubmittingKOTRef = useRef(false);
+    const lastKOTTimestampRef = useRef(0);
+
     const handleSendToKOT = async () => {
-        if (isSubmittingKOT) return;
+        if (isSubmittingKOT || isSubmittingKOTRef.current) return;
         const nowTs = Date.now();
+        if (nowTs - lastKOTTimestampRef.current < 600) return;
+        isSubmittingKOTRef.current = true;
+        lastKOTTimestampRef.current = nowTs;
         const table = !isTakeaway
             ? tables.find((t) => String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId))
             : null;
@@ -1956,18 +1976,23 @@ const AppContent = () => {
             : table?.order || { items: [] };
         const orderItems = currentOrder.items || [];
 
-        if (orderItems.length === 0) return;
+        if (orderItems.length === 0) {
+            isSubmittingKOTRef.current = false;
+            return;
+        }
 
         setIsSubmittingKOT(true);
         try {
+            const activeDiscount = (isTakeaway ? takeawayBillDiscount : billDiscount) || { type: 'flat', value: 0 };
             const billDetails = calculateBillDetails(
                 orderItems,
-                billDiscount || { type: 'flat', value: 0 },
+                activeDiscount,
                 settings?.defaultTaxPercent || 0,
                 true, // autoRound
                 isTakeaway ? exchangeCredit : 0,
                 branchStateCode,
-                null // TODO: Get customer state code
+                null,
+                loyaltyDiscount?.amount || 0
             );
 
             const payloadItems = orderItems.map(item => {
@@ -2042,7 +2067,14 @@ const AppContent = () => {
                     branchId: getResolvedBranchId(),
                     orderId: existingOrderId,
                     tableId: !isTakeaway ? table?._id || table?.id : null,
-                    items: kitchenItems.map(k => ({ itemId: k.itemId, quantity: k.quantity, notes: k.notes }))
+                    items: kitchenItems.map(k => ({
+                        itemId: k.itemId,
+                        itemName: k.itemName,
+                        quantity: k.quantity,
+                        notes: k.notes,
+                        variant: k.variant,
+                    })),
+                    isAddon: Boolean(currentOrder.isSentToKOT),
                 });
             }
 
@@ -2081,15 +2113,18 @@ const AppContent = () => {
                         return t;
                     })
                 );
+                if (typeof refreshData === 'function') {
+                    refreshData();
+                }
             }
 
             // Print KOT (only the newly sent/incremental items)
             if (kitchenItems.length > 0) {
-                const tableLabel = isTakeaway ? "Takeaway" : (table?.name || "");
+                const catName = table?.diningCategoryId?.name || (typeof table?.diningCategoryId === 'string' && categories?.find(c => String(c._id || c.id) === String(table.diningCategoryId))?.name);
+                const tableLabel = isTakeaway ? "Takeaway" : `${table?.name || "Table"}${catName ? ` (${catName})` : ""}`;
                 const orderLabel = table?.order?.orderNumber ? `Order #${table.order.orderNumber}` : "";
 
                 printKot({
-                    header: getPrintHeader(),
                     meta: {
                         orderLabel,
                         tableLabel: tableLabel ? `Table: ${tableLabel}` : "",
@@ -2109,6 +2144,7 @@ const AppContent = () => {
             toast.error("Failed to send KOT. Please try again.");
         } finally {
             setIsSubmittingKOT(false);
+            isSubmittingKOTRef.current = false;
         }
     };
 
@@ -2566,6 +2602,12 @@ const AppContent = () => {
                 originalOrderId={originalOrderId}
                 loyaltyDiscount={loyaltyDiscount}
                 billDiscount={isTakeaway ? takeawayBillDiscount : billDiscount}
+                selectedCustomer={selectedCustomer}
+                updateItemQuantity={updateItemQuantity}
+                removeItemFromCart={removeItemFromCart}
+                calculateItemTotal={calculateItemTotal}
+                calculateBillDetails={calculateBillDetails}
+                formatCurrency={formatCurrency}
             />
 
             <ExpenseModal

@@ -1,7 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
-import PosTabBar from "./PosTabBar";
 import { useTheme } from "../context/ThemeContext";
 import { useLocation } from "react-router-dom";
 
@@ -28,7 +27,52 @@ const Layout = ({
     onSwitchShop,
 }) => {
     const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-    const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+
+    // Responsive sidebar: auto-expand on desktop (>= 1024px) so labels are shown,
+    // collapse on smaller/tablet screens (< 1024px) to preserve screen space
+    const [isSidebarExpanded, setIsSidebarExpanded] = useState(() => {
+        if (typeof window === "undefined") return false;
+        try {
+            const saved = localStorage.getItem("pos_sidebar_expanded");
+            if (saved !== null && window.innerWidth >= 1024) {
+                return saved === "true";
+            }
+        } catch (e) { }
+        return window.innerWidth >= 1024;
+    });
+
+    const handleSetIsExpanded = (val) => {
+        setIsSidebarExpanded((prev) => {
+            const next = typeof val === "function" ? val(prev) : val;
+            try {
+                localStorage.setItem("pos_sidebar_expanded", String(next));
+            } catch (e) { }
+            return next;
+        });
+    };
+
+    // Listen for screen resize to adjust sidebar automatically as per screen size
+    useEffect(() => {
+        const handleResize = () => {
+            if (typeof window === "undefined") return;
+            const isDesktop = window.innerWidth >= 1024;
+            if (!isDesktop) {
+                setIsSidebarExpanded(false);
+            } else {
+                try {
+                    const saved = localStorage.getItem("pos_sidebar_expanded");
+                    if (saved !== null) {
+                        setIsSidebarExpanded(saved === "true");
+                        return;
+                    }
+                } catch (e) { }
+                setIsSidebarExpanded(true);
+            }
+        };
+
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
     const { theme } = useTheme();
     const location = useLocation();
 
@@ -80,7 +124,7 @@ const Layout = ({
                     businessType={businessType}
                     businessSubtype={businessSubtype}
                     isExpanded={isSidebarExpanded}
-                    setIsExpanded={setIsSidebarExpanded}
+                    setIsExpanded={handleSetIsExpanded}
                 />
 
                 {/* Main Content */}
@@ -98,7 +142,7 @@ const Layout = ({
                         onBusinessTypeChange={onBusinessTypeChange}
                         onSwitchShop={onSwitchShop}
                     />
-                    <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
+                    <div className="flex-1 min-h-0 overflow-auto custom-scrollbar flex flex-col">
                         {children}
                     </div>
                 </div>

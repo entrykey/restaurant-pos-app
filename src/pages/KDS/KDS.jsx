@@ -8,20 +8,58 @@ import { useApp } from "../../context/AppContext";
 import EstimatedTimeModal from '../../components/modals/EstimatedTimeModal';
 import { useTheme } from "../../context/ThemeContext";
 
+// Helper to resolve table details and category name/index for a KOT
+const getKOTTableDetails = (kot, allTables = [], allCategories = []) => {
+    if (!kot?.tableId) return null;
+    const tableIdStr = String(kot.tableId?._id || kot.tableId?.id || kot.tableId);
+    
+    const matchedTable = (allTables || []).find(t => String(t._id || t.id) === tableIdStr) 
+        || (typeof kot.tableId === 'object' ? kot.tableId : null);
+
+    const catId = matchedTable?.diningCategoryId?._id 
+        || matchedTable?.diningCategoryId?.id 
+        || matchedTable?.diningCategoryId;
+    const catIdStr = catId ? String(catId) : null;
+
+    const matchedCategory = (allCategories || []).find(c => String(c._id || c.id) === catIdStr)
+        || (typeof matchedTable?.diningCategoryId === 'object' ? matchedTable?.diningCategoryId : null);
+
+    const categoryName = matchedCategory?.name || '';
+    const categoryIndex = (allCategories || []).findIndex(c => String(c._id || c.id) === catIdStr);
+    const tableNumber = (matchedTable?.tableNumber || kot.tableId?.tableNumber || matchedTable?.name || '').toString();
+
+    return {
+        tableIdStr,
+        tableNumber,
+        categoryName,
+        categoryIndex: categoryIndex !== -1 ? categoryIndex : 9999,
+        category: matchedCategory
+    };
+};
+
 // Determine the display type and label for a KOT
-const getKOTType = (kot) => {
-    if (kot.tableId) return { type: 'table', label: `Table ${kot.tableId?.tableNumber || ''}` };
+const getKOTType = (kot, allTables = [], allCategories = []) => {
+    if (kot.tableId) {
+        const details = getKOTTableDetails(kot, allTables, allCategories);
+        const tNum = details?.tableNumber || kot.tableId?.tableNumber || '';
+        return { 
+            type: 'table', 
+            label: tNum ? `Table ${tNum}` : 'Table',
+            categoryName: details?.categoryName || ''
+        };
+    }
     const orderType = kot.orderId?.orderType || '';
-    if (orderType === 'ONLINE_ORDER') return { type: 'online', label: 'Online' };
-    if (orderType === 'TAKEAWAY') return { type: 'takeaway', label: 'Takeaway' };
-    if (orderType === 'DIRECT_SALE') return { type: 'direct', label: 'Direct Sale' };
-    if (orderType === 'WHOLESALE') return { type: 'wholesale', label: 'Wholesale' };
+    if (orderType === 'ONLINE_ORDER') return { type: 'online', label: 'Online', categoryName: '' };
+    if (orderType === 'TAKEAWAY') return { type: 'takeaway', label: 'Takeaway', categoryName: '' };
+    if (orderType === 'DIRECT_SALE') return { type: 'direct', label: 'Direct Sale', categoryName: '' };
+    if (orderType === 'WHOLESALE') return { type: 'wholesale', label: 'Wholesale', categoryName: '' };
     // Fallback: if no tableId and no recognizable orderType, show as Takeaway
-    return { type: 'takeaway', label: 'Takeaway' };
+    return { type: 'takeaway', label: 'Takeaway', categoryName: '' };
 };
 
 const KDS = ({
-    tables,
+    tables = [],
+    categories = [],
     onlineOrders,
     handleCompleteKOT,
     handleCompleteOnlineKOT,
@@ -87,9 +125,91 @@ const KDS = ({
     const canManage = hasPermissionFor?.(kdsAccess.module, kdsAccess.resource, "manage");
     const canServe = hasPermissionFor?.(kdsAccess.module, kdsAccess.resource, "serve");
 
+    // Group table KOTs by category in the exact order of categories array
+    const categoryKOTGroups = (categories || []).map((cat) => {
+        const catIdStr = String(cat._id || cat.id);
+        const kotsForCat = tableKOTs.filter((k) => {
+            const details = getKOTTableDetails(k, tables, categories);
+            const tCatId = details?.category?._id || details?.category?.id;
+            return (tCatId && String(tCatId) === catIdStr) || details?.categoryName?.toLowerCase() === cat.name?.toLowerCase();
+        }).sort((a, b) => {
+            const detailsA = getKOTTableDetails(a, tables, categories);
+            const detailsB = getKOTTableDetails(b, tables, categories);
+            const numA = detailsA?.tableNumber || '';
+            const numB = detailsB?.tableNumber || '';
+            const numCompare = numA.localeCompare(numB, undefined, { numeric: true, sensitivity: 'base' });
+            if (numCompare !== 0) return numCompare;
+            return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+        });
+
+        return {
+            category: cat,
+            categoryName: cat.name,
+            kots: kotsForCat,
+        };
+    }).filter((group) => group.kots.length > 0);
+
+    // Any table KOTs with no recognized category
+    const uncategorizedTableKOTs = tableKOTs.filter((k) => {
+        const details = getKOTTableDetails(k, tables, categories);
+        return !details?.categoryName;
+    }).sort((a, b) => {
+        const detailsA = getKOTTableDetails(a, tables, categories);
+        const detailsB = getKOTTableDetails(b, tables, categories);
+        const numA = detailsA?.tableNumber || '';
+        const numB = detailsB?.tableNumber || '';
+        return numA.localeCompare(numB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    if (uncategorizedTableKOTs.length > 0) {
+        categoryKOTGroups.push({
+            category: { _id: 'other', name: 'Other Tables' },
+            categoryName: 'Other Tables',
+            kots: uncategorizedTableKOTs,
+        });
+    }
+
+    const renderKDSCard = (k, allKOTsList) => {
+        const tableIdStr = String(k.tableId?._id || k.tableId?.id || k.tableId || '');
+        const orderIdStr = String(k.orderId?._id || k.orderId?.id || k.orderId || '');
+        const isAdditional = Boolean(k.isAddon) || allKOTsList.findIndex(t => {
+            const tTableId = String(t.tableId?._id || t.tableId?.id || t.tableId || '');
+            const tOrderId = String(t.orderId?._id || t.orderId?.id || t.orderId || '');
+            return (tableIdStr && tTableId === tableIdStr) || (orderIdStr && tOrderId === orderIdStr);
+        }) < allKOTsList.indexOf(k);
+        const { type, label, categoryName } = getKOTType(k, tables, categories);
+
+        return (
+            <KDSCard
+                key={k._id}
+                order={k}
+                type={type}
+                typeLabel={label}
+                categoryName={categoryName}
+                isAdditional={isAdditional}
+                onUpdateStatus={handleUpdateStatus}
+                onUpdateItemStatus={handleUpdateItemStatus}
+                onStartPrep={handleStartPrep}
+                currentTime={currentTime}
+                canManage={canManage}
+                canServe={canServe}
+            />
+        );
+    };
+
     const handleStartPrep = (kotId) => {
         setSelectedKotId(kotId);
         setIsTimeModalOpen(true);
+    };
+
+    const handleUpdateItemStatus = async (kotId, itemId, status) => {
+        try {
+            await kdsService.updateItemStatus(kotId, itemId, status);
+            fetchKOTs(true);
+        } catch (error) {
+            console.error("Failed to update item status:", error);
+            alert("Failed to update item status. Please try again.");
+        }
     };
 
     const handleUpdateStatus = async (kotId, status, estimatedTime = 0) => {
@@ -169,53 +289,48 @@ const KDS = ({
             {/* Grid Area */}
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                 {totalOrders > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-12">
-                        {/* Table Orders First */}
-                        {tableKOTs.map((k, index) => {
-                            const tableIdStr = k.tableId?._id || k.tableId;
-                            const orderIdStr = k.orderId?._id || k.orderId;
-                            const isAdditional = Boolean(k.isAddon) || tableKOTs.findIndex(t =>
-                                (t.tableId?._id || t.tableId) === tableIdStr &&
-                                (t.orderId?._id || t.orderId) === orderIdStr
-                            ) < index;
-                            const { type, label } = getKOTType(k);
-                            return (
-                                <KDSCard
-                                    key={k._id}
-                                    order={k}
-                                    type={type}
-                                    typeLabel={label}
-                                    isAdditional={isAdditional}
-                                    onUpdateStatus={handleUpdateStatus}
-                                    onStartPrep={handleStartPrep}
-                                    currentTime={currentTime}
-                                    canManage={canManage}
-                                    canServe={canServe}
-                                />
-                            );
-                        })}
-                        {/* Non-table Orders (Takeaway, Online, Direct Sale, etc.) */}
-                        {nonTableKOTs.map((o, index) => {
-                            const orderIdStr = o.orderId?._id || o.orderId;
-                            const isAdditional = Boolean(o.isAddon) || nonTableKOTs.findIndex(t =>
-                                (t.orderId?._id || t.orderId) === orderIdStr
-                            ) < index;
-                            const { type, label } = getKOTType(o);
-                            return (
-                                <KDSCard
-                                    key={o._id}
-                                    order={o}
-                                    type={type}
-                                    typeLabel={label}
-                                    isAdditional={isAdditional}
-                                    onUpdateStatus={handleUpdateStatus}
-                                    onStartPrep={handleStartPrep}
-                                    currentTime={currentTime}
-                                    canManage={canManage}
-                                    canServe={canServe}
-                                />
-                            );
-                        })}
+                    <div className="space-y-8 pb-12">
+                        {/* Table Orders grouped by Category in order */}
+                        {categoryKOTGroups.map((group) => (
+                            <div key={group.category?._id || group.categoryName} className="space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className={`text-base font-black ${theme.textHeading} uppercase tracking-wider flex items-center gap-2`}>
+                                            <Utensils size={16} className="text-indigo-600" />
+                                            <span>{group.categoryName}</span>
+                                        </h3>
+                                        <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                                            {group.kots.length} {group.kots.length === 1 ? 'KOT' : 'KOTs'}
+                                        </span>
+                                    </div>
+                                    <div className={`h-[1px] flex-1 ${theme.borderLight} bg-gray-200 dark:bg-gray-800/60`} />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                    {group.kots.map((k) => renderKDSCard(k, tableKOTs))}
+                                </div>
+                            </div>
+                        ))}
+
+                        {/* Non-table Orders (Takeaway, Online, Direct Sale, Wholesale) */}
+                        {nonTableKOTs.length > 0 && (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className={`text-base font-black ${theme.textHeading} uppercase tracking-wider flex items-center gap-2`}>
+                                            <ShoppingBag size={16} className="text-emerald-500" />
+                                            <span>Takeaway & Online Orders</span>
+                                        </h3>
+                                        <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                                            {nonTableKOTs.length} {nonTableKOTs.length === 1 ? 'Order' : 'Orders'}
+                                        </span>
+                                    </div>
+                                    <div className={`h-[1px] flex-1 ${theme.borderLight} bg-gray-200 dark:bg-gray-800/60`} />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                    {nonTableKOTs.map((o) => renderKDSCard(o, nonTableKOTs))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="h-[60vh] flex flex-col items-center justify-center text-center">
