@@ -10,3 +10,4 @@ bridgeScript = scriptDir & "\pos-print-bridge.js"
 WshShell.Run "node """ & bridgeScript & """", 0, False
 Set WshShell = Nothing
 Set fso = Nothing
+
