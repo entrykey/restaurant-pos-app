@@ -1,13 +1,58 @@
 /**
  * Local Thermal Print Bridge Agent
- * Listens on http://127.0.0.1:3001
- * Forwards print jobs from web browser / cloud backend directly to local LAN / Wi-Fi printers (Port 9100).
+ * 
+ * Runs on the Restaurant PC (connected to the same local Wi-Fi / LAN router as the printers).
+ * 1. Listens on http://127.0.0.1:3001 for instant local prints.
+ * 2. Continuously polls the cloud backend (https://qa.filepeapp.com/api/print/jobs/pending)
+ *    so orders and KOTs sent from Waiter Mobile Phones or Tablets are printed automatically
+ *    to local LAN thermal printers (e.g. 192.168.1.100:9100) or USB printers.
  */
 const http = require('http');
+const https = require('https');
 const net = require('net');
+const fs = require('fs');
+const path = require('path');
 
 const PORT = 3001;
+const CONFIG_FILE = path.join(__dirname, '.bridge-config.json');
 
+// Parse CLI flags
+const args = process.argv.slice(2);
+function getArg(flag, fallback) {
+    const idx = args.indexOf(flag);
+    if (idx !== -1 && args[idx + 1]) return args[idx + 1];
+    return fallback;
+}
+
+let savedConfig = {};
+try {
+    if (fs.existsSync(CONFIG_FILE)) {
+        savedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    }
+} catch (e) {
+    // ignore
+}
+
+let activeConfig = {
+    cloudUrl: getArg('--cloud', process.env.BRIDGE_CLOUD_URL || savedConfig.cloudUrl || 'https://qa.filepeapp.com/api'),
+    branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || '6aa258385d754c6801968d6f'),
+    shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || '6aa258385d754c6801968d6d'),
+    printerIp: getArg('--ip', process.env.BRIDGE_PRINTER_IP || savedConfig.printerIp || '192.168.1.100'),
+    printerPort: parseInt(getArg('--port', process.env.BRIDGE_PRINTER_PORT || savedConfig.printerPort || 9100), 10),
+    pollIntervalMs: 1500,
+};
+
+function saveActiveConfig() {
+    try {
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(activeConfig, null, 2), 'utf8');
+    } catch (e) {
+        console.warn('Could not save bridge config:', e.message);
+    }
+}
+
+/**
+ * Send raw ESC/POS binary data to thermal network printer via TCP
+ */
 function sendToNetworkPrinter(ip, port = 9100, buffer, timeoutMs = 4000) {
     return new Promise((resolve, reject) => {
         if (!ip) return reject(new Error('Printer IP address is required'));
@@ -34,7 +79,7 @@ function sendToNetworkPrinter(ip, port = 9100, buffer, timeoutMs = 4000) {
                     if (isDone) return;
                     isDone = true;
                     client.destroy();
-                    resolve({ success: true });
+                    resolve({ success: true, ip, port });
                 }, 300);
             });
         });
@@ -48,6 +93,9 @@ function sendToNetworkPrinter(ip, port = 9100, buffer, timeoutMs = 4000) {
     });
 }
 
+/**
+ * Build ESC/POS bytes for Kitchen Order Ticket (KOT)
+ */
 function buildEscPosKot({
     kotTitle = 'KITCHEN ORDER (KOT)',
     orderLabel = '',
@@ -116,6 +164,9 @@ function buildEscPosKot({
     return Buffer.concat(buffers);
 }
 
+/**
+ * Build ESC/POS bytes for Sale Invoice Bill
+ */
 function buildEscPosBill({
     header = {},
     meta = {},
@@ -186,11 +237,138 @@ function buildEscPosBill({
     return Buffer.concat(buffers);
 }
 
+/**
+ * Execute a print job received from the cloud queue
+ */
+async function processCloudJob(job) {
+    const ip = job.printerIp || activeConfig.printerIp || '192.168.1.100';
+    const port = parseInt(job.printerPort || activeConfig.printerPort || 9100, 10);
+    const paperWidthMm = job.paperWidthMm || 80;
+
+    let buffer;
+    if (job.type === 'bill') {
+        buffer = buildEscPosBill({
+            ...job,
+            paperWidthMm,
+            autoCut: job.autoCut !== false,
+            openCashDrawer: Boolean(job.openCashDrawer),
+        });
+    } else {
+        buffer = buildEscPosKot({
+            kotTitle: job.title || job.meta?.kotTitle || 'KITCHEN ORDER (KOT)',
+            orderLabel: job.meta?.orderLabel || '',
+            tableLabel: job.meta?.tableLabel || '',
+            printedAt: job.meta?.printedAt || '',
+            staffName: job.meta?.staffName || '',
+            items: job.items && job.items.length > 0 ? job.items : [
+                { itemName: 'Appam', quantity: 2, notes: 'Extra Crispy' },
+                { itemName: 'Chicken Fry', quantity: 1, variant: 'Spicy' },
+            ],
+            paperWidthMm,
+            autoCut: job.autoCut !== false,
+            beepBuzzer: job.beepBuzzer !== false,
+        });
+    }
+
+    console.log(`[BRIDGE] 🖨️ Printing ${job.type.toUpperCase()} (#${job._id}) to ${ip}:${port}...`);
+    await sendToNetworkPrinter(ip, port, buffer);
+    console.log(`[BRIDGE] ✅ Successfully printed job #${job._id} to ${ip}:${port}`);
+}
+
+/**
+ * Helper to make HTTP/HTTPS requests
+ */
+function makeRequest(url, options = {}, body = null) {
+    return new Promise((resolve, reject) => {
+        const parsed = new URL(url);
+        const transport = parsed.protocol === 'https:' ? https : http;
+
+        const req = transport.request(url, options, (res) => {
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    const parsedData = JSON.parse(data || '{}');
+                    resolve({ status: res.statusCode, data: parsedData });
+                } catch (e) {
+                    resolve({ status: res.statusCode, data });
+                }
+            });
+        });
+
+        req.on('error', reject);
+        if (body) {
+            req.write(typeof body === 'string' ? body : JSON.stringify(body));
+        }
+        req.end();
+    });
+}
+
+/**
+ * Cloud Queue Poller:
+ * Polls the backend cloud for pending jobs placed by Waiter Phones or Tablets
+ */
+let isPolling = false;
+async function pollCloudPrintQueue() {
+    if (isPolling) return;
+    isPolling = true;
+
+    try {
+        const baseUrl = activeConfig.cloudUrl.replace(/\/+$/, '');
+        const pollUrl = `${baseUrl}/print/jobs/pending?branchId=${activeConfig.branchId}&shopId=${activeConfig.shopId}`;
+
+        const res = await makeRequest(pollUrl, {
+            method: 'GET',
+            headers: {
+                'x-branch-id': activeConfig.branchId,
+                'x-shop-id': activeConfig.shopId,
+                'x-bridge-client': 'pos-print-bridge-v1',
+            },
+        });
+
+        if (res.status === 200 && res.data && Array.isArray(res.data.jobs)) {
+            for (const job of res.data.jobs) {
+                try {
+                    await processCloudJob(job);
+                    // Acknowledge completion
+                    const completeUrl = `${baseUrl}/print/jobs/${job._id}/complete`;
+                    await makeRequest(completeUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-branch-id': activeConfig.branchId,
+                        },
+                    }, { status: 'COMPLETED' });
+                } catch (err) {
+                    console.error(`[BRIDGE] ❌ Failed to print job #${job._id}:`, err.message);
+                    const completeUrl = `${baseUrl}/print/jobs/${job._id}/complete`;
+                    await makeRequest(completeUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-branch-id': activeConfig.branchId,
+                        },
+                    }, { status: 'FAILED', errorMessage: err.message });
+                }
+            }
+        }
+    } catch (err) {
+        // Silently retry on next tick
+    } finally {
+        isPolling = false;
+    }
+}
+
+// Start cloud polling interval
+setInterval(pollCloudPrintQueue, activeConfig.pollIntervalMs);
+
+/**
+ * Local HTTP Server for local loopback prints
+ */
 const server = http.createServer((req, res) => {
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-branch-id, x-shop-id');
 
     if (req.method === 'OPTIONS') {
         res.writeHead(200);
@@ -200,7 +378,30 @@ const server = http.createServer((req, res) => {
 
     if (req.url === '/health' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', bridge: 'POS Print Bridge Running', time: new Date().toISOString() }));
+        res.end(JSON.stringify({
+            status: 'ok',
+            bridge: 'POS Thermal Print Relay Bridge Running',
+            config: activeConfig,
+            time: new Date().toISOString(),
+        }));
+        return;
+    }
+
+    if (req.url === '/config' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+            try {
+                const patch = JSON.parse(body || '{}');
+                activeConfig = { ...activeConfig, ...patch };
+                saveActiveConfig();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, config: activeConfig }));
+            } catch (e) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, message: e.message }));
+            }
+        });
         return;
     }
 
@@ -210,8 +411,8 @@ const server = http.createServer((req, res) => {
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body || '{}');
-                const ip = data.ip || data.printerIp || '192.168.1.100';
-                const port = parseInt(data.port || data.printerPort || 9100, 10);
+                const ip = data.ip || data.printerIp || activeConfig.printerIp || '192.168.1.100';
+                const port = parseInt(data.port || data.printerPort || activeConfig.printerPort || 9100, 10);
                 const type = data.type || 'kot';
                 const paperWidthMm = data.paperWidthMm || data.paperWidth || 80;
 
@@ -224,7 +425,6 @@ const server = http.createServer((req, res) => {
                         openCashDrawer: Boolean(data.openCashDrawer),
                     });
                 } else {
-                    // KOT
                     const meta = data.meta || {};
                     buffer = buildEscPosKot({
                         kotTitle: meta.kotTitle || data.title || 'KITCHEN ORDER (KOT)',
@@ -260,6 +460,10 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-    console.log(`POS Print Bridge Agent running at http://127.0.0.1:${PORT}`);
+    console.log(`=======================================================`);
+    console.log(`  POS Thermal Print Relay Bridge running on port ${PORT}`);
+    console.log(`  Cloud Polling URL: ${activeConfig.cloudUrl}`);
+    console.log(`  Target Branch ID:  ${activeConfig.branchId}`);
+    console.log(`  LAN Printer IP:    ${activeConfig.printerIp}:${activeConfig.printerPort}`);
+    console.log(`=======================================================`);
 });
-

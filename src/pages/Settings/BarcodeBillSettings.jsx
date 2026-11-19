@@ -131,6 +131,7 @@ const BarcodeBillSettings = ({ currentUser }) => {
     const [purchaseBaseline, setPurchaseBaseline] = useState(null);
     const [hardwareSettings, setHardwareSettings] = useState({ ...DEFAULT_HARDWARE_PRINTER_SETTINGS });
     const [hardwareBaseline, setHardwareBaseline] = useState(null);
+    const [bridgeStatus, setBridgeStatus] = useState({ online: false, checking: true, source: null });
 
     const activeBranch = useMemo(
         () => branches.find((b) => String(b._id || b.id) === String(activeBranchId)),
@@ -196,6 +197,48 @@ const BarcodeBillSettings = ({ currentUser }) => {
     useEffect(() => {
         loadSettings();
     }, [loadSettings]);
+
+    useEffect(() => {
+        let isMounted = true;
+        const checkBridge = async () => {
+            try {
+                // Check if local bridge is directly reachable (e.g. running on this PC)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 700);
+                const localRes = await fetch('http://127.0.0.1:3001/health', { signal: controller.signal })
+                    .then(r => r.json())
+                    .catch(() => null);
+                clearTimeout(timeoutId);
+                if (localRes && localRes.status === 'ok') {
+                    if (isMounted) setBridgeStatus({ online: true, checking: false, source: 'local' });
+                    return;
+                }
+            } catch (e) {
+                // not local
+            }
+
+            try {
+                const cloudRes = await api.get('/print/bridge/status', {
+                    params: { branchId: activeBranchId || saveBranchId },
+                });
+                if (cloudRes.data && cloudRes.data.online) {
+                    if (isMounted) setBridgeStatus({ online: true, checking: false, source: 'cloud', lastSeen: cloudRes.data.lastSeen });
+                    return;
+                }
+            } catch (e) {
+                // cloud status check
+            }
+
+            if (isMounted) setBridgeStatus({ online: false, checking: false, source: null });
+        };
+
+        checkBridge();
+        const intervalId = setInterval(checkBridge, 12000);
+        return () => {
+            isMounted = false;
+            clearInterval(intervalId);
+        };
+    }, [activeBranchId, saveBranchId]);
 
     const isBarcodeDirty = barcodeBaseline && !areBarcodeSettingsEqual(barcodeSettings, barcodeBaseline);
     const isBillDirty = billBaseline && !areBillPrintSettingsEqual(billSettings, billBaseline);
@@ -1109,7 +1152,7 @@ const BarcodeBillSettings = ({ currentUser }) => {
                                             });
                                             toast.success('Sent test KOT to USB printer (POS-80C)!', { icon: '🧑‍🍳' });
                                         } else {
-                                            const toastId = toast.loading(`Connecting to kitchen printer at ${kp.ip || '192.168.1.100'}:${kp.port || 9100}...`);
+                                            const toastId = toast.loading(`Sending test KOT to kitchen printer (${kp.ip || '192.168.1.100'}:${kp.port || 9100})...`);
                                             const bridgeUrl = hardwareSettings.bridgeUrl || 'http://127.0.0.1:3001';
                                             const payload = {
                                                 ip: kp.ip || '192.168.1.100',
@@ -1133,6 +1176,7 @@ const BarcodeBillSettings = ({ currentUser }) => {
                                                 beepBuzzer: kp.beepBuzzer !== false,
                                             };
 
+                                            // 1. Direct local bridge if on PC localhost
                                             fetch(`${bridgeUrl}/print`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
@@ -1147,13 +1191,14 @@ const BarcodeBillSettings = ({ currentUser }) => {
                                                 }
                                             })
                                             .catch(() => {
+                                                // 2. Cloud print gateway / relay (for mobile phones and remote clients)
                                                 return api.post('/print/test', payload).then(res => {
-                                                    toast.success(res.data?.message || `Test KOT printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🧑‍🍳', duration: 4000 });
+                                                    toast.success(res.data?.message || `Test KOT dispatched to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🧑‍🍳', duration: 5000 });
                                                 });
                                             })
                                             .catch(err => {
                                                 const msg = err?.response?.data?.message || err?.message || 'Failed to connect to printer';
-                                                toast.error(`Print failed: ${msg}`, { id: toastId, duration: 5000 });
+                                                toast.error(`Print failed: ${msg}`, { id: toastId, duration: 6000 });
                                             });
                                         }
                                     }}
@@ -1200,15 +1245,32 @@ const BarcodeBillSettings = ({ currentUser }) => {
                         </div>
                     </div>
 
-                    {/* Print Bridge Agent info */}
-                    <div className={`p-4 rounded-3xl border ${theme.borderLight} ${theme.surfaceBg} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs font-medium`}>
+                    {/* Print Bridge Agent info & Status */}
+                    <div className={`p-4 rounded-3xl border ${bridgeStatus.online ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20' : theme.borderLight} ${theme.surfaceBg} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs font-medium`}>
                         <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                            <div className={`w-9 h-9 rounded-2xl ${bridgeStatus.online ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'} flex items-center justify-center shrink-0`}>
                                 <Server size={17} />
                             </div>
                             <div>
-                                <span className={`font-black ${theme.textHeading} block`}>Local Print Bridge Agent (Optional for LAN/Mobile)</span>
-                                <span className={theme.textMuted}>Relays print jobs from cloud backend / mobile devices to local network thermal printers on port 9100</span>
+                                <div className="flex items-center gap-2">
+                                    <span className={`font-black ${theme.textHeading} block`}>Restaurant PC Relay Bridge</span>
+                                    {bridgeStatus.online ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                            Active (Online)
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                            Standby / Offline
+                                        </span>
+                                    )}
+                                </div>
+                                <span className={theme.textMuted}>
+                                    {bridgeStatus.online
+                                        ? 'Relaying orders & KOTs sent from Waiter Mobile Phones directly to your kitchen LAN printer (192.168.1.100:9100).'
+                                        : 'To enable mobile waiter printing to 192.168.1.100, keep this cashier PC on and run "npm run bridge".'}
+                                </span>
                             </div>
                         </div>
                         <div className="flex items-center gap-2 w-full sm:w-auto">
