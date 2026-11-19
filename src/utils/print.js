@@ -177,36 +177,10 @@ export async function sendSilentPrintJob({ printer, html, title, type = 'bill', 
       timestamp: new Date().toISOString(),
     };
 
-    // 1. Direct LAN bridge agent (e.g. running on Restaurant PC: http://127.0.0.1:3001)
-    const bridgeUrl = printer?.bridgeUrl || 'http://127.0.0.1:3001';
-    let bridgeOk = false;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
-      const resp = await fetch(`${bridgeUrl}/print`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (resp.ok) bridgeOk = true;
-    } catch {
-      // Local bridge is not directly reachable on this device
-    }
+    // Always route through hosted backend print gateway / relay queue
+    await api.post('/print/network', payload);
 
-    // 2. Backend network print gateway (relays directly via Node TCP port 9100)
-    if (!bridgeOk) {
-      try {
-        await api.post('/print/network', payload);
-        bridgeOk = true;
-      } catch (err) {
-        console.warn('Backend network print error:', err?.response?.data || err?.message || err);
-        throw err;
-      }
-    }
-
-    toast.success(`🖨️ Printed to ${payload.printerName} (${payload.ip}:${payload.port})!`, {
+    toast.success(`🖨️ Sent to ${payload.printerName} (${payload.ip}:${payload.port})!`, {
       id: `print-silent-${type}`,
       duration: 3000,
     });
