@@ -193,29 +193,40 @@ export async function sendSilentPrintJob({ printer, html, title, type = 'bill', 
   }
 }
 
-export function printHtml({ title = "", html, printerType = 'bill', branchId = null, forceBrowser = false, meta = null, items = [] }) {
-  // Only attempt silent network dispatch if printMode is 'silent' AND connectionType is 'lan' or 'wifi' with a configured IP
-  if (!forceBrowser) {
-    const hwSettings = getHardwarePrinterSettingsCached(branchId);
-    if (hwSettings && hwSettings.printMode === 'silent') {
-      const targetPrinter = printerType === 'kot' ? hwSettings.kitchenPrinter : hwSettings.cashierPrinter;
-      const isNetworkPrinter = targetPrinter?.connectionType === 'lan' || targetPrinter?.connectionType === 'wifi';
-      const hasValidIp = Boolean(targetPrinter?.ip && targetPrinter.ip.trim().length > 0);
+export function isMobileDevice() {
+  if (typeof window === 'undefined' || !window.navigator) return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+}
 
-      if (targetPrinter && targetPrinter.enabled !== false && isNetworkPrinter && hasValidIp) {
-        sendSilentPrintJob({
-          printer: { ...targetPrinter, bridgeUrl: hwSettings.bridgeUrl },
-          html,
-          title,
-          type: printerType,
-          meta,
-          items,
-        }).catch((err) => {
-          console.warn('Silent network print dispatch error:', err);
-        });
-        return true;
-      }
-    }
+export function printHtml({ title = "", html, printerType = 'bill', branchId = null, forceBrowser = false, meta = null, items = [] }) {
+  const isMobile = isMobileDevice();
+  const hwSettings = getHardwarePrinterSettingsCached(branchId);
+
+  // Resolve target printer: for KOT, if kitchen printer is disabled or unconfigured, fall back to cashier printer (single printer mode)
+  let targetPrinter = printerType === 'kot' ? hwSettings?.kitchenPrinter : hwSettings?.cashierPrinter;
+  if (printerType === 'kot' && (!targetPrinter || targetPrinter.enabled === false)) {
+    targetPrinter = hwSettings?.cashierPrinter;
+  }
+
+  const isNetworkPrinter = targetPrinter?.connectionType === 'lan' || targetPrinter?.connectionType === 'wifi';
+  const hasValidIp = Boolean(targetPrinter?.ip && targetPrinter.ip.trim().length > 0);
+
+  // Dispatch via cloud relay / LAN socket if:
+  // 1) Target is a network printer (LAN/Wi-Fi with IP), OR
+  // 2) User is on a mobile device (where USB/Windows spoolers do not exist), OR
+  // 3) Silent print mode is active and printer has a configured IP
+  if (!forceBrowser && targetPrinter && targetPrinter.enabled !== false && hasValidIp && (isNetworkPrinter || isMobile || hwSettings?.printMode === 'silent')) {
+    sendSilentPrintJob({
+      printer: { ...targetPrinter, bridgeUrl: hwSettings?.bridgeUrl },
+      html,
+      title,
+      type: printerType,
+      meta,
+      items,
+    }).catch((err) => {
+      console.warn('Silent network print dispatch error:', err);
+    });
+    return true;
   }
 
   // USB / System printer (e.g. POS-80C on USB002): Prints via Windows printer driver

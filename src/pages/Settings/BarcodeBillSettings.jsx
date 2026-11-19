@@ -901,28 +901,21 @@ const BarcodeBillSettings = ({ currentUser }) => {
                                                 openCashDrawer: Boolean(cp.openCashDrawer),
                                             };
 
-                                            fetch(`${bridgeUrl}/print`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(payload),
-                                            })
-                                            .then(r => r.json())
-                                            .then(data => {
-                                                if (data.success) {
-                                                    toast.success(`Test bill printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🖨️', duration: 4000 });
-                                                } else {
-                                                    throw new Error(data.message || 'Print error');
-                                                }
-                                            })
-                                            .catch(() => {
-                                                return api.post('/print/test', payload).then(res => {
-                                                    toast.success(res.data?.message || `Test bill printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🖨️', duration: 4000 });
+                                            api.post('/print/test', payload)
+                                                .then(res => {
+                                                    const msg = res.data?.message || `Test bill sent to ${payload.ip}:${payload.port}!`;
+                                                    if (res.data?.status === 'COMPLETED' || res.data?.printed) {
+                                                        toast.success(msg, { id: toastId, icon: '🖨️', duration: 4000 });
+                                                    } else if (res.data?.status === 'PENDING' || res.data?.status === 'PROCESSING') {
+                                                        toast(msg, { id: toastId, icon: '⏳', duration: 5000 });
+                                                    } else {
+                                                        toast.success(msg, { id: toastId, icon: '🖨️', duration: 4000 });
+                                                    }
+                                                })
+                                                .catch(err => {
+                                                    const msg = err?.response?.data?.message || err?.message || 'Failed to connect to printer';
+                                                    toast.error(`Print failed: ${msg}`, { id: toastId, duration: 5000 });
                                                 });
-                                            })
-                                            .catch(err => {
-                                                const msg = err?.response?.data?.message || err?.message || 'Failed to connect to printer';
-                                                toast.error(`Print failed: ${msg}`, { id: toastId, duration: 5000 });
-                                            });
                                         }
                                     }}
                                     className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider border ${theme.borderLight} ${theme.textPrimary} hover:border-emerald-500 hover:text-emerald-600 transition-all flex items-center gap-2`}
@@ -1165,7 +1158,14 @@ const BarcodeBillSettings = ({ currentUser }) => {
 
                                             api.post('/print/test', payload)
                                                 .then(res => {
-                                                    toast.success(res.data?.message || `Test KOT printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🧑‍🍳', duration: 5000 });
+                                                    const msg = res.data?.message || `Test KOT sent to ${payload.ip}:${payload.port}!`;
+                                                    if (res.data?.status === 'COMPLETED' || res.data?.printed) {
+                                                        toast.success(msg, { id: toastId, icon: '🧑‍🍳', duration: 5000 });
+                                                    } else if (res.data?.status === 'PENDING' || res.data?.status === 'PROCESSING') {
+                                                        toast(msg, { id: toastId, icon: '⏳', duration: 6000 });
+                                                    } else {
+                                                        toast.success(msg, { id: toastId, icon: '🧑‍🍳', duration: 5000 });
+                                                    }
                                                 })
                                                 .catch(err => {
                                                     const msg = err?.response?.data?.message || err?.message || 'Failed to connect to printer';
