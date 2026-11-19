@@ -16,6 +16,7 @@ import {
 } from '../../utils/printTestHelpers';
 import { printKot } from '../../utils/print';
 import { buildBillExtraInfo, buildPrintHeader } from '../../utils/printSettingsUtils';
+import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from '../../utils/permissions';
 import {
     BARCODE_PRINT_SETTINGS_KEY,
     DEFAULT_BARCODE_PRINT_SETTINGS,
@@ -114,10 +115,31 @@ const SectionLayout = ({ children, preview }) => (
     </div>
 );
 
-const BarcodeBillSettings = ({ currentUser }) => {
+const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) => {
     const { theme } = useTheme();
     const { branches, currentShopId, activeBranchId, organization, formatCurrency } = useApp();
     const isSuperAdmin = currentUser?.isSuperAdmin === true;
+
+    // Check whether user has privilege for Send KOT button in POS
+    const canSendKot = useMemo(() => {
+        if (!currentUser) return false;
+        if (currentUser.isSuperAdmin === true) return true;
+        if (typeof hasPermission === 'function') {
+            if (hasPermission('orders.ORDERS.KOS') || hasPermission('orders.kos')) return true;
+        }
+        if (typeof hasPermissionFor === 'function') {
+            if (hasPermissionFor('orders', 'orders', 'kos') || hasPermissionFor('orders', 'order', 'kos') || hasPermissionFor('pos', 'orders', 'kos')) return true;
+        }
+        return Boolean(
+            checkPermission(currentUser, 'orders.ORDERS.KOS') ||
+            checkPermission(currentUser, 'orders.kos') ||
+            checkPermission(currentUser, 'ORDERS.KOS') ||
+            checkPermission(currentUser, '69a29174d746466875686a83') ||
+            checkPermissionFor(currentUser, 'orders', 'orders', 'kos') ||
+            checkPermissionFor(currentUser, 'orders', 'order', 'kos') ||
+            checkPermissionFor(currentUser, 'pos', 'orders', 'kos')
+        );
+    }, [currentUser, hasPermission, hasPermissionFor]);
 
     const [activeSection, setActiveSection] = useState('barcode');
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -369,7 +391,7 @@ const BarcodeBillSettings = ({ currentUser }) => {
         { id: 'thermal', label: 'Sale Bill (Thermal)', icon: Printer },
         { id: 'a4', label: 'Sale Bill (A4)', icon: FileText },
         { id: 'purchase', label: 'Purchase Invoice', icon: ShoppingCart },
-        { id: 'hardware', label: 'Network Printers (LAN / KOT)', icon: Wifi },
+        { id: 'hardware', label: canSendKot ? 'Network Printers (LAN / KOT)' : 'Hardware Printers', icon: Wifi },
     ];
 
     const previewProps = { theme, formatCurrency };
@@ -636,7 +658,7 @@ const BarcodeBillSettings = ({ currentUser }) => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className={`grid grid-cols-1 ${canSendKot ? 'lg:grid-cols-2' : 'max-w-3xl'} gap-6`}>
                         {/* 1. Cashier Receipt Thermal Printer */}
                         <div className={`p-6 rounded-3xl border ${theme.borderLight} ${theme.surfaceBg} space-y-5 shadow-sm relative overflow-hidden`}>
                             <div className="flex items-center justify-between pb-3.5 border-b border-gray-100 dark:border-slate-800">
@@ -926,7 +948,8 @@ const BarcodeBillSettings = ({ currentUser }) => {
                             </div>
                         </div>
 
-                        {/* 2. Kitchen KOT Thermal Printer */}
+                        {/* 2. Kitchen KOT Thermal Printer (Visible only to users with Send KOT permission) */}
+                        {canSendKot && (
                         <div className={`p-6 rounded-3xl border ${theme.borderLight} ${theme.surfaceBg} space-y-5 shadow-sm relative overflow-hidden`}>
                             <div className="flex items-center justify-between pb-3.5 border-b border-gray-100 dark:border-slate-800">
                                 <div className="flex items-center gap-3">
@@ -1180,6 +1203,7 @@ const BarcodeBillSettings = ({ currentUser }) => {
                                 </button>
                             </div>
                         </div>
+                        )}
                     </div>
 
                     {/* Zero-Dialog Silent Printing Guide Banner */}
