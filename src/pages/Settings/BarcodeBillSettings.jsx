@@ -202,24 +202,11 @@ const BarcodeBillSettings = ({ currentUser }) => {
         let isMounted = true;
         const checkBridge = async () => {
             try {
-                // Check if local bridge is directly reachable (e.g. running on this PC)
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 700);
-                const localRes = await fetch('http://127.0.0.1:3001/health', { signal: controller.signal })
-                    .then(r => r.json())
-                    .catch(() => null);
-                clearTimeout(timeoutId);
-                if (localRes && localRes.status === 'ok') {
-                    if (isMounted) setBridgeStatus({ online: true, checking: false, source: 'local' });
-                    return;
-                }
-            } catch (e) {
-                // not local
-            }
-
-            try {
                 const cloudRes = await api.get('/print/bridge/status', {
-                    params: { branchId: activeBranchId || saveBranchId },
+                    params: {
+                        branchId: activeBranchId || saveBranchId,
+                        shopId: saveShopId || activeBranch?.shopId,
+                    },
                 });
                 if (cloudRes.data && cloudRes.data.online) {
                     if (isMounted) setBridgeStatus({ online: true, checking: false, source: 'cloud', lastSeen: cloudRes.data.lastSeen });
@@ -233,12 +220,12 @@ const BarcodeBillSettings = ({ currentUser }) => {
         };
 
         checkBridge();
-        const intervalId = setInterval(checkBridge, 12000);
+        const intervalId = setInterval(checkBridge, 10000);
         return () => {
             isMounted = false;
             clearInterval(intervalId);
         };
-    }, [activeBranchId, saveBranchId]);
+    }, [activeBranchId, saveBranchId, saveShopId, activeBranch]);
 
     const isBarcodeDirty = barcodeBaseline && !areBarcodeSettingsEqual(barcodeSettings, barcodeBaseline);
     const isBillDirty = billBaseline && !areBillPrintSettingsEqual(billSettings, billBaseline);
@@ -1176,30 +1163,14 @@ const BarcodeBillSettings = ({ currentUser }) => {
                                                 beepBuzzer: kp.beepBuzzer !== false,
                                             };
 
-                                            // 1. Direct local bridge if on PC localhost
-                                            fetch(`${bridgeUrl}/print`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(payload),
-                                            })
-                                            .then(r => r.json())
-                                            .then(data => {
-                                                if (data.success) {
-                                                    toast.success(`Test KOT printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🧑‍🍳', duration: 4000 });
-                                                } else {
-                                                    throw new Error(data.message || 'Print error');
-                                                }
-                                            })
-                                            .catch(() => {
-                                                // 2. Cloud print gateway / relay (for mobile phones and remote clients)
-                                                return api.post('/print/test', payload).then(res => {
-                                                    toast.success(res.data?.message || `Test KOT dispatched to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🧑‍🍳', duration: 5000 });
+                                            api.post('/print/test', payload)
+                                                .then(res => {
+                                                    toast.success(res.data?.message || `Test KOT printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🧑‍🍳', duration: 5000 });
+                                                })
+                                                .catch(err => {
+                                                    const msg = err?.response?.data?.message || err?.message || 'Failed to connect to printer';
+                                                    toast.error(`Print failed: ${msg}`, { id: toastId, duration: 6000 });
                                                 });
-                                            })
-                                            .catch(err => {
-                                                const msg = err?.response?.data?.message || err?.message || 'Failed to connect to printer';
-                                                toast.error(`Print failed: ${msg}`, { id: toastId, duration: 6000 });
-                                            });
                                         }
                                     }}
                                     className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider border ${theme.borderLight} ${theme.textPrimary} hover:border-amber-500 hover:text-amber-600 transition-all flex items-center gap-2`}
@@ -1245,43 +1216,41 @@ const BarcodeBillSettings = ({ currentUser }) => {
                         </div>
                     </div>
 
-                    {/* Print Bridge Agent info & Status */}
-                    <div className={`p-4 rounded-3xl border ${bridgeStatus.online ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20' : theme.borderLight} ${theme.surfaceBg} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs font-medium`}>
-                        <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-2xl ${bridgeStatus.online ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'} flex items-center justify-center shrink-0`}>
-                                <Server size={17} />
+                    {/* Counter PC Print Station info & Status (Zero Local URLs) */}
+                    <div className={`p-5 rounded-3xl border ${bridgeStatus.online ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20' : theme.borderLight} ${theme.surfaceBg} flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs font-medium`}>
+                        <div className="flex items-center gap-3.5">
+                            <div className={`w-10 h-10 rounded-2xl ${bridgeStatus.online ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'} flex items-center justify-center shrink-0 shadow-sm`}>
+                                <Server size={18} />
                             </div>
-                            <div>
+                            <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
-                                    <span className={`font-black ${theme.textHeading} block`}>Restaurant PC Relay Bridge</span>
+                                    <span className={`font-black ${theme.textHeading} text-sm`}>Counter PC Print Station</span>
                                     {bridgeStatus.online ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                                             Active (Online)
                                         </span>
                                     ) : (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
                                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                                             Standby / Offline
                                         </span>
                                     )}
                                 </div>
-                                <span className={theme.textMuted}>
+                                <p className={`text-xs ${theme.textMuted} max-w-2xl leading-relaxed`}>
                                     {bridgeStatus.online
-                                        ? 'Relaying orders & KOTs sent from Waiter Mobile Phones directly to your kitchen LAN printer (192.168.1.100:9100).'
-                                        : 'To enable mobile waiter printing to 192.168.1.100, keep this cashier PC on and run "npm run bridge".'}
-                                </span>
+                                        ? 'Relaying orders & KOTs sent from Waiter Mobile Phones automatically to your kitchen LAN printer.'
+                                        : 'To enable waiter phones to print automatically to your kitchen LAN printer, keep the print station running on this counter PC (npm run bridge).'}
+                                </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <span className="text-[10px] font-black uppercase text-slate-400 shrink-0">Agent URL:</span>
-                            <input
-                                type="text"
-                                value={hardwareSettings.bridgeUrl || 'http://127.0.0.1:3001'}
-                                onChange={(e) => setHardwareSettings((p) => ({ ...p, bridgeUrl: e.target.value }))}
-                                placeholder="http://127.0.0.1:3001"
-                                className={`px-2.5 py-1.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-mono text-xs font-bold w-full sm:w-56`}
-                            />
+
+                        {/* Shop ID info for Multi-Shop Setup */}
+                        <div className="flex items-center gap-2 w-full md:w-auto shrink-0 bg-white/70 dark:bg-slate-900/70 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+                            <div className="space-y-0.5">
+                                <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Restaurant Shop ID</span>
+                                <code className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{saveShopId || activeBranch?.shopId || 'Auto-Detected'}</code>
+                            </div>
                         </div>
                     </div>
                 </div>
