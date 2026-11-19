@@ -47,9 +47,10 @@ function normalizeCloudUrl(url) {
 
 let activeConfig = {
     cloudUrl: normalizeCloudUrl(getArg('--cloud', process.env.BRIDGE_CLOUD_URL || savedConfig.cloudUrl || 'https://api.filepeapp.com/api')),
-    shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || ''),
-    branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || ''),
-    pollIntervalMs: parseInt(getArg('--interval', process.env.BRIDGE_POLL_INTERVAL || savedConfig.pollIntervalMs || 1200), 10),
+    mongoUri: getArg('--mongo', process.env.BRIDGE_MONGO_URI || savedConfig.mongoUri || 'mongodb+srv://yaseenbsmwork:yaseenbsmwork3214@filepebe.gnahxrb.mongodb.net/filepe?appName=filepebe'),
+    shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || '6aa7abc9329212a3c4ce2cde'),
+    branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || '6aa7abc9329212a3c4ce2ce0'),
+    pollIntervalMs: parseInt(getArg('--interval', process.env.BRIDGE_POLL_INTERVAL || savedConfig.pollIntervalMs || 1000), 10),
 };
 
 function saveActiveConfig() {
@@ -333,6 +334,27 @@ function makeRequest(url, options = {}, body = null) {
     });
 }
 
+let mongoClient = null;
+let mongoDb = null;
+let mongoCol = null;
+
+async function initMongoDirect() {
+    if (!activeConfig.mongoUri) return;
+    try {
+        const { MongoClient } = require('mongodb');
+        mongoClient = new MongoClient(activeConfig.mongoUri);
+        await mongoClient.connect();
+        mongoDb = mongoClient.db('filepe');
+        mongoCol = mongoDb.collection('printjobs');
+        console.log('[PRINT STATION] ⚡ Direct MongoDB Atlas connection established! Real-time instant printing active.');
+    } catch (e) {
+        console.log('[PRINT STATION] ℹ️ Direct MongoDB connection unavailable, using HTTP cloud polling:', e.message);
+        mongoClient = null;
+        mongoDb = null;
+        mongoCol = null;
+    }
+}
+
 /**
  * Cloud Queue Poller:
  * Polls the backend cloud for pending jobs placed by Waiter Phones or Tablets
@@ -344,6 +366,51 @@ async function pollCloudPrintQueue() {
     isPolling = true;
 
     try {
+        // Mode A: Direct MongoDB Atlas (fastest, zero HTTP/proxy overhead, avoids ObjectId string mismatch)
+        if (mongoCol && activeConfig.shopId) {
+            try {
+                const { ObjectId } = require('mongodb');
+                const shopOid = ObjectId.isValid(activeConfig.shopId) ? new ObjectId(activeConfig.shopId) : null;
+                const branchOid = (activeConfig.branchId && ObjectId.isValid(activeConfig.branchId)) ? new ObjectId(activeConfig.branchId) : null;
+
+                const shopFilter = shopOid ? { $in: [activeConfig.shopId, shopOid] } : activeConfig.shopId;
+                const query = {
+                    status: 'PENDING',
+                    shopId: shopFilter
+                };
+                if (activeConfig.branchId) {
+                    query.branchId = branchOid ? { $in: [activeConfig.branchId, branchOid] } : activeConfig.branchId;
+                }
+
+                const pendingJobs = await mongoCol.find(query).sort({ createdAt: 1 }).limit(5).toArray();
+                for (const job of pendingJobs) {
+                    const claimResult = await mongoCol.updateOne(
+                        { _id: job._id, status: 'PENDING' },
+                        { $set: { status: 'PROCESSING', claimedAt: new Date(), claimedBy: 'print-station-local' } }
+                    );
+                    if (claimResult.modifiedCount === 0) continue;
+
+                    console.log(`\n=======================================================`);
+                    console.log(`[PRINT STATION] 📥 Claimed Job (Direct Atlas): #${job._id} (Type: ${(job.type || 'kot').toUpperCase()})`);
+                    console.log(`[PRINT STATION] 🏢 Shop: ${job.shopId} | Branch: ${job.branchId || 'default'}`);
+                    try {
+                        await processCloudJob(job);
+                        await mongoCol.updateOne({ _id: job._id }, { $set: { status: 'COMPLETED', completedAt: new Date() } });
+                        console.log(`[PRINT STATION] ✅ Job #${job._id} printed and marked COMPLETED`);
+                        console.log(`=======================================================\n`);
+                    } catch (err) {
+                        console.error(`[PRINT STATION] ❌ Failed to print job #${job._id}:`, err.message);
+                        await mongoCol.updateOne({ _id: job._id }, { $set: { status: 'FAILED', errorMessage: err.message } });
+                        console.log(`=======================================================\n`);
+                    }
+                }
+                return;
+            } catch (mErr) {
+                logThrottled('mongo_poll_err', `[PRINT STATION] MongoDB poll warning: ${mErr.message}, trying HTTP...`);
+            }
+        }
+
+        // Mode B: HTTP API Polling Fallback
         const baseUrl = activeConfig.cloudUrl.replace(/\/+$/, '');
         const queryParts = [];
         if (activeConfig.shopId) queryParts.push(`shopId=${encodeURIComponent(activeConfig.shopId)}`);
@@ -425,10 +492,12 @@ async function sendHeartbeat() {
     }
 }
 
-// Start cloud polling interval and heartbeat
-setInterval(pollCloudPrintQueue, activeConfig.pollIntervalMs);
-setInterval(sendHeartbeat, 10000);
-setTimeout(sendHeartbeat, 1000);
+// Initialize direct MongoDB Atlas connection on startup, then start polling
+initMongoDirect().finally(() => {
+    setInterval(pollCloudPrintQueue, activeConfig.pollIntervalMs);
+    setInterval(sendHeartbeat, 10000);
+    setTimeout(sendHeartbeat, 1000);
+});
 
 /**
  * Local HTTP Server for local health check & dynamic session sync
