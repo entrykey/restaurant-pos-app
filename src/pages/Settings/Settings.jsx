@@ -443,7 +443,9 @@ const Settings = ({
         switch (activeTab) {
             case "general": {
                 const printSettingsKeys = [
-                    'BARCODE_PRINT_SETTINGS', 'BILL_PRINT_SETTINGS', 'PURCHASE_INVOICE_SETTINGS'
+                    'BARCODE_PRINT_SETTINGS', 'BILL_PRINT_SETTINGS', 'PURCHASE_INVOICE_SETTINGS',
+                    'pos_hardware_printer', 'POS_HARDWARE_PRINTER',
+                    'pos_active_tabs', 'POS_ACTIVE_TABS'
                 ];
                 const saleSettingsKeys = [
                     'SALE_MARKING_TYPE', 'SALE_MARKING_TIME',
@@ -454,6 +456,9 @@ const Settings = ({
                 const filteredGeneralSettings = backendSettings.filter(s => {
                     if (printSettingsKeys.includes(s.key)) return false;
                     if (saleSettingsKeys.includes(s.key)) return false;
+                    // Exclude complex JSON/object settings that belong to dedicated modules (e.g. Barcode & Bill)
+                    if (s.type === 'json' || (s.value && typeof s.value === 'object')) return false;
+                    if (s.key && (s.key.toLowerCase().startsWith('pos_') || s.key.toLowerCase().includes('printer'))) return false;
                     // Separate table column customizations into dedicated section below
                     if (isTableCustomizationSetting(s)) return false;
 
