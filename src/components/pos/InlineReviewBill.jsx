@@ -1067,7 +1067,7 @@ const InlineReviewBill = ({
                                                     {showAiImage ? (
                                                         <div className="relative shrink-0">
                                                             <img
-                                                                src={getBingImage(item?.name, { w: 48, h: 48 })}
+                                                                src={item?.image || item?.imageUrl || getBingImage(item, { w: 48, h: 48 })}
                                                                 alt={item?.name || "Item"}
                                                                 loading="lazy"
                                                                 className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg object-cover border border-gray-200 dark:border-gray-700 shadow-2xs"
@@ -1131,7 +1131,8 @@ const InlineReviewBill = ({
                                                             step="any"
                                                             value={qtyInputs[(item.id || item._id) + "_" + idx] !== undefined ? qtyInputs[(item.id || item._id) + "_" + idx] : item.quantity}
                                                             onFocus={(e) => {
-                                                                e.target.select();
+                                                                const target = e.target;
+                                                                setTimeout(() => target?.select?.(), 10);
                                                                 const k = (item.id || item._id) + "_" + idx;
                                                                 setQtyInputs(prev => ({ ...prev, [k]: String(item.quantity) }));
                                                             }}
@@ -1156,7 +1157,7 @@ const InlineReviewBill = ({
                                                                     e.target.blur();
                                                                 }
                                                             }}
-                                                            className={`w-8 px-0.5 text-center text-xs font-black ${theme.textPrimary} bg-transparent outline-none focus:bg-white dark:focus:bg-slate-800 rounded focus:ring-1 focus:ring-indigo-500`}
+                                                            className={`w-11 h-6 px-1 text-center text-xs font-black ${theme.textPrimary} bg-transparent outline-none focus:bg-white dark:focus:bg-slate-800 rounded focus:ring-1 focus:ring-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                                                             title="Click to type quantity"
                                                         />
                                                         <button

@@ -72,7 +72,7 @@ const CartItemEditModal = ({
 
             const basePrice = item.selectedVariant?.price !== undefined 
                 ? item.selectedVariant.price 
-                : (item.pricePerUnit || item.sellingPrice || item.price || 0);
+                : (item.price !== undefined && item.price !== null ? item.price : (item.sellingPrice ?? item.pricePerUnit ?? 0));
             setUnitPriceInput(basePrice !== undefined && basePrice !== null ? String(basePrice) : '');
 
             setSelectedVariant(item.selectedVariant || null);
@@ -209,9 +209,15 @@ const CartItemEditModal = ({
                                         key={v.name || i}
                                         type="button"
                                         onClick={() => {
-                                            setSelectedVariant(v);
-                                            if (v.price !== undefined && v.price !== null) {
-                                                setUnitPriceInput(String(v.price));
+                                            if (isSelected) {
+                                                setSelectedVariant(null);
+                                                const defaultPrice = menuItem?.pricing?.sellingPrice ?? menuItem?.price ?? item.price ?? 0;
+                                                setUnitPriceInput(String(defaultPrice));
+                                            } else {
+                                                setSelectedVariant(v);
+                                                if (v.price !== undefined && v.price !== null) {
+                                                    setUnitPriceInput(String(v.price));
+                                                }
                                             }
                                         }}
                                         className={`p-2.5 rounded-xl border text-left transition-all ${
@@ -285,8 +291,20 @@ const CartItemEditModal = ({
                                 step="any"
                                 value={quantityInput}
                                 onChange={(e) => setQuantityInput(e.target.value)}
-                                onFocus={(e) => e.target.select()}
-                                className={`flex-1 w-full text-center font-black text-base ${theme.textPrimary} bg-transparent outline-none px-2`}
+                                onFocus={(e) => {
+                                    const target = e.target;
+                                    setTimeout(() => target?.select?.(), 10);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'ArrowUp') {
+                                        e.preventDefault();
+                                        handleQtyDelta(1);
+                                    } else if (e.key === 'ArrowDown') {
+                                        e.preventDefault();
+                                        handleQtyDelta(-1);
+                                    }
+                                }}
+                                className={`flex-1 w-full text-center font-black text-base ${theme.textPrimary} bg-transparent outline-none px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                                 placeholder="Qty"
                                 required
                             />
@@ -314,9 +332,17 @@ const CartItemEditModal = ({
                                 step="any"
                                 value={unitPriceInput}
                                 onChange={(e) => setUnitPriceInput(e.target.value)}
-                                onFocus={(e) => e.target.select()}
+                                onFocus={(e) => {
+                                    const target = e.target;
+                                    setTimeout(() => target?.select?.(), 10);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleSave(e);
+                                    }
+                                }}
                                 placeholder="0.00"
-                                className={`w-full pl-8 pr-3 py-2.5 rounded-xl border-2 font-black text-base ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500 outline-none shadow-xs`}
+                                className={`w-full pl-8 pr-3 py-2.5 rounded-xl border-2 font-black text-base ${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} focus:border-indigo-500 outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                                 required
                             />
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-gray-400 pointer-events-none">

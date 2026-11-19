@@ -39,6 +39,7 @@
   },
   "scripts": {
     "start": "craco start",
+    "bridge": "node scripts/pos-print-bridge.js",
     "build": "npm install --legacy-peer-deps && react-scripts build",
     "test": "craco test --env=jsdom",
     "eject": "react-scripts eject"

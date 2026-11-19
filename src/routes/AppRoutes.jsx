@@ -199,6 +199,8 @@ const AppRoutes = (props) => {
     updateItemUnit,
     updateItemDiscount: props.updateItemDiscount || updateItemDiscount,
     updateItemPrice: props.updateItemPrice || updateItemPrice,
+    onUpdateOrderItem: props.onUpdateOrderItem,
+    setTables: props.setTables,
     openNoteModal,
     takeawayCustName,
     setTakeawayCustName,

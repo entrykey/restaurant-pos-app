@@ -101,7 +101,7 @@ const FoodItemCard = ({
                     {showAiImage && (
                         <div className="w-12 h-12 rounded-lg bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0">
                             <img
-                                src={item?.image || item?.imageUrl || getBingImage(item?.name, item?.categoryName || item?.category, { w: 100, h: 100 })}
+                                src={item?.image || item?.imageUrl || getBingImage(item, { w: 100, h: 100 })}
                                 alt={item?.name || "Item"}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
@@ -180,111 +180,91 @@ const FoodItemCard = ({
         );
     }
 
-    // EXPANDED 2-COLUMN CARD VIEW (Spans 2 columns cleanly while unexpanded cards maintain initial size without stretching!)
+    // EXPANDED CARD VIEW FOR VARIANTS & DETAILS (Clean stacked layout so contents never cramp or overlap)
     if (isExpanded) {
         return (
             <div
-                className="w-full rounded-2xl border-2 border-indigo-600 bg-white p-3.5 shadow-xl ring-4 ring-indigo-500/10 flex flex-col sm:flex-row items-stretch gap-3.5 transition-all duration-300 animate-in fade-in zoom-in-95 cursor-default min-h-[210px]"
+                className={`w-full rounded-2xl border-2 border-indigo-600 ${theme.surfaceBg} p-3.5 shadow-xl ring-4 ring-indigo-500/10 flex flex-col justify-between gap-3 transition-all duration-300 animate-in fade-in zoom-in-95 cursor-default min-h-[220px]`}
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Left Column: Product Info & Large Image */}
-                <div className="flex-1 min-w-0 flex flex-col justify-between pr-0 sm:pr-3 border-b sm:border-b-0 sm:border-r border-slate-200/80 pb-3 sm:pb-0">
-                    <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                            {showAiImage && (
-                                <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden shrink-0 shadow-2xs">
-                                    <img
-                                        src={item?.image || item?.imageUrl || getBingImage(item?.name, item?.categoryName || item?.category, { w: 160, h: 160 })}
-                                        alt={item?.name || "Item"}
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                            e.currentTarget.onerror = null;
-                                            e.currentTarget.src = DEFAULT_ITEM_IMAGE;
-                                        }}
-                                    />
-                                </div>
-                            )}
-                            <div className="min-w-0">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 block truncate">
-                                    {item.category || "General"}
+                {/* Header: Product Info & Thumbnail */}
+                <div className="flex items-start justify-between gap-2.5 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {showAiImage && (
+                            <div className="w-13 h-13 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0 shadow-2xs">
+                                <img
+                                    src={item?.image || item?.imageUrl || getBingImage(item, { w: 140, h: 140 })}
+                                    alt={item?.name || "Item"}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        e.currentTarget.onerror = null;
+                                        e.currentTarget.src = DEFAULT_ITEM_IMAGE;
+                                    }}
+                                />
+                            </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block truncate">
+                                {item.category || "General"}
+                            </span>
+                            <h3 className={`font-extrabold text-sm sm:text-base ${theme.textPrimary} leading-snug truncate`} title={item.name}>
+                                {item.name}
+                            </h3>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                                <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+                                    {hasPortions
+                                        ? (minPrice === maxPrice ? formatPriceWithCurrency(minPrice) : `${formatPriceWithCurrency(minPrice)} - ${formatPriceWithCurrency(maxPrice)}`)
+                                        : formatPriceWithCurrency(item.price)}
                                 </span>
-                                <h3 className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug truncate" title={item.name}>
-                                    {item.name}
-                                </h3>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-xs font-black text-indigo-600">
-                                        {hasPortions
-                                            ? (minPrice === maxPrice ? formatPriceWithCurrency(minPrice) : `${formatPriceWithCurrency(minPrice)} - ${formatPriceWithCurrency(maxPrice)}`)
-                                            : formatPriceWithCurrency(item.price)}
+                                {stockQtyDisplay !== null && (
+                                    <span className={`text-[9.5px] font-black px-2 py-0.5 rounded-md border whitespace-nowrap ${
+                                        isOutOfStock
+                                            ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800'
+                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
+                                    }`}>
+                                        {isOutOfStock ? "Out of Stock" : `Qty: ${stockQtyDisplay} Available`}
                                     </span>
-                                    {stockQtyDisplay !== null && (
-                                        <span className={`text-[9.5px] font-black px-2 py-0.5 rounded-md border ${isOutOfStock ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                                            {isOutOfStock ? "Out of Stock" : `Qty: ${stockQtyDisplay} Available`}
-                                        </span>
-                                    )}
-                                </div>
+                                )}
                             </div>
                         </div>
-
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (onToggleExpand) onToggleExpand();
-                            }}
-                            className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer"
-                            title="Close expanded details"
-                        >
-                            <X size={16} />
-                        </button>
                     </div>
 
-                    {/* Metadata footer */}
-                    <div className="mt-3 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 font-medium">
-                        <span>SKU: {item.sku || item.barcode || item._id?.slice(-8) || 'N/A'}</span>
-                        {item.taxPercent > 0 && (
-                            <span className="text-indigo-600 font-bold">
-                                Tax: {item.taxPercent}% ({item.isExclusiveTax ? 'Excl.' : 'Incl.'})
-                            </span>
-                        )}
-                        {!hasPortions && (
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (onSelect) onSelect(item);
-                                    if (onToggleExpand) onToggleExpand();
-                                }}
-                                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs transition-colors cursor-pointer ml-auto"
-                            >
-                                Add to Order
-                            </button>
-                        )}
-                    </div>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onToggleExpand) onToggleExpand();
+                        }}
+                        className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0 cursor-pointer"
+                        title="Close details"
+                    >
+                        <X size={16} />
+                    </button>
                 </div>
 
-                {/* Right Column: Full Variant List & One-Click Selection */}
+                {/* Middle: Full Variant List & One-Click Selection */}
                 {hasPortions ? (
                     <div className="flex-1 min-w-0 flex flex-col justify-between">
-                        <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
-                            <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                        <div className="flex items-center justify-between pb-1.5">
+                            <span className={`text-[11px] font-black uppercase tracking-wider ${theme.textPrimary}`}>
                                 Select Variant ({portionList.length})
                             </span>
-                            <span className="text-[10px] text-slate-400 font-bold">Click variant to add</span>
+                            <span className={`text-[10px] font-bold ${theme.textMuted}`}>Click variant to add</span>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto max-h-48 my-1.5 space-y-1.5 custom-scrollbar pr-1">
-                            {portionList.map((variant) => {
+                        <div className="overflow-y-auto max-h-48 my-1 space-y-1.5 custom-scrollbar pr-0.5">
+                            {portionList.map((variant, idx) => {
                                 const variantStock = Number.isFinite(variant.quantityOnHand)
                                     ? variant.quantityOnHand
                                     : Number.isFinite(variant.openingStock)
                                     ? variant.openingStock
                                     : null;
                                 const isVarOut = variantStock !== null && variantStock <= 0;
+                                const variantLabel = variant.name || variant.portionName || variant.title || `Variant ${idx + 1}`;
 
                                 return (
                                     <button
-                                        key={variant.name}
+                                        key={variant.name || idx}
                                         type="button"
                                         disabled={isVarOut}
                                         onClick={(e) => {
@@ -292,27 +272,34 @@ const FoodItemCard = ({
                                             if (onSelect) onSelect(item, variant);
                                             if (onToggleExpand) onToggleExpand();
                                         }}
-                                        className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between text-xs ${
+                                        className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-2.5 text-xs ${
                                             isVarOut
-                                                ? 'bg-slate-50 text-slate-400 border-slate-200 opacity-60 cursor-not-allowed'
-                                                : 'bg-indigo-50/70 hover:bg-indigo-600 hover:text-white border-indigo-100 text-slate-800 group/var cursor-pointer shadow-2xs'
+                                                ? 'bg-slate-50 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-700 opacity-60 cursor-not-allowed'
+                                                : 'bg-indigo-50/70 dark:bg-indigo-950/30 hover:bg-indigo-600 hover:text-white border-indigo-100 dark:border-indigo-900/50 text-slate-800 dark:text-slate-100 group/var cursor-pointer shadow-2xs'
                                         }`}
                                     >
-                                        <div className="flex items-center gap-2 min-w-0 pr-1">
-                                            <span className="font-extrabold text-xs truncate">{variant.name}</span>
+                                        {/* Left side: Variant Name + Stock Badge */}
+                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            <span className="font-extrabold text-xs truncate">
+                                                {variantLabel}
+                                            </span>
                                             {variantStock !== null && (
-                                                <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${
-                                                    isVarOut ? 'bg-red-50 text-red-500 border-red-200' : 'bg-white text-emerald-700 border-emerald-200 group-hover/var:bg-white/20 group-hover/var:text-white group-hover/var:border-white/30'
+                                                <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded border whitespace-nowrap ${
+                                                    isVarOut
+                                                        ? 'bg-red-50 text-red-500 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800'
+                                                        : 'bg-white text-emerald-700 border-emerald-200 dark:bg-slate-800 dark:text-emerald-400 dark:border-emerald-800 group-hover/var:bg-white/20 group-hover/var:text-white group-hover/var:border-white/30'
                                                 }`}>
                                                     Stock: {variantStock}
                                                 </span>
                                             )}
                                         </div>
+
+                                        {/* Right side: Price + Add Plus Button */}
                                         <div className="flex items-center gap-2 shrink-0">
-                                            <span className="font-black text-xs text-indigo-600 group-hover/var:text-white">
+                                            <span className="font-black text-xs text-indigo-600 dark:text-indigo-400 group-hover/var:text-white whitespace-nowrap">
                                                 {formatPriceWithCurrency(variant.price)}
                                             </span>
-                                            <span className="w-6 h-6 rounded-lg bg-indigo-600 group-hover/var:bg-white text-white group-hover/var:text-indigo-600 flex items-center justify-center font-bold text-xs shadow-2xs">
+                                            <span className="w-6 h-6 rounded-lg bg-indigo-600 group-hover/var:bg-white text-white group-hover/var:text-indigo-600 flex items-center justify-center font-bold text-xs shadow-2xs shrink-0">
                                                 +
                                             </span>
                                         </div>
@@ -320,23 +307,10 @@ const FoodItemCard = ({
                                 );
                             })}
                         </div>
-
-                        <div className="pt-1.5 border-t border-slate-100 flex items-center justify-end gap-2">
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (onToggleExpand) onToggleExpand();
-                                }}
-                                className="px-3 py-1 text-xs font-extrabold text-slate-500 hover:text-slate-700 cursor-pointer"
-                            >
-                                Close
-                            </button>
-                        </div>
                     </div>
                 ) : (
                     <div className="flex-1 min-w-0 flex flex-col justify-center items-center p-4 space-y-3">
-                        <p className="text-xs font-bold text-slate-500 text-center">Standard Item without variants</p>
+                        <p className={`text-xs font-bold ${theme.textMuted} text-center`}>Standard Item without variants</p>
                         <button
                             type="button"
                             onClick={(e) => {
@@ -350,6 +324,28 @@ const FoodItemCard = ({
                         </button>
                     </div>
                 )}
+
+                {/* Footer: Metadata & Close button */}
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    <div className="flex items-center gap-2 truncate">
+                        <span>SKU: {item.sku || item.barcode || item._id?.slice(-8) || 'N/A'}</span>
+                        {item.taxPercent > 0 && (
+                            <span className="text-indigo-600 dark:text-indigo-400 font-bold">
+                                Tax: {item.taxPercent}% ({item.isExclusiveTax ? 'Excl.' : 'Incl.'})
+                            </span>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onToggleExpand) onToggleExpand();
+                        }}
+                        className="px-3 py-1 text-xs font-extrabold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer ml-auto"
+                    >
+                        Close
+                    </button>
+                </div>
             </div>
         );
     }
@@ -396,7 +392,7 @@ const FoodItemCard = ({
                     {showAiImage && (
                         <div className="relative shrink-0 w-14 h-14 aspect-square rounded-xl overflow-hidden bg-slate-50 border border-slate-200/80 shadow-2xs">
                             <img
-                                src={item?.image || item?.imageUrl || getBingImage(item?.name, item?.categoryName || item?.category, { w: 140, h: 140 })}
+                                src={item?.image || item?.imageUrl || getBingImage(item, { w: 140, h: 140 })}
                                 alt={item?.name || "Item"}
                                 loading="lazy"
                                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
