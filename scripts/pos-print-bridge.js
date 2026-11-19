@@ -32,8 +32,21 @@ try {
     // ignore
 }
 
+function normalizeCloudUrl(url) {
+    if (!url || typeof url !== 'string') return 'https://api.filepeapp.com/api';
+    let clean = url.trim().replace(/\/+$/, '');
+    if (clean.includes('qa.filepeapp.com')) {
+        console.log(`[PRINT STATION] ℹ️ Auto-redirecting cloudUrl from static web host (${clean}) to API server (https://api.filepeapp.com/api)`);
+        clean = 'https://api.filepeapp.com/api';
+    }
+    if (!clean.endsWith('/api') && !clean.includes('localhost') && !clean.includes('127.0.0.1')) {
+        clean = `${clean}/api`;
+    }
+    return clean;
+}
+
 let activeConfig = {
-    cloudUrl: getArg('--cloud', process.env.BRIDGE_CLOUD_URL || savedConfig.cloudUrl || 'https://qa.filepeapp.com/api'),
+    cloudUrl: normalizeCloudUrl(getArg('--cloud', process.env.BRIDGE_CLOUD_URL || savedConfig.cloudUrl || 'https://api.filepeapp.com/api')),
     shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || ''),
     branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || ''),
     pollIntervalMs: parseInt(getArg('--interval', process.env.BRIDGE_POLL_INTERVAL || savedConfig.pollIntervalMs || 1200), 10),
@@ -273,9 +286,22 @@ async function processCloudJob(job) {
         });
     }
 
-    console.log(`[PRINT STATION] 🖨️ Printing ${job.type.toUpperCase()} (#${job._id}) to ${ip}:${port}...`);
+    console.log(`[PRINT STATION] 🖨️ Target: ${ip}:${port} (${paperWidthMm}mm ESC/POS)`);
+    console.log(`[PRINT STATION] 🔌 Connecting TCP socket to ${ip}:${port}...`);
     await sendToNetworkPrinter(ip, port, buffer);
-    console.log(`[PRINT STATION] ✅ Successfully printed job #${job._id} to ${ip}:${port}`);
+    console.log(`[PRINT STATION] 📄 Sent ${buffer.length} ESC/POS bytes. Buzzer: ${job.beepBuzzer !== false ? 'YES' : 'NO'}, Cut: ${job.autoCut !== false ? 'YES' : 'NO'}`);
+}
+
+/**
+ * Throttled console logging to prevent spam
+ */
+const lastLogTime = new Map();
+function logThrottled(key, message, intervalMs = 20000) {
+    const now = Date.now();
+    if (!lastLogTime.has(key) || (now - lastLogTime.get(key) > intervalMs)) {
+        lastLogTime.set(key, now);
+        console.warn(message);
+    }
 }
 
 /**
@@ -335,6 +361,9 @@ async function pollCloudPrintQueue() {
 
         if (res.status === 200 && res.data && Array.isArray(res.data.jobs)) {
             for (const job of res.data.jobs) {
+                console.log(`\n=======================================================`);
+                console.log(`[PRINT STATION] 📥 Claimed Job: #${job._id} (Type: ${job.type.toUpperCase()})`);
+                console.log(`[PRINT STATION] 🏢 Shop: ${job.shopId || activeConfig.shopId} | Branch: ${job.branchId || 'default'}`);
                 try {
                     await processCloudJob(job);
                     const completeUrl = `${baseUrl}/print/jobs/${job._id}/complete`;
@@ -344,8 +373,11 @@ async function pollCloudPrintQueue() {
                             'Content-Type': 'application/json',
                             'x-branch-id': activeConfig.branchId || '',
                             'x-shop-id': activeConfig.shopId || '',
+                            'x-bridge-client': 'pos-print-station-v1',
                         },
                     }, { status: 'COMPLETED' });
+                    console.log(`[PRINT STATION] ✅ Job #${job._id} marked COMPLETED on cloud queue`);
+                    console.log(`=======================================================\n`);
                 } catch (err) {
                     console.error(`[PRINT STATION] ❌ Failed to print job #${job._id}:`, err.message);
                     const completeUrl = `${baseUrl}/print/jobs/${job._id}/complete`;
@@ -355,20 +387,48 @@ async function pollCloudPrintQueue() {
                             'Content-Type': 'application/json',
                             'x-branch-id': activeConfig.branchId || '',
                             'x-shop-id': activeConfig.shopId || '',
+                            'x-bridge-client': 'pos-print-station-v1',
                         },
                     }, { status: 'FAILED', errorMessage: err.message });
+                    console.log(`=======================================================\n`);
                 }
             }
+        } else if (res.status === 401 || res.status === 403) {
+            logThrottled('auth_err', `[PRINT STATION] ⚠️ Authentication required (${res.status}) when polling ${baseUrl}. Check shopId or token.`);
+        } else if (res.status !== 200) {
+            logThrottled('poll_err', `[PRINT STATION] ⚠️ HTTP ${res.status} from ${pollUrl}: ${typeof res.data === 'string' ? res.data.slice(0, 100) : JSON.stringify(res.data)}`);
         }
     } catch (err) {
-        // Silently retry on next tick
+        logThrottled('net_err', `[PRINT STATION] ⚠️ Network error reaching cloud: ${err.message}`);
     } finally {
         isPolling = false;
     }
 }
 
-// Start cloud polling interval
+/**
+ * Send periodic heartbeat to cloud so POS shows station as ACTIVE (ONLINE)
+ */
+async function sendHeartbeat() {
+    if (!activeConfig.shopId && !activeConfig.branchId) return;
+    try {
+        const baseUrl = activeConfig.cloudUrl.replace(/\/+$/, '');
+        await makeRequest(`${baseUrl}/print/bridge/status`, {
+            method: 'GET',
+            headers: {
+                'x-branch-id': activeConfig.branchId || '',
+                'x-shop-id': activeConfig.shopId || '',
+                'x-bridge-client': 'pos-print-station-v1',
+            },
+        });
+    } catch (e) {
+        // ignore
+    }
+}
+
+// Start cloud polling interval and heartbeat
 setInterval(pollCloudPrintQueue, activeConfig.pollIntervalMs);
+setInterval(sendHeartbeat, 10000);
+setTimeout(sendHeartbeat, 1000);
 
 /**
  * Local HTTP Server for local health check & dynamic session sync
