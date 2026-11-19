@@ -35,12 +35,16 @@ try {
 
 let activeConfig = {
     cloudUrl: getArg('--cloud', process.env.BRIDGE_CLOUD_URL || savedConfig.cloudUrl || 'https://qa.filepeapp.com/api'),
-    branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || '6aa258385d754c6801968d6f'),
-    shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || '6aa258385d754c6801968d6d'),
+    shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || '6aa7abc9329212a3c4ce2cde'),
+    branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || '6aa7abc9329212a3c4ce2ce0'),
     printerIp: getArg('--ip', process.env.BRIDGE_PRINTER_IP || savedConfig.printerIp || '192.168.1.100'),
     printerPort: parseInt(getArg('--port', process.env.BRIDGE_PRINTER_PORT || savedConfig.printerPort || 9100), 10),
-    pollIntervalMs: 1500,
+    pollIntervalMs: parseInt(getArg('--interval', process.env.BRIDGE_POLL_INTERVAL || savedConfig.pollIntervalMs || 1200), 10),
 };
+
+if (getArg('--shop') || getArg('--branch') || getArg('--cloud') || getArg('--ip') || getArg('--port')) {
+    saveActiveConfig();
+}
 
 function saveActiveConfig() {
     try {
