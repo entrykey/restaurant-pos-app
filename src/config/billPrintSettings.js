@@ -1,5 +1,6 @@
 export const BILL_PRINT_SETTINGS_KEY = 'BILL_PRINT_SETTINGS';
 export const PURCHASE_INVOICE_SETTINGS_KEY = 'PURCHASE_INVOICE_SETTINGS';
+export const HARDWARE_PRINTER_SETTINGS_KEY = 'HARDWARE_PRINTER_SETTINGS';
 
 const FORMAT_FIELDS = [
     'includeLogo', 'includeShopName', 'includeBranchName', 'includeAddress', 'includeContact',
@@ -127,7 +128,73 @@ export const mergePurchaseInvoiceSettings = (saved) => {
 export const areBillPrintSettingsEqual = (a, b) =>
     JSON.stringify(mergeBillPrintSettings(a)) === JSON.stringify(mergeBillPrintSettings(b));
 
+export const DEFAULT_HARDWARE_PRINTER_SETTINGS = {
+    connectionType: 'usb', // 'usb' | 'lan' | 'wifi' | 'bluetooth'
+    printMode: 'silent', // 'silent' (zero-dialog automatic printing) | 'browser' (print preview dialog)
+    bridgeUrl: 'http://127.0.0.1:3001',
+    cashierPrinter: {
+        enabled: true,
+        connectionType: 'usb', // 'usb' | 'lan' | 'wifi' | 'bluetooth'
+        deviceModel: 'POS-80C', // 'POS-80C' | 'Epson TM Series' | 'TVS RP-3200' | 'NGX / Everycom' | 'Generic ESC/POS'
+        name: 'POS-80C (Cashier USB)',
+        ip: '',
+        port: 9100,
+        paperWidthMm: 80,
+        autoCut: true,
+        openCashDrawer: false,
+        copies: 1,
+        autoPrintOnComplete: true,
+    },
+    kitchenPrinter: {
+        enabled: false,
+        connectionType: 'lan', // 'usb' | 'lan' | 'wifi' | 'bluetooth'
+        deviceModel: 'Generic ESC/POS',
+        name: 'Kitchen KOT Thermal',
+        ip: '',
+        port: 9100,
+        paperWidthMm: 80,
+        autoCut: true,
+        beepBuzzer: true,
+        copies: 1,
+        autoPrintOnKOT: true,
+    },
+};
+
 export const arePurchaseInvoiceSettingsEqual = (a, b) =>
     JSON.stringify(mergePurchaseInvoiceSettings(a)) === JSON.stringify(mergePurchaseInvoiceSettings(b));
+
+export const mergeHardwarePrinterSettings = (saved) => {
+    if (!saved) return { ...DEFAULT_HARDWARE_PRINTER_SETTINGS };
+    const cashier = saved.cashierPrinter || {};
+    const kitchen = saved.kitchenPrinter || {};
+    return {
+        connectionType: saved.connectionType || DEFAULT_HARDWARE_PRINTER_SETTINGS.connectionType,
+        printMode: saved.printMode || DEFAULT_HARDWARE_PRINTER_SETTINGS.printMode,
+        bridgeUrl: saved.bridgeUrl || DEFAULT_HARDWARE_PRINTER_SETTINGS.bridgeUrl,
+        cashierPrinter: {
+            ...DEFAULT_HARDWARE_PRINTER_SETTINGS.cashierPrinter,
+            ...cashier,
+            connectionType: cashier.connectionType || 'usb',
+            deviceModel: cashier.deviceModel || 'POS-80C',
+            paperWidthMm: Number(cashier.paperWidthMm) || 80,
+            autoCut: cashier.autoCut !== false,
+            openCashDrawer: Boolean(cashier.openCashDrawer),
+            copies: Number(cashier.copies) || 1,
+        },
+        kitchenPrinter: {
+            ...DEFAULT_HARDWARE_PRINTER_SETTINGS.kitchenPrinter,
+            ...kitchen,
+            connectionType: kitchen.connectionType || (kitchen.ip && kitchen.ip !== '192.168.1.101' ? 'lan' : 'lan'),
+            deviceModel: kitchen.deviceModel || 'Generic ESC/POS',
+            paperWidthMm: Number(kitchen.paperWidthMm) || 80,
+            autoCut: kitchen.autoCut !== false,
+            beepBuzzer: kitchen.beepBuzzer !== false,
+            copies: Number(kitchen.copies) || 1,
+        },
+    };
+};
+
+export const areHardwarePrinterSettingsEqual = (a, b) =>
+    JSON.stringify(mergeHardwarePrinterSettings(a)) === JSON.stringify(mergeHardwarePrinterSettings(b));
 
 export { FORMAT_FIELDS };

@@ -1,4 +1,7 @@
 import { buildUpiQrPrintHtml } from './upiQr';
+import toast from 'react-hot-toast';
+import { getHardwarePrinterSettingsCached } from './printSettingsUtils';
+import { api } from '../services/api';
 
 export function escapeHtml(input) {
   return String(input ?? "")
@@ -146,7 +149,7 @@ function openPrintWindow({ title = "", html }) {
         w.print();
       } finally {
         setTimeout(() => {
-          try { w.close(); } catch (e) {}
+          try { w.close(); } catch (e) { }
         }, 200);
       }
     }, 50);
@@ -156,16 +159,102 @@ function openPrintWindow({ title = "", html }) {
   return true;
 }
 
-function printHtml({ title = "", html }) {
-  // Prefer iframe printing to avoid popup blockers.
+export async function sendSilentPrintJob({ printer, html, title, type = 'bill', meta = null, items = [] }) {
+  try {
+    const payload = {
+      ip: printer?.ip || '192.168.1.100',
+      port: printer?.port || 9100,
+      paperWidthMm: printer?.paperWidthMm || 80,
+      printerName: printer?.name || 'Thermal Printer',
+      type,
+      title,
+      html,
+      meta,
+      items,
+      autoCut: printer?.autoCut !== false,
+      beepBuzzer: printer?.beepBuzzer !== false,
+      openCashDrawer: Boolean(printer?.openCashDrawer),
+      timestamp: new Date().toISOString(),
+    };
+
+    // 1. Direct LAN bridge agent (e.g. running on Restaurant PC: http://127.0.0.1:3001)
+    const bridgeUrl = printer?.bridgeUrl || 'http://127.0.0.1:3001';
+    let bridgeOk = false;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const resp = await fetch(`${bridgeUrl}/print`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (resp.ok) bridgeOk = true;
+    } catch {
+      // Local bridge is not directly reachable on this device
+    }
+
+    // 2. Backend network print gateway (relays directly via Node TCP port 9100)
+    if (!bridgeOk) {
+      try {
+        await api.post('/print/network', payload);
+        bridgeOk = true;
+      } catch (err) {
+        console.warn('Backend network print error:', err?.response?.data || err?.message || err);
+        throw err;
+      }
+    }
+
+    toast.success(`🖨️ Printed to ${payload.printerName} (${payload.ip}:${payload.port})!`, {
+      id: `print-silent-${type}`,
+      duration: 3000,
+    });
+    return true;
+  } catch (err) {
+    const errMsg = err?.response?.data?.message || err?.message || 'Print error';
+    console.warn('Silent print dispatch error:', errMsg);
+    toast.error(`Print failed: ${errMsg}`, { id: `print-err-${type}`, duration: 4000 });
+    return false;
+  }
+}
+
+export function printHtml({ title = "", html, printerType = 'bill', branchId = null, forceBrowser = false, meta = null, items = [] }) {
+  // Only attempt silent network dispatch if printMode is 'silent' AND connectionType is 'lan' or 'wifi' with a configured IP
+  if (!forceBrowser) {
+    const hwSettings = getHardwarePrinterSettingsCached(branchId);
+    if (hwSettings && hwSettings.printMode === 'silent') {
+      const targetPrinter = printerType === 'kot' ? hwSettings.kitchenPrinter : hwSettings.cashierPrinter;
+      const isNetworkPrinter = targetPrinter?.connectionType === 'lan' || targetPrinter?.connectionType === 'wifi';
+      const hasValidIp = Boolean(targetPrinter?.ip && targetPrinter.ip.trim().length > 0);
+
+      if (targetPrinter && targetPrinter.enabled !== false && isNetworkPrinter && hasValidIp) {
+        sendSilentPrintJob({
+          printer: { ...targetPrinter, bridgeUrl: hwSettings.bridgeUrl },
+          html,
+          title,
+          type: printerType,
+          meta,
+          items,
+        }).catch((err) => {
+          console.warn('Silent network print dispatch error:', err);
+        });
+        return true;
+      }
+    }
+  }
+
+  // USB / System printer (e.g. POS-80C on USB002): Prints via Windows printer driver
   const ok = printViaIframe({ title, html });
-  if (ok) return;
+  if (ok) return true;
 
   // Fallback: try popup printing (may be blocked).
   const popupOk = openPrintWindow({ title, html });
   if (!popupOk) {
     alert("Printing blocked by the browser. Please allow popups or enable printing permissions for this site.");
+    return false;
   }
+  return true;
 }
 
 function buildHeaderHtml({ logoUrl, shopName, branchName, contact, addressLines, extraInfo, formatSettings }) {
@@ -233,6 +322,8 @@ export function printKot({
   meta,
   items,
   staffName,
+  branchId = null,
+  forceBrowser = false,
 }) {
   const isAddon = meta?.isAddon || meta?.isAdditional || (meta?.kotTitle && String(meta.kotTitle).includes("ADDON"));
   const kotTitle = meta?.kotTitle || (isAddon ? "ADDON KOT" : "KOT");
@@ -278,8 +369,18 @@ export function printKot({
     </div>
   `;
 
-  printHtml({ title: "", html });
+  printHtml({
+    title: "",
+    html,
+    printerType: 'kot',
+    branchId,
+    forceBrowser,
+    meta: { ...(meta || {}), staffName, kotTitle },
+    items,
+  });
 }
+
+export const printKOT = printKot;
 
 export function printBill({
   header,
@@ -292,6 +393,8 @@ export function printBill({
   billSettings,
   extraInfo,
   paymentMethod,
+  branchId = null,
+  forceBrowser = false,
 }) {
   const formatSettings = billSettings?.thermal || billSettings || {};
   const paperWidth = formatSettings.paperWidthMm || 80;
@@ -325,8 +428,8 @@ export function printBill({
   // Build offer rows
   const offerRows = formatSettings.includeOffers !== false
     ? (offers || []).filter(o => o && (o.discount || o.discountAmount) > 0).map(o =>
-        `<div class="row" style="color:#16a34a;"><span>${escapeHtml(o.name || o.offerName || "Offer")}</span><span>- ${escapeHtml(formatCurrency(o.discount || o.discountAmount || 0))}</span></div>`
-      ).join("")
+      `<div class="row" style="color:#16a34a;"><span>${escapeHtml(o.name || o.offerName || "Offer")}</span><span>- ${escapeHtml(formatCurrency(o.discount || o.discountAmount || 0))}</span></div>`
+    ).join("")
     : "";
 
   const taxBreakdownHtml = formatSettings.includeTaxBreakdown !== false ? `
@@ -434,7 +537,7 @@ export function printBill({
     </div>
   `;
 
-  printHtml({ title: "", html });
+  printHtml({ title: "", html, printerType: 'bill', branchId, forceBrowser });
 }
 
 export function getBillA4Html({
@@ -654,8 +757,8 @@ export function getBillA4Html({
         <div class="totalsBox">
           <div class="row"><span>Subtotal</span><span>${escapeHtml(formatCurrency(totals?.subtotal ?? 0))}</span></div>
           ${formatSettings.includeOffers !== false ? (offers || []).filter(o => o && (o.discount || o.discountAmount) > 0).map(o =>
-            `<div class="row" style="color:#16a34a;"><span>${escapeHtml(o.name || o.offerName || "Offer")}</span><span>- ${escapeHtml(formatCurrency(o.discount || o.discountAmount || 0))}</span></div>`
-          ).join("") : ""}
+    `<div class="row" style="color:#16a34a;"><span>${escapeHtml(o.name || o.offerName || "Offer")}</span><span>- ${escapeHtml(formatCurrency(o.discount || o.discountAmount || 0))}</span></div>`
+  ).join("") : ""}
           ${(totals?.discountAmount ?? 0) ? `<div class="row"><span>Discount</span><span>- ${escapeHtml(formatCurrency(totals.discountAmount))}</span></div>` : ""}
           <div class="row"><span>Tax</span><span>${escapeHtml(formatCurrency(totals?.taxAmount ?? 0))}</span></div>
           
