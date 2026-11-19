@@ -1,24 +1,23 @@
 /**
- * Local Thermal Print Bridge Agent
+ * Thermal Print Station Agent
  * 
- * Runs on the Restaurant PC (connected to the same local Wi-Fi / LAN router as the printers).
- * 1. Listens on http://127.0.0.1:3001 for instant local prints.
- * 2. Continuously polls the cloud backend (https://qa.filepeapp.com/api/print/jobs/pending)
- *    so orders and KOTs sent from Waiter Mobile Phones or Tablets are printed automatically
- *    to local LAN thermal printers (e.g. 192.168.1.100:9100) or USB printers.
+ * Runs on the Counter PC (connected to the same local Wi-Fi / LAN router as the printers).
+ * Relays print jobs from cloud backend (qa.filepeapp.com) sent by Waiter Mobile Phones
+ * directly to local LAN thermal printers (e.g. 192.168.1.100:9100) or USB printers.
  */
 const http = require('http');
 const https = require('https');
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
+const readline = require('readline');
 
 const PORT = 3001;
 const CONFIG_FILE = path.join(__dirname, '.bridge-config.json');
 
 // Parse CLI flags
 const args = process.argv.slice(2);
-function getArg(flag, fallback) {
+function getArg(flag, fallback = '') {
     const idx = args.indexOf(flag);
     if (idx !== -1 && args[idx + 1]) return args[idx + 1];
     return fallback;
@@ -35,16 +34,10 @@ try {
 
 let activeConfig = {
     cloudUrl: getArg('--cloud', process.env.BRIDGE_CLOUD_URL || savedConfig.cloudUrl || 'https://qa.filepeapp.com/api'),
-    shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || '6aa7abc9329212a3c4ce2cde'),
-    branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || '6aa7abc9329212a3c4ce2ce0'),
-    printerIp: getArg('--ip', process.env.BRIDGE_PRINTER_IP || savedConfig.printerIp || '192.168.1.100'),
-    printerPort: parseInt(getArg('--port', process.env.BRIDGE_PRINTER_PORT || savedConfig.printerPort || 9100), 10),
+    shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || ''),
+    branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || ''),
     pollIntervalMs: parseInt(getArg('--interval', process.env.BRIDGE_POLL_INTERVAL || savedConfig.pollIntervalMs || 1200), 10),
 };
-
-if (getArg('--shop') || getArg('--branch') || getArg('--cloud') || getArg('--ip') || getArg('--port')) {
-    saveActiveConfig();
-}
 
 function saveActiveConfig() {
     try {
@@ -52,6 +45,11 @@ function saveActiveConfig() {
     } catch (e) {
         console.warn('Could not save bridge config:', e.message);
     }
+}
+
+// If CLI flags provided, update and save config
+if (getArg('--shop') || getArg('--branch') || getArg('--cloud')) {
+    saveActiveConfig();
 }
 
 /**
@@ -245,8 +243,9 @@ function buildEscPosBill({
  * Execute a print job received from the cloud queue
  */
 async function processCloudJob(job) {
-    const ip = job.printerIp || activeConfig.printerIp || '192.168.1.100';
-    const port = parseInt(job.printerPort || activeConfig.printerPort || 9100, 10);
+    // Printer IP and Port are 100% dynamic from each incoming job
+    const ip = job.printerIp || '192.168.1.100';
+    const port = parseInt(job.printerPort || 9100, 10);
     const paperWidthMm = job.paperWidthMm || 80;
 
     let buffer;
@@ -274,9 +273,9 @@ async function processCloudJob(job) {
         });
     }
 
-    console.log(`[BRIDGE] 🖨️ Printing ${job.type.toUpperCase()} (#${job._id}) to ${ip}:${port}...`);
+    console.log(`[PRINT STATION] 🖨️ Printing ${job.type.toUpperCase()} (#${job._id}) to ${ip}:${port}...`);
     await sendToNetworkPrinter(ip, port, buffer);
-    console.log(`[BRIDGE] ✅ Successfully printed job #${job._id} to ${ip}:${port}`);
+    console.log(`[PRINT STATION] ✅ Successfully printed job #${job._id} to ${ip}:${port}`);
 }
 
 /**
@@ -315,18 +314,22 @@ function makeRequest(url, options = {}, body = null) {
 let isPolling = false;
 async function pollCloudPrintQueue() {
     if (isPolling) return;
+    if (!activeConfig.shopId && !activeConfig.branchId) return;
     isPolling = true;
 
     try {
         const baseUrl = activeConfig.cloudUrl.replace(/\/+$/, '');
-        const pollUrl = `${baseUrl}/print/jobs/pending?branchId=${activeConfig.branchId}&shopId=${activeConfig.shopId}`;
+        const queryParts = [];
+        if (activeConfig.shopId) queryParts.push(`shopId=${encodeURIComponent(activeConfig.shopId)}`);
+        if (activeConfig.branchId) queryParts.push(`branchId=${encodeURIComponent(activeConfig.branchId)}`);
+        const pollUrl = `${baseUrl}/print/jobs/pending?${queryParts.join('&')}`;
 
         const res = await makeRequest(pollUrl, {
             method: 'GET',
             headers: {
-                'x-branch-id': activeConfig.branchId,
-                'x-shop-id': activeConfig.shopId,
-                'x-bridge-client': 'pos-print-bridge-v1',
+                'x-branch-id': activeConfig.branchId || '',
+                'x-shop-id': activeConfig.shopId || '',
+                'x-bridge-client': 'pos-print-station-v1',
             },
         });
 
@@ -334,23 +337,24 @@ async function pollCloudPrintQueue() {
             for (const job of res.data.jobs) {
                 try {
                     await processCloudJob(job);
-                    // Acknowledge completion
                     const completeUrl = `${baseUrl}/print/jobs/${job._id}/complete`;
                     await makeRequest(completeUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'x-branch-id': activeConfig.branchId,
+                            'x-branch-id': activeConfig.branchId || '',
+                            'x-shop-id': activeConfig.shopId || '',
                         },
                     }, { status: 'COMPLETED' });
                 } catch (err) {
-                    console.error(`[BRIDGE] ❌ Failed to print job #${job._id}:`, err.message);
+                    console.error(`[PRINT STATION] ❌ Failed to print job #${job._id}:`, err.message);
                     const completeUrl = `${baseUrl}/print/jobs/${job._id}/complete`;
                     await makeRequest(completeUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'x-branch-id': activeConfig.branchId,
+                            'x-branch-id': activeConfig.branchId || '',
+                            'x-shop-id': activeConfig.shopId || '',
                         },
                     }, { status: 'FAILED', errorMessage: err.message });
                 }
@@ -367,15 +371,16 @@ async function pollCloudPrintQueue() {
 setInterval(pollCloudPrintQueue, activeConfig.pollIntervalMs);
 
 /**
- * Local HTTP Server for local loopback prints
+ * Local HTTP Server for local health check & dynamic session sync
  */
 const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-branch-id, x-shop-id');
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
 
     if (req.method === 'OPTIONS') {
-        res.writeHead(200);
+        res.writeHead(204);
         res.end();
         return;
     }
@@ -384,21 +389,25 @@ const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             status: 'ok',
-            bridge: 'POS Thermal Print Relay Bridge Running',
+            station: 'Counter PC Print Station Running',
             config: activeConfig,
             time: new Date().toISOString(),
         }));
         return;
     }
 
-    if (req.url === '/config' && req.method === 'POST') {
+    // Dynamic session sync from web browser
+    if (req.url === '/session' && req.method === 'POST') {
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
             try {
                 const patch = JSON.parse(body || '{}');
-                activeConfig = { ...activeConfig, ...patch };
+                if (patch.shopId) activeConfig.shopId = patch.shopId;
+                if (patch.branchId) activeConfig.branchId = patch.branchId;
+                if (patch.cloudUrl) activeConfig.cloudUrl = patch.cloudUrl;
                 saveActiveConfig();
+                console.log(`[PRINT STATION] 🔄 Synced session dynamically: Shop ${activeConfig.shopId}, Branch ${activeConfig.branchId}`);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: true, config: activeConfig }));
             } catch (e) {
@@ -415,8 +424,8 @@ const server = http.createServer((req, res) => {
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body || '{}');
-                const ip = data.ip || data.printerIp || activeConfig.printerIp || '192.168.1.100';
-                const port = parseInt(data.port || data.printerPort || activeConfig.printerPort || 9100, 10);
+                const ip = data.ip || data.printerIp || '192.168.1.100';
+                const port = parseInt(data.port || data.printerPort || 9100, 10);
                 const type = data.type || 'kot';
                 const paperWidthMm = data.paperWidthMm || data.paperWidth || 80;
 
@@ -465,9 +474,10 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
     console.log(`=======================================================`);
-    console.log(`  POS Thermal Print Relay Bridge running on port ${PORT}`);
-    console.log(`  Cloud Polling URL: ${activeConfig.cloudUrl}`);
-    console.log(`  Target Branch ID:  ${activeConfig.branchId}`);
-    console.log(`  LAN Printer IP:    ${activeConfig.printerIp}:${activeConfig.printerPort}`);
+    console.log(`  Counter PC Thermal Print Station running on port ${PORT}`);
+    console.log(`  Hosted Cloud API:  ${activeConfig.cloudUrl}`);
+    console.log(`  Target Shop ID:    ${activeConfig.shopId || '(waiting for session)'}`);
+    console.log(`  Target Branch ID:  ${activeConfig.branchId || '(all branches)'}`);
+    console.log(`  Printer IP / Port: Dynamically read from each print job`);
     console.log(`=======================================================`);
 });
