@@ -5,8 +5,10 @@ import { BARCODE_PRINT_SETTINGS_KEY, mergeBarcodePrintSettings } from '../config
 import {
     BILL_PRINT_SETTINGS_KEY,
     PURCHASE_INVOICE_SETTINGS_KEY,
+    HARDWARE_PRINTER_SETTINGS_KEY,
     mergeBillPrintSettings,
     mergePurchaseInvoiceSettings,
+    mergeHardwarePrinterSettings,
 } from '../config/billPrintSettings';
 import { getOrderPaymentDetails } from './paymentUtils';
 
@@ -35,6 +37,33 @@ export const loadPurchaseInvoiceSettings = async (shopId, branchId) => {
     } catch {
         return mergePurchaseInvoiceSettings(null);
     }
+};
+
+export const loadHardwarePrinterSettings = async (shopId, branchId) => {
+    try {
+        const response = await settingService.getSettingByKey(HARDWARE_PRINTER_SETTINGS_KEY, shopId, branchId);
+        const merged = mergeHardwarePrinterSettings(response?.value);
+        if (branchId) {
+            try {
+                localStorage.setItem(`pos_hardware_printer_${branchId}`, JSON.stringify(merged));
+            } catch (e) {}
+        }
+        return merged;
+    } catch {
+        return mergeHardwarePrinterSettings(null);
+    }
+};
+
+export const getHardwarePrinterSettingsCached = (branchId) => {
+    try {
+        if (branchId) {
+            const raw = localStorage.getItem(`pos_hardware_printer_${branchId}`);
+            if (raw) return mergeHardwarePrinterSettings(JSON.parse(raw));
+        }
+        const fallback = localStorage.getItem('pos_hardware_printer_default');
+        if (fallback) return mergeHardwarePrinterSettings(JSON.parse(fallback));
+    } catch (e) {}
+    return mergeHardwarePrinterSettings(null);
 };
 
 export const buildBillExtraInfo = (branch, organization) => ({

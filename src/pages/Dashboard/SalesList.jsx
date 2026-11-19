@@ -1168,34 +1168,38 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
 
             {/* Summary Widgets — only shown for sales tab */}
             {activeTab === 'history' && !loading && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
                     {/* Total Sale */}
-                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
-                        <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                    <div className={`rounded-2xl p-3.5 sm:p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-3 sm:gap-3.5 shadow-xs min-w-0`}>
+                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-indigo-500/10 flex items-center justify-center shrink-0">
                             <Receipt size={20} className="text-indigo-500" />
                         </div>
-                        <div className="min-w-0">
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                        <div className="min-w-0 flex-1">
+                            <p className={`text-[10px] font-black uppercase tracking-wider ${theme.textSecondary} mb-0.5 truncate`} title={isTodayFilter ? "Today's Sales" : "Total Sales"}>
                                 {isTodayFilter ? "Today's Sales" : "Total Sales"}
                             </p>
-                            <p className={`text-xl font-black ${theme.textHeading}`}>{fmt(summary.totalSale)}</p>
-                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>{summary.count} invoice{summary.count !== 1 ? 's' : ''}</p>
+                            <p className={`text-lg sm:text-xl font-black ${theme.textHeading} truncate leading-tight`} title={fmt(summary.totalSale)}>
+                                {fmt(summary.totalSale)}
+                            </p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted} mt-0.5 truncate whitespace-nowrap`}>
+                                {summary.count} invoice{summary.count !== 1 ? 's' : ''}
+                            </p>
                         </div>
                     </div>
 
                     {/* Total Amount Paid */}
-                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
-                        <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                    <div className={`rounded-2xl p-3.5 sm:p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-3 sm:gap-3.5 shadow-xs min-w-0`}>
+                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center shrink-0">
                             <CheckCircle2 size={20} className="text-emerald-500" />
                         </div>
-                        <div className="min-w-0">
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
-                                Total Amount Paid
+                        <div className="min-w-0 flex-1">
+                            <p className={`text-[10px] font-black uppercase tracking-wider ${theme.textSecondary} mb-0.5 truncate`} title="Total Paid">
+                                Total Paid
                             </p>
-                            <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                            <p className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 truncate leading-tight" title={fmt(summary.totalPaid || 0)}>
                                 {fmt(summary.totalPaid || 0)}
                             </p>
-                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>
+                            <p className={`text-[11px] font-bold ${theme.textMuted} mt-0.5 truncate whitespace-nowrap`}>
                                 {summary.totalSale > 0 
                                     ? `${((summary.totalPaid / summary.totalSale) * 100).toFixed(1)}% collected` 
                                     : 'Amount received'}
@@ -1204,26 +1208,26 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                     </div>
 
                     {/* Total Due to be Paid */}
-                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
-                        <div className="w-11 h-11 rounded-2xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                    <div className={`rounded-2xl p-3.5 sm:p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-3 sm:gap-3.5 shadow-xs min-w-0`}>
+                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-red-500/10 flex items-center justify-center shrink-0">
                             <Clock size={20} className="text-red-500" />
                         </div>
-                        <div className="min-w-0">
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
-                                Total Due to be Paid
+                        <div className="min-w-0 flex-1">
+                            <p className={`text-[10px] font-black uppercase tracking-wider ${theme.textSecondary} mb-0.5 truncate`} title="Total Due">
+                                Total Due
                             </p>
-                            <p className={`text-xl font-black ${(summary.totalDue || 0) > 0 ? 'text-red-600 dark:text-red-400' : theme.textHeading}`}>
+                            <p className={`text-lg sm:text-xl font-black ${(summary.totalDue || 0) > 0 ? 'text-red-600 dark:text-red-400' : theme.textHeading} truncate leading-tight`} title={fmt(summary.totalDue || 0)}>
                                 {fmt(summary.totalDue || 0)}
                             </p>
-                            <p className={`text-[11px] font-bold ${(summary.totalDue || 0) > 0 ? 'text-red-500 dark:text-red-400 font-bold' : theme.textMuted}`}>
+                            <p className={`text-[11px] font-bold ${(summary.totalDue || 0) > 0 ? 'text-red-500 dark:text-red-400 font-bold' : theme.textMuted} mt-0.5 truncate whitespace-nowrap`}>
                                 {(summary.totalDue || 0) > 0 ? 'Outstanding balance' : 'No balance due'}
                             </p>
                         </div>
                     </div>
 
                     {/* Total Profit */}
-                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
-                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${summary.hasPurchaseData ? (summary.totalProfit >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10') : 'bg-amber-500/10'}`}>
+                    <div className={`rounded-2xl p-3.5 sm:p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-3 sm:gap-3.5 shadow-xs min-w-0`}>
+                        <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center shrink-0 ${summary.hasPurchaseData ? (summary.totalProfit >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10') : 'bg-amber-500/10'}`}>
                             {summary.hasPurchaseData
                                 ? (summary.totalProfit >= 0
                                     ? <TrendingUp size={20} className="text-emerald-500" />
@@ -1231,39 +1235,47 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                                 : <TrendingUp size={20} className="text-amber-500" />
                             }
                         </div>
-                        <div className="min-w-0">
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>
+                        <div className="min-w-0 flex-1">
+                            <p className={`text-[10px] font-black uppercase tracking-wider ${theme.textSecondary} mb-0.5 truncate`} title={isTodayFilter ? "Today Profit" : "Est. Profit"}>
                                 {isTodayFilter ? "Today Profit" : "Est. Profit"}
                             </p>
                             {summary.hasPurchaseData ? (
                                 <>
-                                    <p className={`text-xl font-black ${summary.totalProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                    <p className={`text-lg sm:text-xl font-black ${summary.totalProfit >= 0 ? 'text-emerald-500' : 'text-red-500'} truncate leading-tight`} title={fmt(Math.abs(summary.totalProfit))}>
                                         {fmt(Math.abs(summary.totalProfit))}
                                     </p>
-                                    <p className={`text-[11px] font-bold ${theme.textMuted}`}>
+                                    <p className={`text-[11px] font-bold ${theme.textMuted} mt-0.5 truncate whitespace-nowrap`}>
                                         {summary.totalSale > 0 ? `${((summary.totalProfit / summary.totalSale) * 100).toFixed(1)}% margin` : '—'}
                                     </p>
                                 </>
                             ) : (
                                 <>
-                                    <p className={`text-sm font-black ${theme.textPrimary}`}>{fmt(summary.totalSale)}</p>
-                                    <p className={`text-[11px] font-bold text-amber-500`}>See Dashboard for profit</p>
+                                    <p className={`text-sm sm:text-base font-black ${theme.textPrimary} truncate leading-tight`} title={fmt(summary.totalSale)}>
+                                        {fmt(summary.totalSale)}
+                                    </p>
+                                    <p className={`text-[11px] font-bold text-amber-500 mt-0.5 truncate whitespace-nowrap`}>
+                                        See Dashboard
+                                    </p>
                                 </>
                             )}
                         </div>
                     </div>
 
                     {/* Avg Order Value */}
-                    <div className={`rounded-2xl p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-4 shadow-xs`}>
-                        <div className="w-11 h-11 rounded-2xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                    <div className={`rounded-2xl p-3.5 sm:p-4 border ${theme.borderLight} ${theme.surfaceBg} flex items-center gap-3 sm:gap-3.5 shadow-xs min-w-0`}>
+                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0">
                             <ShoppingBag size={20} className="text-amber-500" />
                         </div>
-                        <div className="min-w-0">
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme.textSecondary} mb-0.5`}>Avg Order</p>
-                            <p className={`text-xl font-black ${theme.textHeading}`}>
+                        <div className="min-w-0 flex-1">
+                            <p className={`text-[10px] font-black uppercase tracking-wider ${theme.textSecondary} mb-0.5 truncate`} title="Avg Order">
+                                Avg Order
+                            </p>
+                            <p className={`text-lg sm:text-xl font-black ${theme.textHeading} truncate leading-tight`} title={fmt(summary.count > 0 ? summary.totalSale / summary.count : 0)}>
                                 {fmt(summary.count > 0 ? summary.totalSale / summary.count : 0)}
                             </p>
-                            <p className={`text-[11px] font-bold ${theme.textMuted}`}>per invoice</p>
+                            <p className={`text-[11px] font-bold ${theme.textMuted} mt-0.5 truncate whitespace-nowrap`}>
+                                per invoice
+                            </p>
                         </div>
                     </div>
                 </div>

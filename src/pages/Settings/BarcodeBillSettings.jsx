@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Printer, Save, RefreshCw, Barcode, FileText, ShoppingCart, MapPin } from 'lucide-react';
+import {
+    Printer, Save, RefreshCw, Barcode, FileText, ShoppingCart, MapPin,
+    Wifi, Zap, CheckCircle2, Server, Usb, Info, Bluetooth, Network, Scissors, Cpu
+} from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useApp } from '../../context/AppContext';
-import { settingService } from '../../services/api';
+import { settingService, api } from '../../services/api';
 import CommonSelect from '../../components/ui/CommonSelect';
 import toast from 'react-hot-toast';
 import PrintSettingsPreview from './PrintSettingsPreview';
@@ -11,6 +14,7 @@ import {
     printTestSaleBill,
     printTestPurchaseInvoice,
 } from '../../utils/printTestHelpers';
+import { printKot } from '../../utils/print';
 import { buildBillExtraInfo, buildPrintHeader } from '../../utils/printSettingsUtils';
 import {
     BARCODE_PRINT_SETTINGS_KEY,
@@ -22,14 +26,18 @@ import {
 import {
     BILL_PRINT_SETTINGS_KEY,
     PURCHASE_INVOICE_SETTINGS_KEY,
+    HARDWARE_PRINTER_SETTINGS_KEY,
     BILL_FIELD_LABELS,
     PURCHASE_FIELD_LABELS,
     DEFAULT_BILL_PRINT_SETTINGS,
     DEFAULT_PURCHASE_INVOICE_SETTINGS,
+    DEFAULT_HARDWARE_PRINTER_SETTINGS,
     areBillPrintSettingsEqual,
     arePurchaseInvoiceSettingsEqual,
+    areHardwarePrinterSettingsEqual,
     mergeBillPrintSettings,
     mergePurchaseInvoiceSettings,
+    mergeHardwarePrinterSettings,
 } from '../../config/billPrintSettings';
 
 const BARCODE_FIELD_OPTIONS = [
@@ -52,6 +60,22 @@ const BARCODE_LABEL_OPTIONS = [
     { key: 'showBatchLabel', label: 'Batch' },
     { key: 'showExpiryLabel', label: 'Expiry' },
     { key: 'showUnitLabel', label: 'Unit/Qty' },
+];
+
+const PRINTER_MODEL_OPTIONS = [
+    { label: 'POS-80C Thermal (80mm USB / LAN)', value: 'POS-80C' },
+    { label: 'Epson TM Series (TM-T82 / TM-T88)', value: 'Epson TM Series' },
+    { label: 'TVS Electronics (RP-3200 / RP-3150)', value: 'TVS RP-3200' },
+    { label: 'NGX / Everycom / Rugtek Thermal', value: 'NGX / Everycom' },
+    { label: 'Generic ESC/POS Thermal (58mm / 80mm)', value: 'Generic ESC/POS' },
+    { label: 'Custom / Other Device Model', value: 'Custom' },
+];
+
+const CONNECTION_TYPES = [
+    { key: 'usb', label: 'USB Cable', desc: 'Direct USB Port (POS-80C)', icon: Usb },
+    { key: 'lan', label: 'LAN Cable', desc: 'Ethernet Router (Port 9100)', icon: Network },
+    { key: 'wifi', label: 'Wi-Fi', desc: 'Wireless Network (Port 9100)', icon: Wifi },
+    { key: 'bluetooth', label: 'Bluetooth', desc: 'Mobile Thermal (BT 4.0/5.0)', icon: Bluetooth },
 ];
 
 const Toggle = ({ checked, onChange, label, theme }) => (
@@ -105,6 +129,8 @@ const BarcodeBillSettings = ({ currentUser }) => {
     const [billBaseline, setBillBaseline] = useState(null);
     const [purchaseSettings, setPurchaseSettings] = useState({ ...DEFAULT_PURCHASE_INVOICE_SETTINGS });
     const [purchaseBaseline, setPurchaseBaseline] = useState(null);
+    const [hardwareSettings, setHardwareSettings] = useState({ ...DEFAULT_HARDWARE_PRINTER_SETTINGS });
+    const [hardwareBaseline, setHardwareBaseline] = useState(null);
 
     const activeBranch = useMemo(
         () => branches.find((b) => String(b._id || b.id) === String(activeBranchId)),
@@ -138,10 +164,11 @@ const BarcodeBillSettings = ({ currentUser }) => {
                 }
             };
 
-            const [barcode, bill, purchase] = await Promise.all([
+            const [barcode, bill, purchase, hardware] = await Promise.all([
                 loadKey(BARCODE_PRINT_SETTINGS_KEY, (v) => extractSavableBarcodeSettings(mergeBarcodePrintSettings({}, v))),
                 loadKey(BILL_PRINT_SETTINGS_KEY, mergeBillPrintSettings),
                 loadKey(PURCHASE_INVOICE_SETTINGS_KEY, mergePurchaseInvoiceSettings),
+                loadKey(HARDWARE_PRINTER_SETTINGS_KEY, mergeHardwarePrinterSettings),
             ]);
 
             setBarcodeSettings(barcode);
@@ -150,6 +177,14 @@ const BarcodeBillSettings = ({ currentUser }) => {
             setBillBaseline(bill);
             setPurchaseSettings(purchase);
             setPurchaseBaseline(purchase);
+            setHardwareSettings(hardware);
+            setHardwareBaseline(hardware);
+
+            if (saveBranchId) {
+                try {
+                    localStorage.setItem(`pos_hardware_printer_${saveBranchId}`, JSON.stringify(hardware));
+                } catch (e) {}
+            }
         } catch (error) {
             console.error('Failed to load print settings:', error);
             toast.error('Failed to load settings');
@@ -165,7 +200,8 @@ const BarcodeBillSettings = ({ currentUser }) => {
     const isBarcodeDirty = barcodeBaseline && !areBarcodeSettingsEqual(barcodeSettings, barcodeBaseline);
     const isBillDirty = billBaseline && !areBillPrintSettingsEqual(billSettings, billBaseline);
     const isPurchaseDirty = purchaseBaseline && !arePurchaseInvoiceSettingsEqual(purchaseSettings, purchaseBaseline);
-    const isDirty = isBarcodeDirty || isBillDirty || isPurchaseDirty;
+    const isHardwareDirty = hardwareBaseline && !areHardwarePrinterSettingsEqual(hardwareSettings, hardwareBaseline);
+    const isDirty = isBarcodeDirty || isBillDirty || isPurchaseDirty || isHardwareDirty;
 
     const handleSave = async () => {
         if (!canSave) {
@@ -210,6 +246,22 @@ const BarcodeBillSettings = ({ currentUser }) => {
                     description: 'Purchase invoice print preferences',
                 });
                 setPurchaseBaseline({ ...purchaseSettings });
+            }
+            if (isHardwareDirty) {
+                await settingService.updateSetting(HARDWARE_PRINTER_SETTINGS_KEY, {
+                    shopId: saveShopId,
+                    branchId: saveBranchId,
+                    value: hardwareSettings,
+                    type: 'json',
+                    displayString: 'LAN & Network Thermal Printers',
+                    description: 'Branch network printer configuration for silent POS and KOT printing',
+                });
+                setHardwareBaseline({ ...hardwareSettings });
+                if (saveBranchId) {
+                    try {
+                        localStorage.setItem(`pos_hardware_printer_${saveBranchId}`, JSON.stringify(hardwareSettings));
+                    } catch (e) {}
+                }
             }
             toast.success(`Print settings saved for ${scopeLabel}`);
         } catch (error) {
@@ -287,6 +339,7 @@ const BarcodeBillSettings = ({ currentUser }) => {
         { id: 'thermal', label: 'Sale Bill (Thermal)', icon: Printer },
         { id: 'a4', label: 'Sale Bill (A4)', icon: FileText },
         { id: 'purchase', label: 'Purchase Invoice', icon: ShoppingCart },
+        { id: 'hardware', label: 'Network Printers (LAN / KOT)', icon: Wifi },
     ];
 
     const previewProps = { theme, formatCurrency };
@@ -508,6 +561,668 @@ const BarcodeBillSettings = ({ currentUser }) => {
                         />
                     </div>
                 </SectionLayout>
+            )}
+
+            {activeSection === 'hardware' && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                    {/* Header Info Banner */}
+                    <div className={`p-5 rounded-3xl border ${theme.borderLight} bg-gradient-to-r from-indigo-50/70 via-purple-50/50 to-indigo-50/70 dark:from-indigo-950/30 dark:via-purple-950/20 dark:to-indigo-950/30 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm`}>
+                        <div className="flex items-start gap-3.5">
+                            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-indigo-600/25">
+                                <Printer size={22} />
+                            </div>
+                            <div>
+                                <h4 className={`text-base font-black ${theme.textHeading}`}>Thermal Hardware Printers &amp; Auto-Print</h4>
+                                <p className={`text-xs ${theme.textSecondary} mt-0.5 max-w-xl`}>
+                                    Select your printer device, connection method (USB, LAN, Wi-Fi, or Bluetooth), and configure zero-dialog silent printing for Bills &amp; KOTs.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setHardwareSettings((p) => ({ ...p, printMode: 'silent' }))}
+                                className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                                    hardwareSettings.printMode === 'silent'
+                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-500/20'
+                                        : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`
+                                }`}
+                            >
+                                <Zap size={14} className={hardwareSettings.printMode === 'silent' ? 'fill-current' : ''} />
+                                Silent Auto-Print (No Dialog)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setHardwareSettings((p) => ({ ...p, printMode: 'browser' }))}
+                                className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                                    hardwareSettings.printMode === 'browser'
+                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-500/20'
+                                        : `${theme.inputBg} ${theme.textSecondary} hover:opacity-80`
+                                }`}
+                            >
+                                <Printer size={14} />
+                                Print Preview Dialog
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* 1. Cashier Receipt Thermal Printer */}
+                        <div className={`p-6 rounded-3xl border ${theme.borderLight} ${theme.surfaceBg} space-y-5 shadow-sm relative overflow-hidden`}>
+                            <div className="flex items-center justify-between pb-3.5 border-b border-gray-100 dark:border-slate-800">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                                        <Printer size={20} />
+                                    </div>
+                                    <div>
+                                        <h5 className={`text-base font-black ${theme.textHeading}`}>Cashier Bill Printer</h5>
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Customer Invoices &amp; Receipts</span>
+                                    </div>
+                                </div>
+                                <span className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full ${
+                                    hardwareSettings.cashierPrinter?.enabled !== false
+                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+                                        : 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-gray-400'
+                                }`}>
+                                    {hardwareSettings.cashierPrinter?.enabled !== false ? 'Enabled' : 'Disabled'}
+                                </span>
+                            </div>
+
+                            <Toggle
+                                label="Enable Cashier Bill Printer"
+                                checked={hardwareSettings.cashierPrinter?.enabled !== false}
+                                onChange={(val) => setHardwareSettings((p) => ({
+                                    ...p,
+                                    cashierPrinter: { ...p.cashierPrinter, enabled: val },
+                                }))}
+                                theme={theme}
+                            />
+
+                            {/* Connection Method Selection */}
+                            <div>
+                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-2`}>
+                                    Connection Method
+                                </label>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {CONNECTION_TYPES.map(({ key, label, icon: Icon }) => {
+                                        const isSelected = (hardwareSettings.cashierPrinter?.connectionType || 'usb') === key;
+                                        return (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                onClick={() => setHardwareSettings((p) => ({
+                                                    ...p,
+                                                    cashierPrinter: { ...p.cashierPrinter, connectionType: key }
+                                                }))}
+                                                className={`p-3 rounded-2xl text-xs font-bold border transition-all flex flex-col items-center justify-center gap-1.5 ${
+                                                    isSelected
+                                                        ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 shadow-sm ring-1 ring-emerald-500/20'
+                                                        : `${theme.borderLight} ${theme.textSecondary} hover:bg-gray-50 dark:hover:bg-slate-800/60`
+                                                }`}
+                                            >
+                                                <Icon size={18} />
+                                                <span>{label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Device Model Preset Selector */}
+                            <div>
+                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>
+                                    Printer Device / Model
+                                </label>
+                                <CommonSelect
+                                    options={PRINTER_MODEL_OPTIONS}
+                                    value={hardwareSettings.cashierPrinter?.deviceModel || 'POS-80C'}
+                                    onChange={(val) => setHardwareSettings((p) => ({
+                                        ...p,
+                                        cashierPrinter: {
+                                            ...p.cashierPrinter,
+                                            deviceModel: val,
+                                            name: p.cashierPrinter?.name || (val === 'POS-80C' ? 'POS-80C (USB Thermal)' : `${val} Printer`),
+                                        },
+                                    }))}
+                                    labelKey="label"
+                                    valueKey="value"
+                                />
+                            </div>
+
+                            {/* Connection-specific Helper Badges */}
+                            {(hardwareSettings.cashierPrinter?.connectionType || 'usb') === 'usb' && (
+                                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs space-y-1">
+                                    <div className="flex items-center gap-1.5 font-bold">
+                                        <Usb size={14} className="shrink-0" />
+                                        <span>Windows USB Spooler (Port: USB002 / POS-80C)</span>
+                                    </div>
+                                    <p className="text-[11px] leading-relaxed opacity-90">
+                                        Prints via Windows default printer driver. To make printing 100% silent without any print popup dialog, launch Chrome with <code className="font-mono bg-emerald-500/20 px-1 rounded text-[10px]">--kiosk-printing</code>.
+                                    </p>
+                                </div>
+                            )}
+
+                            {hardwareSettings.cashierPrinter?.connectionType === 'lan' && (
+                                <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-800 dark:text-blue-300 text-xs space-y-1">
+                                    <div className="flex items-center gap-1.5 font-bold">
+                                        <Network size={14} className="shrink-0" />
+                                        <span>Direct LAN Cable (Ethernet / TCP Port 9100)</span>
+                                    </div>
+                                    <p className="text-[11px] leading-relaxed opacity-90">
+                                        Prints silently over the restaurant router directly to the printer IP. No browser print preview window is ever shown.
+                                    </p>
+                                </div>
+                            )}
+
+                            {hardwareSettings.cashierPrinter?.connectionType === 'wifi' && (
+                                <div className="p-3.5 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-800 dark:text-purple-300 text-xs space-y-1">
+                                    <div className="flex items-center gap-1.5 font-bold">
+                                        <Wifi size={14} className="shrink-0" />
+                                        <span>Wireless Wi-Fi Thermal Printer (Port 9100)</span>
+                                    </div>
+                                    <p className="text-[11px] leading-relaxed opacity-90">
+                                        Printer is connected to restaurant Wi-Fi. Prints instantly across all devices on the same Wi-Fi.
+                                    </p>
+                                </div>
+                            )}
+
+                            {hardwareSettings.cashierPrinter?.connectionType === 'bluetooth' && (
+                                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs space-y-1">
+                                    <div className="flex items-center gap-1.5 font-bold">
+                                        <Bluetooth size={14} className="shrink-0" />
+                                        <span>Bluetooth Thermal Printer</span>
+                                    </div>
+                                    <p className="text-[11px] leading-relaxed opacity-90">
+                                        Paired with your POS PC or tablet via Windows/Android Bluetooth settings.
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div>
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Printer Display Name</label>
+                                    <input
+                                        type="text"
+                                        value={hardwareSettings.cashierPrinter?.name || ''}
+                                        onChange={(e) => setHardwareSettings((p) => ({
+                                            ...p,
+                                            cashierPrinter: { ...p.cashierPrinter, name: e.target.value },
+                                        }))}
+                                        placeholder="e.g. POS-80C (Cashier USB)"
+                                        className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-xs font-bold`}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Paper Width</label>
+                                    <CommonSelect
+                                        options={[
+                                            { label: '80mm (Standard POS Bill)', value: 80 },
+                                            { label: '58mm (Compact Receipt)', value: 58 },
+                                        ]}
+                                        value={hardwareSettings.cashierPrinter?.paperWidthMm || 80}
+                                        onChange={(val) => setHardwareSettings((p) => ({
+                                            ...p,
+                                            cashierPrinter: { ...p.cashierPrinter, paperWidthMm: Number(val) },
+                                        }))}
+                                        labelKey="label"
+                                        valueKey="value"
+                                    />
+                                </div>
+                                {(hardwareSettings.cashierPrinter?.connectionType === 'lan' || hardwareSettings.cashierPrinter?.connectionType === 'wifi') && (
+                                    <>
+                                        <div>
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Printer IP Address</label>
+                                            <input
+                                                type="text"
+                                                value={hardwareSettings.cashierPrinter?.ip || ''}
+                                                onChange={(e) => setHardwareSettings((p) => ({
+                                                    ...p,
+                                                    cashierPrinter: { ...p.cashierPrinter, ip: e.target.value },
+                                                }))}
+                                                placeholder="192.168.1.100"
+                                                className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-xs font-mono font-bold`}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Port (RAW ESC/POS)</label>
+                                            <input
+                                                type="number"
+                                                value={hardwareSettings.cashierPrinter?.port || 9100}
+                                                onChange={(e) => setHardwareSettings((p) => ({
+                                                    ...p,
+                                                    cashierPrinter: { ...p.cashierPrinter, port: parseInt(e.target.value) || 9100 },
+                                                }))}
+                                                placeholder="9100"
+                                                className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-xs font-mono font-bold`}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Detailed Hardware Features */}
+                            <div className="space-y-2.5 pt-1">
+                                <Toggle
+                                    label="Auto-print bill receipt upon sale checkout"
+                                    checked={hardwareSettings.cashierPrinter?.autoPrintOnComplete !== false}
+                                    onChange={(val) => setHardwareSettings((p) => ({
+                                        ...p,
+                                        cashierPrinter: { ...p.cashierPrinter, autoPrintOnComplete: val },
+                                    }))}
+                                    theme={theme}
+                                />
+                                <Toggle
+                                    label="Auto-cut receipt paper (ESC/POS Cut Command)"
+                                    checked={hardwareSettings.cashierPrinter?.autoCut !== false}
+                                    onChange={(val) => setHardwareSettings((p) => ({
+                                        ...p,
+                                        cashierPrinter: { ...p.cashierPrinter, autoCut: val },
+                                    }))}
+                                    theme={theme}
+                                />
+                                <Toggle
+                                    label="Pulse kick cash drawer on print (RJ-11 Port)"
+                                    checked={Boolean(hardwareSettings.cashierPrinter?.openCashDrawer)}
+                                    onChange={(val) => setHardwareSettings((p) => ({
+                                        ...p,
+                                        cashierPrinter: { ...p.cashierPrinter, openCashDrawer: val },
+                                    }))}
+                                    theme={theme}
+                                />
+                            </div>
+
+                            <div className="pt-2 flex justify-between items-center">
+                                <span className="text-[11px] font-bold text-slate-400">
+                                    {(hardwareSettings.cashierPrinter?.connectionType || 'usb').toUpperCase()} &bull; {hardwareSettings.cashierPrinter?.paperWidthMm || 80}mm
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const cp = hardwareSettings.cashierPrinter || {};
+                                        const conn = cp.connectionType || 'usb';
+                                        if (conn === 'usb') {
+                                            printTestSaleBill({
+                                                format: 'thermal',
+                                                billSettings,
+                                                header: previewHeader,
+                                                extraInfo: previewExtraInfo,
+                                                formatCurrency,
+                                            });
+                                            toast.success('Sent test receipt to Windows USB printer (POS-80C)!', { icon: '🖨️' });
+                                        } else {
+                                            const toastId = toast.loading(`Connecting to cashier printer at ${cp.ip || '192.168.1.100'}:${cp.port || 9100}...`);
+                                            const bridgeUrl = hardwareSettings.bridgeUrl || 'http://127.0.0.1:3001';
+                                            const payload = {
+                                                ip: cp.ip || '192.168.1.100',
+                                                port: cp.port || 9100,
+                                                printerName: cp.name || 'Cashier Bill Printer',
+                                                paperWidthMm: cp.paperWidthMm || 80,
+                                                type: 'bill',
+                                                header: { shopName: 'TEST SALE INVOICE', branchName: cp.name, contact: '123-456-7890' },
+                                                meta: { invoiceNumber: 'INV-TEST-001', printedAt: new Date().toLocaleTimeString() },
+                                                items: [
+                                                    { name: 'Demo Food Item 1', qty: 2, lineTotal: 150.00 },
+                                                    { name: 'Demo Drink 2', qty: 1, lineTotal: 50.00 },
+                                                ],
+                                                totals: { subtotal: 200.00, taxAmount: 10.00, finalTotal: 210.00 },
+                                                paymentMethod: 'Cash (Test)',
+                                                footerText: `Tested via LAN IP: ${cp.ip || '192.168.1.100'}:${cp.port || 9100}`,
+                                                autoCut: cp.autoCut !== false,
+                                                openCashDrawer: Boolean(cp.openCashDrawer),
+                                            };
+
+                                            fetch(`${bridgeUrl}/print`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify(payload),
+                                            })
+                                            .then(r => r.json())
+                                            .then(data => {
+                                                if (data.success) {
+                                                    toast.success(`Test bill printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🖨️', duration: 4000 });
+                                                } else {
+                                                    throw new Error(data.message || 'Print error');
+                                                }
+                                            })
+                                            .catch(() => {
+                                                return api.post('/print/test', payload).then(res => {
+                                                    toast.success(res.data?.message || `Test bill printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🖨️', duration: 4000 });
+                                                });
+                                            })
+                                            .catch(err => {
+                                                const msg = err?.response?.data?.message || err?.message || 'Failed to connect to printer';
+                                                toast.error(`Print failed: ${msg}`, { id: toastId, duration: 5000 });
+                                            });
+                                        }
+                                    }}
+                                    className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider border ${theme.borderLight} ${theme.textPrimary} hover:border-emerald-500 hover:text-emerald-600 transition-all flex items-center gap-2`}
+                                >
+                                    <Printer size={14} />
+                                    Test Cashier Printer
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 2. Kitchen KOT Thermal Printer */}
+                        <div className={`p-6 rounded-3xl border ${theme.borderLight} ${theme.surfaceBg} space-y-5 shadow-sm relative overflow-hidden`}>
+                            <div className="flex items-center justify-between pb-3.5 border-b border-gray-100 dark:border-slate-800">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+                                        <Wifi size={20} />
+                                    </div>
+                                    <div>
+                                        <h5 className={`text-base font-black ${theme.textHeading}`}>Kitchen KOT Printer</h5>
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Kitchen Order Tickets</span>
+                                    </div>
+                                </div>
+                                <span className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full ${
+                                    hardwareSettings.kitchenPrinter?.enabled !== false
+                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                                        : 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-gray-400'
+                                }`}>
+                                    {hardwareSettings.kitchenPrinter?.enabled !== false ? 'Enabled' : 'Disabled (Uses Cashier USB)'}
+                                </span>
+                            </div>
+
+                            <Toggle
+                                label="Enable Separate Kitchen KOT Printer"
+                                checked={hardwareSettings.kitchenPrinter?.enabled !== false}
+                                onChange={(val) => setHardwareSettings((p) => ({
+                                    ...p,
+                                    kitchenPrinter: { ...p.kitchenPrinter, enabled: val },
+                                }))}
+                                theme={theme}
+                            />
+
+                            {hardwareSettings.kitchenPrinter?.enabled !== false ? (
+                                <>
+                                    {/* Connection Method Selection */}
+                                    <div>
+                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-2`}>
+                                            Connection Method
+                                        </label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                            {CONNECTION_TYPES.map(({ key, label, icon: Icon }) => {
+                                                const isSelected = (hardwareSettings.kitchenPrinter?.connectionType || 'lan') === key;
+                                                return (
+                                                    <button
+                                                        key={key}
+                                                        type="button"
+                                                        onClick={() => setHardwareSettings((p) => ({
+                                                            ...p,
+                                                            kitchenPrinter: { ...p.kitchenPrinter, connectionType: key }
+                                                        }))}
+                                                        className={`p-3 rounded-2xl text-xs font-bold border transition-all flex flex-col items-center justify-center gap-1.5 ${
+                                                            isSelected
+                                                                ? 'border-amber-600 bg-amber-50/70 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 shadow-sm ring-1 ring-amber-500/20'
+                                                                : `${theme.borderLight} ${theme.textSecondary} hover:bg-gray-50 dark:hover:bg-slate-800/60`
+                                                        }`}
+                                                    >
+                                                        <Icon size={18} />
+                                                        <span>{label}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Device Model Preset Selector */}
+                                    <div>
+                                        <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>
+                                            Kitchen Printer Model
+                                        </label>
+                                        <CommonSelect
+                                            options={PRINTER_MODEL_OPTIONS}
+                                            value={hardwareSettings.kitchenPrinter?.deviceModel || 'Generic ESC/POS'}
+                                            onChange={(val) => setHardwareSettings((p) => ({
+                                                ...p,
+                                                kitchenPrinter: {
+                                                    ...p.kitchenPrinter,
+                                                    deviceModel: val,
+                                                    name: p.kitchenPrinter?.name || `${val} KOT`,
+                                                },
+                                            }))}
+                                            labelKey="label"
+                                            valueKey="value"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                        <div>
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Printer Display Name</label>
+                                            <input
+                                                type="text"
+                                                value={hardwareSettings.kitchenPrinter?.name || ''}
+                                                onChange={(e) => setHardwareSettings((p) => ({
+                                                    ...p,
+                                                    kitchenPrinter: { ...p.kitchenPrinter, name: e.target.value },
+                                                }))}
+                                                placeholder="e.g. Kitchen Section 1"
+                                                className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-xs font-bold`}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Paper Width</label>
+                                            <CommonSelect
+                                                options={[
+                                                    { label: '80mm (Standard POS)', value: 80 },
+                                                    { label: '58mm (Compact)', value: 58 },
+                                                ]}
+                                                value={hardwareSettings.kitchenPrinter?.paperWidthMm || 80}
+                                                onChange={(val) => setHardwareSettings((p) => ({
+                                                    ...p,
+                                                    kitchenPrinter: { ...p.kitchenPrinter, paperWidthMm: Number(val) },
+                                                }))}
+                                                labelKey="label"
+                                                valueKey="value"
+                                            />
+                                        </div>
+                                        {(hardwareSettings.kitchenPrinter?.connectionType === 'lan' || hardwareSettings.kitchenPrinter?.connectionType === 'wifi') && (
+                                            <>
+                                                <div>
+                                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Kitchen Printer IP Address</label>
+                                                    <input
+                                                        type="text"
+                                                        value={hardwareSettings.kitchenPrinter?.ip || ''}
+                                                        onChange={(e) => setHardwareSettings((p) => ({
+                                                            ...p,
+                                                            kitchenPrinter: { ...p.kitchenPrinter, ip: e.target.value },
+                                                        }))}
+                                                        placeholder="192.168.1.101"
+                                                        className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-xs font-mono font-bold`}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Port (RAW ESC/POS)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={hardwareSettings.kitchenPrinter?.port || 9100}
+                                                        onChange={(e) => setHardwareSettings((p) => ({
+                                                            ...p,
+                                                            kitchenPrinter: { ...p.kitchenPrinter, port: parseInt(e.target.value) || 9100 },
+                                                        }))}
+                                                        placeholder="9100"
+                                                        className={`w-full p-2.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} text-xs font-mono font-bold`}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* Detailed Hardware Features */}
+                                    <div className="space-y-2.5 pt-1">
+                                        <Toggle
+                                            label="Auto-print KOT ticket immediately on Send KOT"
+                                            checked={hardwareSettings.kitchenPrinter?.autoPrintOnKOT !== false}
+                                            onChange={(val) => setHardwareSettings((p) => ({
+                                                ...p,
+                                                kitchenPrinter: { ...p.kitchenPrinter, autoPrintOnKOT: val },
+                                            }))}
+                                            theme={theme}
+                                        />
+                                        <Toggle
+                                            label="Auto-cut KOT ticket paper (ESC/POS Cut)"
+                                            checked={hardwareSettings.kitchenPrinter?.autoCut !== false}
+                                            onChange={(val) => setHardwareSettings((p) => ({
+                                                ...p,
+                                                kitchenPrinter: { ...p.kitchenPrinter, autoCut: val },
+                                            }))}
+                                            theme={theme}
+                                        />
+                                        <Toggle
+                                            label="Beep kitchen printer buzzer on new KOT order"
+                                            checked={hardwareSettings.kitchenPrinter?.beepBuzzer !== false}
+                                            onChange={(val) => setHardwareSettings((p) => ({
+                                                ...p,
+                                                kitchenPrinter: { ...p.kitchenPrinter, beepBuzzer: val },
+                                            }))}
+                                            theme={theme}
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 space-y-1.5">
+                                    <p className="font-bold text-slate-800 dark:text-slate-200">Single Printer Setup (Using Cashier USB)</p>
+                                    <p className="text-[11px] leading-relaxed">
+                                        All KOT tickets will automatically print on your main cashier printer (<strong>POS-80C</strong>) at the counter whenever a cashier or waiter taps <strong>Send KOT</strong>.
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="pt-2 flex justify-between items-center">
+                                <span className="text-[11px] font-bold text-slate-400">
+                                    {(hardwareSettings.kitchenPrinter?.connectionType || 'lan').toUpperCase()} &bull; {hardwareSettings.kitchenPrinter?.paperWidthMm || 80}mm
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const kp = hardwareSettings.kitchenPrinter || {};
+                                        const conn = kp.connectionType || 'lan';
+                                        if (conn === 'usb' || !kp.enabled) {
+                                            printKot({
+                                                meta: { kotTitle: 'TEST KITCHEN ORDER (KOT)', orderLabel: 'ORD-TEST', tableLabel: 'Table 1', printedAt: new Date().toLocaleTimeString() },
+                                                items: [
+                                                    { name: 'Appam', qty: 2, notes: 'Crispy' },
+                                                    { name: 'Chicken Fry', qty: 1, variant: 'Spicy' },
+                                                ],
+                                                forceBrowser: true,
+                                            });
+                                            toast.success('Sent test KOT to USB printer (POS-80C)!', { icon: '🧑‍🍳' });
+                                        } else {
+                                            const toastId = toast.loading(`Connecting to kitchen printer at ${kp.ip || '192.168.1.100'}:${kp.port || 9100}...`);
+                                            const bridgeUrl = hardwareSettings.bridgeUrl || 'http://127.0.0.1:3001';
+                                            const payload = {
+                                                ip: kp.ip || '192.168.1.100',
+                                                port: kp.port || 9100,
+                                                printerName: kp.name || 'Kitchen KOT Printer',
+                                                paperWidthMm: kp.paperWidthMm || 80,
+                                                type: 'kot',
+                                                title: 'TEST KITCHEN ORDER (KOT)',
+                                                meta: {
+                                                    kotTitle: 'TEST KITCHEN ORDER (KOT)',
+                                                    orderLabel: 'ORD-TEST',
+                                                    tableLabel: 'Table 1',
+                                                    printedAt: new Date().toLocaleTimeString(),
+                                                },
+                                                items: [
+                                                    { itemName: 'Appam', quantity: 2, notes: 'Extra Crispy' },
+                                                    { itemName: 'Chicken Fry', quantity: 1, variant: 'Spicy' },
+                                                    { itemName: 'Kadala Curry', quantity: 1 },
+                                                ],
+                                                autoCut: kp.autoCut !== false,
+                                                beepBuzzer: kp.beepBuzzer !== false,
+                                            };
+
+                                            fetch(`${bridgeUrl}/print`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify(payload),
+                                            })
+                                            .then(r => r.json())
+                                            .then(data => {
+                                                if (data.success) {
+                                                    toast.success(`Test KOT printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🧑‍🍳', duration: 4000 });
+                                                } else {
+                                                    throw new Error(data.message || 'Print error');
+                                                }
+                                            })
+                                            .catch(() => {
+                                                return api.post('/print/test', payload).then(res => {
+                                                    toast.success(res.data?.message || `Test KOT printed to ${payload.ip}:${payload.port}!`, { id: toastId, icon: '🧑‍🍳', duration: 4000 });
+                                                });
+                                            })
+                                            .catch(err => {
+                                                const msg = err?.response?.data?.message || err?.message || 'Failed to connect to printer';
+                                                toast.error(`Print failed: ${msg}`, { id: toastId, duration: 5000 });
+                                            });
+                                        }
+                                    }}
+                                    className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider border ${theme.borderLight} ${theme.textPrimary} hover:border-amber-500 hover:text-amber-600 transition-all flex items-center gap-2`}
+                                >
+                                    <Printer size={14} />
+                                    Test Kitchen KOT Printer
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Zero-Dialog Silent Printing Guide Banner */}
+                    <div className={`p-6 rounded-3xl border ${theme.borderLight} bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-blue-50/50 dark:from-indigo-950/20 dark:via-purple-950/15 dark:to-blue-950/20 space-y-3.5 shadow-sm`}>
+                        <div className="flex items-center gap-2.5 font-black text-sm text-indigo-700 dark:text-indigo-400">
+                            <Zap size={18} className="fill-current" />
+                            <span>How to Never See the Print Preview Dialog Screen Again (Zero-Dialog Silent Printing)</span>
+                        </div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed max-w-4xl">
+                            By default, web browsers (Chrome/Edge) pop up a print dialog asking for confirmation before sending a job to a USB printer. Follow these 3 steps to completely suppress the window so all orders and KOTs print <strong>instantaneously with 0 clicks</strong>:
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
+                            <div className={`p-4 rounded-2xl bg-white/90 dark:bg-slate-900/90 border ${theme.borderLight} space-y-1.5 shadow-sm`}>
+                                <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 block tracking-wider">Step 1</span>
+                                <h6 className="text-xs font-black text-slate-800 dark:text-slate-200">Set POS-80C as Default</h6>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                    In Windows Settings &gt; <em>Printers &amp; scanners</em>, click <strong>POS-80C</strong> and select <strong>Set as default</strong>.
+                                </p>
+                            </div>
+                            <div className={`p-4 rounded-2xl bg-white/90 dark:bg-slate-900/90 border ${theme.borderLight} space-y-1.5 shadow-sm`}>
+                                <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 block tracking-wider">Step 2</span>
+                                <h6 className="text-xs font-black text-slate-800 dark:text-slate-200">Add Kiosk Shortcut Flag</h6>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                    Right-click your Chrome/Edge desktop icon &gt; <strong>Properties</strong>. In <em>Target</em>, add a space and <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono text-[10px] text-indigo-600 font-bold">--kiosk-printing</code> at the end.
+                                </p>
+                            </div>
+                            <div className={`p-4 rounded-2xl bg-white/90 dark:bg-slate-900/90 border ${theme.borderLight} space-y-1.5 shadow-sm`}>
+                                <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 block tracking-wider">Step 3</span>
+                                <h6 className="text-xs font-black text-slate-800 dark:text-slate-200">Instant Silent Printing</h6>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                    Launch Chrome from that shortcut. Click Checkout or Send KOT &mdash; it prints <strong>instantly to POS-80C with zero popup dialogs</strong>!
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Print Bridge Agent info */}
+                    <div className={`p-4 rounded-3xl border ${theme.borderLight} ${theme.surfaceBg} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs font-medium`}>
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                <Server size={17} />
+                            </div>
+                            <div>
+                                <span className={`font-black ${theme.textHeading} block`}>Local Print Bridge Agent (Optional for LAN/Mobile)</span>
+                                <span className={theme.textMuted}>Relays print jobs from cloud backend / mobile devices to local network thermal printers on port 9100</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <span className="text-[10px] font-black uppercase text-slate-400 shrink-0">Agent URL:</span>
+                            <input
+                                type="text"
+                                value={hardwareSettings.bridgeUrl || 'http://127.0.0.1:3001'}
+                                onChange={(e) => setHardwareSettings((p) => ({ ...p, bridgeUrl: e.target.value }))}
+                                placeholder="http://127.0.0.1:3001"
+                                className={`px-2.5 py-1.5 rounded-xl border ${theme.borderLight} ${theme.inputBg} ${theme.textPrimary} font-mono text-xs font-bold w-full sm:w-56`}
+                            />
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

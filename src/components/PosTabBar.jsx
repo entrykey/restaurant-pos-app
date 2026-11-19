@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, X, User, Trash2, History, Loader2, Volume2, VolumeX, GripVertical } from 'lucide-react';
+import { Plus, X, User, Trash2, History, Loader2, Volume2, VolumeX, GripVertical, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import { useTakeaway } from '../pages/Takeaway/TakeawayContext';
 import { useTheme } from '../context/ThemeContext';
 import { useApp } from '../context/AppContext';
@@ -19,7 +19,7 @@ const getOrderTypeForView = (view) => {
     return 'TAKEAWAY';
 };
 
-const PosTabBar = ({ view }) => {
+const PosTabBar = ({ view, isMobile = false }) => {
     const {
         tabs,
         activeTabId,
@@ -36,6 +36,29 @@ const PosTabBar = ({ view }) => {
     } = useTakeaway();
     const { theme } = useTheme();
     const { menu, currentShopId, activeBranchId, formatCurrency } = useApp();
+
+    const saleTabs = tabs.filter((t) => !t.tableId && !t.isTableOrder);
+
+    // Expand / Collapse state: collapsed shows only active tab; expanded shows full scrollable strip
+    const [isTabsExpanded, setIsTabsExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('pos_tabbar_expanded');
+            if (saved !== null) {
+                return saved === 'true';
+            }
+        } catch {}
+        return false; // Default to collapsed ("selected tab only") for a clean compact bar
+    });
+
+    const isExpandedEffective = Boolean(isTabsExpanded && saleTabs.length > 1);
+
+    const toggleTabsExpanded = (expanded) => {
+        setIsTabsExpanded(expanded);
+        try {
+            localStorage.setItem('pos_tabbar_expanded', String(expanded));
+        } catch {}
+    };
+
     const [showHistory, setShowHistory] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [recentSales, setRecentSales] = useState([]);
@@ -88,6 +111,66 @@ const PosTabBar = ({ view }) => {
     const isScrollDraggingRef = useRef(false);
     const scrollStartXRef = useRef(0);
     const scrollLeftRef = useRef(0);
+
+    // Scroll state for overflow indicators
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(false);
+
+    const checkTabsScroll = useCallback(() => {
+        const el = tabsScrollRef.current;
+        if (!el || !isExpandedEffective) {
+            setCanScrollLeft(false);
+            setCanScrollRight(false);
+            return;
+        }
+        setCanScrollLeft(el.scrollLeft > 4);
+        setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+    }, [isExpandedEffective]);
+
+    const scrollTabs = (direction) => {
+        if (tabsScrollRef.current) {
+            tabsScrollRef.current.scrollBy({ left: direction * 140, behavior: 'smooth' });
+        }
+    };
+
+    const handleTabsWheel = (e) => {
+        if (tabsScrollRef.current) {
+            tabsScrollRef.current.scrollLeft += e.deltaY !== 0 ? e.deltaY : e.deltaX;
+        }
+    };
+
+    // Auto-scroll active tab into view when expanded
+    useEffect(() => {
+        if (isExpandedEffective && tabsScrollRef.current && activeTabId) {
+            const activeEl = tabsScrollRef.current.querySelector(`[data-tab-id="${activeTabId}"]`);
+            if (activeEl) {
+                activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            }
+        }
+    }, [activeTabId, isExpandedEffective]);
+
+    // Keep scroll indicators updated
+    useEffect(() => {
+        if (!isExpandedEffective) {
+            setCanScrollLeft(false);
+            setCanScrollRight(false);
+            return;
+        }
+        const timer = setTimeout(() => {
+            checkTabsScroll();
+        }, 50);
+        const el = tabsScrollRef.current;
+        if (el) {
+            el.addEventListener('scroll', checkTabsScroll, { passive: true });
+            window.addEventListener('resize', checkTabsScroll);
+            return () => {
+                clearTimeout(timer);
+                el.removeEventListener('scroll', checkTabsScroll);
+                window.removeEventListener('resize', checkTabsScroll);
+            };
+        }
+        return () => clearTimeout(timer);
+    }, [checkTabsScroll, tabs, isExpandedEffective]);
 
     const fetchRecentSales = useCallback(async () => {
         if (!currentShopId) return;
@@ -306,7 +389,8 @@ const PosTabBar = ({ view }) => {
 
     if (!showTabs) return null;
 
-    const saleTabs = tabs.filter((t) => !t.tableId && !t.isTableOrder);
+    const activeTab = saleTabs.find((t) => t.id === activeTabId) || saleTabs[0];
+    const tabsToRender = isExpandedEffective ? saleTabs : (activeTab ? [activeTab] : []);
 
     const getTabOrder = (tab) =>
         tab.id === activeTabId ? takeawayOrder : (tab.takeawayOrder || {});
@@ -540,34 +624,59 @@ const PosTabBar = ({ view }) => {
     ) : null;
 
     return (
-        <div className="flex items-center justify-start md:justify-center lg:justify-center xl:justify-center w-full px-4 pt-2 pb-2 lg:pt-0 lg:pb-0 xl:pt-0 xl:pb-0">
+        <div className={`flex items-center justify-center w-full select-none ${isMobile ? 'p-0' : 'px-2 pt-1 pb-1 lg:pt-0 lg:pb-0'}`}>
             <div
-                style={{
+                style={isMobile ? undefined : {
                     transform: `translate3d(${barPosition.x}px, ${barPosition.y}px, 0)`,
                     transition: isDraggingBarRef.current ? 'none' : 'transform 0.15s ease-out',
                 }}
-                className="flex items-center gap-1.5 p-1.5 bg-[#7a818e] rounded-full shadow-lg max-w-full lg:pointer-events-auto xl:pointer-events-auto overflow-hidden select-none"
+                className={`flex items-center gap-1 p-1 bg-[#6c7280] dark:bg-slate-800 rounded-full shadow-lg max-w-full overflow-hidden select-none ${
+                    isMobile ? 'text-xs border border-white/20' : 'lg:pointer-events-auto'
+                }`}
             >
-                {/* Grip Handle to drag and reposition the entire bar */}
-                <div
-                    onPointerDown={handleBarPointerDown}
-                    onPointerMove={handleBarPointerMove}
-                    onPointerUp={handleBarPointerUp}
-                    onPointerCancel={handleBarPointerUp}
-                    onDoubleClick={handleResetBarPosition}
-                    className="h-8 w-5 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-white/50 hover:text-white hover:bg-white/10 rounded-full transition-colors ml-0.5 touch-none"
-                    title="Drag to reposition tab bar (Double-click to reset to center)"
-                >
-                    <GripVertical size={14} strokeWidth={2.5} />
-                </div>
+                {/* Grip Handle to drag and reposition the entire bar (Desktop only) */}
+                {!isMobile && (
+                    <div
+                        onPointerDown={handleBarPointerDown}
+                        onPointerMove={handleBarPointerMove}
+                        onPointerUp={handleBarPointerUp}
+                        onPointerCancel={handleBarPointerUp}
+                        onDoubleClick={handleResetBarPosition}
+                        className="h-8 w-5 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-white/50 hover:text-white hover:bg-white/10 rounded-full transition-colors ml-0.5 touch-none"
+                        title="Drag to reposition tab bar (Double-click to reset to center)"
+                    >
+                        <GripVertical size={14} strokeWidth={2.5} />
+                    </div>
+                )}
 
-                {/* Scrollable & Reorderable tabs area */}
+                {/* Left Scroll Chevron if tabs overflow (only when expanded) */}
+                {isExpandedEffective && canScrollLeft && (
+                    <button
+                        type="button"
+                        onClick={() => scrollTabs(-1)}
+                        className="h-7 w-5 shrink-0 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 rounded-full transition-colors cursor-pointer"
+                        title="Scroll tabs left"
+                    >
+                        <ChevronLeft size={14} strokeWidth={3} />
+                    </button>
+                )}
+
+                {/* Tabs area: scrollable in expanded mode, compact single-tab in collapsed mode */}
                 <div
                     ref={tabsScrollRef}
-                    onMouseDown={handleTabsMouseDown}
-                    className="flex items-center gap-1.5 overflow-x-auto no-scrollbar min-w-0"
+                    onMouseDown={isExpandedEffective ? handleTabsMouseDown : undefined}
+                    onWheel={isExpandedEffective ? handleTabsWheel : undefined}
+                    className={`flex items-center gap-1.5 ${
+                        isExpandedEffective
+                            ? `overflow-x-auto no-scrollbar min-w-0 ${
+                                isMobile 
+                                    ? 'max-w-[190px] xs:max-w-[240px] sm:max-w-[320px]' 
+                                    : 'max-w-[220px] sm:max-w-[300px] md:max-w-[380px] lg:max-w-[460px] xl:max-w-[580px]'
+                              } scroll-smooth`
+                            : 'min-w-0 shrink-0'
+                    }`}
                 >
-                    {saleTabs.map((tab) => {
+                    {tabsToRender.map((tab) => {
                         const isActive = tab.id === activeTabId;
                         const activeOrder = isActive ? takeawayOrder : (tab.takeawayOrder || {});
                         const itemCount = (activeOrder.items || []).length || 0;
@@ -580,7 +689,7 @@ const PosTabBar = ({ view }) => {
                         const ordMatch = typeof tabLabel === 'string' && tabLabel.match(/^(ORD-?|#)(.+)$/i);
                         const labelPrefix = ordMatch ? ordMatch[1] : null;
                         const labelNum = ordMatch ? ordMatch[2] : tabLabel;
-                        const isSingleTab = saleTabs.length === 1;
+                        const isSingleTab = !isExpandedEffective || saleTabs.length === 1;
 
                         const isBeingDragged = draggedTabId === tab.id;
                         const isDragTarget = dragOverTabId === tab.id && draggedTabId !== tab.id;
@@ -588,14 +697,31 @@ const PosTabBar = ({ view }) => {
                         return (
                             <div
                                 key={tab.id}
-                                draggable={saleTabs.length > 1}
-                                onDragStart={(e) => handleTabDragStart(e, tab.id)}
-                                onDragOver={(e) => handleTabDragOver(e, tab.id)}
-                                onDrop={(e) => handleTabDrop(e, tab.id)}
-                                onDragEnd={handleTabDragEnd}
-                                onClick={() => switchTab(tab.id)}
-                                title={saleTabs.length > 1 ? `${tabLabel} (Drag to reorder)` : tabLabel}
-                                className={`group relative shrink-0 ${isSingleTab ? 'max-w-none' : 'max-w-[140px] md:max-w-[180px]'} h-8 md:h-9 px-2.5 md:px-3.5 flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing transition-all duration-200 transform rounded-full border border-transparent
+                                data-tab-id={tab.id}
+                                draggable={isExpandedEffective && saleTabs.length > 1}
+                                onDragStart={isExpandedEffective ? (e) => handleTabDragStart(e, tab.id) : undefined}
+                                onDragOver={isExpandedEffective ? (e) => handleTabDragOver(e, tab.id) : undefined}
+                                onDrop={isExpandedEffective ? (e) => handleTabDrop(e, tab.id) : undefined}
+                                onDragEnd={isExpandedEffective ? handleTabDragEnd : undefined}
+                                onClick={() => {
+                                    if (!isExpandedEffective && saleTabs.length > 1) {
+                                        toggleTabsExpanded(true);
+                                    } else {
+                                        switchTab(tab.id);
+                                    }
+                                }}
+                                title={
+                                    !isExpandedEffective && saleTabs.length > 1
+                                        ? `${tabLabel} • Click to expand all ${saleTabs.length} tabs`
+                                        : (saleTabs.length > 1 ? `${tabLabel} (Drag to reorder)` : tabLabel)
+                                }
+                                className={`group relative shrink-0 ${
+                                    isSingleTab
+                                        ? 'max-w-[150px] md:max-w-[220px]'
+                                        : (saleTabs.length > 4 ? 'max-w-[100px] md:max-w-[125px]' : 'max-w-[120px] md:max-w-[150px]')
+                                } ${
+                                    isMobile ? 'h-7.5 px-2 text-[10px]' : 'h-8 md:h-8.5 px-2.5 md:px-3 text-xs'
+                                } flex items-center justify-between gap-1.5 cursor-pointer transition-all duration-200 transform rounded-full border border-transparent
                                     ${isBeingDragged ? 'opacity-40 scale-95 border-dashed border-white/60' : ''}
                                     ${isDragTarget ? 'ring-2 ring-amber-300 bg-white/20 scale-105' : ''}
                                     ${isActive
@@ -603,24 +729,24 @@ const PosTabBar = ({ view }) => {
                                         : 'text-slate-200 hover:bg-white/10'
                                     }`}
                             >
-                                <div className="flex items-center gap-2 min-w-0 flex-1 pointer-events-none">
+                                <div className="flex items-center gap-1.5 min-w-0 flex-1 pointer-events-none">
                                     {itemCount > 0 ? (
-                                        <div className={`shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center text-[9px] md:text-[10px] font-black
+                                        <div className={`shrink-0 w-4 h-4 md:w-4.5 md:h-4.5 rounded-full flex items-center justify-center text-[9px] md:text-[10px] font-black
                                             ${isActive ? 'bg-white text-[#5b52f6]' : 'bg-slate-400/50 text-white'}`}>
                                             {itemCount}
                                         </div>
                                     ) : (
-                                        <div className={`shrink-0 w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center ${isActive ? 'bg-white/20' : 'bg-white/10'}`}>
-                                            <User size={11} className={isActive ? 'text-white' : 'text-slate-200'} />
+                                        <div className={`shrink-0 w-4 h-4 md:w-4.5 md:h-4.5 rounded-full flex items-center justify-center ${isActive ? 'bg-white/20' : 'bg-white/10'}`}>
+                                            <User size={10} className={isActive ? 'text-white' : 'text-slate-200'} />
                                         </div>
                                     )}
                                     <span 
-                                        className={`inline-block font-black tracking-wide uppercase ${isSingleTab ? 'whitespace-nowrap' : 'truncate [direction:rtl] [text-align:left]'}`}
+                                        className={`inline-block font-black tracking-wide uppercase truncate ${isSingleTab ? 'max-w-[110px] md:max-w-[160px]' : '[direction:rtl] [text-align:left]'}`}
                                     >
                                         {labelPrefix ? (
                                             <>
-                                                <span className="opacity-75 font-semibold text-[9px] md:text-[10px] uppercase">{labelPrefix}</span>
-                                                <span className={`font-black text-[11px] md:text-[12px] tracking-widest ${isActive ? 'text-amber-300' : 'text-white'}`}>{labelNum}</span>
+                                                <span className="opacity-75 font-semibold text-[8px] md:text-[9px] uppercase">{labelPrefix}</span>
+                                                <span className={`font-black text-[10px] md:text-[11px] tracking-widest ${isActive ? 'text-amber-300' : 'text-white'}`}>{labelNum}</span>
                                             </>
                                         ) : (
                                             <span className="text-[10px] md:text-[11px] font-black">{tabLabel}</span>
@@ -637,55 +763,104 @@ const PosTabBar = ({ view }) => {
                                             : 'opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-400 hover:text-red-400'
                                         }`}
                                 >
-                                    <X size={11} strokeWidth={3} />
+                                    <X size={10} strokeWidth={3} />
                                 </button>
                             </div>
                         );
                     })}
                 </div>
 
+                {/* Right Scroll Chevron if tabs overflow (only when expanded) */}
+                {isExpandedEffective && canScrollRight && (
+                    <button
+                        type="button"
+                        onClick={() => scrollTabs(1)}
+                        className="h-7 w-5 shrink-0 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 rounded-full transition-colors cursor-pointer"
+                        title="Scroll tabs right"
+                    >
+                        <ChevronRight size={14} strokeWidth={3} />
+                    </button>
+                )}
+
+                {/* Expand button: shown when collapsed and more than 1 tab exists */}
+                {!isExpandedEffective && saleTabs.length > 1 && (
+                    <button
+                        type="button"
+                        onClick={() => toggleTabsExpanded(true)}
+                        className={`${
+                            isMobile ? 'h-7.5 px-2 text-[10px]' : 'h-8 md:h-8.5 px-2.5 text-xs'
+                        } shrink-0 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center gap-1.5 transition-all cursor-pointer border border-white/10`}
+                        title={`Expand to view all ${saleTabs.length} tabs`}
+                    >
+                        <span className="font-black text-amber-300">
+                            +{saleTabs.length - 1}
+                        </span>
+                        <span className="font-bold text-white/90 hidden sm:inline uppercase text-[10px] tracking-wider">
+                            All Tabs
+                        </span>
+                        <Maximize2 size={isMobile ? 11 : 13} strokeWidth={2.5} className="text-white/80" />
+                    </button>
+                )}
+
+                {/* Collapse button: shown when expanded and more than 1 tab exists */}
+                {isExpandedEffective && saleTabs.length > 1 && (
+                    <button
+                        type="button"
+                        onClick={() => toggleTabsExpanded(false)}
+                        className={`${
+                            isMobile ? 'h-7.5 px-2 text-[10px]' : 'h-8 md:h-8.5 px-2 text-xs'
+                        } shrink-0 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center gap-1.5 transition-all cursor-pointer border border-white/10`}
+                        title="Show selected tab only (collapse)"
+                    >
+                        <Minimize2 size={isMobile ? 11 : 13} strokeWidth={2.5} className="text-amber-300" />
+                        <span className="font-bold text-white/90 hidden md:inline uppercase text-[10px] tracking-wider">
+                            Active Only
+                        </span>
+                    </button>
+                )}
+
                 {/* Fixed action buttons — never scroll */}
-                <div className="flex items-center gap-1.5 px-2 border-l border-white/10 ml-1 shrink-0">
+                <div className="flex items-center gap-1 px-1.5 border-l border-white/10 ml-0.5 shrink-0">
                     <button
                         type="button"
                         onClick={handleToggleSound}
-                        className={`h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl transition-all flex items-center justify-center ${
+                        className={`${isMobile ? 'h-7.5 w-7.5' : 'h-8 w-8 md:h-8.5 md:w-8.5'} shrink-0 rounded-lg md:rounded-xl transition-all flex items-center justify-center ${
                             soundOn ? 'bg-indigo-600 text-white shadow-md' : 'bg-white/20 text-slate-300 hover:bg-white/30'
                         }`}
                         title={soundOn ? "Voice Announcements Enabled (Click to Mute)" : "Voice Announcements Muted (Click to Enable)"}
                     >
-                        {soundOn ? <Volume2 size={18} strokeWidth={2.5} /> : <VolumeX size={18} strokeWidth={2.5} />}
+                        {soundOn ? <Volume2 size={isMobile ? 14 : 16} strokeWidth={2.5} /> : <VolumeX size={isMobile ? 14 : 16} strokeWidth={2.5} />}
                     </button>
 
                     <button
                         ref={historyButtonRef}
                         type="button"
                         onClick={() => setShowHistory((prev) => !prev)}
-                        className={`h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
+                        className={`${isMobile ? 'h-7.5 w-7.5' : 'h-8 w-8 md:h-8.5 md:w-8.5'} shrink-0 rounded-lg md:rounded-xl transition-all flex items-center justify-center cursor-pointer ${
                             showHistory ? 'bg-white text-[#5b52f6]' : 'bg-white/20 text-white hover:bg-white/30'
                         }`}
                         title="Recent Sales"
                     >
-                        <History size={18} strokeWidth={2.5} />
+                        <History size={isMobile ? 14 : 16} strokeWidth={2.5} />
                     </button>
 
                     <button
                         type="button"
                         onClick={addTab}
-                        className="h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl bg-white/20 text-white hover:bg-white/30 transition-all flex items-center justify-center cursor-pointer"
+                        className={`${isMobile ? 'h-7.5 w-7.5' : 'h-8 w-8 md:h-8.5 md:w-8.5'} shrink-0 rounded-lg md:rounded-xl bg-white/20 text-white hover:bg-white/30 transition-all flex items-center justify-center cursor-pointer`}
                         title="New Sale Tab"
                     >
-                        <Plus size={18} strokeWidth={4} />
+                        <Plus size={isMobile ? 15 : 17} strokeWidth={3.5} />
                     </button>
 
                     {saleTabs.length > 1 && (
                         <button
                             type="button"
                             onClick={confirmClearAll}
-                            className="h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl bg-[#c17878]/30 text-[#e68c8c] hover:bg-red-500 hover:text-white transition-all flex items-center justify-center cursor-pointer"
+                            className={`${isMobile ? 'h-7.5 w-7.5' : 'h-8 w-8 md:h-8.5 md:w-8.5'} shrink-0 rounded-lg md:rounded-xl bg-[#c17878]/30 text-[#e68c8c] hover:bg-red-500 hover:text-white transition-all flex items-center justify-center cursor-pointer`}
                             title="Clear All Tabs"
                         >
-                            <Trash2 size={16} strokeWidth={2.5} />
+                            <Trash2 size={isMobile ? 13 : 15} strokeWidth={2.5} />
                         </button>
                     )}
                 </div>

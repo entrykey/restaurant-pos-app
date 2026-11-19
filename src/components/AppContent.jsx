@@ -1164,6 +1164,7 @@ const AppContent = () => {
                 extraInfo,
                 paymentMethod: effectivePaymentMethod,
                 paymentStatus: finalPayStatus,
+                branchId: getResolvedBranchId(),
             });
         } catch (e) {
             console.error("Print bill failed:", e);
@@ -1775,15 +1776,16 @@ const AppContent = () => {
         setIsCustomizationModalOpen(false);
     };
 
-    const updateItemQuantity = (itemIndex, delta) => {
+    const updateItemQuantity = (itemIndex, delta, isExact = false) => {
         const updateList = (items) => {
             const item = items[itemIndex];
+            if (!item) return items;
             const currentPaidQty = item.paidQuantity !== undefined ? item.paidQuantity : item.quantity;
             let step = delta;
-            if (item.sellingType === "Weight") {
+            if (item.sellingType === "Weight" && !isExact && (delta === 1 || delta === -1)) {
                 step = delta * 0.1;
             }
-            let newPaidQty = currentPaidQty + step;
+            let newPaidQty = isExact ? delta : currentPaidQty + step;
             if (newPaidQty <= 0.001) {
                 return items.filter((_, idx) => idx !== itemIndex);
             }
@@ -1813,6 +1815,87 @@ const AppContent = () => {
                             order: newItems.length > 0
                                 ? withStaffTracking({ ...t.order, items: newItems, isSentToKOT: t.order?.isSentToKOT || false, _localDraftPending: true })
                                 : null,
+                        };
+                    }
+                    return t;
+                })
+            );
+        }
+    };
+
+    const handleUpdateOrderItem = (itemIndex, updatedData, originalIndices = null) => {
+        const updateList = (items = []) => {
+            const list = [...items];
+            if (itemIndex < 0 || itemIndex >= list.length) return list;
+            const target = list[itemIndex];
+            if (!target) return list;
+
+            const basePrice = Number(updatedData.price) >= 0 ? Number(updatedData.price) : (target.price || 0);
+            const qty = Number(updatedData.quantity) > 0 ? Number(updatedData.quantity) : (target.quantity || 1);
+
+            const updated = {
+                ...target,
+                quantity: qty,
+                paidQuantity: qty,
+                price: basePrice,
+                sellingPrice: basePrice,
+                pricePerUnit: basePrice,
+                pricing: target.pricing ? { ...target.pricing, sellingPrice: basePrice } : { sellingPrice: basePrice },
+                selectedVariant: updatedData.selectedVariant !== undefined ? updatedData.selectedVariant : target.selectedVariant,
+                itemDiscount: updatedData.itemDiscount !== undefined ? updatedData.itemDiscount : target.itemDiscount,
+                itemDiscountType: updatedData.itemDiscountType || target.itemDiscountType || 'percent',
+                suggestion: updatedData.suggestion !== undefined ? updatedData.suggestion : (target.suggestion || ''),
+                selectedUnit: updatedData.selectedUnit || target.selectedUnit,
+                enteredUnit: updatedData.enteredUnit !== undefined ? updatedData.enteredUnit : target.enteredUnit,
+            };
+            if (updated.selectedVariant) {
+                updated.selectedVariant = {
+                    ...updated.selectedVariant,
+                    price: basePrice
+                };
+            }
+            if (updated.sellingType === "Weight") {
+                updated.pricePerUnit = basePrice;
+            }
+
+            const synced = syncItemBogoQuantity ? syncItemBogoQuantity(updated, offers) : updated;
+
+            if (Array.isArray(originalIndices) && originalIndices.length > 1) {
+                const indicesToRemove = new Set(originalIndices.filter(i => i !== itemIndex));
+                const filtered = list.filter((_, idx) => !indicesToRemove.has(idx));
+                const newTargetIdx = filtered.findIndex((item, idx) => idx === itemIndex || (item.id === target.id && item._id === target._id));
+                if (newTargetIdx !== -1) {
+                    filtered[newTargetIdx] = synced;
+                } else {
+                    filtered[itemIndex] = synced;
+                }
+                return filtered;
+            }
+
+            list[itemIndex] = synced;
+            return list;
+        };
+
+        if (isTakeaway || !activeTableId) {
+            setTakeawayOrder((prev) => ({
+                ...prev,
+                items: updateList(prev?.items || []),
+                isSentToKOT: prev?.isSentToKOT || false,
+            }));
+        } else {
+            setTables((prev) =>
+                prev.map((t) => {
+                    if ((String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) && t.order) {
+                        const newItems = updateList(t.order.items || []);
+                        return {
+                            ...t,
+                            status: newItems.length > 0 ? "occupied" : "available",
+                            order: withStaffTracking({
+                                ...t.order,
+                                items: newItems,
+                                isSentToKOT: t.order?.isSentToKOT || false,
+                                _localDraftPending: true,
+                            }),
                         };
                     }
                     return t;
@@ -2160,6 +2243,7 @@ const AppContent = () => {
                         variant: k.variant,
                     })),
                     staffName: currentUser?.name || "",
+                    branchId: getResolvedBranchId(),
                 });
             }
         } catch (error) {
@@ -2542,6 +2626,8 @@ const AppContent = () => {
                         updateItemUnit={updateItemUnit}
                         updateItemDiscount={updateItemDiscount}
                         updateItemPrice={updateItemPrice}
+                        onUpdateOrderItem={handleUpdateOrderItem}
+                        setTables={setTables}
                         openNoteModal={openNoteModal}
                         takeawayCustName={takeawayCustName}
                         setTakeawayCustName={setTakeawayCustName}

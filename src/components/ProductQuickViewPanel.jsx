@@ -81,7 +81,7 @@ const ProductQuickViewPanel = ({ item, onClose, onAddToCart, formatCurrency }) =
                     {showAiImage && (
                         <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-white border border-slate-200 shadow-sm group">
                             <img
-                                src={item?.image || item?.imageUrl || getBingImage(item?.name, { w: 400, h: 250 })}
+                                src={item?.image || item?.imageUrl || getBingImage(item, { w: 400, h: 250 })}
                                 alt={item?.name || "Item"}
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                 onError={(e) => {

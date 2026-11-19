@@ -71,6 +71,8 @@ const TakeawayOrder = ({
     updateItemUnit,
     updateItemDiscount,
     updateItemPrice: propsUpdateItemPrice,
+    onUpdateOrderItem,
+    setTables,
     openNoteModal,
     takeawayCustName,
     setTakeawayCustName,
@@ -146,7 +148,7 @@ const TakeawayOrder = ({
     }, [propsUpdateItemPrice, setTakeawayOrder]);
 
     const [showAvailableOffers, setShowAvailableOffers] = useState(false);
-    const [isCartBreakdownExpanded, setIsCartBreakdownExpanded] = useState(true);
+    const [isCartBreakdownExpanded, setIsCartBreakdownExpanded] = useState(false);
     const [priceInputs, setPriceInputs] = useState({});
     const [editingCartItem, setEditingCartItem] = useState(null);
     const [editingCartIndex, setEditingCartIndex] = useState(null);
@@ -650,9 +652,13 @@ const TakeawayOrder = ({
                 // Merge quantities - keep track of first index for updates
                 const existing = itemMap.get(groupKey);
                 existing.quantity += item.quantity;
+                if (!existing.originalIndices) {
+                    existing.originalIndices = [existing._originalIndex];
+                }
+                existing.originalIndices.push(originalIndex);
             } else {
                 // Add new entry (clone to avoid mutation) and track original index
-                itemMap.set(groupKey, { ...item, _originalIndex: originalIndex });
+                itemMap.set(groupKey, { ...item, _originalIndex: originalIndex, originalIndices: [originalIndex] });
             }
         });
         
@@ -696,6 +702,8 @@ const TakeawayOrder = ({
     }, [allCartItems, baseStockMap, currentOrder?.items, updateItemQuantity]);
 
     const handleRemoveItem = useCallback((itemIndex) => {
+        setQtyInputs({});
+        setPriceInputs({});
         if (removeItemFromCart) {
             removeItemFromCart(itemIndex);
         } else {
@@ -709,6 +717,16 @@ const TakeawayOrder = ({
     const handleSetExactItemQuantity = useCallback((itemIndex, exactQty) => {
         let q = parseFloat(exactQty);
         if (isNaN(q) || q <= 0) return;
+
+        const currentItem = currentOrder?.items?.[itemIndex];
+        if (currentItem && updateItemQuantity) {
+            const currentPaidQty = currentItem.paidQuantity !== undefined ? currentItem.paidQuantity : currentItem.quantity;
+            const delta = q - currentPaidQty;
+            if (Math.abs(delta) > 0.0001) {
+                updateItemQuantity(itemIndex, delta);
+            }
+            return;
+        }
 
         if (setTakeawayOrder) {
             setTakeawayOrder((prev) => {
@@ -729,7 +747,7 @@ const TakeawayOrder = ({
                 };
             });
         }
-    }, [setTakeawayOrder, offers]);
+    }, [currentOrder?.items, updateItemQuantity, setTakeawayOrder, offers]);
 
     const handleCommitQuantity = useCallback((item, idx, rawValue) => {
         const targetIdx = item._originalIndex !== undefined ? item._originalIndex : idx;
@@ -778,25 +796,36 @@ const TakeawayOrder = ({
 
     const handleSaveItemEdit = useCallback((editedData) => {
         if (editingCartIndex === null) return;
-        if (setTakeawayOrder) {
-            setTakeawayOrder((prev) => {
-                const items = [...(prev?.items || [])];
-                const target = items[editingCartIndex];
-                if (!target) return prev;
+
+        // Clear cached inline stepper and price inputs to ensure newly saved values show immediately
+        setQtyInputs({});
+        setPriceInputs({});
+
+        if (onUpdateOrderItem) {
+            onUpdateOrderItem(editingCartIndex, editedData, editingCartItem?.originalIndices);
+        } else {
+            const updateList = (items = []) => {
+                const list = [...items];
+                const target = list[editingCartIndex];
+                if (!target) return list;
 
                 const basePrice = Number(editedData.price) >= 0 ? Number(editedData.price) : (target.price || 0);
+                const qty = Number(editedData.quantity) > 0 ? Number(editedData.quantity) : (target.quantity || 1);
+
                 const updated = {
                     ...target,
-                    quantity: editedData.quantity,
-                    paidQuantity: editedData.quantity,
+                    quantity: qty,
+                    paidQuantity: qty,
                     price: basePrice,
                     sellingPrice: basePrice,
-                    selectedVariant: editedData.selectedVariant || target.selectedVariant,
-                    itemDiscount: editedData.itemDiscount,
-                    itemDiscountType: editedData.itemDiscountType,
-                    suggestion: editedData.suggestion,
+                    pricePerUnit: basePrice,
+                    pricing: target.pricing ? { ...target.pricing, sellingPrice: basePrice } : { sellingPrice: basePrice },
+                    selectedVariant: editedData.selectedVariant !== undefined ? editedData.selectedVariant : target.selectedVariant,
+                    itemDiscount: editedData.itemDiscount !== undefined ? editedData.itemDiscount : target.itemDiscount,
+                    itemDiscountType: editedData.itemDiscountType || target.itemDiscountType || 'percent',
+                    suggestion: editedData.suggestion !== undefined ? editedData.suggestion : (target.suggestion || ''),
                     selectedUnit: editedData.selectedUnit || target.selectedUnit,
-                    enteredUnit: editedData.enteredUnit || target.enteredUnit
+                    enteredUnit: editedData.enteredUnit !== undefined ? editedData.enteredUnit : target.enteredUnit,
                 };
                 if (updated.selectedVariant) {
                     updated.selectedVariant = {
@@ -807,17 +836,56 @@ const TakeawayOrder = ({
                 if (updated.sellingType === "Weight") {
                     updated.pricePerUnit = basePrice;
                 }
-                const finalItem = syncItemBogoQuantity ? syncItemBogoQuantity(updated, offers) : updated;
-                items[editingCartIndex] = finalItem;
-                return {
-                    ...prev,
-                    items
-                };
-            });
+
+                const synced = syncItemBogoQuantity ? syncItemBogoQuantity(updated, offers) : updated;
+
+                if (Array.isArray(editingCartItem?.originalIndices) && editingCartItem.originalIndices.length > 1) {
+                    const indicesToRemove = new Set(editingCartItem.originalIndices.filter(i => i !== editingCartIndex));
+                    const filtered = list.filter((_, idx) => !indicesToRemove.has(idx));
+                    const newTargetIdx = filtered.findIndex((item, idx) => idx === editingCartIndex || (item.id === target.id && item._id === target._id));
+                    if (newTargetIdx !== -1) {
+                        filtered[newTargetIdx] = synced;
+                    } else {
+                        filtered[editingCartIndex] = synced;
+                    }
+                    return filtered;
+                }
+
+                list[editingCartIndex] = synced;
+                return list;
+            };
+
+            if (isTakeaway || !activeTableId) {
+                if (setTakeawayOrder) {
+                    setTakeawayOrder((prev) => ({
+                        ...prev,
+                        items: updateList(prev?.items || [])
+                    }));
+                }
+            } else if (setTables && activeTableId) {
+                setTables((prev) =>
+                    prev.map((t) => {
+                        if (String(t.id) === String(activeTableId) || String(t._id) === String(activeTableId)) {
+                            const newItems = updateList(t.order?.items || []);
+                            return {
+                                ...t,
+                                status: newItems.length > 0 ? "occupied" : "available",
+                                order: {
+                                    ...(t.order || {}),
+                                    items: newItems,
+                                    _localDraftPending: true
+                                }
+                            };
+                        }
+                        return t;
+                    })
+                );
+            }
         }
+
         setEditingCartItem(null);
         setEditingCartIndex(null);
-    }, [editingCartIndex, setTakeawayOrder, offers]);
+    }, [editingCartIndex, editingCartItem, onUpdateOrderItem, isTakeaway, activeTableId, setTakeawayOrder, setTables, offers]);
 
     const sourceMenuItem = useMemo(() => {
         if (!editingCartItem) return null;
@@ -981,14 +1049,15 @@ const TakeawayOrder = ({
 
     return (
         <div className={`flex flex-col h-full overflow-hidden ${theme.pageBg} relative`}>
-            {/* Overlay POS Tab Bar for direct sale / takeaway (hidden when from Dining Hall table order) */}
+            {/* Mobile / Tablet POS Tab Bar — in normal document flow so it NEVER overlaps or hides the Cart button */}
             {shouldShowPosTabBar && (
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-auto hidden sm:block">
-                    <PosTabBar view={view || (isTakeaway ? 'takeaway' : 'direct-sale')} />
+                <div className="lg:hidden w-full px-2 py-1 shrink-0 bg-slate-200/90 dark:bg-slate-900/90 border-b border-slate-300 dark:border-slate-800 flex justify-center z-10">
+                    <PosTabBar view={view || (isTakeaway ? 'takeaway' : 'direct-sale')} isMobile={true} />
                 </div>
             )}
-            {/* Mobile/Tablet Tab Switcher — visible below lg */}
-            <div className={`lg:hidden flex p-2 ${theme.surfaceBg} border-b ${theme.borderLight} gap-2 shrink-0`}>
+
+            {/* Mobile/Tablet Tab Switcher — visible below lg, completely unobstructed */}
+            <div className={`lg:hidden flex p-2 ${theme.surfaceBg} border-b ${theme.borderLight} gap-2 shrink-0 z-10`}>
                 <button
                     onClick={() => setMobileOrderTab("menu")}
                     className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 ${mobileOrderTab === "menu" ? "bg-indigo-600 text-white" : `${theme.sectionBg} ${theme.textMuted}`
@@ -1009,6 +1078,13 @@ const TakeawayOrder = ({
                     )}
                 </button>
             </div>
+
+            {/* Desktop Overlay POS Tab Bar with max-width constraint — never expands over header or cart */}
+            {shouldShowPosTabBar && (
+                <div className="hidden lg:block absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-auto max-w-[calc(100%-480px)]">
+                    <PosTabBar view={view || (isTakeaway ? 'takeaway' : 'direct-sale')} />
+                </div>
+            )}
 
             {isInlineCheckout && window.innerWidth >= 1024 ? (
                 <InlineReviewBill
@@ -1567,7 +1643,7 @@ const TakeawayOrder = ({
                                                 <div className="flex items-start gap-3 min-w-0 flex-1">
                                                     {showAiImage && (
                                                         <img
-                                                            src={getBingImage(item?.name, { w: 64, h: 64 })}
+                                                            src={item?.image || item?.imageUrl || getBingImage(item, { w: 64, h: 64 })}
                                                             alt={item?.name || "Item"}
                                                             loading="lazy"
                                                             className={`w-14 h-14 rounded-xl object-cover ${theme.pageBg} border ${theme.borderLight} shrink-0 shadow-2xs ${isZeroPrice ? 'opacity-75' : ''}`}
@@ -1615,10 +1691,10 @@ const TakeawayOrder = ({
                                                         <button
                                                             type="button"
                                                             onClick={() => handleOpenItemEditModal(item, idx)}
-                                                            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors cursor-pointer"
-                                                            title="Edit item details"
+                                                            className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition-all active:scale-95 cursor-pointer border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800"
+                                                            title="Edit item (Price, Qty, Portions, Discount & Notes)"
                                                         >
-                                                            <Sliders size={14} />
+                                                            <Sliders size={15} className="stroke-[2.2]" />
                                                         </button>
                                                         <button
                                                             type="button"
@@ -1765,13 +1841,21 @@ const TakeawayOrder = ({
                                                 </div>
                                             )}
 
-                                            {/* Bottom Controls Row: Horizontal Quantity Pill + Edit Option + Note + Discount Input */}
+                                            {/* Bottom Controls Row: Horizontal Quantity Pill + Note + Discount Input */}
                                             <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-gray-100 dark:border-gray-800">
                                                 {/* Quantity Horizontal Control: [ - ] [ input ] [ + ] */}
                                                 <div className={`inline-flex items-center rounded-lg border ${theme.borderLight} ${theme.pageBg} p-0.5 shadow-2xs`}>
                                                     <button
                                                         type="button"
                                                         onClick={() => {
+                                                            const typedVal = qtyInputs[itemKey];
+                                                            if (typedVal !== undefined && typedVal !== "") {
+                                                                const parsed = parseFloat(typedVal);
+                                                                if (!isNaN(parsed) && parsed > 0) {
+                                                                    handleCommitQuantity(item, idx, String(Math.max(1, parsed - 1)));
+                                                                    return;
+                                                                }
+                                                            }
                                                             setQtyInputs(prev => {
                                                                 const next = { ...prev };
                                                                 delete next[itemKey];
@@ -1794,7 +1878,8 @@ const TakeawayOrder = ({
                                                                 : item.quantity
                                                         )}
                                                         onFocus={(e) => {
-                                                            e.target.select();
+                                                            const target = e.target;
+                                                            setTimeout(() => target?.select?.(), 10);
                                                             setQtyInputs(prev => ({
                                                                 ...prev,
                                                                 [itemKey]: String(item.sellingType === "Weight" && item.enteredUnit === "g" ? Math.round(item.quantity * 1000) : item.quantity)
@@ -1810,15 +1895,35 @@ const TakeawayOrder = ({
                                                         onKeyDown={(e) => {
                                                             if (e.key === 'Enter') {
                                                                 e.preventDefault();
+                                                                handleCommitQuantity(item, idx, e.target.value);
                                                                 e.target.blur();
+                                                            } else if (e.key === 'ArrowUp') {
+                                                                e.preventDefault();
+                                                                const currentVal = parseFloat(e.target.value) || item.quantity;
+                                                                const nextVal = currentVal + (item.sellingType === "Weight" ? 0.25 : 1);
+                                                                handleCommitQuantity(item, idx, String(nextVal));
+                                                            } else if (e.key === 'ArrowDown') {
+                                                                e.preventDefault();
+                                                                const currentVal = parseFloat(e.target.value) || item.quantity;
+                                                                const step = item.sellingType === "Weight" ? 0.25 : 1;
+                                                                const nextVal = Math.max(item.sellingType === "Weight" ? 0.01 : 1, currentVal - step);
+                                                                handleCommitQuantity(item, idx, String(nextVal));
                                                             }
                                                         }}
-                                                        className={`w-10 px-0.5 text-center font-black text-xs ${theme.textPrimary} bg-transparent outline-none focus:bg-white dark:focus:bg-slate-800 rounded focus:ring-1 focus:ring-indigo-500 transition-all`}
+                                                        className={`w-12 h-7 px-1 text-center font-black text-xs sm:text-sm ${theme.textPrimary} bg-transparent outline-none focus:bg-white dark:focus:bg-slate-800 rounded focus:ring-1.5 focus:ring-indigo-500 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                                                         title="Click to type exact quantity"
                                                     />
                                                     <button
                                                         type="button"
                                                         onClick={() => {
+                                                            const typedVal = qtyInputs[itemKey];
+                                                            if (typedVal !== undefined && typedVal !== "") {
+                                                                const parsed = parseFloat(typedVal);
+                                                                if (!isNaN(parsed) && parsed > 0) {
+                                                                    handleCommitQuantity(item, idx, String(parsed + 1));
+                                                                    return;
+                                                                }
+                                                            }
                                                             setQtyInputs(prev => {
                                                                 const next = { ...prev };
                                                                 delete next[itemKey];
@@ -1833,22 +1938,11 @@ const TakeawayOrder = ({
                                                     </button>
                                                 </div>
 
-                                                {/* Edit Item Option Button */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleOpenItemEditModal(item, idx)}
-                                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors shadow-2xs cursor-pointer"
-                                                    title="Edit item price, quantity, variant & notes"
-                                                >
-                                                    <Sliders size={11} className="stroke-[2.5]" />
-                                                    <span>Edit</span>
-                                                </button>
-
                                                 {/* Add / Edit Note Button */}
                                                 <button
                                                     type="button"
                                                     onClick={() => openNoteModal(idx, item.suggestion)}
-                                                    className={`flex items-center gap-1 ${theme.surfaceBg} px-2.5 py-1 rounded-lg border ${theme.borderLight} text-[11px] font-bold ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-300 transition-colors shadow-2xs`}
+                                                    className={`flex items-center gap-1 ${theme.surfaceBg} px-2.5 py-1.5 rounded-lg border ${theme.borderLight} text-[11px] font-bold ${theme.textMuted} hover:text-indigo-600 hover:border-indigo-300 transition-colors shadow-2xs`}
                                                 >
                                                     <Edit3 size={11} />
                                                     <span>{item.suggestion ? "Edit Note" : "Add Note"}</span>
@@ -1880,7 +1974,7 @@ const TakeawayOrder = ({
                                                             }
                                                         }}
                                                         placeholder="0"
-                                                        className={`w-10 px-1 py-0.5 text-xs font-black text-center outline-none ${theme.surfaceBg} ${theme.textPrimary} rounded border ${theme.borderLight} focus:ring-1 focus:ring-indigo-500`}
+                                                        className={`w-10 px-1 py-0.5 text-xs font-black text-center outline-none ${theme.surfaceBg} ${theme.textPrimary} rounded border ${theme.borderLight} focus:ring-1 focus:ring-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                                                     />
                                                     <button
                                                         type="button"
