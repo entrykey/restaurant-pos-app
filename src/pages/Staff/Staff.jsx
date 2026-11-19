@@ -389,7 +389,7 @@ const Staff = ({
     // Fetch Roles
     useEffect(() => {
         const fetchRoles = async () => {
-            if (activeStaffTab === "roles" && !isCreateEmployeeOpen && shopId) {
+            if ((activeStaffTab === "roles" || isCreateEmployeeOpen || isEditEmployeeOpen) && shopId) {
                 setIsRolesLoading(true);
                 try {
                     const userId = user?.id || user?._id;
@@ -401,21 +401,10 @@ const Staff = ({
                 } finally {
                     setIsRolesLoading(false);
                 }
-            } else if (isCreateEmployeeOpen && shopId) {
-                setIsRolesLoading(true);
-                try {
-                    const targetShop = shopId;
-                    const fetchedRoles = await roleService.getRolesByShopId(targetShop, false);
-                    setRoles(fetchedRoles);
-                } catch (error) {
-                    console.error("Failed to fetch roles:", error);
-                } finally {
-                    setIsRolesLoading(false);
-                }
             }
         };
         fetchRoles();
-    }, [activeStaffTab, isCreateEmployeeOpen, shopId, setRolesList, hasViewAllStaff, activeBranchId]);
+    }, [activeStaffTab, isCreateEmployeeOpen, isEditEmployeeOpen, shopId, setRolesList, hasViewAllStaff, activeBranchId]);
 
     // Fetch Branches (Shared for both dialogs)
     useEffect(() => {
@@ -676,12 +665,24 @@ const Staff = ({
         };
 
         try {
-            await roleService.createRole(payload);
+            const createdRole = await roleService.createRole(payload);
             setIsCreateRoleOpen(false);
             setNewRoleName(""); setNewRoleCode(""); setNewRoleScope("SHOP"); setNewRoleDescription(""); setSelectedPermissions({});
             const userId = user?.id || user?._id;
             const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
             setRoles(fetchedRoles);
+            if (setRolesList) setRolesList(fetchedRoles);
+
+            // Auto-select newly created role in active employee modal
+            const newRoleId = createdRole?._id || createdRole?.id;
+            if (newRoleId) {
+                if (isEditEmployeeOpen) {
+                    setEditEmpData(prev => ({ ...prev, roleId: String(newRoleId) }));
+                }
+                if (isCreateEmployeeOpen) {
+                    setNewEmpData(prev => ({ ...prev, roleId: String(newRoleId) }));
+                }
+            }
             toast.success("Role created successfully!");
         } catch (error) {
             console.error("Error creating role:", error);
@@ -735,16 +736,17 @@ const Staff = ({
         if (!editingRole) return;
         if (!editRoleName.trim()) { toast.error("Please enter a role name"); return; }
 
-        // Filter selected permissions against available permissions
+        // Filter selected permissions against available permissions (if available permissions are loaded)
         const allowedModuleIds = new Set(availablePermissions.map(am => String(am.moduleId)));
 
         const permissionsPayload = Object.entries(editSelectedPermissions)
-            .filter(([module, perms]) => allowedModuleIds.has(String(module)) && Array.isArray(perms) && perms.length > 0)
+            .filter(([module, perms]) => (allowedModuleIds.size === 0 || allowedModuleIds.has(String(module))) && Array.isArray(perms) && perms.length > 0)
             .map(([module, perms]) => {
-                const allowedPermIds = new Set(availablePermissions.find(am => String(am.moduleId) === String(module))?.permissions.map(p => String(p.permissionId)) || []);
+                const allowedModule = availablePermissions.find(am => String(am.moduleId) === String(module));
+                const allowedPermIds = allowedModule ? new Set(allowedModule.permissions.map(p => String(p.permissionId))) : null;
                 return {
                     moduleId: module,
-                    actions: perms.filter(p => allowedPermIds.has(String(p)))
+                    actions: allowedPermIds ? perms.filter(p => allowedPermIds.has(String(p))) : perms
                 };
             })
             .filter(entry => entry.actions.length > 0);
@@ -1268,6 +1270,17 @@ const Staff = ({
                 index === self.findIndex(e => (e._id || e.id) === (emp._id || emp.id))
             );
             setEmployees(uniqueData);
+            if (setStaffList) {
+                const mappedStaff = uniqueData.map(emp => ({
+                    ...emp,
+                    id: emp._id,
+                    name: emp.userId?.name || "N/A",
+                    role: emp.mapping?.roleId?.name || emp.roleId?.name || "N/A",
+                    phone: emp.userId?.phone || "",
+                    active: emp.status === "ACTIVE"
+                }));
+                setStaffList(mappedStaff);
+            }
             toast.success("Employee updated successfully!");
         } catch (error) {
             console.error("Error updating employee:", error);
