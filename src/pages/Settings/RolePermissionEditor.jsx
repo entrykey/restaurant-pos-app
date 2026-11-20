@@ -2,9 +2,11 @@ import React, { useState, useEffect } from "react";
 import { X, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import api, { roleService, subscriptionService } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import { useApp } from "../../context/AppContext";
 
 const RolePermissionEditor = ({ isOpen, onClose, roleId }) => {
     const { theme } = useTheme();
+    const { currentShopId } = useApp();
     const [role, setRole] = useState(null);
     const [availablePermissions, setAvailablePermissions] = useState([]);
     const [selectedPermissions, setSelectedPermissions] = useState({});
@@ -29,46 +31,63 @@ const RolePermissionEditor = ({ isOpen, onClose, roleId }) => {
             }, {});
             setSelectedPermissions(permsMap);
 
-            // We need a complete list of modules and permissions in the system.
-            // Using the centralized api instance ensures we hit the correct backend port (8000).
-            let allPerms = [];
-            try {
-                const response = await api.get('/permissions');
-                allPerms = response.data || response; // Handle different axios response wrapper cases
-            } catch (err) {
-                console.warn("Could not fetch global permissions using /permissions endpoint. Checking /v1/permissions or failing gracefully.", err);
+            // Fetch shop-scoped permissions matching business type first
+            const targetShop = fetchedRole.shopId?._id || fetchedRole.shopId || currentShopId;
+            let loadedModules = [];
+            if (targetShop) {
                 try {
-                    const fallbackResponse = await api.get('/v1/permissions');
-                    allPerms = fallbackResponse.data || fallbackResponse;
-                } catch (fallbackErr) {
-                    console.error("Fallback permissions fetch also failed.", fallbackErr);
+                    const shopPerms = await subscriptionService.getShopPermissions(targetShop);
+                    if (Array.isArray(shopPerms?.allowedModules) && shopPerms.allowedModules.length > 0) {
+                        loadedModules = shopPerms.allowedModules;
+                    }
+                } catch (subErr) {
+                    console.warn("Could not fetch shop scoped permissions, falling back to global permissions:", subErr);
                 }
             }
 
-            if (allPerms.length > 0) {
-                // Group flat permissions array by module
-                const grouped = allPerms.reduce((acc, perm) => {
-                    const modId = perm.module?._id || perm.module;
-                    const modName = perm.module?.name || 'Unknown Module';
-
-                    if (!acc[modId]) {
-                        acc[modId] = {
-                            moduleId: modId,
-                            moduleName: modName,
-                            permissions: []
-                        };
+            if (loadedModules.length > 0) {
+                setAvailablePermissions(loadedModules);
+            } else {
+                // Fallback to global permissions list if no shop context exists
+                let allPerms = [];
+                try {
+                    const response = await api.get('/permissions');
+                    allPerms = response.data || response; // Handle different axios response wrapper cases
+                } catch (err) {
+                    console.warn("Could not fetch global permissions using /permissions endpoint. Checking /v1/permissions or failing gracefully.", err);
+                    try {
+                        const fallbackResponse = await api.get('/v1/permissions');
+                        allPerms = fallbackResponse.data || fallbackResponse;
+                    } catch (fallbackErr) {
+                        console.error("Fallback permissions fetch also failed.", fallbackErr);
                     }
+                }
 
-                    acc[modId].permissions.push({
-                        permissionId: perm._id,
-                        permissionName: perm.name,
-                        description: perm.description || perm.key
-                    });
+                if (allPerms.length > 0) {
+                    // Group flat permissions array by module
+                    const grouped = allPerms.reduce((acc, perm) => {
+                        const modId = perm.module?._id || perm.module;
+                        const modName = perm.module?.name || 'Unknown Module';
 
-                    return acc;
-                }, {});
+                        if (!acc[modId]) {
+                            acc[modId] = {
+                                moduleId: modId,
+                                moduleName: modName,
+                                permissions: []
+                            };
+                        }
 
-                setAvailablePermissions(Object.values(grouped));
+                        acc[modId].permissions.push({
+                            permissionId: perm._id,
+                            permissionName: perm.name,
+                            description: perm.description || perm.key
+                        });
+
+                        return acc;
+                    }, {});
+
+                    setAvailablePermissions(Object.values(grouped));
+                }
             }
         } catch (error) {
             console.error("Failed to load role or permissions:", error);
