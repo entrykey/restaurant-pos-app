@@ -76,8 +76,6 @@ export async function generateWindowsBatInstaller(params = {}) {
         shopId = '',
         branchId = '',
         cloudUrl = 'https://api.filepeapp.com/api',
-        printerIp = '192.168.1.100',
-        printerPort = 9100,
     } = params;
 
     const bridgeCode = await getBridgeScriptContent(params);
@@ -98,7 +96,7 @@ echo.
 echo Target Restaurant Shop ID : ${shopId || 'Auto-Detected'}
 echo Target Branch ID          : ${branchId || 'Default'}
 echo Cloud API URL             : ${cloudUrl}
-echo Default Printer IP        : ${printerIp}:${printerPort}
+echo Relay Capability          : Universal Multi-Printer LAN Relay (All Shop Printers)
 echo.
 
 :: 1. Verify Node.js runtime
@@ -147,11 +145,19 @@ echo WshShell.Run "node """ ^& "%INSTALL_DIR%\\pos-print-bridge.js""" ^& " --sho
 :: Create visible console launcher for manual testing and checking logs
 (
 echo @echo off
-echo title FilePe LAN Print Bridge (Live Console^)
+echo title FilePe Print Station - Live Console
 echo color 0A
-echo ========================================================
-echo   FilePe Print Bridge Live Console (Close to stop^)
-echo ========================================================
+echo ================================================================
+echo   FILEPE PRINT STATION - LIVE PRINT MONITOR
+echo ================================================================
+echo   Shop ID : ${shopId}
+echo   Port    : 3001
+echo   Mode    : Universal Multi-Printer LAN Relay
+echo.
+echo   Listening on local port 3001.
+echo   Auto-relaying print jobs to all printer IPs configured in POS.
+echo   Keep this window open to watch real-time print events.
+echo ================================================================
 echo.
 echo node "%INSTALL_DIR%\\pos-print-bridge.js" --shop ${shopId} --branch ${branchId} --cloud ${cloudUrl}
 echo pause
@@ -176,7 +182,7 @@ if exist "%STARTUP_FOLDER%" (
 :: Create Desktop shortcut for View-Live-Logs
 set "DESKTOP_FOLDER=%USERPROFILE%\\Desktop"
 if exist "%DESKTOP_FOLDER%" (
-    powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%DESKTOP_FOLDER%\\FilePe Print Bridge Logs.lnk'); $s.TargetPath = '%INSTALL_DIR%\\View-Live-Logs.bat'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Save()" 2>nul
+    powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%DESKTOP_FOLDER%\\FilePe Print Station Logs.lnk'); $s.TargetPath = '%INSTALL_DIR%\\View-Live-Logs.bat'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Save()" 2>nul
 )
 
 echo [4/4] Starting FilePe Print Bridge now...
@@ -189,25 +195,52 @@ wscript "%INSTALL_DIR%\\run-silent.vbs"
 timeout /t 2 /nobreak >nul
 
 :: Test health check
-powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:3001/health' -TimeoutSec 2; if ($r.status -eq 'ok') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:3001/health' -TimeoutSec 3; if ($r.status -eq 'ok') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
 if %errorlevel% equ 0 (
     echo.
     echo ================================================================
-    echo   [SUCCESS] FILEPE PRINT BRIDGE IS NOW RUNNING IN BACKGROUND!
+    echo   [SUCCESS] FILEPE PRINT STATION IS INSTALLED & RUNNING!
     echo ================================================================
     echo.
-    echo - Background daemon is active on port 3001.
-    echo - It will auto-start every time Windows turns on.
-    echo - Switch back to your browser: Status should show "ACTIVE (ONLINE)"!
+    echo  * Status          : ACTIVE (Port 3001 Online)
+    echo  * Windows Startup : ENABLED (Starts automatically on boot)
+    echo  * Universal Relay : Relays to all thermal printers configured in POS
     echo.
+    echo  Desktop Shortcut  : "FilePe Print Station Logs" (created on your Desktop)
+    echo.
+    echo ================================================================
+    echo.
+    echo Choose what to do next:
+    echo   [1] Open Live Status Window (Recommended: see live incoming print jobs)
+    echo   [2] Minimize to Background (FilePe Print Station continues running silently)
+    echo.
+    set /p "CHOICE=Enter choice [1 or 2, default is 1]: "
+
+    if "!CHOICE!"=="2" (
+        echo.
+        echo [OK] FilePe Print Station is running silently in the background.
+        echo Return to your FilePe POS browser tab to see the green ACTIVE badge.
+        timeout /t 4 >nul
+        exit /b 0
+    )
+
+    echo.
+    echo Opening FilePe Print Station Live Monitor...
+    start "FilePe Print Station - Live Monitor" "%INSTALL_DIR%\\View-Live-Logs.bat"
+    timeout /t 2 >nul
+    exit /b 0
 ) else (
     echo.
-    echo [INFO] Bridge started. Return to your POS browser to verify.
-    echo If needed, double-click "FilePe Print Bridge Logs" on your Desktop.
+    echo ================================================================
+    echo   FILEPE PRINT STATION INSTALLED
+    echo ================================================================
+    echo Service launched. Return to your FilePe POS browser tab to verify.
+    echo You can check logs anytime using "FilePe Print Station Logs" on Desktop.
     echo.
+    echo Press 1 to open live console or any key to exit.
+    set /p "CHOICE=Choice: "
+    if "!CHOICE!"=="1" start "%INSTALL_DIR%\\View-Live-Logs.bat"
 )
-
-pause
 `;
 }
 

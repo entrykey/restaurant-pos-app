@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Network, Server, Download, Copy, Check, Terminal,
-    Play, X, Wifi, AlertTriangle, CheckCircle2, RefreshCw, Printer, ExternalLink
+    X, AlertTriangle, CheckCircle2, RefreshCw, Printer, Info
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import {
@@ -20,15 +20,32 @@ const LanPrinterSetupModal = ({
     targetPrinter = {},
     onSendTestPrint = null,
     isTestingPrint = false,
+    onRefreshStatus = null,
 }) => {
     const [copiedCommand, setCopiedCommand] = useState(false);
     const [copiedShopId, setCopiedShopId] = useState(false);
     const [activeTab, setActiveTab] = useState('installer'); // 'installer' | 'manual'
     const [isDownloading, setIsDownloading] = useState(false);
+    const [isRechecking, setIsRechecking] = useState(false);
+
+    // Fast polling while modal is open so the user sees instant green confirmation
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const checkNow = () => {
+            if (typeof onRefreshStatus === 'function') {
+                onRefreshStatus(false);
+            }
+        };
+
+        checkNow();
+        const intervalId = setInterval(checkNow, 3000);
+        return () => clearInterval(intervalId);
+    }, [isOpen, onRefreshStatus]);
 
     if (!isOpen) return null;
 
-    const printerIp = targetPrinter?.ip || '192.168.1.100';
+    const configuredIp = (targetPrinter?.ip || '').trim();
     const printerPort = targetPrinter?.port || 9100;
     const printerName = targetPrinter?.name || 'LAN Thermal Printer';
     const cloudUrl = typeof window !== 'undefined' && window.location.origin.includes('localhost')
@@ -52,6 +69,17 @@ const LanPrinterSetupModal = ({
         }
     };
 
+    const handleManualRefresh = async () => {
+        setIsRechecking(true);
+        try {
+            if (typeof onRefreshStatus === 'function') {
+                await onRefreshStatus(true);
+            }
+        } finally {
+            setTimeout(() => setIsRechecking(false), 500);
+        }
+    };
+
     const handleDownloadInstaller = async () => {
         try {
             setIsDownloading(true);
@@ -59,8 +87,6 @@ const LanPrinterSetupModal = ({
                 shopId,
                 branchId,
                 cloudUrl,
-                printerIp,
-                printerPort,
             });
             triggerBrowserDownload('Install-FilePe-PrintBridge.bat', batContent, 'application/x-bat');
             toast.success("Downloaded Install-FilePe-PrintBridge.bat! Double-click it to start.", {
@@ -112,7 +138,7 @@ const LanPrinterSetupModal = ({
                                 </h3>
                             </div>
                             <p className="text-xs text-slate-400 font-medium">
-                                Background Print Relay for Cloud-Hosted FilePe POS
+                                Universal Background Print Relay for FilePe Cloud POS
                             </p>
                         </div>
                     </div>
@@ -128,19 +154,23 @@ const LanPrinterSetupModal = ({
                 {/* Modal Body */}
                 <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-xs">
 
-                    {/* Why this is required callout */}
+                    {/* Universal Bridge Scope Notice */}
                     <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 space-y-1.5 leading-relaxed">
                         <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide text-amber-700 dark:text-amber-300">
                             <AlertTriangle size={15} className="shrink-0" />
                             <span>Why is a local Print Bridge needed for LAN Cable?</span>
                         </div>
                         <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90 leading-normal">
-                            Your POS is running securely on AWS Cloud. For security reasons, cloud web browsers cannot directly connect to private local router IP addresses (like <code className="font-mono font-bold bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">{printerIp}</code>).
-                            The lightweight <strong>FilePe Print Station</strong> runs on your counter computer to relay print jobs sent from waiter mobile phones and POS checkout instantly to your kitchen or cashier thermal printer.
+                            Your POS runs securely on AWS Cloud. Cloud web browsers cannot directly connect to private router IP addresses on your local shop network.
+                            The lightweight <strong>FilePe Print Station</strong> runs once on your counter computer to relay print jobs sent from waiter mobile phones and POS checkout instantly to any thermal printer on your local network (Kitchen KOT, Cashier, Bar, etc.).
                         </p>
+                        <div className="pt-1 flex items-center gap-1.5 text-[11px] font-semibold text-amber-900 dark:text-amber-200">
+                            <Info size={14} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                            <span><strong>Universal Setup:</strong> You only install FilePe Print Station ONCE on this counter PC. It handles all printer IPs configured in your POS Settings automatically!</span>
+                        </div>
                     </div>
 
-                    {/* Live Bridge Status Card */}
+                    {/* Live Bridge Status Card with Refresh Button */}
                     <div className={`p-4 rounded-2xl border ${bridgeStatus.online ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50'} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
                         <div className="flex items-center gap-3">
                             <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${bridgeStatus.online ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
@@ -161,30 +191,45 @@ const LanPrinterSetupModal = ({
                                         </span>
                                     )}
                                 </div>
-                                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 block pt-0.5">
                                     {bridgeStatus.online
-                                        ? 'Ready! Print jobs sent from waiter phones or counter POS are relaying automatically.'
-                                        : 'Follow Step 1 below to install the bridge on this counter computer.'}
+                                        ? (bridgeStatus.source === 'local'
+                                            ? 'Connected directly on this Counter PC (Port 3001). Ready to print!'
+                                            : 'Connected via FilePe Cloud Relay. Waiters & checkout can print anytime.')
+                                        : 'Double-click the downloaded installer below. The badge turns green automatically once started.'}
                                 </span>
                             </div>
                         </div>
 
-                        {/* Shop ID pill */}
-                        <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase">Shop ID:</span>
-                            <code className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
-                                {shopId ? `${shopId.slice(0, 8)}...` : 'Auto'}
-                            </code>
-                            {shopId && (
-                                <button
-                                    type="button"
-                                    onClick={() => handleCopy(shopId, 'shopId')}
-                                    className="text-slate-400 hover:text-indigo-600 transition-colors"
-                                    title="Copy full Shop ID"
-                                >
-                                    {copiedShopId ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
-                                </button>
-                            )}
+                        {/* Actions & Shop ID pill */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                type="button"
+                                disabled={isRechecking}
+                                onClick={handleManualRefresh}
+                                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-[11px] flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                title="Check bridge connection status now"
+                            >
+                                <RefreshCw size={13} className={isRechecking ? 'animate-spin text-indigo-600' : ''} />
+                                <span>{isRechecking ? 'Checking...' : 'Check Status'}</span>
+                            </button>
+
+                            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Shop ID:</span>
+                                <code className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
+                                    {shopId ? `${shopId.slice(0, 8)}...` : 'Auto'}
+                                </code>
+                                {shopId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleCopy(shopId, 'shopId')}
+                                        className="text-slate-400 hover:text-indigo-600 transition-colors"
+                                        title="Copy full Shop ID"
+                                    >
+                                        {copiedShopId ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -224,7 +269,7 @@ const LanPrinterSetupModal = ({
                                         Download & Run the Auto-Installer
                                     </h4>
                                     <p className={`text-xs ${theme.textMuted} leading-relaxed`}>
-                                        Click below to download the pre-configured Windows installer. It automatically sets up the background service to start silently every time Windows turns on.
+                                        Click below to download the pre-configured Windows installer. It installs FilePe Print Station to auto-start silently every time this PC turns on.
                                     </p>
                                 </div>
 
@@ -250,12 +295,13 @@ const LanPrinterSetupModal = ({
                                     </button>
                                 </div>
 
-                                <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-[11px] space-y-1 text-slate-600 dark:text-slate-300">
-                                    <p className="font-bold text-slate-800 dark:text-slate-200">How to run:</p>
-                                    <ol className="list-decimal list-inside space-y-0.5 pl-1 leading-relaxed">
-                                        <li>Double-click the downloaded <strong>Install-FilePe-PrintBridge.bat</strong> file on this computer.</li>
+                                <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-[11px] space-y-2 text-slate-600 dark:text-slate-300">
+                                    <p className="font-bold text-slate-800 dark:text-slate-200">How to install & what happens:</p>
+                                    <ol className="list-decimal list-inside space-y-1 pl-1 leading-relaxed">
+                                        <li>Double-click the downloaded <strong>Install-FilePe-PrintBridge.bat</strong> file on this counter computer.</li>
                                         <li>If Windows SmartScreen appears, click <em>More info &rarr; Run anyway</em>.</li>
-                                        <li>The script will confirm Node.js, launch the bridge in the background, and add it to Windows Startup.</li>
+                                        <li>The installer adds FilePe Print Station to your Windows Startup folder (auto-start on boot) and launches the background service on port 3001.</li>
+                                        <li>You can keep the <strong>Live Monitor</strong> console open to watch incoming print jobs in real time, or minimize it. The status badge above will turn green <strong>Active (Online)</strong> automatically!</li>
                                     </ol>
                                 </div>
                             </div>
@@ -318,21 +364,32 @@ const LanPrinterSetupModal = ({
 
                     {/* Printer Verification & Test Print */}
                     <div className={`p-4 rounded-2xl border ${theme.borderLight} ${theme.surfaceBg} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
-                        <div className="space-y-0.5">
-                            <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">
-                                Configured Target Printer: {printerName}
-                            </span>
-                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                                IP: {printerIp} &bull; Port: {printerPort} (Raw ESC/POS)
-                            </span>
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                                    Selected Printer in POS: {printerName}
+                                </span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                    Universal Relay
+                                </span>
+                            </div>
+                            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                                {configuredIp
+                                    ? `Target IP: ${configuredIp} • Port: ${printerPort} (Raw ESC/POS)`
+                                    : 'No IP entered yet — configure printer IP in settings above'}
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                                Note: Any printer IP you save in POS settings is automatically handled by FilePe Print Station without reinstalling.
+                            </p>
                         </div>
 
                         {typeof onSendTestPrint === 'function' && (
                             <button
                                 type="button"
-                                disabled={isTestingPrint}
+                                disabled={isTestingPrint || !configuredIp}
                                 onClick={onSendTestPrint}
                                 className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-sm flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                                title={!configuredIp ? 'Please enter a Printer IP address in settings above first' : 'Send test print'}
                             >
                                 <Printer size={15} />
                                 <span>{isTestingPrint ? 'Sending Test...' : 'Send Test Print'}</span>
@@ -344,7 +401,7 @@ const LanPrinterSetupModal = ({
                 {/* Modal Footer */}
                 <div className={`p-4 sm:p-5 border-t ${theme.borderLight} flex items-center justify-between ${theme.inputBg}`}>
                     <span className="text-[11px] text-slate-400 font-medium">
-                        Port 9100 Raw Socket Relay &bull; Zero Browser Popups
+                        Universal Port 9100 Raw Socket Relay &bull; Zero Browser Popups
                     </span>
                     <button
                         type="button"

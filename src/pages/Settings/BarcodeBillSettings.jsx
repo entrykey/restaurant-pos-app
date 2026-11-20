@@ -272,34 +272,76 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
         loadSettings();
     }, [loadSettings]);
 
+    const checkBridgeStatus = useCallback(async (showFeedback = false) => {
+        // 1. Direct local probe to http://127.0.0.1:3001/health (fastest response on counter PC)
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1200);
+            const localRes = await fetch('http://127.0.0.1:3001/health', {
+                signal: controller.signal,
+                cache: 'no-store'
+            });
+            clearTimeout(timeoutId);
+            if (localRes.ok) {
+                const localData = await localRes.json();
+                if (localData?.status === 'ok') {
+                    const statusObj = {
+                        online: true,
+                        checking: false,
+                        source: 'local',
+                        port: 3001,
+                        station: localData.station || 'FilePe Print Station',
+                        lastSeen: Date.now()
+                    };
+                    setBridgeStatus(statusObj);
+                    if (showFeedback) toast.success("FilePe Print Station is Active on this computer!", { icon: '🟢' });
+                    return statusObj;
+                }
+            }
+        } catch (e) {
+            // Local probe failed (not on counter PC or bridge not started)
+        }
+
+        // 2. Fallback to Cloud Heartbeat status
+        try {
+            const cloudRes = await api.get('/print/bridge/status', {
+                params: {
+                    branchId: activeBranchId || saveBranchId,
+                    shopId: saveShopId || activeBranch?.shopId,
+                },
+            });
+            if (cloudRes.data && cloudRes.data.online) {
+                const statusObj = {
+                    online: true,
+                    checking: false,
+                    source: 'cloud',
+                    lastSeen: cloudRes.data.lastSeen
+                };
+                setBridgeStatus(statusObj);
+                if (showFeedback) toast.success("FilePe Print Station is Online via Cloud Relay!", { icon: '🟢' });
+                return statusObj;
+            }
+        } catch (e) {
+            // Cloud status check error
+        }
+
+        const offlineObj = { online: false, checking: false, source: null };
+        setBridgeStatus(offlineObj);
+        if (showFeedback) toast.error("FilePe Print Station not detected. Please run the installer on this counter PC.", { icon: '⚠️' });
+        return offlineObj;
+    }, [activeBranchId, saveBranchId, saveShopId, activeBranch]);
+
     useEffect(() => {
         let isMounted = true;
-        const checkBridge = async () => {
-            try {
-                const cloudRes = await api.get('/print/bridge/status', {
-                    params: {
-                        branchId: activeBranchId || saveBranchId,
-                        shopId: saveShopId || activeBranch?.shopId,
-                    },
-                });
-                if (cloudRes.data && cloudRes.data.online) {
-                    if (isMounted) setBridgeStatus({ online: true, checking: false, source: 'cloud', lastSeen: cloudRes.data.lastSeen });
-                    return;
-                }
-            } catch (e) {
-                // cloud status check
-            }
-
-            if (isMounted) setBridgeStatus({ online: false, checking: false, source: null });
-        };
-
-        checkBridge();
-        const intervalId = setInterval(checkBridge, 10000);
+        checkBridgeStatus(false);
+        const intervalId = setInterval(() => {
+            if (isMounted) checkBridgeStatus(false);
+        }, 8000);
         return () => {
             isMounted = false;
             clearInterval(intervalId);
         };
-    }, [activeBranchId, saveBranchId, saveShopId, activeBranch]);
+    }, [checkBridgeStatus]);
 
     const isBarcodeDirty = barcodeBaseline && !areBarcodeSettingsEqual(barcodeSettings, barcodeBaseline);
     const isBillDirty = billBaseline && !areBillPrintSettingsEqual(billSettings, billBaseline);
@@ -1389,9 +1431,19 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                             </div>
                         </div>
 
-                        {/* Shop ID info for Multi-Shop Setup */}
-                        <div className="flex items-center gap-2 w-full md:w-auto shrink-0 bg-white/70 dark:bg-slate-900/70 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800">
-                            <div className="space-y-0.5">
+                        {/* Shop ID info for Multi-Shop Setup & Recheck button */}
+                        <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => checkBridgeStatus(true)}
+                                className="px-3 py-2 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                                title="Check FilePe Print Station connection"
+                            >
+                                <RefreshCw size={13} />
+                                <span>Check Status</span>
+                            </button>
+
+                            <div className="bg-white/70 dark:bg-slate-900/70 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-0.5">
                                 <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Restaurant Shop ID</span>
                                 <code className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{saveShopId || activeBranch?.shopId || 'Auto-Detected'}</code>
                             </div>
@@ -1408,9 +1460,10 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                 bridgeStatus={bridgeStatus}
                 shopId={saveShopId || activeBranch?.shopId || ''}
                 branchId={activeBranchId || saveBranchId || ''}
-                targetPrinter={lanModalTargetPrinter || hardwareSettings.kitchenPrinter || hardwareSettings.cashierPrinter}
+                targetPrinter={lanModalTargetPrinter || (hardwareSettings.kitchenPrinter?.enabled ? hardwareSettings.kitchenPrinter : hardwareSettings.cashierPrinter)}
                 onSendTestPrint={handleLanModalTestPrint}
                 isTestingPrint={isTestingLanPrint}
+                onRefreshStatus={checkBridgeStatus}
             />
         </div>
     );
