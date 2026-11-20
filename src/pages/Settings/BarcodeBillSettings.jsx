@@ -17,6 +17,8 @@ import {
 import { printKot } from '../../utils/print';
 import { buildBillExtraInfo, buildPrintHeader } from '../../utils/printSettingsUtils';
 import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from '../../utils/permissions';
+import LanPrinterSetupModal from './LanPrinterSetupModal';
+import { Download } from 'lucide-react';
 import {
     BARCODE_PRINT_SETTINGS_KEY,
     DEFAULT_BARCODE_PRINT_SETTINGS,
@@ -155,6 +157,11 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
     const [hardwareBaseline, setHardwareBaseline] = useState(null);
     const [bridgeStatus, setBridgeStatus] = useState({ online: false, checking: true, source: null });
 
+    // LAN Print Relay Setup Modal State
+    const [isLanModalOpen, setIsLanModalOpen] = useState(false);
+    const [lanModalTargetPrinter, setLanModalTargetPrinter] = useState(null);
+    const [isTestingLanPrint, setIsTestingLanPrint] = useState(false);
+
     const activeBranch = useMemo(
         () => branches.find((b) => String(b._id || b.id) === String(activeBranchId)),
         [branches, activeBranchId]
@@ -163,6 +170,51 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
     const saveShopId = isSuperAdmin ? null : (currentShopId || null);
     const saveBranchId = isSuperAdmin ? null : (activeBranchId || null);
     const canSave = isSuperAdmin || !!activeBranchId;
+
+    const handleLanModalTestPrint = async () => {
+        const target = lanModalTargetPrinter || hardwareSettings.kitchenPrinter || hardwareSettings.cashierPrinter;
+        const ip = target?.ip || '192.168.1.100';
+        const port = parseInt(target?.port || 9100, 10);
+        const toastId = toast.loading(`Sending test print to ${ip}:${port}...`);
+        setIsTestingLanPrint(true);
+        try {
+            const payload = {
+                ip,
+                port,
+                printerName: target?.name || 'LAN Thermal Printer',
+                type: (target?.name || '').toLowerCase().includes('bill') ? 'bill' : 'kot',
+                paperWidthMm: target?.paperWidthMm || 80,
+                autoCut: true,
+                beepBuzzer: true,
+                shopId: saveShopId || activeBranch?.shopId,
+                branchId: activeBranchId || saveBranchId,
+                meta: {
+                    kotTitle: 'TEST LAN PRINT RELAY',
+                    orderLabel: 'TEST-LAN-01',
+                    tableLabel: 'Counter PC',
+                    printedAt: new Date().toLocaleTimeString(),
+                },
+                items: [
+                    { itemName: 'FilePe LAN Print Bridge Test', quantity: 1, notes: 'Direct ESC/POS socket' },
+                    { itemName: 'Status: Connected', quantity: 1 },
+                ]
+            };
+            const res = await api.post('/print/test', payload);
+            const msg = res.data?.message || `Test print sent to ${ip}:${port}!`;
+            if (res.data?.status === 'COMPLETED' || res.data?.printed) {
+                toast.success(msg, { id: toastId, icon: '🖨️', duration: 4000 });
+            } else if (res.data?.status === 'PENDING' || res.data?.status === 'PROCESSING') {
+                toast(msg, { id: toastId, icon: '⏳', duration: 5000 });
+            } else {
+                toast.success(msg, { id: toastId, icon: '🖨️', duration: 4000 });
+            }
+        } catch (err) {
+            const msg = err?.response?.data?.message || err?.message || 'Failed to connect to printer';
+            toast.error(`Print failed: ${msg}`, { id: toastId, duration: 5000 });
+        } finally {
+            setIsTestingLanPrint(false);
+        }
+    };
 
     const previewHeader = useMemo(
         () => buildPrintHeader({ organization, branch: activeBranch, currentUser }),
@@ -702,11 +754,22 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                                             <button
                                                 key={key}
                                                 type="button"
-                                                onClick={() => setHardwareSettings((p) => ({
-                                                    ...p,
-                                                    cashierPrinter: { ...p.cashierPrinter, connectionType: key }
-                                                }))}
-                                                className={`p-3 rounded-2xl text-xs font-bold border transition-all flex flex-col items-center justify-center gap-1.5 ${
+                                                onClick={() => {
+                                                    setHardwareSettings((p) => ({
+                                                        ...p,
+                                                        cashierPrinter: { ...p.cashierPrinter, connectionType: key }
+                                                    }));
+                                                    if (key === 'lan') {
+                                                        setLanModalTargetPrinter({
+                                                            name: hardwareSettings.cashierPrinter?.name || 'Cashier Bill Printer',
+                                                            ip: hardwareSettings.cashierPrinter?.ip || '192.168.1.100',
+                                                            port: hardwareSettings.cashierPrinter?.port || 9100,
+                                                            paperWidthMm: hardwareSettings.cashierPrinter?.paperWidthMm || 80
+                                                        });
+                                                        setIsLanModalOpen(true);
+                                                    }
+                                                }}
+                                                className={`p-3 rounded-2xl text-xs font-bold border transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
                                                     isSelected
                                                         ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 shadow-sm ring-1 ring-emerald-500/20'
                                                         : `${theme.borderLight} ${theme.textSecondary} hover:bg-gray-50 dark:hover:bg-slate-800/60`
@@ -718,6 +781,29 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                                         );
                                     })}
                                 </div>
+                                {hardwareSettings.cashierPrinter?.connectionType === 'lan' && (
+                                    <div className="mt-2.5 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                                        <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold">
+                                            <Server size={15} className="shrink-0" />
+                                            <span>LAN Bridge: {bridgeStatus.online ? 'Active (Online)' : 'Not Running'}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setLanModalTargetPrinter({
+                                                    name: hardwareSettings.cashierPrinter?.name || 'Cashier Bill Printer',
+                                                    ip: hardwareSettings.cashierPrinter?.ip || '192.168.1.100',
+                                                    port: hardwareSettings.cashierPrinter?.port || 9100,
+                                                    paperWidthMm: hardwareSettings.cashierPrinter?.paperWidthMm || 80
+                                                });
+                                                setIsLanModalOpen(true);
+                                            }}
+                                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                                        >
+                                            <Download size={12} /> Setup / Download Bridge
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Device Model Preset Selector */}
@@ -994,11 +1080,22 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                                                     <button
                                                         key={key}
                                                         type="button"
-                                                        onClick={() => setHardwareSettings((p) => ({
-                                                            ...p,
-                                                            kitchenPrinter: { ...p.kitchenPrinter, connectionType: key }
-                                                        }))}
-                                                        className={`p-3 rounded-2xl text-xs font-bold border transition-all flex flex-col items-center justify-center gap-1.5 ${
+                                                        onClick={() => {
+                                                            setHardwareSettings((p) => ({
+                                                                ...p,
+                                                                kitchenPrinter: { ...p.kitchenPrinter, connectionType: key }
+                                                            }));
+                                                            if (key === 'lan') {
+                                                                setLanModalTargetPrinter({
+                                                                    name: hardwareSettings.kitchenPrinter?.name || 'Kitchen KOT Printer',
+                                                                    ip: hardwareSettings.kitchenPrinter?.ip || '192.168.1.100',
+                                                                    port: hardwareSettings.kitchenPrinter?.port || 9100,
+                                                                    paperWidthMm: hardwareSettings.kitchenPrinter?.paperWidthMm || 80
+                                                                });
+                                                                setIsLanModalOpen(true);
+                                                            }
+                                                        }}
+                                                        className={`p-3 rounded-2xl text-xs font-bold border transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer ${
                                                             isSelected
                                                                 ? 'border-amber-600 bg-amber-50/70 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 shadow-sm ring-1 ring-amber-500/20'
                                                                 : `${theme.borderLight} ${theme.textSecondary} hover:bg-gray-50 dark:hover:bg-slate-800/60`
@@ -1010,6 +1107,29 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                                                 );
                                             })}
                                         </div>
+                                        {(hardwareSettings.kitchenPrinter?.connectionType || 'lan') === 'lan' && (
+                                            <div className="mt-2.5 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                                                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold">
+                                                    <Server size={15} className="shrink-0" />
+                                                    <span>LAN Bridge: {bridgeStatus.online ? 'Active (Online)' : 'Not Running'}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setLanModalTargetPrinter({
+                                                            name: hardwareSettings.kitchenPrinter?.name || 'Kitchen KOT Printer',
+                                                            ip: hardwareSettings.kitchenPrinter?.ip || '192.168.1.100',
+                                                            port: hardwareSettings.kitchenPrinter?.port || 9100,
+                                                            paperWidthMm: hardwareSettings.kitchenPrinter?.paperWidthMm || 80
+                                                        });
+                                                        setIsLanModalOpen(true);
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                                                >
+                                                    <Download size={12} /> Setup / Download Bridge
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Device Model Preset Selector */}
@@ -1279,6 +1399,19 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                     </div>
                 </div>
             )}
+
+            {/* LAN Network Printer Bridge Setup Modal */}
+            <LanPrinterSetupModal
+                isOpen={isLanModalOpen}
+                onClose={() => setIsLanModalOpen(false)}
+                theme={theme}
+                bridgeStatus={bridgeStatus}
+                shopId={saveShopId || activeBranch?.shopId || ''}
+                branchId={activeBranchId || saveBranchId || ''}
+                targetPrinter={lanModalTargetPrinter || hardwareSettings.kitchenPrinter || hardwareSettings.cashierPrinter}
+                onSendTestPrint={handleLanModalTestPrint}
+                isTestingPrint={isTestingLanPrint}
+            />
         </div>
     );
 };
