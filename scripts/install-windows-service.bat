@@ -24,10 +24,28 @@ powershell -Command "try { $res = Invoke-RestMethod -Uri 'http://127.0.0.1:3001/
 
 echo.
 echo ========================================================
-echo   SUCCESS! FilePe Print Station is running silently.
-echo   It will automatically start whenever Windows turns on.
-echo   Waiters can now print KOTs from mobile phones anytime!
+echo   SUCCESS! FilePe Print Station is active.
+echo   - Windows Startup : ENABLED (Starts automatically on boot)
+echo   - Universal Relay : Relays to all thermal printers in POS
 echo ========================================================
 echo.
-pause
+echo What would you like to do next?
+echo   [1] Open Live Status Window (Recommended: see incoming print jobs)
+echo   [2] Minimize to Background (FilePe Print Station continues running silently)
+echo.
+set /p "CHOICE=Enter choice [1 or 2, default is 1]: "
+
+if "%CHOICE%"=="2" (
+    echo.
+    echo [OK] FilePe Print Station is running silently in the background.
+    echo Return to your FilePe POS browser tab to see the green ACTIVE badge.
+    timeout /t 4 >nul
+    exit /b 0
+)
+
+echo.
+echo Opening FilePe Print Station Live Monitor...
+start "FilePe Print Station - Live Monitor" cmd /k "title FilePe Print Station - Live Console && color 0A && echo ======================================================== && echo   FILEPE PRINT STATION - LIVE MONITOR && echo ======================================================== && node \"%SCRIPT_DIR%pos-print-bridge.js\""
+timeout /t 2 >nul
+exit /b 0
 

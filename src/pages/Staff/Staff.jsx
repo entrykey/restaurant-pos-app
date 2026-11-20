@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useParams } from "react-router-dom";
 import { ShieldCheck, Plus, X, ChevronDown, ChevronUp, Clock, AlertCircle, Calendar, RefreshCw, Wallet, Sliders, Code, MapPin, Check, Eye, EyeOff } from "lucide-react";
 import ThemeLoader from "../../components/ui/ThemeLoader";
 import toast from "react-hot-toast";
@@ -334,7 +335,41 @@ const Staff = ({
         openModalFn();
     };
 
-    const { currentShopId: shopId } = useApp();
+    const { shopName } = useParams();
+    const { currentShopId: appShopId, branches: appBranches, organization } = useApp();
+
+    const activeShopId = useMemo(() => {
+        // 1. If URL has shopName matching a user shop, use that shop
+        if (shopName) {
+            const cleanSlug = shopName.toLowerCase().trim();
+            const matchedShop = (user?.shops || []).find(s => {
+                const sName = s.name || s.shopName || s.businessName || "";
+                const slug = sName.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+                return slug === cleanSlug;
+            });
+            if (matchedShop?._id || matchedShop?.id) {
+                return String(matchedShop._id || matchedShop.id);
+            }
+        }
+        // 2. If active branch is selected, resolve shop from branch
+        if (activeBranchId && Array.isArray(appBranches)) {
+            const activeBranch = appBranches.find(b => String(b._id || b.id) === String(activeBranchId));
+            if (activeBranch?.organizationId || activeBranch?.shopId) {
+                return String(activeBranch.organizationId || activeBranch.shopId);
+            }
+        }
+        // 3. Stored shop or organization
+        const storedShop = localStorage.getItem("pos_shopId");
+        if (storedShop && storedShop !== "null" && storedShop !== "undefined") {
+            return String(storedShop);
+        }
+        if (organization?.id || organization?._id) {
+            return String(organization.id || organization._id);
+        }
+        return String(appShopId || user?.shop_id || user?.shopId || "");
+    }, [shopName, user?.shops, activeBranchId, appBranches, organization, appShopId, user?.shop_id, user?.shopId]);
+
+    const shopId = activeShopId;
 
     // Fetch Employees
     useEffect(() => {
@@ -348,7 +383,7 @@ const Staff = ({
                 setIsEmployeesLoading(true);
                 try {
                     const userId = user?.id || user?._id;
-                    const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId);
+                    const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId, shopId);
                     
                     // Filter by branch if activeBranchId is available
                     const filteredStaff = data.filter(emp => {
@@ -389,24 +424,13 @@ const Staff = ({
     // Fetch Roles
     useEffect(() => {
         const fetchRoles = async () => {
-            if (activeStaffTab === "roles" && !isCreateEmployeeOpen && shopId) {
+            if ((activeStaffTab === "roles" || isCreateEmployeeOpen || isEditEmployeeOpen) && shopId) {
                 setIsRolesLoading(true);
                 try {
                     const userId = user?.id || user?._id;
-                    const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
+                    const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId, shopId);
                     setRoles(fetchedRoles);
                     if (setRolesList) setRolesList(fetchedRoles);
-                } catch (error) {
-                    console.error("Failed to fetch roles:", error);
-                } finally {
-                    setIsRolesLoading(false);
-                }
-            } else if (isCreateEmployeeOpen && shopId) {
-                setIsRolesLoading(true);
-                try {
-                    const targetShop = shopId;
-                    const fetchedRoles = await roleService.getRolesByShopId(targetShop, false);
-                    setRoles(fetchedRoles);
                 } catch (error) {
                     console.error("Failed to fetch roles:", error);
                 } finally {
@@ -415,7 +439,7 @@ const Staff = ({
             }
         };
         fetchRoles();
-    }, [activeStaffTab, isCreateEmployeeOpen, shopId, setRolesList, hasViewAllStaff, activeBranchId]);
+    }, [activeStaffTab, isCreateEmployeeOpen, isEditEmployeeOpen, shopId, setRolesList, hasViewAllStaff, activeBranchId]);
 
     // Fetch Branches (Shared for both dialogs)
     useEffect(() => {
@@ -596,7 +620,10 @@ const Staff = ({
 
     // Fetch Permissions only for Role Dialog
     useEffect(() => {
-        const targetShop = shopId;
+        const targetShop = (isEditRoleOpen && (editingRole?.shopId?._id || editingRole?.shopId))
+            ? String(editingRole.shopId?._id || editingRole.shopId)
+            : activeShopId;
+
         if ((isCreateRoleOpen || isEditRoleOpen) && targetShop) {
             const fetchPermissions = async () => {
                 setIsLoadingData(true);
@@ -605,7 +632,21 @@ const Staff = ({
 
                 try {
                     const permissionsData = await subscriptionService.getShopPermissions(targetShop);
-                    setAvailablePermissions(permissionsData.allowedModules || []);
+                    let allowedMods = permissionsData.allowedModules || [];
+
+                    // Identify target shop business type if available
+                    const matchedShop = (user?.shops || []).find(s => String(s.id || s._id) === String(targetShop));
+                    const isRestaurantType = matchedShop?.businessType?.toString() === "6aa789fbc34b05001c8b63ad" ||
+                        (matchedShop?.name || "").toLowerCase().includes("resto") ||
+                        (matchedShop?.name || "").toLowerCase().includes("restaurant");
+
+                    // If target shop is definitely non-restaurant (e.g. Retail, salon), double-check exclude restaurant-exclusive modules
+                    if (matchedShop && !isRestaurantType) {
+                        const restaurantExclusiveModules = new Set(['kds', 'table management', 'reservation', 'dining']);
+                        allowedMods = allowedMods.filter(m => !restaurantExclusiveModules.has((m.moduleName || '').toLowerCase().trim()));
+                    }
+
+                    setAvailablePermissions(allowedMods);
                 } catch (error) {
                     console.error("Error fetching permissions:", error);
                     setAvailablePermissions([]);
@@ -623,7 +664,7 @@ const Staff = ({
                 // but usually they should be reset when closing.
             }
         }
-    }, [isCreateRoleOpen, isEditRoleOpen, shopId]);
+    }, [isCreateRoleOpen, isEditRoleOpen, activeShopId, editingRole, user?.shops]);
 
 
     // --- Role Creation Handlers ---
@@ -676,12 +717,32 @@ const Staff = ({
         };
 
         try {
-            await roleService.createRole(payload);
+            const createdRole = await roleService.createRole(payload);
             setIsCreateRoleOpen(false);
             setNewRoleName(""); setNewRoleCode(""); setNewRoleScope("SHOP"); setNewRoleDescription(""); setSelectedPermissions({});
             const userId = user?.id || user?._id;
-            const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
+            const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId, shopId);
             setRoles(fetchedRoles);
+            if (setRolesList) setRolesList(fetchedRoles);
+
+            // Auto-select newly created role in active employee modal
+            const newRoleId = createdRole?._id || createdRole?.id;
+            if (newRoleId) {
+                if (isEditEmployeeOpen) {
+                    setEditEmpData(prev => ({
+                        ...prev,
+                        roleId: String(newRoleId),
+                        designation: createdRole?.name || prev.designation
+                    }));
+                }
+                if (isCreateEmployeeOpen) {
+                    setNewEmpData(prev => ({
+                        ...prev,
+                        roleId: String(newRoleId),
+                        designation: createdRole?.name || prev.designation
+                    }));
+                }
+            }
             toast.success("Role created successfully!");
         } catch (error) {
             console.error("Error creating role:", error);
@@ -735,16 +796,17 @@ const Staff = ({
         if (!editingRole) return;
         if (!editRoleName.trim()) { toast.error("Please enter a role name"); return; }
 
-        // Filter selected permissions against available permissions
+        // Filter selected permissions against available permissions (if available permissions are loaded)
         const allowedModuleIds = new Set(availablePermissions.map(am => String(am.moduleId)));
 
         const permissionsPayload = Object.entries(editSelectedPermissions)
-            .filter(([module, perms]) => allowedModuleIds.has(String(module)) && Array.isArray(perms) && perms.length > 0)
+            .filter(([module, perms]) => (allowedModuleIds.size === 0 || allowedModuleIds.has(String(module))) && Array.isArray(perms) && perms.length > 0)
             .map(([module, perms]) => {
-                const allowedPermIds = new Set(availablePermissions.find(am => String(am.moduleId) === String(module))?.permissions.map(p => String(p.permissionId)) || []);
+                const allowedModule = availablePermissions.find(am => String(am.moduleId) === String(module));
+                const allowedPermIds = allowedModule ? new Set(allowedModule.permissions.map(p => String(p.permissionId))) : null;
                 return {
                     moduleId: module,
-                    actions: perms.filter(p => allowedPermIds.has(String(p)))
+                    actions: allowedPermIds ? perms.filter(p => allowedPermIds.has(String(p))) : perms
                 };
             })
             .filter(entry => entry.actions.length > 0);
@@ -766,7 +828,7 @@ const Staff = ({
             setEditingRole(null);
             // Refresh roles list
             const userId = user?.id || user?._id;
-            const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId);
+            const fetchedRoles = await roleService.getRolesByShopId(shopId, hasViewAllStaff, userId, shopId);
             setRoles(fetchedRoles);
             if (setRolesList) setRolesList(fetchedRoles);
             toast.success("Role updated successfully!");
@@ -969,7 +1031,7 @@ const Staff = ({
             setUserSelectedBranchIds([]);
             // Refresh employees
             const userId = user?.id || user?._id;
-            const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId);
+            const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId, shopId);
             const uniqueData = (data || []).filter((emp, index, self) =>
                 index === self.findIndex(e => (e._id || e.id) === (emp._id || emp.id))
             );
@@ -1223,6 +1285,7 @@ const Staff = ({
             name: trimmedName,
             email: trimmedEmail,
             phone: trimmedPhone,
+            shopId: shopId || editingEmployee.shopId?._id || editingEmployee.shopId,
             branchIds: editUserSelectedBranchIds,
             allBranches: editUserAllBranches
         };
@@ -1263,11 +1326,22 @@ const Staff = ({
             setEditingEmployee(null);
             // Refresh employees
             const userId = user?.id || user?._id;
-            const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId);
+            const data = await employeeService.getEmployeesByShopId(shopId, hasViewAllStaff, userId, shopId);
             const uniqueData = (data || []).filter((emp, index, self) =>
                 index === self.findIndex(e => (e._id || e.id) === (emp._id || emp.id))
             );
             setEmployees(uniqueData);
+            if (setStaffList) {
+                const mappedStaff = uniqueData.map(emp => ({
+                    ...emp,
+                    id: emp._id,
+                    name: emp.userId?.name || "N/A",
+                    role: emp.mapping?.roleId?.name || emp.roleId?.name || "N/A",
+                    phone: emp.userId?.phone || "",
+                    active: emp.status === "ACTIVE"
+                }));
+                setStaffList(mappedStaff);
+            }
             toast.success("Employee updated successfully!");
         } catch (error) {
             console.error("Error updating employee:", error);

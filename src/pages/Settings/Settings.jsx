@@ -40,6 +40,7 @@ const Settings = ({
     tables,
     setTables,
     authLogs,
+    hasPermission,
     hasPermissionFor,
     currentUser,
 }) => {
@@ -586,7 +587,11 @@ const Settings = ({
 
             case "barcode-bill":
                 return (
-                    <BarcodeBillSettings currentUser={currentUser} />
+                    <BarcodeBillSettings
+                        currentUser={currentUser}
+                        hasPermission={hasPermission}
+                        hasPermissionFor={hasPermissionFor}
+                    />
                 );
 
 
