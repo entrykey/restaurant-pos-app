@@ -273,35 +273,34 @@ const LanPrinterSetupModal = ({
                                     </p>
                                 </div>
 
-                                <div className="flex flex-wrap items-center gap-3 pt-1">
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
                                     <button
                                         type="button"
                                         disabled={isDownloading}
                                         onClick={handleDownloadInstaller}
-                                        className="px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 flex items-center gap-2.5 transition-all cursor-pointer disabled:opacity-50"
+                                        className="px-6 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer disabled:opacity-50"
                                     >
                                         <Download size={16} />
                                         <span>Download Windows Auto-Installer (.bat)</span>
                                     </button>
+                                </div>
 
-                                    <button
-                                        type="button"
-                                        disabled={isDownloading}
-                                        onClick={handleDownloadScript}
-                                        className={`px-4 py-3 rounded-2xl border ${theme.borderLight} ${theme.textPrimary} hover:bg-gray-50 dark:hover:bg-slate-800 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer`}
-                                    >
-                                        <Terminal size={14} />
-                                        <span>Download pos-print-bridge.js</span>
-                                    </button>
+                                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-[11px] text-amber-900 dark:text-amber-200 space-y-1">
+                                    <p className="font-bold flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
+                                        <AlertTriangle size={14} className="shrink-0 text-amber-600" />
+                                        Important: Always run the .bat file, not .js files!
+                                    </p>
+                                    <p className="leading-relaxed">
+                                        Windows cannot run <code className="font-mono font-bold bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">.js</code> files by double-clicking (it shows a Windows Script Host syntax error). The <code className="font-mono font-bold bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">.bat</code> installer handles everything automatically.
+                                    </p>
                                 </div>
 
                                 <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-[11px] space-y-2 text-slate-600 dark:text-slate-300">
-                                    <p className="font-bold text-slate-800 dark:text-slate-200">How to install & what happens:</p>
-                                    <ol className="list-decimal list-inside space-y-1 pl-1 leading-relaxed">
-                                        <li>Double-click the downloaded <strong>Install-FilePe-PrintBridge.bat</strong> file on this counter computer.</li>
-                                        <li>If Windows SmartScreen appears, click <em>More info &rarr; Run anyway</em>.</li>
-                                        <li>The installer adds FilePe Print Station to your Windows Startup folder (auto-start on boot) and launches the background service on port 3001.</li>
-                                        <li>You can keep the <strong>Live Monitor</strong> console open to watch incoming print jobs in real time, or minimize it. The status badge above will turn green <strong>Active (Online)</strong> automatically!</li>
+                                    <p className="font-bold text-slate-800 dark:text-slate-200">How to install (3 quick steps):</p>
+                                    <ol className="list-decimal list-inside space-y-1.5 pl-1 leading-relaxed">
+                                        <li>Double-click the downloaded <strong>Install-FilePe-PrintBridge.bat</strong> file in your Downloads folder.</li>
+                                        <li>If Windows SmartScreen appears (<em>"Windows protected your PC"</em>), click <strong>More info</strong> &rarr; <strong>Run anyway</strong>.</li>
+                                        <li>The installer configures FilePe Print Station to auto-start on boot and runs it in the background. The status badge above will turn green <strong>Active (Online)</strong> automatically!</li>
                                     </ol>
                                 </div>
                             </div>
@@ -351,13 +350,18 @@ const LanPrinterSetupModal = ({
                                         {copiedCommand ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                                     </button>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={handleDownloadScript}
-                                    className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1.5"
-                                >
-                                    <Download size={13} /> Download pos-print-bridge.js
-                                </button>
+                                <div className="flex items-center justify-between gap-3 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={handleDownloadScript}
+                                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1.5"
+                                    >
+                                        <Download size={13} /> Download pos-print-bridge.js
+                                    </button>
+                                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                                        ⚠️ Must be run via terminal (node pos-print-bridge.js), do not double-click in Windows!
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     )}
