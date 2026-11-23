@@ -105,24 +105,6 @@ const LanPrinterSetupModal = ({
         }
     };
 
-    const handleDownloadScript = async () => {
-        try {
-            setIsDownloading(true);
-            const scriptContent = await getBridgeScriptContent({
-                shopId,
-                branchId,
-                cloudUrl,
-            });
-            triggerBrowserDownload('pos-print-bridge.js', scriptContent, 'application/javascript');
-            toast.success("Downloaded pos-print-bridge.js!", { icon: '📄' });
-        } catch (error) {
-            console.error("Failed to download script:", error);
-            toast.error("Failed to download script: " + error.message);
-        } finally {
-            setIsDownloading(false);
-        }
-    };
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
             <div
@@ -242,22 +224,20 @@ const LanPrinterSetupModal = ({
                         <button
                             type="button"
                             onClick={() => setActiveTab('installer')}
-                            className={`pb-2.5 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 ${
-                                activeTab === 'installer'
-                                    ? 'border-amber-500 text-amber-600 dark:text-amber-400'
-                                    : 'border-transparent text-slate-400 hover:text-slate-600'
-                            }`}
+                            className={`pb-2.5 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 ${activeTab === 'installer'
+                                ? 'border-amber-500 text-amber-600 dark:text-amber-400'
+                                : 'border-transparent text-slate-400 hover:text-slate-600'
+                                }`}
                         >
                             <Download size={14} /> 1-Click Windows Auto-Installer (Recommended)
                         </button>
                         <button
                             type="button"
                             onClick={() => setActiveTab('manual')}
-                            className={`pb-2.5 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 ${
-                                activeTab === 'manual'
-                                    ? 'border-amber-500 text-amber-600 dark:text-amber-400'
-                                    : 'border-transparent text-slate-400 hover:text-slate-600'
-                            }`}
+                            className={`pb-2.5 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 ${activeTab === 'manual'
+                                ? 'border-amber-500 text-amber-600 dark:text-amber-400'
+                                : 'border-transparent text-slate-400 hover:text-slate-600'
+                                }`}
                         >
                             <Terminal size={14} /> Manual / Node.js CLI
                         </button>
@@ -289,13 +269,13 @@ const LanPrinterSetupModal = ({
                                     </button>
                                 </div>
 
-                                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-[11px] text-amber-900 dark:text-amber-200 space-y-1">
-                                    <p className="font-bold flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
-                                        <AlertTriangle size={14} className="shrink-0 text-amber-600" />
-                                        Important: Always run the .bat file, not .js files!
+                                <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 text-[11px] text-emerald-900 dark:text-emerald-200 space-y-1">
+                                    <p className="font-bold flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
+                                        <CheckCircle2 size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                        Single-File 100% Complete Setup
                                     </p>
                                     <p className="leading-relaxed">
-                                        Windows cannot run <code className="font-mono font-bold bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">.js</code> files by double-clicking (it shows a Windows Script Host syntax error). The <code className="font-mono font-bold bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">.bat</code> installer handles everything automatically.
+                                        You only need to download and run this <strong>ONE .bat file</strong>. It contains everything needed to link FilePe Cloud to your LAN thermal printers, install the background service, and auto-start whenever Windows boots up.
                                     </p>
                                 </div>
 
@@ -354,17 +334,8 @@ const LanPrinterSetupModal = ({
                                         {copiedCommand ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                                     </button>
                                 </div>
-                                <div className="flex items-center justify-between gap-3 pt-1">
-                                    <button
-                                        type="button"
-                                        onClick={handleDownloadScript}
-                                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1.5"
-                                    >
-                                        <Download size={13} /> Download pos-print-bridge.js
-                                    </button>
-                                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
-                                        ⚠️ Must be run via terminal (node pos-print-bridge.js), do not double-click in Windows!
-                                    </span>
+                                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300">
+                                    💡 Tip: For 1-click automatic setup with Windows auto-start on boot, switch back to the <strong>1-Click Windows Auto-Installer (.bat)</strong> tab.
                                 </div>
                             </div>
                         </div>
