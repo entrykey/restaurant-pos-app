@@ -8,6 +8,24 @@
  */
 export function getResolvedCloudApiUrl() {
     if (typeof window !== 'undefined') {
+        const hostname = (window.location.hostname || '').toLowerCase();
+
+        // 1. Strict mapping for FilePe Frontend URLs (QA vs. Production)
+        // QA Frontend: https://qa.filepeapp.com/ -> QA Backend API
+        if (hostname === 'qa.filepeapp.com' || hostname.startsWith('qa.') || hostname.includes('qa')) {
+            return 'https://api-qa.filepeapp.com/api';
+        }
+        // Production Frontend: https://filepeapp.com/ -> Production Backend API
+        if (hostname === 'filepeapp.com' || hostname === 'www.filepeapp.com' || (hostname.endsWith('filepeapp.com') && !hostname.includes('qa'))) {
+            return 'https://api.filepeapp.com/api';
+        }
+
+        // 2. Local development
+        if (hostname.includes('localhost') || hostname === '127.0.0.1') {
+            return 'http://localhost:8000/api';
+        }
+
+        // 3. Environment variable overrides (if running in custom Docker / CI container)
         if (window.__ENV__?.REACT_APP_API_URL) {
             return String(window.__ENV__.REACT_APP_API_URL).trim().replace(/\/+$/, '');
         }
@@ -15,13 +33,6 @@ export function getResolvedCloudApiUrl() {
             const envUrl = String(process.env.REACT_APP_API_URL).trim().replace(/\/+$/, '');
             if (envUrl.includes('api-qa.filepeapp.com') || envUrl.includes('qa.filepeapp.com')) return 'https://api-qa.filepeapp.com/api';
             if (envUrl && !envUrl.includes('localhost')) return envUrl;
-        }
-        const hostname = (window.location.hostname || '').toLowerCase();
-        if (hostname.includes('localhost') || hostname === '127.0.0.1') {
-            return 'http://localhost:8000/api';
-        }
-        if (hostname.includes('qa') || hostname.includes('stage') || hostname.includes('dev')) {
-            return 'https://api-qa.filepeapp.com/api';
         }
     }
     return 'https://api.filepeapp.com/api';
