@@ -4,10 +4,12 @@ import {
     X, AlertTriangle, CheckCircle2, RefreshCw, Printer, Info
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import api from '../../services/api';
 import {
     generateWindowsBatInstaller,
     getBridgeScriptContent,
-    triggerBrowserDownload
+    triggerBrowserDownload,
+    getResolvedCloudApiUrl
 } from '../../utils/printBridgeInstaller';
 
 const LanPrinterSetupModal = ({
@@ -17,6 +19,7 @@ const LanPrinterSetupModal = ({
     bridgeStatus = { online: false, checking: false },
     shopId = '',
     branchId = '',
+    cloudUrl: cloudUrlProp = '',
     targetPrinter = {},
     onSendTestPrint = null,
     isTestingPrint = false,
@@ -48,9 +51,10 @@ const LanPrinterSetupModal = ({
     const configuredIp = (targetPrinter?.ip || '').trim();
     const printerPort = targetPrinter?.port || 9100;
     const printerName = targetPrinter?.name || 'LAN Thermal Printer';
-    const cloudUrl = typeof window !== 'undefined' && window.location.origin.includes('localhost')
-        ? 'http://localhost:5000/api'
-        : 'https://api.filepeapp.com/api';
+    const defaultCloudUrl = (api?.defaults?.baseURL && !api.defaults.baseURL.includes('localhost'))
+        ? String(api.defaults.baseURL).replace(/\/+$/, '')
+        : getResolvedCloudApiUrl();
+    const cloudUrl = cloudUrlProp || defaultCloudUrl;
 
     const manualCommand = `node scripts/pos-print-bridge.js --shop ${shopId || 'YOUR_SHOP_ID'}`;
     const npmCommand = `npm run bridge`;
@@ -178,25 +182,25 @@ const LanPrinterSetupModal = ({
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <span className="font-black text-slate-800 dark:text-slate-100">Counter PC Print Bridge</span>
+                                    <span className="font-black text-slate-800 dark:text-slate-100">PC Print Bridge (Local Service)</span>
                                     {bridgeStatus.online ? (
                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                            Active (Online)
+                                            Service Running (Port 3001)
                                         </span>
                                     ) : (
                                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">
                                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                            Offline / Not Detected
+                                            Service Offline / Not Started
                                         </span>
                                     )}
                                 </div>
                                 <span className="text-[11px] text-slate-500 dark:text-slate-400 block pt-0.5">
                                     {bridgeStatus.online
                                         ? (bridgeStatus.source === 'local'
-                                            ? 'Connected directly on this Counter PC (Port 3001). Ready to print!'
-                                            : 'Connected via FilePe Cloud Relay. Waiters & checkout can print anytime.')
-                                        : 'Double-click the downloaded installer below. The badge turns green automatically once started.'}
+                                            ? 'The local bridge service is running on this PC. (Use "Send Test Print" below to test your physical printer hardware)'
+                                            : 'The bridge service is connected via Cloud Relay. (Use "Send Test Print" below to test your physical printer hardware)')
+                                        : 'Double-click the downloaded .bat installer below. The badge turns green automatically once the background service starts.'}
                                 </span>
                             </div>
                         </div>
@@ -371,10 +375,10 @@ const LanPrinterSetupModal = ({
                         <div className="space-y-1">
                             <div className="flex items-center gap-2">
                                 <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
-                                    Selected Printer in POS: {printerName}
+                                    Target LAN Printer Hardware: {printerName}
                                 </span>
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                                    Universal Relay
+                                    Raw Port 9100
                                 </span>
                             </div>
                             <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
@@ -383,7 +387,7 @@ const LanPrinterSetupModal = ({
                                     : 'No IP entered yet — configure printer IP in settings above'}
                             </p>
                             <p className="text-[10px] text-slate-400">
-                                Note: Any printer IP you save in POS settings is automatically handled by FilePe Print Station without reinstalling.
+                                Ensure your physical printer is powered ON and connected to your router via LAN cable or Wi-Fi. Click "Send Test Print" to verify paper output.
                             </p>
                         </div>
 
@@ -393,7 +397,7 @@ const LanPrinterSetupModal = ({
                                 disabled={isTestingPrint || !configuredIp}
                                 onClick={onSendTestPrint}
                                 className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-sm flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 shrink-0"
-                                title={!configuredIp ? 'Please enter a Printer IP address in settings above first' : 'Send test print'}
+                                title={!configuredIp ? 'Please enter a Printer IP address in settings above first' : 'Send test print to printer hardware'}
                             >
                                 <Printer size={15} />
                                 <span>{isTestingPrint ? 'Sending Test...' : 'Send Test Print'}</span>

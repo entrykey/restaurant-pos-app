@@ -18,6 +18,7 @@ import { printKot } from '../../utils/print';
 import { buildBillExtraInfo, buildPrintHeader } from '../../utils/printSettingsUtils';
 import { hasPermission as checkPermission, hasPermissionFor as checkPermissionFor } from '../../utils/permissions';
 import LanPrinterSetupModal from './LanPrinterSetupModal';
+import { getResolvedCloudApiUrl } from '../../utils/printBridgeInstaller';
 import { Download } from 'lucide-react';
 import {
     BARCODE_PRINT_SETTINGS_KEY,
@@ -171,6 +172,9 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
     const saveBranchId = isSuperAdmin ? null : (activeBranchId || null);
     const canSave = isSuperAdmin || !!activeBranchId;
 
+    const activeResolvedShopId = currentShopId || activeBranch?.shopId || activeBranch?.shop || currentUser?.shopId || currentUser?.shop || organization?.currentShopId || organization?._id || '';
+    const activeResolvedBranchId = activeBranchId || activeBranch?._id || activeBranch?.id || saveBranchId || '';
+
     const handleLanModalTestPrint = async () => {
         const target = lanModalTargetPrinter || hardwareSettings.kitchenPrinter || hardwareSettings.cashierPrinter;
         const ip = target?.ip || '192.168.1.100';
@@ -186,8 +190,8 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                 paperWidthMm: target?.paperWidthMm || 80,
                 autoCut: true,
                 beepBuzzer: true,
-                shopId: saveShopId || activeBranch?.shopId,
-                branchId: activeBranchId || saveBranchId,
+                shopId: activeResolvedShopId,
+                branchId: activeResolvedBranchId,
                 meta: {
                     kotTitle: 'TEST LAN PRINT RELAY',
                     orderLabel: 'TEST-LAN-01',
@@ -306,8 +310,8 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
         try {
             const cloudRes = await api.get('/print/bridge/status', {
                 params: {
-                    branchId: activeBranchId || saveBranchId,
-                    shopId: saveShopId || activeBranch?.shopId,
+                    branchId: activeResolvedBranchId,
+                    shopId: activeResolvedShopId,
                 },
             });
             if (cloudRes.data && cloudRes.data.online) {
@@ -329,7 +333,7 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
         setBridgeStatus(offlineObj);
         if (showFeedback) toast.error("FilePe Print Station not detected. Please run the installer on this counter PC.", { icon: '⚠️' });
         return offlineObj;
-    }, [activeBranchId, saveBranchId, saveShopId, activeBranch]);
+    }, [activeResolvedBranchId, activeResolvedShopId]);
 
     useEffect(() => {
         let isMounted = true;
@@ -1410,23 +1414,23 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                             </div>
                             <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
-                                    <span className={`font-black ${theme.textHeading} text-sm`}>Counter PC Print Station</span>
+                                    <span className={`font-black ${theme.textHeading} text-sm`}>PC Print Bridge Service</span>
                                     {bridgeStatus.online ? (
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                            Active (Online)
+                                            Bridge Service Running
                                         </span>
                                     ) : (
                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
                                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                            Standby / Offline
+                                            Setup Required
                                         </span>
                                     )}
                                 </div>
                                 <p className={`text-xs ${theme.textMuted} max-w-2xl leading-relaxed`}>
                                     {bridgeStatus.online
-                                        ? 'Relaying orders & KOTs sent from Waiter Mobile Phones automatically to your kitchen LAN printer.'
-                                        : 'To enable waiter phones to print automatically to your kitchen LAN printer, keep the print station running on this counter PC (npm run bridge).'}
+                                        ? 'The local relay service is running on this counter PC. Waiter mobile phones & checkout can print to all LAN printers. Use "Send Test Print" below to test physical printer hardware.'
+                                        : 'To enable waiter phones to print automatically to your LAN thermal printers, install FilePe Print Station on this counter PC.'}
                                 </p>
                             </div>
                         </div>
@@ -1445,7 +1449,7 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
 
                             <div className="bg-white/70 dark:bg-slate-900/70 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-0.5">
                                 <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Restaurant Shop ID</span>
-                                <code className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{saveShopId || activeBranch?.shopId || 'Auto-Detected'}</code>
+                                <code className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{activeResolvedShopId || 'Auto-Detected'}</code>
                             </div>
                         </div>
                     </div>
@@ -1458,8 +1462,9 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                 onClose={() => setIsLanModalOpen(false)}
                 theme={theme}
                 bridgeStatus={bridgeStatus}
-                shopId={saveShopId || activeBranch?.shopId || ''}
-                branchId={activeBranchId || saveBranchId || ''}
+                shopId={activeResolvedShopId}
+                branchId={activeResolvedBranchId}
+                cloudUrl={getResolvedCloudApiUrl()}
                 targetPrinter={lanModalTargetPrinter || (hardwareSettings.kitchenPrinter?.enabled ? hardwareSettings.kitchenPrinter : hardwareSettings.cashierPrinter)}
                 onSendTestPrint={handleLanModalTestPrint}
                 isTestingPrint={isTestingLanPrint}
