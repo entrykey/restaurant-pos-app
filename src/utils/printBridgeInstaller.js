@@ -134,33 +134,45 @@ echo Cloud API URL             : ${cloudUrl}
 echo Relay Capability          : Universal Multi-Printer LAN Relay - All Shop Printers
 echo.
 
-:: 1. Verify Node.js runtime
-where node >nul 2>nul
-if %errorlevel% neq 0 goto :NO_NODE
-goto :NODE_OK
-
-:NO_NODE
-echo [ERROR] Node.js is not found on your counter PC.
-echo Node.js is required to relay print jobs to your LAN thermal printers.
-echo.
-echo Opening https://nodejs.org in your browser to download Node.js LTS...
-start https://nodejs.org
-echo.
-echo Once Node.js installation is complete, run this installer file again.
-echo.
-pause
-exit /b 1
-
-:NODE_OK
-for /f "tokens=*" %%v in ('node -v') do set "NODE_VER=%%v"
-echo [OK] Node.js runtime detected: !NODE_VER!
-
-:: 2. Target Directory
+:: 1. Target Directory
 set "INSTALL_DIR=%USERPROFILE%\\FilepePrintBridge"
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 cd /d "%INSTALL_DIR%"
 
-echo [1/4] Writing configuration file...
+:: 2. Resolve or automatically set up background runtime (Zero manual installation required)
+set "NODE_CMD=node"
+where node >nul 2>nul
+if %errorlevel% equ 0 (
+    for /f "tokens=*" %%v in ('node -v') do set "NODE_VER=%%v"
+    echo [OK] System runtime detected: !NODE_VER!
+    goto :RUNTIME_READY
+)
+
+if exist "%INSTALL_DIR%\\node.exe" (
+    set "NODE_CMD=%INSTALL_DIR%\\node.exe"
+    echo [OK] Self-contained FilePe runtime detected.
+    goto :RUNTIME_READY
+)
+
+echo [1/4] Setting up FilePe Print Station background runtime...
+echo Downloading lightweight runtime - this only happens once...
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $wc = New-Object System.Net.WebClient; $wc.DownloadFile('https://nodejs.org/dist/v20.18.0/win-x64/node.exe', '%INSTALL_DIR%\\node.exe')" >nul 2>nul
+
+if exist "%INSTALL_DIR%\\node.exe" (
+    set "NODE_CMD=%INSTALL_DIR%\\node.exe"
+    echo [OK] Self-contained FilePe runtime configured successfully.
+    goto :RUNTIME_READY
+)
+
+echo [ERROR] Unable to automatically set up background runtime.
+echo Please verify your internet connection, or install Node.js LTS from https://nodejs.org
+start https://nodejs.org
+pause
+exit /b 1
+
+:RUNTIME_READY
+
+echo [2/4] Writing configuration file...
 echo { > "%INSTALL_DIR%\\.bridge-config.json"
 echo   "cloudUrl": "${cloudUrl}", >> "%INSTALL_DIR%\\.bridge-config.json"
 echo   "shopId": "${shopId}", >> "%INSTALL_DIR%\\.bridge-config.json"
@@ -168,13 +180,16 @@ echo   "branchId": "${branchId}", >> "%INSTALL_DIR%\\.bridge-config.json"
 echo   "pollIntervalMs": 1000 >> "%INSTALL_DIR%\\.bridge-config.json"
 echo } >> "%INSTALL_DIR%\\.bridge-config.json"
 
-echo [2/4] Deploying bridge script into %INSTALL_DIR%...
+echo [3/4] Deploying bridge script into %INSTALL_DIR%...
 powershell -NoProfile -Command "$b64 = '${base64Code}'; $bytes = [System.Convert]::FromBase64String($b64); $text = [System.Text.Encoding]::UTF8.GetString($bytes); [System.IO.File]::WriteAllText('%INSTALL_DIR%\\pos-print-bridge.js', $text, [System.Text.Encoding]::UTF8)"
 
-echo [3/4] Creating background launcher and Windows Startup service...
+echo [4/4] Creating background launcher and Windows Startup service...
 :: Create silent launcher (runs completely hidden without terminal popup)
 echo Set WshShell = CreateObject("WScript.Shell"^) > "%INSTALL_DIR%\\run-silent.vbs"
-echo WshShell.Run "node """ ^& "%INSTALL_DIR%\\pos-print-bridge.js""" ^& " --shop ${shopId} --branch ${branchId} --cloud ${cloudUrl}", 0, False >> "%INSTALL_DIR%\\run-silent.vbs"
+echo Set fso = CreateObject("Scripting.FileSystemObject"^) >> "%INSTALL_DIR%\\run-silent.vbs"
+echo nodeExe = "node" >> "%INSTALL_DIR%\\run-silent.vbs"
+echo If fso.FileExists("%INSTALL_DIR%\\node.exe"^) Then nodeExe = """%INSTALL_DIR%\\node.exe""" >> "%INSTALL_DIR%\\run-silent.vbs"
+echo WshShell.Run nodeExe ^& " """ ^& "%INSTALL_DIR%\\pos-print-bridge.js""" ^& " --shop ${shopId} --branch ${branchId} --cloud ${cloudUrl}", 0, False >> "%INSTALL_DIR%\\run-silent.vbs"
 
 :: Create visible console launcher for manual testing and checking logs
 echo @echo off > "%INSTALL_DIR%\\View-Live-Logs.bat"
@@ -194,7 +209,9 @@ echo ================================================================ >> "%INSTA
 echo. >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo :: Stop background bridge instance first so this console can bind port 3001 >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo for /f "tokens=5" %%%%p in ('netstat -ano ^^! findstr :3001') do taskkill /F /PID %%%%p 2^>nul >> "%INSTALL_DIR%\\View-Live-Logs.bat"
-echo node "%INSTALL_DIR%\\pos-print-bridge.js" --shop ${shopId} --branch ${branchId} --cloud ${cloudUrl} >> "%INSTALL_DIR%\\View-Live-Logs.bat"
+echo set "NODE_CMD=node" >> "%INSTALL_DIR%\\View-Live-Logs.bat"
+echo if exist "%INSTALL_DIR%\\node.exe" set "NODE_CMD=%INSTALL_DIR%\\node.exe" >> "%INSTALL_DIR%\\View-Live-Logs.bat"
+echo "%%NODE_CMD%%" "%INSTALL_DIR%\\pos-print-bridge.js" --shop ${shopId} --branch ${branchId} --cloud ${cloudUrl} >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo. >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo echo FilePe Print Station stopped. >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo pause >> "%INSTALL_DIR%\\View-Live-Logs.bat"
