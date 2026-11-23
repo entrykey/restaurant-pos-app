@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { DEFAULT_CARTOON_AVATAR } from "../constants/cartoonAvatars";
 import { UserCheck, Clock, Wifi, WifiOff, Menu, Building2, MapPin, Bell, Info, AlertTriangle, ChevronRight, ChevronDown, X, SlidersHorizontal, Volume2, VolumeX, User, LogOut, HelpCircle } from "lucide-react";
 import BusinessTypeModal from "./BusinessTypeModal";
+import DraggableMobileNavWidget from "./DraggableMobileNavWidget";
 import { useApp } from "../context/AppContext";
 import { useTheme } from "../context/ThemeContext";
 import { useTutorial } from "../context/TutorialContext";
@@ -43,7 +44,6 @@ const Navbar = ({
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
     const [isTrialPopoverOpen, setIsTrialPopoverOpen] = useState(false);
-    const [isSubNavOpen, setIsSubNavOpen] = useState(false);
     const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
     const navigate = useNavigate();
 
@@ -259,9 +259,9 @@ const Navbar = ({
 
                 {/* Right Section */}
                 <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-                    {/* Branch Selector (Icon-only button on screens < md, Full pill on md+) */}
+                    {/* Branch Selector (Visible on Desktop/Tablet md+, on Mobile managed via Draggable Quick Controls) */}
                     {showBranchSelector && (
-                        <div className="relative shrink-0 branch-dropdown-container">
+                        <div className="hidden md:block relative shrink-0 branch-dropdown-container">
                             <button 
                                 type="button"
                                 onClick={(e) => {
@@ -269,15 +269,15 @@ const Navbar = ({
                                     setIsBranchDropdownOpen(prev => !prev);
                                     setIsNotificationsOpen(false);
                                 }}
-                                className={`flex items-center justify-center gap-1.5 ${theme.inputBg} w-9 h-9 md:w-auto md:h-auto md:px-3 md:py-2 rounded-xl border ${theme.inputBorder} cursor-pointer hover:opacity-80 active:scale-95 transition-all`}
+                                className={`flex items-center justify-center gap-1.5 ${theme.inputBg} px-3 py-2 rounded-xl border ${theme.inputBorder} cursor-pointer hover:opacity-80 active:scale-95 transition-all`}
                                 title={`Switch Branch: ${branchSelectorTitle}`}
                                 aria-label={`Switch Branch (${branchSelectorTitle})`}
                             >
                                 <MapPin size={18} className={theme.primaryIconText} />
-                                <span className={`hidden md:inline text-xs font-black ${theme.textPrimary} uppercase tracking-tight truncate max-w-[130px] lg:max-w-[170px]`}>
+                                <span className={`text-xs font-black ${theme.textPrimary} uppercase tracking-tight truncate max-w-[130px] lg:max-w-[170px]`}>
                                     {branchSelectorTitle}
                                 </span>
-                                <ChevronDown size={14} className={`hidden md:inline ${theme.textMuted} transition-transform ${isBranchDropdownOpen ? 'rotate-180' : ''}`} />
+                                <ChevronDown size={14} className={`${theme.textMuted} transition-transform ${isBranchDropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
                             
                             {/* Branch Dropdown Menu */}
@@ -343,11 +343,11 @@ const Navbar = ({
                         )}
                     </div>
 
-                    {/* Speaker Announcement Toggle */}
+                    {/* Speaker Announcement Toggle (Desktop md+, on Mobile managed via Draggable Quick Controls) */}
                     <button
                         type="button"
                         onClick={handleToggleSound}
-                        className={`flex items-center justify-center w-9 h-9 rounded-xl border transition-all cursor-pointer relative active:scale-95 ${
+                        className={`hidden md:flex items-center justify-center w-9 h-9 rounded-xl border transition-all cursor-pointer relative active:scale-95 ${
                             soundOn 
                                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' 
                                 : `${theme.sidebarItemHoverBg} ${theme.textMuted} ${theme.borderLight}`
@@ -358,18 +358,18 @@ const Navbar = ({
                         {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
                     </button>
 
-                    {/* Start Interactive Tour Button */}
+                    {/* Start Interactive Tour Button (Desktop md+, on Mobile managed via Draggable Quick Controls) */}
                     <button
                         type="button"
                         onClick={restartTour}
-                        className={`flex items-center justify-center w-9 h-9 rounded-xl border ${theme.sidebarItemHoverBg} ${theme.borderLight} transition-all cursor-pointer relative active:scale-95`}
+                        className={`hidden md:flex items-center justify-center w-9 h-9 rounded-xl border ${theme.sidebarItemHoverBg} ${theme.borderLight} transition-all cursor-pointer relative active:scale-95`}
                         title="Start Interactive Guided Tour"
                         aria-label="Start Tour"
                     >
                         <HelpCircle size={18} className="text-indigo-600 dark:text-indigo-400" />
                     </button>
 
-                    {/* Notification Bell */}
+                    {/* Notification Bell (Always Visible) */}
                     <div className="relative notification-dropdown-container shrink-0">
                         <button
                             type="button"
@@ -551,118 +551,32 @@ const Navbar = ({
                         )}
                     </div>
 
-                    {/* Accordion Sub-Navbar Toggle Button (Visible below lg) */}
-                    <button
-                        type="button"
-                        onClick={() => setIsSubNavOpen(!isSubNavOpen)}
-                        className={`lg:hidden flex items-center gap-1 px-2 py-1.5 rounded-xl border text-xs font-bold transition-all relative ${
-                            isSubNavOpen
-                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                                : `${theme.inputBg} ${theme.inputBorder} ${theme.textPrimary} hover:opacity-80`
-                        }`}
-                        title="Toggle Controls Sub-Navbar"
-                    >
-                        <SlidersHorizontal size={14} />
-                        <ChevronDown size={14} className={`transition-transform duration-200 ${isSubNavOpen ? 'rotate-180' : ''}`} />
-                        {isTrial && (
-                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse border-2 border-white dark:border-gray-900"></span>
-                        )}
-                    </button>
                 </div>
             </div>
 
-            {/* Sub-Navbar Accordion Drawer (Visible below lg when toggled) */}
-            {isSubNavOpen && (
-                <div className={`lg:hidden border-t ${theme.borderLight} px-4 py-3 bg-black/5 dark:bg-white/5 flex flex-col gap-3 animate-in slide-in-from-top-2 duration-200`}>
-                    {/* Trial Alert Banner */}
-                    {isTrial && (
-                        <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 shadow-sm">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                                <Clock size={16} className="animate-pulse shrink-0 text-amber-600" />
-                                <div className="min-w-0">
-                                    <p className="text-[9px] font-black uppercase tracking-wider opacity-75">Free Trial</p>
-                                    <p className="text-xs font-black truncate">Ends in {trialDaysLeft} days</p>
-                                </div>
-                            </div>
-                            {can(MODULES.ORGANIZATION, ACTIONS.ORGANIZATION_VIEW) && (
-                                <button
-                                    onClick={() => navigate('/organization')}
-                                    className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-600 text-white hover:bg-amber-700 transition-colors shrink-0 flex items-center gap-1 shadow"
-                                >
-                                    Subscribe <ChevronRight size={12} />
-                                </button>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Quick Tools Grid */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                            {/* My Shops button (Mobile/Tablet) */}
-                            {isOwner && (
-                                <button
-                                    onClick={() => navigate("/owner-dashboard")}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${theme.inputBorder} ${theme.inputBg} text-xs font-bold ${theme.textPrimary}`}
-                                >
-                                    <Building2 size={14} className={theme.primaryIconText} />
-                                    <span>My Shops</span>
-                                </button>
-                            )}
-
-                            {/* Full Branch Selector inside Sub-Navbar */}
-                            {showBranchSelector && (
-                                <div className="relative group">
-                                    <button
-                                        type="button"
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${theme.inputBorder} ${theme.inputBg} text-xs font-black ${theme.textPrimary}`}
-                                    >
-                                        <MapPin size={14} className={theme.primaryIconText} />
-                                        <span>{branchSelectorTitle}</span>
-                                        <ChevronDown size={12} className={theme.textMuted} />
-                                    </button>
-                                    {/* Branch options menu */}
-                                    <div className={`absolute left-0 top-full mt-1 w-56 ${theme.surfaceBg} rounded-2xl shadow-2xl border ${theme.borderLight} py-2 z-[150] hidden group-hover:block group-focus-within:block`}>
-                                        <div className={`px-3 py-1.5 border-b ${theme.borderLight} text-[10px] font-black uppercase text-gray-400`}>Select Branch</div>
-                                        {branches.map(b => (
-                                            <button
-                                                key={b._id || b.id}
-                                                onClick={() => setActiveBranchId(b._id || b.id)}
-                                                className={`w-full text-left px-3 py-2 text-xs font-bold flex items-center justify-between ${String(activeBranchId) === String(b._id || b.id) ? 'text-indigo-600 font-black' : theme.textPrimary}`}
-                                            >
-                                                <span>{b.name}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-wrap">
-                            {/* Business Type */}
-                            {(currentUser.role === "Admin" || currentUser.role === "Manager") && (
-                                <>
-                                    <button
-                                        onClick={() => setIsBusinessTypeModalOpen(true)}
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl ${theme.primaryIconBg} ${theme.primaryIconText} text-xs font-bold`}
-                                    >
-                                        <Building2 size={14} />
-                                        <span className="capitalize">{typeof businessType === 'object' ? businessType?.displayString : businessType}</span>
-                                    </button>
-
-                                    {/* Online Orders */}
-                                    <button
-                                        onClick={() => setIsOnlineOrderingEnabled(!isOnlineOrderingEnabled)}
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${isOnlineOrderingEnabled ? `${theme.successBg} ${theme.successText}` : 'bg-red-100 text-red-700'}`}
-                                    >
-                                        {isOnlineOrderingEnabled ? <Wifi size={14} /> : <WifiOff size={14} />}
-                                        <span>{isOnlineOrderingEnabled ? "Online ON" : "Online OFF"}</span>
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Draggable Floating Action Widget for Mobile / Small Screens */}
+            <DraggableMobileNavWidget
+                theme={theme}
+                branches={branches}
+                activeBranchId={activeBranchId}
+                setActiveBranchId={setActiveBranchId}
+                showBranchSelector={showBranchSelector}
+                branchSelectorTitle={branchSelectorTitle}
+                hasFullAccess={hasFullAccess}
+                soundOn={soundOn}
+                handleToggleSound={handleToggleSound}
+                restartTour={restartTour}
+                currentUser={currentUser}
+                isOwner={isOwner}
+                businessType={businessType}
+                isOnlineOrderingEnabled={isOnlineOrderingEnabled}
+                setIsOnlineOrderingEnabled={setIsOnlineOrderingEnabled}
+                setIsBusinessTypeModalOpen={setIsBusinessTypeModalOpen}
+                isTrial={isTrial}
+                trialDaysLeft={trialDaysLeft}
+                can={can}
+                navigate={navigate}
+            />
 
             {/* Business Type Modal */}
             <BusinessTypeModal

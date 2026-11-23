@@ -35,9 +35,20 @@ try {
 function normalizeCloudUrl(url) {
     if (!url || typeof url !== 'string') return 'https://api.filepeapp.com/api';
     let clean = url.trim().replace(/\/+$/, '');
+    if (clean.includes('api-qa.filepeapp.com')) {
+        if (!clean.endsWith('/api')) clean = `${clean}/api`;
+        return clean;
+    }
     if (clean.includes('qa.filepeapp.com')) {
-        console.log(`[PRINT STATION] ℹ️ Auto-redirecting cloudUrl from static web host (${clean}) to API server (https://api.filepeapp.com/api)`);
-        clean = 'https://api.filepeapp.com/api';
+        console.log(`[PRINT STATION] ℹ️ Auto-resolving QA cloudUrl from web host (${clean}) to API server (https://api-qa.filepeapp.com/api)`);
+        return 'https://api-qa.filepeapp.com/api';
+    }
+    if (clean.includes('api.filepeapp.com')) {
+        if (!clean.endsWith('/api')) clean = `${clean}/api`;
+        return clean;
+    }
+    if (clean.includes('filepeapp.com')) {
+        return 'https://api.filepeapp.com/api';
     }
     if (!clean.endsWith('/api') && !clean.includes('localhost') && !clean.includes('127.0.0.1')) {
         clean = `${clean}/api`;
@@ -47,9 +58,9 @@ function normalizeCloudUrl(url) {
 
 let activeConfig = {
     cloudUrl: normalizeCloudUrl(getArg('--cloud', process.env.BRIDGE_CLOUD_URL || savedConfig.cloudUrl || 'https://api.filepeapp.com/api')),
-    mongoUri: getArg('--mongo', process.env.BRIDGE_MONGO_URI || savedConfig.mongoUri || 'mongodb+srv://yaseenbsmwork:yaseenbsmwork3214@filepebe.gnahxrb.mongodb.net/filepe?appName=filepebe'),
-    shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || '6aa7abc9329212a3c4ce2cde'),
-    branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || '6aa7abc9329212a3c4ce2ce0'),
+    mongoUri: getArg('--mongo', process.env.BRIDGE_MONGO_URI || savedConfig.mongoUri || ''),
+    shopId: getArg('--shop', process.env.BRIDGE_SHOP_ID || savedConfig.shopId || ''),
+    branchId: getArg('--branch', process.env.BRIDGE_BRANCH_ID || savedConfig.branchId || ''),
     pollIntervalMs: parseInt(getArg('--interval', process.env.BRIDGE_POLL_INTERVAL || savedConfig.pollIntervalMs || 1000), 10),
 };
 
@@ -599,6 +610,14 @@ const server = http.createServer((req, res) => {
 
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Endpoint not found' }));
+});
+
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.warn(`[PRINT STATION] ⚠️ Port ${PORT} is already in use by another instance on this PC.`);
+    } else {
+        console.error(`[PRINT STATION] Server error:`, err.message);
+    }
 });
 
 server.listen(PORT, '127.0.0.1', () => {
