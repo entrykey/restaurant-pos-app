@@ -51,9 +51,7 @@ const LanPrinterSetupModal = ({
     const configuredIp = (targetPrinter?.ip || '').trim();
     const printerPort = targetPrinter?.port || 9100;
     const printerName = targetPrinter?.name || 'LAN Thermal Printer';
-    const defaultCloudUrl = (api?.defaults?.baseURL && !api.defaults.baseURL.includes('localhost'))
-        ? String(api.defaults.baseURL).replace(/\/+$/, '')
-        : getResolvedCloudApiUrl();
+    const defaultCloudUrl = getResolvedCloudApiUrl();
     const cloudUrl = cloudUrlProp || defaultCloudUrl;
 
     const manualCommand = `node scripts/pos-print-bridge.js --shop ${shopId || 'YOUR_SHOP_ID'}`;
