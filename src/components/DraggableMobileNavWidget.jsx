@@ -483,3 +483,4 @@ const DraggableMobileNavWidget = ({
 };
 
 export default DraggableMobileNavWidget;
+
