@@ -159,13 +159,18 @@ function openPrintWindow({ title = "", html }) {
   return true;
 }
 
-export async function sendSilentPrintJob({ printer, html, title, type = 'bill', meta = null, items = [] }) {
+export async function sendSilentPrintJob({ printer, html, title, type = 'bill', meta = null, items = [], branchId = null, shopId = null }) {
   try {
+    const activeBranchId = branchId || localStorage.getItem('pos_activeBranchId') || localStorage.getItem('pos_branchId') || null;
+    const resolvedShopId = shopId || localStorage.getItem('pos_shopId') || null;
+
     const payload = {
-      ip: printer?.ip || '192.168.1.100',
+      shopId: resolvedShopId || undefined,
+      branchId: activeBranchId || undefined,
+      ip: (printer?.ip && printer.ip.trim()) || undefined,
       port: printer?.port || 9100,
       paperWidthMm: printer?.paperWidthMm || 80,
-      printerName: printer?.name || 'Thermal Printer',
+      printerName: printer?.name || (type === 'bill' ? 'Counter Bill Printer' : 'Kitchen KOT Printer'),
       type,
       title,
       html,
@@ -180,7 +185,8 @@ export async function sendSilentPrintJob({ printer, html, title, type = 'bill', 
     // Always route through hosted backend print gateway / relay queue
     await api.post('/print/network', payload);
 
-    toast.success(`🖨️ Sent to ${payload.printerName} (${payload.ip}:${payload.port})!`, {
+    const targetDesc = payload.ip ? `${payload.printerName} (${payload.ip}:${payload.port})` : payload.printerName;
+    toast.success(`🖨️ Sent to ${targetDesc}!`, {
       id: `print-silent-${type}`,
       duration: 3000,
     });
@@ -212,10 +218,10 @@ export function printHtml({ title = "", html, printerType = 'bill', branchId = n
   const hasValidIp = Boolean(targetPrinter?.ip && targetPrinter.ip.trim().length > 0);
 
   // Dispatch via cloud relay / LAN socket if:
-  // 1) Target is a network printer (LAN/Wi-Fi with IP), OR
-  // 2) User is on a mobile device (where USB/Windows spoolers do not exist), OR
+  // 1) User is on a mobile device (smartphones/tablets never have direct USB/Windows printer spoolers), OR
+  // 2) Target printer is a network printer (LAN/Wi-Fi with IP), OR
   // 3) Silent print mode is active and printer has a configured IP
-  if (!forceBrowser && targetPrinter && targetPrinter.enabled !== false && hasValidIp && (isNetworkPrinter || isMobile || hwSettings?.printMode === 'silent')) {
+  if (!forceBrowser && (isMobile || (targetPrinter && targetPrinter.enabled !== false && hasValidIp && (isNetworkPrinter || hwSettings?.printMode === 'silent')))) {
     sendSilentPrintJob({
       printer: { ...targetPrinter, bridgeUrl: hwSettings?.bridgeUrl },
       html,
@@ -223,6 +229,7 @@ export function printHtml({ title = "", html, printerType = 'bill', branchId = n
       type: printerType,
       meta,
       items,
+      branchId,
     }).catch((err) => {
       console.warn('Silent network print dispatch error:', err);
     });
