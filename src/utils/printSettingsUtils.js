@@ -188,5 +188,6 @@ export const printSaleOrder = async ({
         extraInfo,
         paymentMethod: effectivePaymentMethod,
         paymentStatus: payDetails.paymentStatus,
+        branchId: order?.branchId || null,
     });
 };
