@@ -251,38 +251,48 @@ const LanPrinterSetupModal = ({
                                         Download & Run the Auto-Installer
                                     </h4>
                                     <p className={`text-xs ${theme.textMuted} leading-relaxed`}>
-                                        Click below to download the pre-configured Windows installer. It installs FilePe Print Station to auto-start silently every time this PC turns on.
+                                        Download the standalone Windows application. It runs silently in your Windows system tray, connects FilePe Cloud to your LAN thermal printers, and auto-starts on boot.
                                     </p>
                                 </div>
 
                                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+                                    <a
+                                        href="/FilePe-Print-Bridge-Setup.exe"
+                                        download="FilePe-Print-Bridge-Setup.exe"
+                                        className="px-6 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer text-center"
+                                    >
+                                        <Download size={16} />
+                                        <span>Download Windows App (.exe) - Recommended</span>
+                                    </a>
+
                                     <button
                                         type="button"
                                         disabled={isDownloading}
                                         onClick={handleDownloadInstaller}
-                                        className="px-6 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2.5 transition-all cursor-pointer disabled:opacity-50"
+                                        className="px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                                        title="Download lightweight batch installer"
                                     >
-                                        <Download size={16} />
-                                        <span>Download Windows Auto-Installer (.bat)</span>
+                                        <Download size={14} />
+                                        <span>Download Script (.bat)</span>
                                     </button>
                                 </div>
 
                                 <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 text-[11px] text-emerald-900 dark:text-emerald-200 space-y-1">
                                     <p className="font-bold flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
                                         <CheckCircle2 size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                                        Single-File 100% Complete Setup
+                                        Standalone Desktop Application (No Node.js Required)
                                     </p>
                                     <p className="leading-relaxed">
-                                        You only need to download and run this <strong>ONE .bat file</strong>. It contains everything needed to link FilePe Cloud to your LAN thermal printers, install the background service, and auto-start whenever Windows boots up.
+                                        The standalone Windows application includes the embedded print relay engine. Your staff does not need to install Node.js, Python, or run terminal commands.
                                     </p>
                                 </div>
 
                                 <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-[11px] space-y-2 text-slate-600 dark:text-slate-300">
                                     <p className="font-bold text-slate-800 dark:text-slate-200">How to install (3 quick steps):</p>
                                     <ol className="list-decimal list-inside space-y-1.5 pl-1 leading-relaxed">
-                                        <li>Double-click the downloaded <strong>Install-FilePe-PrintBridge.bat</strong> file in your Downloads folder.</li>
-                                        <li>If Windows SmartScreen appears (<em>"Windows protected your PC"</em>), click <strong>More info</strong> &rarr; <strong>Run anyway</strong>.</li>
-                                        <li>The installer configures FilePe Print Station to auto-start on boot and runs it in the background. The status badge above will turn green <strong>Active (Online)</strong> automatically!</li>
+                                        <li>Double-click the downloaded <strong>FilePe-Print-Bridge-Setup.exe</strong> on the counter computer.</li>
+                                        <li>Paste your <strong>Shop ID</strong> (<code className="font-mono font-bold">{shopId ? `${shopId.slice(0, 8)}...` : 'from above'}</code>) and click <strong>Save Settings</strong>.</li>
+                                        <li>Click <strong>Send Test Ticket</strong> to test your printer. The bridge runs in the system tray and the badge turns green <strong>Active (Online)</strong> automatically!</li>
                                     </ol>
                                 </div>
                             </div>
