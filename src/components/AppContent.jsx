@@ -22,6 +22,7 @@ import { buildTakeawayDraftSignature, buildTableDraftSignature } from "../utils/
 import { printBill, printBillA4, printKot } from "../utils/print";
 import { getOrderPaymentDetails } from "../utils/paymentUtils";
 import { loadBillPrintSettings, buildBillExtraInfo, printSaleOrder } from "../utils/printSettingsUtils";
+import { HARDWARE_PRINTER_SETTINGS_KEY, mergeHardwarePrinterSettings } from "../config/billPrintSettings";
 import { isItemTypeAllowedOnSale } from "../utils/cartStockUtils";
 import { syncItemBogoQuantity } from "../utils/posOfferHelpers";
 import { findTaxForItem, resolveIsExclusiveTax } from "../utils/taxUtils";
@@ -174,6 +175,20 @@ const AppContent = () => {
                         });
                         console.log("Fetched Backend Settings:", settingsMap);
                         setSettings(prev => ({ ...prev, ...settingsMap }));
+
+                        // Auto-cache hardware printer settings so mobile phones have printer IP & configs immediately
+                        if (settingsMap[HARDWARE_PRINTER_SETTINGS_KEY]) {
+                            try {
+                                const hwSettings = mergeHardwarePrinterSettings(settingsMap[HARDWARE_PRINTER_SETTINGS_KEY]);
+                                localStorage.setItem('pos_hardware_printer_default', JSON.stringify(hwSettings));
+                                const activeBranchId = getResolvedBranchId();
+                                if (activeBranchId) {
+                                    localStorage.setItem(`pos_hardware_printer_${activeBranchId}`, JSON.stringify(hwSettings));
+                                }
+                            } catch (e) {
+                                console.warn('Could not cache hardware printer settings:', e);
+                            }
+                        }
                     }
                 } catch (error) {
                     console.error("Failed to fetch shop settings:", error);

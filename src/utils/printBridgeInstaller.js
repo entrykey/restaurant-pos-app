@@ -139,34 +139,98 @@ set "INSTALL_DIR=%USERPROFILE%\\FilepePrintBridge"
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 cd /d "%INSTALL_DIR%"
 
-:: 2. Resolve or automatically set up background runtime (Zero manual installation required)
-set "NODE_CMD=node"
+:: Clean up any corrupted, 0-byte, or incompatible runtime from previous attempts
+if exist "%INSTALL_DIR%\\node.exe" (
+    "%INSTALL_DIR%\\node.exe" -v >nul 2>nul
+    if !errorlevel! neq 0 (
+        echo [CLEANUP] Removing broken runtime file from previous failed run...
+        del /f /q "%INSTALL_DIR%\\node.exe" 2>nul
+    )
+)
+
+:: 2. Check for working Node.js runtime
+set "NODE_CMD="
+
 where node >nul 2>nul
 if %errorlevel% equ 0 (
-    for /f "tokens=*" %%v in ('node -v') do set "NODE_VER=%%v"
-    echo [OK] System runtime detected: !NODE_VER!
-    goto :RUNTIME_READY
+    node -v >nul 2>nul
+    if !errorlevel! equ 0 (
+        set "NODE_CMD=node"
+        for /f "tokens=*" %%v in ('node -v') do set "NODE_VER=%%v"
+        echo [OK] System Node.js runtime detected: !NODE_VER!
+        goto :RUNTIME_READY
+    )
 )
 
-if exist "%INSTALL_DIR%\\node.exe" (
-    set "NODE_CMD=%INSTALL_DIR%\\node.exe"
-    echo [OK] Self-contained FilePe runtime detected.
-    goto :RUNTIME_READY
+if exist "C:\\Program Files\\nodejs\\node.exe" (
+    "C:\\Program Files\\nodejs\\node.exe" -v >nul 2>nul
+    if !errorlevel! equ 0 (
+        set "NODE_CMD=C:\\Program Files\\nodejs\\node.exe"
+        for /f "tokens=*" %%v in ('"C:\\Program Files\\nodejs\\node.exe" -v') do set "NODE_VER=%%v"
+        echo [OK] Installed Node.js detected: !NODE_VER!
+        goto :RUNTIME_READY
+    )
 )
 
-echo [1/4] Setting up FilePe Print Station background runtime...
-echo Downloading lightweight runtime - this only happens once...
-powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $wc = New-Object System.Net.WebClient; $wc.DownloadFile('https://nodejs.org/dist/v20.18.0/win-x64/node.exe', '%INSTALL_DIR%\\node.exe')" >nul 2>nul
-
-if exist "%INSTALL_DIR%\\node.exe" (
-    set "NODE_CMD=%INSTALL_DIR%\\node.exe"
-    echo [OK] Self-contained FilePe runtime configured successfully.
-    goto :RUNTIME_READY
+if exist "C:\\Program Files (x86)\\nodejs\\node.exe" (
+    "C:\\Program Files (x86)\\nodejs\\node.exe" -v >nul 2>nul
+    if !errorlevel! equ 0 (
+        set "NODE_CMD=C:\\Program Files (x86)\\nodejs\\node.exe"
+        for /f "tokens=*" %%v in ('"C:\\Program Files (x86)\\nodejs\\node.exe" -v') do set "NODE_VER=%%v"
+        echo [OK] Installed Node.js detected: !NODE_VER!
+        goto :RUNTIME_READY
+    )
 )
 
-echo [ERROR] Unable to automatically set up background runtime.
-echo Please verify your internet connection, or install Node.js LTS from https://nodejs.org
-start https://nodejs.org
+if exist "%LOCALAPPDATA%\\Programs\\node\\node.exe" (
+    "%LOCALAPPDATA%\\Programs\\node\\node.exe" -v >nul 2>nul
+    if !errorlevel! equ 0 (
+        set "NODE_CMD=%LOCALAPPDATA%\\Programs\\node\\node.exe"
+        for /f "tokens=*" %%v in ('"%LOCALAPPDATA%\\Programs\\node\\node.exe" -v') do set "NODE_VER=%%v"
+        echo [OK] Installed Node.js detected: !NODE_VER!
+        goto :RUNTIME_READY
+    )
+)
+
+:: Detect OS architecture
+set "NODE_ARCH=x64"
+if "%PROCESSOR_ARCHITECTURE%"=="x86" (
+    if not defined PROCESSOR_ARCHITEW6432 set "NODE_ARCH=x86"
+)
+
+echo.
+echo ================================================================
+echo   [1/4] Setting up official Node.js engine (%NODE_ARCH% Windows)
+echo   This is a one-time setup so this PC can communicate with printers.
+echo ================================================================
+echo Downloading official verified Node.js installer...
+powershell -NoProfile -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://nodejs.org/dist/v20.18.0/node-v20.18.0-%NODE_ARCH%.msi', '%INSTALL_DIR%\\node_setup.msi'); exit 0 } catch { Write-Host 'Download error: ' $_.Exception.Message; exit 1 }"
+
+if exist "%INSTALL_DIR%\\node_setup.msi" (
+    echo Installing Node.js background engine...
+    msiexec /i "%INSTALL_DIR%\\node_setup.msi" /passive /norestart
+    del /f /q "%INSTALL_DIR%\\node_setup.msi" 2>nul
+
+    if exist "C:\\Program Files\\nodejs\\node.exe" (
+        set "NODE_CMD=C:\\Program Files\\nodejs\\node.exe"
+        for /f "tokens=*" %%v in ('"C:\\Program Files\\nodejs\\node.exe" -v') do set "NODE_VER=%%v"
+        echo [OK] Node.js successfully installed: !NODE_VER!
+        goto :RUNTIME_READY
+    )
+    if exist "C:\\Program Files (x86)\\nodejs\\node.exe" (
+        set "NODE_CMD=C:\\Program Files (x86)\\nodejs\\node.exe"
+        for /f "tokens=*" %%v in ('"C:\\Program Files (x86)\\nodejs\\node.exe" -v') do set "NODE_VER=%%v"
+        echo [OK] Node.js successfully installed: !NODE_VER!
+        goto :RUNTIME_READY
+    )
+)
+
+echo.
+echo [NOTICE] Node.js could not be installed automatically.
+echo Opening the official Node.js download page...
+start https://nodejs.org/en/download
+echo.
+echo Please run the downloaded Node.js installer, then run this file again!
 pause
 exit /b 1
 
@@ -181,15 +245,17 @@ echo   "pollIntervalMs": 1000 >> "%INSTALL_DIR%\\.bridge-config.json"
 echo } >> "%INSTALL_DIR%\\.bridge-config.json"
 
 echo [3/4] Deploying bridge script into %INSTALL_DIR%...
-powershell -NoProfile -Command "$b64 = '${base64Code}'; $bytes = [System.Convert]::FromBase64String($b64); $text = [System.Text.Encoding]::UTF8.GetString($bytes); [System.IO.File]::WriteAllText('%INSTALL_DIR%\\pos-print-bridge.js', $text, [System.Text.Encoding]::UTF8)"
+powershell -NoProfile -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('${cloudUrl.replace(/\/api$/, '')}/pos-print-bridge.js', '%INSTALL_DIR%\\pos-print-bridge.js'); exit 0 } catch { exit 1 }" >nul 2>nul
+if not exist "%INSTALL_DIR%\\pos-print-bridge.js" (
+    powershell -NoProfile -Command "$b64 = '${base64Code}'; $bytes = [System.Convert]::FromBase64String($b64); $text = [System.Text.Encoding]::UTF8.GetString($bytes); [System.IO.File]::WriteAllText('%INSTALL_DIR%\\pos-print-bridge.js', $text, [System.Text.Encoding]::UTF8)"
+)
 
 echo [4/4] Creating background launcher and Windows Startup service...
 :: Create silent launcher (runs completely hidden without terminal popup)
 echo Set WshShell = CreateObject("WScript.Shell"^) > "%INSTALL_DIR%\\run-silent.vbs"
 echo Set fso = CreateObject("Scripting.FileSystemObject"^) >> "%INSTALL_DIR%\\run-silent.vbs"
-echo nodeExe = "node" >> "%INSTALL_DIR%\\run-silent.vbs"
-echo If fso.FileExists("%INSTALL_DIR%\\node.exe"^) Then nodeExe = """%INSTALL_DIR%\\node.exe""" >> "%INSTALL_DIR%\\run-silent.vbs"
-echo WshShell.Run nodeExe ^& " """ ^& "%INSTALL_DIR%\\pos-print-bridge.js""" ^& " --shop ${shopId} --branch ${branchId} --cloud ${cloudUrl}", 0, False >> "%INSTALL_DIR%\\run-silent.vbs"
+echo nodeExe = "!NODE_CMD!" >> "%INSTALL_DIR%\\run-silent.vbs"
+echo WshShell.Run """" ^& nodeExe ^& """ """ ^& "%INSTALL_DIR%\\pos-print-bridge.js""" ^& " --shop ${shopId} --branch ${branchId} --cloud ${cloudUrl}", 0, False >> "%INSTALL_DIR%\\run-silent.vbs"
 
 :: Create visible console launcher for manual testing and checking logs
 echo @echo off > "%INSTALL_DIR%\\View-Live-Logs.bat"
@@ -208,9 +274,8 @@ echo   Keep this window open to watch real-time print events. >> "%INSTALL_DIR%\
 echo ================================================================ >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo. >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo :: Stop background bridge instance first so this console can bind port 3001 >> "%INSTALL_DIR%\\View-Live-Logs.bat"
-echo for /f "tokens=5" %%%%p in ('netstat -ano ^^! findstr :3001') do taskkill /F /PID %%%%p 2^>nul >> "%INSTALL_DIR%\\View-Live-Logs.bat"
-echo set "NODE_CMD=node" >> "%INSTALL_DIR%\\View-Live-Logs.bat"
-echo if exist "%INSTALL_DIR%\\node.exe" set "NODE_CMD=%INSTALL_DIR%\\node.exe" >> "%INSTALL_DIR%\\View-Live-Logs.bat"
+echo for /f "tokens=5" %%%%p in ('netstat -ano ^^^| findstr :3001') do taskkill /F /PID %%%%p 2^>nul >> "%INSTALL_DIR%\\View-Live-Logs.bat"
+echo set "NODE_CMD=!NODE_CMD!" >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo "%%NODE_CMD%%" "%INSTALL_DIR%\\pos-print-bridge.js" --shop ${shopId} --branch ${branchId} --cloud ${cloudUrl} >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo. >> "%INSTALL_DIR%\\View-Live-Logs.bat"
 echo echo FilePe Print Station stopped. >> "%INSTALL_DIR%\\View-Live-Logs.bat"
