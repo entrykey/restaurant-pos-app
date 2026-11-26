@@ -67,7 +67,7 @@ const LanPrinterSetupModal = ({
         } else if (type === 'shopId') {
             setCopiedShopId(true);
             setTimeout(() => setCopiedShopId(false), 2000);
-            toast.success("Shop ID copied!");
+            toast.success("Printer Key copied!");
         }
     };
 
@@ -199,7 +199,7 @@ const LanPrinterSetupModal = ({
                             </button>
 
                             <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase">Shop ID:</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Printer Key:</span>
                                 <code className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
                                     {shopId ? `${shopId.slice(0, 8)}...` : 'Auto'}
                                 </code>
@@ -208,7 +208,7 @@ const LanPrinterSetupModal = ({
                                         type="button"
                                         onClick={() => handleCopy(shopId, 'shopId')}
                                         className="text-slate-400 hover:text-indigo-600 transition-colors"
-                                        title="Copy full Shop ID"
+                                        title="Copy full Printer Key"
                                     >
                                         {copiedShopId ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
                                     </button>
@@ -291,7 +291,7 @@ const LanPrinterSetupModal = ({
                                     <p className="font-bold text-slate-800 dark:text-slate-200">How to install (3 quick steps):</p>
                                     <ol className="list-decimal list-inside space-y-1.5 pl-1 leading-relaxed">
                                         <li>Double-click the downloaded <strong>FilePe-Print-Bridge-Setup.exe</strong> on the counter computer.</li>
-                                        <li>Paste your <strong>Shop ID</strong> (<code className="font-mono font-bold">{shopId ? `${shopId.slice(0, 8)}...` : 'from above'}</code>) and click <strong>Save Settings</strong>.</li>
+                                        <li>Paste your <strong>Printer Key</strong> (<code className="font-mono font-bold">{shopId ? `${shopId.slice(0, 8)}...` : 'from above'}</code>) and click <strong>Save Settings</strong>.</li>
                                         <li>Click <strong>Send Test Ticket</strong> to test your printer. The bridge runs in the system tray and the badge turns green <strong>Active (Online)</strong> automatically!</li>
                                     </ol>
                                 </div>

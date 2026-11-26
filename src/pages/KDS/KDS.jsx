@@ -118,10 +118,13 @@ const KDS = ({
         );
     }
 
-    const tableKOTs = liveKOTs.filter(k => k.tableId);
-    const nonTableKOTs = liveKOTs.filter(k => !k.tableId);
-    const activeCount = liveKOTs.filter(k => !['SERVED','COMPLETED'].includes(k.status)).length;
-    const totalOrders = liveKOTs.length;
+    const visibleKOTs = statusFilter === 'active'
+        ? liveKOTs.filter(k => !['SERVED', 'COMPLETED', 'CANCELLED'].includes(k.status))
+        : liveKOTs;
+    const tableKOTs = visibleKOTs.filter(k => k.tableId);
+    const nonTableKOTs = visibleKOTs.filter(k => !k.tableId);
+    const activeCount = liveKOTs.filter(k => !['SERVED', 'COMPLETED', 'CANCELLED'].includes(k.status)).length;
+    const totalOrders = visibleKOTs.length;
     const canManage = hasPermissionFor?.(kdsAccess.module, kdsAccess.resource, "manage");
     const canServe = hasPermissionFor?.(kdsAccess.module, kdsAccess.resource, "serve");
 
@@ -172,11 +175,16 @@ const KDS = ({
     const renderKDSCard = (k, allKOTsList) => {
         const tableIdStr = String(k.tableId?._id || k.tableId?.id || k.tableId || '');
         const orderIdStr = String(k.orderId?._id || k.orderId?.id || k.orderId || '');
-        const isAdditional = Boolean(k.isAddon) || allKOTsList.findIndex(t => {
-            const tTableId = String(t.tableId?._id || t.tableId?.id || t.tableId || '');
+        const isKotActive = (kot) => !['SERVED', 'COMPLETED', 'CANCELLED'].includes(String(kot?.status || '').toUpperCase());
+        const isAdditional = Boolean(k.isAddon) || (isKotActive(k) && allKOTsList.findIndex(t => {
+            if (!isKotActive(t)) return false;
             const tOrderId = String(t.orderId?._id || t.orderId?.id || t.orderId || '');
-            return (tableIdStr && tTableId === tableIdStr) || (orderIdStr && tOrderId === orderIdStr);
-        }) < allKOTsList.indexOf(k);
+            if (orderIdStr && tOrderId) {
+                return tOrderId === orderIdStr;
+            }
+            const tTableId = String(t.tableId?._id || t.tableId?.id || t.tableId || '');
+            return Boolean(tableIdStr && tTableId === tableIdStr);
+        }) < allKOTsList.indexOf(k));
         const { type, label, categoryName } = getKOTType(k, tables, categories);
 
         return (

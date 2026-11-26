@@ -56,8 +56,9 @@ export const loadHardwarePrinterSettings = async (shopId, branchId) => {
 
 export const getHardwarePrinterSettingsCached = (branchId) => {
     try {
-        if (branchId) {
-            const raw = localStorage.getItem(`pos_hardware_printer_${branchId}`);
+        const resolvedBranchId = branchId || localStorage.getItem('pos_activeBranchId') || localStorage.getItem('pos_branchId') || null;
+        if (resolvedBranchId && resolvedBranchId !== 'null' && resolvedBranchId !== 'undefined') {
+            const raw = localStorage.getItem(`pos_hardware_printer_${resolvedBranchId}`);
             if (raw) return mergeHardwarePrinterSettings(JSON.parse(raw));
         }
         const fallback = localStorage.getItem('pos_hardware_printer_default');
