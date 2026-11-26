@@ -50,7 +50,7 @@ const PaymentModal = ({
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-0 sm:p-2 lg:p-4 animate-in fade-in duration-200">
-            <div className="w-full h-full sm:h-[95vh] sm:max-w-7xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 animate-in zoom-in-95 duration-200">
+            <div className="w-full h-[100dvh] max-h-[100dvh] sm:h-[95vh] sm:max-h-[95vh] sm:max-w-7xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 animate-in zoom-in-95 duration-200">
                 <InlineReviewBill
                     onBack={onClose}
                     onClose={onClose}

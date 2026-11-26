@@ -13,6 +13,10 @@ export function escapeHtml(input) {
 }
 
 function getPrintDocumentHtml({ title = "", html }) {
+  const trimmed = String(html || "").trimStart().toLowerCase();
+  if (trimmed.startsWith("<!doctype") || trimmed.startsWith("<html")) {
+    return html;
+  }
   return `<!doctype html>
 <html>
   <head>
@@ -73,12 +77,12 @@ function printViaIframe({ title = "", html }) {
   const iframe = document.createElement("iframe");
   iframe.id = "__pos_print_iframe__";
   iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
+  iframe.style.left = "-9999px";
+  iframe.style.top = "0";
+  iframe.style.width = "210mm";
+  iframe.style.height = "297mm";
   iframe.style.border = "0";
-  iframe.style.opacity = "0";
+  iframe.style.visibility = "hidden";
   iframe.setAttribute("aria-hidden", "true");
 
   document.body.appendChild(iframe);
@@ -93,15 +97,23 @@ function printViaIframe({ title = "", html }) {
   doc.write(getPrintDocumentHtml({ title, html }));
   doc.close();
 
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    removeExistingPrintFrame();
+  };
+
   const doPrint = () => {
     try {
       if (!iframe || !iframe.contentWindow) return;
+      iframe.contentWindow.addEventListener('afterprint', cleanup, { once: true });
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     } catch (e) {
       console.warn('Print failed:', e);
     } finally {
-      setTimeout(removeExistingPrintFrame, 1000);
+      setTimeout(cleanup, 60000);
     }
   };
 
@@ -216,12 +228,12 @@ export function printHtml({ title = "", html, printerType = 'bill', branchId = n
 
   const isNetworkPrinter = targetPrinter?.connectionType === 'lan' || targetPrinter?.connectionType === 'wifi';
   const hasValidIp = Boolean(targetPrinter?.ip && targetPrinter.ip.trim().length > 0);
+  const isBrowserPreviewMode = hwSettings?.printMode === 'browser';
 
   // Dispatch via cloud relay / LAN socket if:
-  // 1) User is on a mobile device (smartphones/tablets never have direct USB/Windows printer spoolers), OR
-  // 2) Target printer is a network printer (LAN/Wi-Fi with IP), OR
-  // 3) Silent print mode is active and printer has a configured IP
-  if (!forceBrowser && (isMobile || (targetPrinter && targetPrinter.enabled !== false && hasValidIp && (isNetworkPrinter || hwSettings?.printMode === 'silent')))) {
+  // 1) Print Preview Dialog mode is NOT explicitly selected (printMode !== 'browser'), AND
+  // 2) User is on a mobile device, OR target printer is a network printer (LAN/Wi-Fi with IP), OR silent print mode is active with IP
+  if (!forceBrowser && !isBrowserPreviewMode && (isMobile || (targetPrinter && targetPrinter.enabled !== false && hasValidIp && (isNetworkPrinter || hwSettings?.printMode === 'silent')))) {
     sendSilentPrintJob({
       printer: { ...targetPrinter, bridgeUrl: hwSettings?.bridgeUrl },
       html,
@@ -776,7 +788,12 @@ export function getBillA4Html({
 
 export function printBillA4(params) {
   const html = getBillA4Html(params);
-  printHtml({ title: params?.meta?.invoiceLabel || "Tax Invoice", html });
+  printHtml({
+    title: params?.meta?.invoiceLabel || "Tax Invoice",
+    html,
+    branchId: params?.branchId || null,
+    forceBrowser: params?.forceBrowser !== undefined ? params.forceBrowser : true,
+  });
 }
 
 export function downloadHtmlFile(htmlContent, fileName = "invoice.html") {

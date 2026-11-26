@@ -589,7 +589,8 @@ const SalesList = ({ initialTab, hideTabs = false } = {}) => {
                 billSettings,
                 extraInfo,
                 paymentMethod: effectivePaymentMethod,
-                paymentStatus: payDetails.paymentStatus
+                paymentStatus: payDetails.paymentStatus,
+                branchId: activeBranch?._id || activeBranch?.id || null
             });
             toast.success(`Printing ${format === 'a4' ? 'A4 invoice' : 'thermal receipt'}...`);
         } catch (err) {

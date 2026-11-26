@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
     ArrowLeft,
+    ArrowRight,
     Search,
     Plus,
     Minus,
@@ -124,6 +125,9 @@ const InlineReviewBill = ({
     
     // Collapsible Bill Breakdown (Default FALSE = Collapsed for maximum items height!)
     const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
+
+    // Mobile View Tab: 'payment' | 'bill' (Default: 'payment' for instant checkout on mobile)
+    const [mobileViewTab, setMobileViewTab] = useState("payment");
 
     // Loyalty State
     const [customerLoyalty, setCustomerLoyalty] = useState({ points: 0, value: 0, settings: null, loading: false });
@@ -675,29 +679,29 @@ const InlineReviewBill = ({
     return (
         <div className={`flex-1 flex flex-col h-full overflow-hidden ${theme.pageBg} select-none font-sans`}>
             {/* Top Sub-Header for Review Bill Page */}
-            <div className={`px-4 xl:px-6 py-3 border-b ${theme.borderLight} ${theme.surfaceBg} flex items-center justify-between gap-4 shrink-0 shadow-2xs`}>
-                <div className="flex items-center gap-3">
+            <div className={`px-3 sm:px-4 xl:px-6 py-2.5 sm:py-3 border-b ${theme.borderLight} ${theme.surfaceBg} flex items-center justify-between gap-3 sm:gap-4 shrink-0 shadow-2xs`}>
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                     <button
                         type="button"
                         onClick={onBack || onClose}
                         title={isModal ? "Close" : "Back to Order Menu"}
-                        className="p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-400 transition-all active:scale-95 border border-indigo-200/50 dark:border-indigo-800/50"
+                        className="p-2 sm:p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-400 transition-all active:scale-95 border border-indigo-200/50 dark:border-indigo-800/50 shrink-0 cursor-pointer"
                     >
-                        <ArrowLeft size={20} className="stroke-[2.5]" />
+                        <ArrowLeft size={18} className="stroke-[2.5]" />
                     </button>
-                    <div>
-                        <div className="flex items-center gap-2.5">
-                            <h2 className={`text-xl xl:text-2xl font-black ${theme.textPrimary} tracking-tight`}>
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap">
+                            <h2 className={`text-lg sm:text-xl xl:text-2xl font-black ${theme.textPrimary} tracking-tight`}>
                                 Review Bill
                             </h2>
-                            <span className="px-3 py-1 bg-indigo-600 text-white rounded-xl text-xs font-black tracking-wider shadow-xs">
+                            <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-indigo-600 text-white rounded-xl text-[11px] sm:text-xs font-black tracking-wider shadow-xs">
                                 {tabs?.find(t => t.id === activeTabId)?.orderName || `ORD-${String(activeTabId || 1).padStart(5, '0')}`}
                             </span>
-                            <span className="px-3 py-1 bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-black tracking-wider shadow-2xs">
+                            <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 rounded-full text-[11px] sm:text-xs font-black tracking-wider shadow-2xs">
                                 {totalItemTypes} Items • {totalItemQuantity} Qty
                             </span>
                         </div>
-                        <p className={`text-xs font-semibold ${theme.textMuted}`}>
+                        <p className={`text-[11px] sm:text-xs font-semibold ${theme.textMuted} truncate`}>
                             {isTakeaway ? (orderType || "Direct Sale") : (tableName ? `Table ${tableName}` : `Table ${activeTableId}`)}
                         </p>
                     </div>
@@ -758,19 +762,49 @@ const InlineReviewBill = ({
                             type="button"
                             onClick={onClose || onBack}
                             title="Close"
-                            className="p-2.5 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-white/10 dark:hover:bg-white/20 dark:text-gray-300 transition-all active:scale-95 border border-transparent shrink-0"
+                            className="p-2 sm:p-2.5 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-white/10 dark:hover:bg-white/20 dark:text-gray-300 transition-all active:scale-95 border border-transparent shrink-0 cursor-pointer"
                         >
-                            <X size={20} className="stroke-[2.5]" />
+                            <X size={18} className="stroke-[2.5]" />
                         </button>
                     )}
                 </div>
+            </div>
+
+            {/* Mobile View Switcher Tab (Bill Details vs Payment & Settle) */}
+            <div className={`lg:hidden flex p-1 mx-3 my-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 border ${theme.borderLight} gap-1 shrink-0`}>
+                <button
+                    type="button"
+                    onClick={() => setMobileViewTab("bill")}
+                    className={`flex-1 py-1.5 px-3 rounded-lg font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        mobileViewTab === "bill"
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : `${theme.textMuted} hover:${theme.textPrimary}`
+                    }`}
+                >
+                    <ReceiptText size={14} />
+                    <span>Bill Details ({deduplicatedItems.length})</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setMobileViewTab("payment")}
+                    className={`flex-1 py-1.5 px-3 rounded-lg font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        mobileViewTab === "payment"
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : `${theme.textMuted} hover:${theme.textPrimary}`
+                    }`}
+                >
+                    <CreditCard size={14} />
+                    <span>Payment & Settle</span>
+                </button>
             </div>
 
             {/* Main Content Split: Left (Customer + Items + Collapsible Breakdown) & Right (Settlement + Action Buttons) */}
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
                 
                 {/* LEFT PANEL: Customer Selection (Fixed) + Items To Bill (Scrollable) + Bill Breakdown (Collapsible) */}
-                <div className="flex-1 flex flex-col h-full overflow-hidden p-4 xl:p-6 space-y-4 xl:space-y-6">
+                <div className={`flex-1 flex-col h-full overflow-hidden p-3 sm:p-4 xl:p-6 space-y-3 sm:space-y-4 xl:space-y-6 ${
+                    mobileViewTab === "bill" ? "flex" : "hidden lg:flex"
+                }`}>
                     
                     {/* CUSTOMER SELECTION CONTAINER (Fixed at top / shrink-0) */}
                     <div className={`shrink-0 ${theme.surfaceBg} p-4 xl:p-5 rounded-2xl shadow-sm border ${theme.borderLight} space-y-3`}>
@@ -1428,29 +1462,43 @@ const InlineReviewBill = ({
                                 </div>
                             </div>
                         )}
+
+                        {/* Mobile shortcut to proceed to Payment */}
+                        <div className="lg:hidden shrink-0 pt-2 pb-safe">
+                            <button
+                                type="button"
+                                onClick={() => setMobileViewTab("payment")}
+                                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md active:scale-95 cursor-pointer"
+                            >
+                                <span>Proceed to Payment ({formatCurrency(finalBillDetails.finalTotal)})</span>
+                                <ArrowRight size={15} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 {/* RIGHT PANEL: PAYMENT METHOD & SETTLEMENT */}
-                <div className={`w-full lg:w-[400px] xl:w-[460px] 2xl:w-[500px] border-t lg:border-t-0 lg:border-l ${theme.borderLight} ${theme.surfaceBg} flex flex-col shrink-0 h-full overflow-hidden`}>
+                <div className={`w-full lg:w-[400px] xl:w-[460px] 2xl:w-[500px] border-t lg:border-t-0 lg:border-l ${theme.borderLight} ${theme.surfaceBg} flex-col shrink-0 lg:h-full overflow-hidden ${
+                    mobileViewTab === "payment" ? "flex flex-1 h-full" : "hidden lg:flex"
+                }`}>
                     
                     {/* TOP HEADER */}
-                    <div className={`p-4 xl:p-5 border-b ${theme.borderLight} flex items-center justify-between shrink-0 shadow-2xs`}>
-                        <h3 className={`text-lg xl:text-xl font-black ${theme.textPrimary} tracking-tight`}>
+                    <div className={`px-4 py-2.5 sm:py-3 xl:p-5 border-b ${theme.borderLight} flex items-center justify-between shrink-0 shadow-2xs`}>
+                        <h3 className={`text-base sm:text-lg xl:text-xl font-black ${theme.textPrimary} tracking-tight`}>
                             Payment & Settlement
                         </h3>
                         <button
                             type="button"
                             onClick={() => onPrintBill && onPrintBill(printFormat)}
                             title="Print Receipt"
-                            className={`p-2 rounded-xl ${theme.pageBg} ${theme.textPrimary} hover:bg-indigo-50 dark:hover:bg-indigo-950/60 border ${theme.borderLight} transition-all`}
+                            className={`p-1.5 sm:p-2 rounded-xl ${theme.pageBg} ${theme.textPrimary} hover:bg-indigo-50 dark:hover:bg-indigo-950/60 border ${theme.borderLight} transition-all cursor-pointer`}
                         >
-                            <Printer size={18} />
+                            <Printer size={16} />
                         </button>
                     </div>
 
                     {/* SCROLLABLE SETTLEMENT OPTIONS */}
-                    <div className="flex-1 overflow-y-auto p-4 xl:p-5 space-y-4 xl:space-y-5 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto p-3 sm:p-4 xl:p-5 space-y-3 sm:space-y-4 xl:space-y-5 custom-scrollbar">
                         
                         {/* PAYMENT METHOD SELECTOR GRID (5 METHODS MATCHING CONCEPT DESIGN & PAYMENTMODAL) */}
                         <div className="space-y-2.5">
@@ -1689,7 +1737,7 @@ const InlineReviewBill = ({
                     </div>
 
                     {/* FIXED/STICKY BOTTOM ACTION FOOTER (ALWAYS VISIBLE, NO SCROLL REQUIRED) */}
-                    <div className={`p-2.5 xl:p-3.5 border-t ${theme.borderLight} ${theme.surfaceBg} shrink-0 shadow-lg`}>
+                    <div className={`p-2.5 pb-[max(1.25rem,env(safe-area-inset-bottom,20px))] sm:pb-2.5 xl:p-3.5 border-t ${theme.borderLight} ${theme.surfaceBg} shrink-0 shadow-lg`}>
                         {/* Compact toggle: Checkout without print */}
                         <div className="flex items-center justify-between pb-2 px-1">
                             <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
@@ -1717,7 +1765,7 @@ const InlineReviewBill = ({
                             <button
                                 type="button"
                                 onClick={() => onPrintBill && onPrintBill(printFormat)}
-                                className={`py-3 xl:py-3.5 px-3 sm:px-4 xl:px-5 shrink-0 ${theme.mode === 'dark' ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-slate-900 hover:bg-slate-800 text-white'} rounded-xl xl:rounded-2xl font-black text-xs xl:text-sm uppercase tracking-wide shadow-md flex items-center justify-center gap-1.5 xl:gap-2 transition-all active:scale-95 cursor-pointer whitespace-nowrap`}
+                                className={`py-2.5 sm:py-3 xl:py-3.5 px-3 sm:px-4 xl:px-5 shrink-0 ${theme.mode === 'dark' ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-slate-900 hover:bg-slate-800 text-white'} rounded-xl xl:rounded-2xl font-black text-xs xl:text-sm uppercase tracking-wide shadow-md flex items-center justify-center gap-1.5 xl:gap-2 transition-all active:scale-95 cursor-pointer whitespace-nowrap`}
                                 title="Print Bill without checking out"
                             >
                                 <Printer size={16} className="shrink-0" />
@@ -1728,7 +1776,7 @@ const InlineReviewBill = ({
                                 type="button"
                                 onClick={handleCheckoutSubmit}
                                 disabled={isProcessingPayment || !!zeroPriceItem}
-                                className={`flex-1 min-w-0 py-3 xl:py-3.5 px-3 xl:px-4 rounded-xl xl:rounded-2xl font-black text-xs xl:text-sm uppercase tracking-tight xl:tracking-wide text-white shadow-lg flex items-center justify-center gap-1.5 xl:gap-2 transition-all cursor-pointer ${
+                                className={`flex-1 min-w-0 py-2.5 sm:py-3 xl:py-3.5 px-3 xl:px-4 rounded-xl xl:rounded-2xl font-black text-xs xl:text-sm uppercase tracking-tight xl:tracking-wide text-white shadow-lg flex items-center justify-center gap-1.5 xl:gap-2 transition-all cursor-pointer ${
                                     isProcessingPayment || !!zeroPriceItem
                                         ? "bg-gray-400 cursor-not-allowed opacity-75"
                                         : isCreditPurchase

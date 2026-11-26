@@ -121,6 +121,7 @@ export const TakeawayProvider = ({ children }) => {
     const persistTimeoutRef = useRef(null);
     const syncBackendTimeoutRef = useRef(null);
     const prevActiveTabIdRef = useRef(activeTabId);
+    const lastLocalEditAtRef = useRef(0);
 
     // Broadcast tab changes to other browser tabs/windows in real time (0ms)
     const broadcastTabsUpdate = useCallback((updatedTabs, activeId) => {
@@ -266,6 +267,7 @@ export const TakeawayProvider = ({ children }) => {
                     clientSessionId !== clientSessionIdRef.current &&
                     updatedAt &&
                     updatedAt > (lastRemoteSyncedAtRef.current || 0) &&
+                    updatedAt > (lastLocalEditAtRef.current || 0) &&
                     Array.isArray(remoteTabs) &&
                     remoteTabs.length > 0
                 ) {
@@ -361,6 +363,7 @@ export const TakeawayProvider = ({ children }) => {
             clearTimeout(persistTimeoutRef.current);
         }
 
+        lastLocalEditAtRef.current = Date.now();
         persistTimeoutRef.current = setTimeout(() => {
             setTabs((prevTabs) => {
                 const updatedTabs = prevTabs.map(t => {
@@ -443,6 +446,12 @@ export const TakeawayProvider = ({ children }) => {
     const closeTab = (id, e, skipDelete = false) => {
         if (e) e.stopPropagation();
 
+        if (persistTimeoutRef.current) {
+            clearTimeout(persistTimeoutRef.current);
+            persistTimeoutRef.current = null;
+        }
+        lastLocalEditAtRef.current = Date.now();
+
         const targetTab = tabs.find(t => t.id === id);
         const draftOrderId = targetTab?.takeawayOrder?.orderId || (id === activeTabId ? takeawayOrder?.orderId : null);
 
@@ -452,10 +461,9 @@ export const TakeawayProvider = ({ children }) => {
 
         if (tabs.length === 1) {
             // Closing the only open tab: clear current tab completely and replace with a fresh, blank Tab 1
-            isResettingRef.current = true;
-            
             const freshTabId = 1;
             const freshTab = createTab(freshTabId, "Tab 1");
+            prevActiveTabIdRef.current = freshTabId;
 
             setTakeawayOrder(freshTab.takeawayOrder);
             setTakeawayCustName("");
@@ -476,10 +484,6 @@ export const TakeawayProvider = ({ children }) => {
 
             broadcastTabsUpdate([freshTab], freshTabId);
             syncTabsToBackend([freshTab], freshTabId);
-
-            setTimeout(() => {
-                isResettingRef.current = false;
-            }, 300);
             return;
         }
 
@@ -490,7 +494,16 @@ export const TakeawayProvider = ({ children }) => {
         if (activeTabId === id) {
             const remainingTab = newTabs[newTabs.length - 1];
             nextActiveId = remainingTab.id;
+            prevActiveTabIdRef.current = nextActiveId;
             setActiveTabId(nextActiveId);
+            setIsTakeaway(remainingTab.isTakeaway);
+            setTakeawayOrder(remainingTab.takeawayOrder || { ...INITIAL_TAB_DATA.takeawayOrder });
+            setTakeawayCustName(remainingTab.takeawayCustName || "");
+            setTakeawayCustPhone(remainingTab.takeawayCustPhone || "");
+            setSelectedCustomer(remainingTab.selectedCustomer || null);
+            setBillDiscount(remainingTab.billDiscount || { type: "flat", value: 0 });
+            setLoyaltyDiscount(remainingTab.loyaltyDiscount || { points: 0, amount: 0 });
+            setTableId(remainingTab.tableId || null);
         }
 
         try {
@@ -519,13 +532,17 @@ export const TakeawayProvider = ({ children }) => {
     };
 
     const resetTakeaway = (skipDelete = true) => {
+        if (persistTimeoutRef.current) {
+            clearTimeout(persistTimeoutRef.current);
+            persistTimeoutRef.current = null;
+        }
+        lastLocalEditAtRef.current = Date.now();
+
         const draftOrderId = takeawayOrder?.orderId;
         if (draftOrderId && !skipDelete) {
             orderService.deleteOrder(draftOrderId).catch(err => console.error("Failed to delete draft order on resetTakeaway:", err));
         }
 
-        isResettingRef.current = true;
-        
         const resetOrder = {
             ...INITIAL_TAB_DATA.takeawayOrder,
             orderType: takeawayOrder?.orderType || 'TAKEAWAY'
@@ -565,10 +582,6 @@ export const TakeawayProvider = ({ children }) => {
             syncTabsToBackend(updated, activeTabId);
             return updated;
         });
-        
-        setTimeout(() => {
-            isResettingRef.current = false;
-        }, 300);
     };
 
     const clearAllTabs = () => {

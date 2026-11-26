@@ -66,15 +66,6 @@ const BARCODE_LABEL_OPTIONS = [
     { key: 'showUnitLabel', label: 'Unit/Qty' },
 ];
 
-const PRINTER_MODEL_OPTIONS = [
-    { label: 'POS-80C Thermal (80mm USB / LAN)', value: 'POS-80C' },
-    { label: 'Epson TM Series (TM-T82 / TM-T88)', value: 'Epson TM Series' },
-    { label: 'TVS Electronics (RP-3200 / RP-3150)', value: 'TVS RP-3200' },
-    { label: 'NGX / Everycom / Rugtek Thermal', value: 'NGX / Everycom' },
-    { label: 'Generic ESC/POS Thermal (58mm / 80mm)', value: 'Generic ESC/POS' },
-    { label: 'Custom / Other Device Model', value: 'Custom' },
-];
-
 const CONNECTION_TYPES = [
     { key: 'usb', label: 'USB Cable', desc: 'Direct USB Port (POS-80C)', icon: Usb },
     { key: 'lan', label: 'LAN Cable', desc: 'Ethernet Router (Port 9100)', icon: Network },
@@ -157,6 +148,7 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
     const [hardwareSettings, setHardwareSettings] = useState({ ...DEFAULT_HARDWARE_PRINTER_SETTINGS });
     const [hardwareBaseline, setHardwareBaseline] = useState(null);
     const [bridgeStatus, setBridgeStatus] = useState({ online: false, checking: true, source: null });
+    const [installedPrinters, setInstalledPrinters] = useState([]);
 
     // LAN Print Relay Setup Modal State
     const [isLanModalOpen, setIsLanModalOpen] = useState(false);
@@ -168,12 +160,24 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
         [branches, activeBranchId]
     );
 
-    const saveShopId = isSuperAdmin ? null : (currentShopId || null);
-    const saveBranchId = isSuperAdmin ? null : (activeBranchId || null);
+    const saveShopId = currentShopId || null;
+    const saveBranchId = activeBranchId || null;
     const canSave = isSuperAdmin || !!activeBranchId;
 
     const activeResolvedShopId = currentShopId || activeBranch?.shopId || activeBranch?.shop || currentUser?.shopId || currentUser?.shop || organization?.currentShopId || organization?._id || '';
     const activeResolvedBranchId = activeBranchId || activeBranch?._id || activeBranch?.id || saveBranchId || '';
+
+    const installedPrinterOptions = useMemo(() => {
+        const base = [{ label: 'System Default / Auto (Optional)', value: '' }];
+        if (!installedPrinters.length) return base;
+        return [
+            ...base,
+            ...installedPrinters.map((p) => ({
+                label: `${p.displayName || p.name}${p.isDefault ? ' (Default)' : ''}`,
+                value: p.name,
+            })),
+        ];
+    }, [installedPrinters]);
 
     const handleLanModalTestPrint = async () => {
         const target = lanModalTargetPrinter || hardwareSettings.kitchenPrinter || hardwareSettings.cashierPrinter;
@@ -264,6 +268,9 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                     localStorage.setItem(`pos_hardware_printer_${saveBranchId}`, JSON.stringify(hardware));
                 } catch (e) { }
             }
+            try {
+                localStorage.setItem('pos_hardware_printer_default', JSON.stringify(hardware));
+            } catch (e) { }
         } catch (error) {
             console.error('Failed to load print settings:', error);
             toast.error('Failed to load settings');
@@ -298,6 +305,24 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                         lastSeen: Date.now()
                     };
                     setBridgeStatus(statusObj);
+                    // Fetch installed OS printers & auto-sync selected navbar branchId to local bridge
+                    fetch('http://127.0.0.1:3001/printers', { cache: 'no-store' })
+                        .then((r) => (r.ok ? r.json() : null))
+                        .then((d) => {
+                            if (Array.isArray(d?.printers)) setInstalledPrinters(d.printers);
+                        })
+                        .catch(() => { });
+                    if (activeResolvedBranchId || activeResolvedShopId) {
+                        fetch('http://127.0.0.1:3001/config', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                shopId: activeResolvedShopId || undefined,
+                                branchId: activeResolvedBranchId || '',
+                                cloudUrl: getResolvedCloudApiUrl(),
+                            }),
+                        }).catch(() => { });
+                    }
                     if (showFeedback) toast.success("FilePe Print Station is Active on this computer!", { icon: '🟢' });
                     return statusObj;
                 }
@@ -412,6 +437,9 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                         localStorage.setItem(`pos_hardware_printer_${saveBranchId}`, JSON.stringify(hardwareSettings));
                     } catch (e) { }
                 }
+                try {
+                    localStorage.setItem('pos_hardware_printer_default', JSON.stringify(hardwareSettings));
+                } catch (e) { }
             }
             toast.success(`Print settings saved for ${scopeLabel}`);
         } catch (error) {
@@ -847,20 +875,25 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                                 )}
                             </div>
 
-                            {/* Device Model Preset Selector */}
+                            {/* Installed Device Printer Selector (Optional) */}
                             <div>
-                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>
-                                    Printer Device / Model
-                                </label>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>
+                                        Installed Device Printer (Optional)
+                                    </label>
+                                    {!installedPrinters.length && (
+                                        <span className="text-[10px] text-slate-400">Uses OS default unless Print Station is active</span>
+                                    )}
+                                </div>
                                 <CommonSelect
-                                    options={PRINTER_MODEL_OPTIONS}
-                                    value={hardwareSettings.cashierPrinter?.deviceModel || 'POS-80C'}
+                                    options={installedPrinterOptions}
+                                    value={hardwareSettings.cashierPrinter?.deviceModel && installedPrinters.some(p => p.name === hardwareSettings.cashierPrinter.deviceModel) ? hardwareSettings.cashierPrinter.deviceModel : ''}
                                     onChange={(val) => setHardwareSettings((p) => ({
                                         ...p,
                                         cashierPrinter: {
                                             ...p.cashierPrinter,
-                                            deviceModel: val,
-                                            name: p.cashierPrinter?.name || (val === 'POS-80C' ? 'POS-80C (USB Thermal)' : `${val} Printer`),
+                                            deviceModel: val || '',
+                                            name: val || p.cashierPrinter?.name || '',
                                         },
                                     }))}
                                     labelKey="label"
@@ -919,7 +952,7 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                 <div>
-                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Printer Display Name</label>
+                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Printer Display Name (Optional)</label>
                                     <input
                                         type="text"
                                         value={hardwareSettings.cashierPrinter?.name || ''}
@@ -987,24 +1020,6 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                                     onChange={(val) => setHardwareSettings((p) => ({
                                         ...p,
                                         cashierPrinter: { ...p.cashierPrinter, autoPrintOnComplete: val },
-                                    }))}
-                                    theme={theme}
-                                />
-                                <Toggle
-                                    label="Auto-cut receipt paper (ESC/POS Cut Command)"
-                                    checked={hardwareSettings.cashierPrinter?.autoCut !== false}
-                                    onChange={(val) => setHardwareSettings((p) => ({
-                                        ...p,
-                                        cashierPrinter: { ...p.cashierPrinter, autoCut: val },
-                                    }))}
-                                    theme={theme}
-                                />
-                                <Toggle
-                                    label="Pulse kick cash drawer on print (RJ-11 Port)"
-                                    checked={Boolean(hardwareSettings.cashierPrinter?.openCashDrawer)}
-                                    onChange={(val) => setHardwareSettings((p) => ({
-                                        ...p,
-                                        cashierPrinter: { ...p.cashierPrinter, openCashDrawer: val },
                                     }))}
                                     theme={theme}
                                 />
@@ -1171,20 +1186,20 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                                             )}
                                         </div>
 
-                                        {/* Device Model Preset Selector */}
+                                        {/* Installed Device Printer Selector (Optional) */}
                                         <div>
                                             <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>
-                                                Kitchen Printer Model
+                                                Installed Device Printer (Optional)
                                             </label>
                                             <CommonSelect
-                                                options={PRINTER_MODEL_OPTIONS}
-                                                value={hardwareSettings.kitchenPrinter?.deviceModel || 'Generic ESC/POS'}
+                                                options={installedPrinterOptions}
+                                                value={hardwareSettings.kitchenPrinter?.deviceModel && installedPrinters.some(p => p.name === hardwareSettings.kitchenPrinter.deviceModel) ? hardwareSettings.kitchenPrinter.deviceModel : ''}
                                                 onChange={(val) => setHardwareSettings((p) => ({
                                                     ...p,
                                                     kitchenPrinter: {
                                                         ...p.kitchenPrinter,
-                                                        deviceModel: val,
-                                                        name: p.kitchenPrinter?.name || `${val} KOT`,
+                                                        deviceModel: val || '',
+                                                        name: val || p.kitchenPrinter?.name || '',
                                                     },
                                                 }))}
                                                 labelKey="label"
@@ -1194,7 +1209,7 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                             <div>
-                                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Printer Display Name</label>
+                                                <label className={`text-[10px] font-black uppercase tracking-widest ${theme.textMuted} block mb-1.5`}>Printer Display Name (Optional)</label>
                                                 <input
                                                     type="text"
                                                     value={hardwareSettings.kitchenPrinter?.name || ''}
@@ -1262,24 +1277,6 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                                                 onChange={(val) => setHardwareSettings((p) => ({
                                                     ...p,
                                                     kitchenPrinter: { ...p.kitchenPrinter, autoPrintOnKOT: val },
-                                                }))}
-                                                theme={theme}
-                                            />
-                                            <Toggle
-                                                label="Auto-cut KOT ticket paper (ESC/POS Cut)"
-                                                checked={hardwareSettings.kitchenPrinter?.autoCut !== false}
-                                                onChange={(val) => setHardwareSettings((p) => ({
-                                                    ...p,
-                                                    kitchenPrinter: { ...p.kitchenPrinter, autoCut: val },
-                                                }))}
-                                                theme={theme}
-                                            />
-                                            <Toggle
-                                                label="Beep kitchen printer buzzer on new KOT order"
-                                                checked={hardwareSettings.kitchenPrinter?.beepBuzzer !== false}
-                                                onChange={(val) => setHardwareSettings((p) => ({
-                                                    ...p,
-                                                    kitchenPrinter: { ...p.kitchenPrinter, beepBuzzer: val },
                                                 }))}
                                                 theme={theme}
                                             />
@@ -1441,7 +1438,7 @@ const BarcodeBillSettings = ({ currentUser, hasPermission, hasPermissionFor }) =
                             </button>
 
                             <div className="bg-white/70 dark:bg-slate-900/70 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-0.5">
-                                <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Restaurant Shop ID</span>
+                                <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Printer Key</span>
                                 <code className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{activeResolvedShopId || 'Auto-Detected'}</code>
                             </div>
                         </div>

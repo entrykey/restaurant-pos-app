@@ -2420,8 +2420,8 @@ const AppContent = () => {
                     }
                 }
 
-                // Mark all linked KOTs as COMPLETED only if PREPAID_AUTO_SERVE_ON_PAYMENT setting is enabled
-                if (settings?.PREPAID_AUTO_SERVE_ON_PAYMENT === true) {
+                // Mark all linked KOTs as COMPLETED on Dine-In checkout (table released) or when PREPAID_AUTO_SERVE_ON_PAYMENT is enabled
+                if (!isTakeaway || settings?.PREPAID_AUTO_SERVE_ON_PAYMENT === true) {
                     try {
                         await api.post('/kitchen/kots/complete-by-order', {
                             orderId: currentOrderId,
