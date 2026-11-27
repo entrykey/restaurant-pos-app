@@ -28,6 +28,20 @@ const ACTION_ALIASES = {
   "6ab12a75fd8bac0f2fbd1ad8": ["MANAGE.EXPENSE", "manage.expense", "6ab12a75fd8bac0f2fbd1ad8"]
 };
 
+const OWNER_FALLBACK_MODULES = [
+  "DASHBOARD",
+  "ORGANIZATION",
+  "SETTINGS",
+  "STAFF",
+  "INVENTORY",
+  "REPORTS",
+  "PARTIES",
+  "PURCHASE",
+  "SALE_MARKING",
+  "SALES_HISTORY",
+  "POS",
+];
+
 export const hasPermission = (user, module, action) => {
   if (!user) return false;
   
@@ -40,6 +54,10 @@ export const hasPermission = (user, module, action) => {
   }
 
   const permissions = user.permissions;
+  if (user.isOwner === true && (!permissions || (typeof permissions === "object" && !Array.isArray(permissions) && Object.keys(permissions).length === 0))) {
+    const isOwnerCore = OWNER_FALLBACK_MODULES.some(m => moduleTargets.includes(m.toLowerCase()));
+    if (isOwnerCore) return true;
+  }
   if (!permissions) return false;
 
   // Case A: permissions is an Array
@@ -136,6 +154,10 @@ export const hasModuleAccess = (user, moduleId) => {
   }
   
   const permissions = user.permissions;
+  if (user.isOwner === true && (!permissions || (typeof permissions === "object" && !Array.isArray(permissions) && Object.keys(permissions).length === 0))) {
+    const isOwnerCore = OWNER_FALLBACK_MODULES.some(m => moduleTargets.includes(m.toLowerCase()));
+    if (isOwnerCore) return true;
+  }
   if (!permissions) return false;
 
   if (Array.isArray(permissions)) {

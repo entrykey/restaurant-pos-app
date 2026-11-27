@@ -171,7 +171,7 @@ function openPrintWindow({ title = "", html }) {
   return true;
 }
 
-export async function sendSilentPrintJob({ printer, html, title, type = 'bill', meta = null, items = [], branchId = null, shopId = null }) {
+export async function sendSilentPrintJob({ printer, html, title, type = 'bill', meta = null, items = [], header = null, totals = null, paymentMethod = null, footerText = null, branchId = null, shopId = null }) {
   try {
     const activeBranchId = branchId || localStorage.getItem('pos_activeBranchId') || localStorage.getItem('pos_branchId') || null;
     const resolvedShopId = shopId || localStorage.getItem('pos_shopId') || null;
@@ -186,8 +186,16 @@ export async function sendSilentPrintJob({ printer, html, title, type = 'bill', 
       type,
       title,
       html,
-      meta,
+      header: header || undefined,
+      meta: {
+        ...(meta || {}),
+        ...(paymentMethod ? { paymentMethod } : {}),
+        ...(footerText ? { footerText } : {}),
+      },
       items,
+      totals: totals || undefined,
+      paymentMethod: paymentMethod || undefined,
+      footerText: footerText || undefined,
       autoCut: printer?.autoCut !== false,
       beepBuzzer: printer?.beepBuzzer !== false,
       openCashDrawer: Boolean(printer?.openCashDrawer),
@@ -216,7 +224,7 @@ export function isMobileDevice() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
 }
 
-export function printHtml({ title = "", html, printerType = 'bill', branchId = null, forceBrowser = false, meta = null, items = [] }) {
+export function printHtml({ title = "", html, printerType = 'bill', branchId = null, forceBrowser = false, meta = null, items = [], header = null, totals = null, paymentMethod = null, footerText = null }) {
   const isMobile = isMobileDevice();
   const hwSettings = getHardwarePrinterSettingsCached(branchId);
 
@@ -241,6 +249,10 @@ export function printHtml({ title = "", html, printerType = 'bill', branchId = n
       type: printerType,
       meta,
       items,
+      header,
+      totals,
+      paymentMethod,
+      footerText,
       branchId,
     }).catch((err) => {
       console.warn('Silent network print dispatch error:', err);
@@ -541,7 +553,27 @@ export function printBill({
     </div>
   `;
 
-  printHtml({ title: "", html, printerType: 'bill', branchId, forceBrowser });
+  printHtml({
+    title: meta?.invoiceLabel || "BILL",
+    html,
+    printerType: 'bill',
+    branchId,
+    forceBrowser,
+    header,
+    meta: {
+      ...(meta || {}),
+      staffName: staffName || meta?.staffName || '',
+      paymentMethod: paymentMethod || '',
+      paymentStatus: statusText || '',
+      paidAmount: paidAmt,
+      remainingBalance: remainingBal,
+      footerText,
+    },
+    items,
+    totals,
+    paymentMethod,
+    footerText,
+  });
 }
 
 export function getBillA4Html({
