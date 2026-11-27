@@ -254,12 +254,22 @@ const FoodItemCard = ({
 
                         <div className="overflow-y-auto max-h-48 my-1 space-y-1.5 custom-scrollbar pr-0.5">
                             {portionList.map((variant, idx) => {
-                                const variantStock = Number.isFinite(variant.quantityOnHand)
-                                    ? variant.quantityOnHand
-                                    : Number.isFinite(variant.openingStock)
-                                    ? variant.openingStock
-                                    : null;
-                                const isVarOut = variantStock !== null && variantStock <= 0;
+                                const isSeparate = item.inventoryMode === 'separate';
+                                let variantStock = null;
+                                if (isSeparate) {
+                                    variantStock = Number.isFinite(variant.quantityOnHand)
+                                        ? variant.quantityOnHand
+                                        : Number.isFinite(variant.openingStock)
+                                        ? variant.openingStock
+                                        : null;
+                                } else if (isStockTracked(item)) {
+                                    const baseAvail = getAvailableStock(item);
+                                    const factor = Number(variant.quantityFactor) || 1;
+                                    if (baseAvail !== Infinity) {
+                                        variantStock = factor > 0 ? Math.round((baseAvail / factor) * 100) / 100 : baseAvail;
+                                    }
+                                }
+                                const isVarOut = isStockTracked(item) && !allowsNegativeStock(item) && variantStock !== null && variantStock <= 0;
                                 const variantLabel = variant.name || variant.portionName || variant.title || `Variant ${idx + 1}`;
 
                                 return (

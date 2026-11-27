@@ -55,8 +55,9 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
     useEffect(() => {
         if (isOpen && item) {
             const portions = getItemPortions(item);
+            const isSeparateStock = item?.inventoryMode === 'separate';
             let defaultVar = initialVariant || null;
-            if (!defaultVar && portions && portions.length > 0) {
+            if (!defaultVar && isSeparateStock && portions && portions.length > 0) {
                 defaultVar = portions[0];
             }
             setSelectedVariant(defaultVar);
@@ -71,6 +72,9 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
     if (!isOpen || !item) return null;
 
     const portions = getItemPortions(item);
+    const isSeparateStock = item?.inventoryMode === 'separate';
+    const sharedTotalQty = Number(item.quantityOnHand ?? 0);
+    const selectedFactor = (!isSeparateStock && selectedVariant) ? (Number(selectedVariant.quantityFactor) || 1) : 1;
     const priceSource = getPriceSource(item);
     const total = quantity && price && !isNaN(quantity) && !isNaN(price)
         ? Number(quantity) * Number(price)
@@ -199,13 +203,37 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                     {portions && portions.length > 0 && (
                         <div className="space-y-3">
                             <label className={`block text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>
-                                <span className="text-red-500 mr-1">*</span> Select Variant
+                                <span className="text-red-500 mr-1">*</span> {isSeparateStock ? 'Select Variant' : 'Adjust Shared Stock or By Portion'}
                             </label>
                             <div className="flex flex-wrap gap-2">
+                                {!isSeparateStock && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedVariant(null);
+                                            setPrice(getAutoPrice(item));
+                                        }}
+                                        className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all border ${
+                                            selectedVariant === null
+                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/20 scale-[1.02]'
+                                                : `${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-400`
+                                        }`}
+                                    >
+                                        <span>Total Shared Stock</span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                            selectedVariant === null ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'
+                                        }`}>
+                                            {Math.round(sharedTotalQty * 1000) / 1000} in stock
+                                        </span>
+                                    </button>
+                                )}
                                 {portions.map((p, idx) => {
                                     const isSelected = (selectedVariant?._id && p._id && String(selectedVariant._id) === String(p._id)) ||
                                         (selectedVariant?.name && p.name && selectedVariant.name.toLowerCase() === p.name.toLowerCase());
-                                    const curQty = p.quantityOnHand ?? p.openingStock ?? p.stock ?? p.qty ?? 0;
+                                    const factor = Number(p.quantityFactor) || 1;
+                                    const curQty = isSeparateStock
+                                        ? (p.quantityOnHand ?? p.openingStock ?? p.stock ?? p.qty ?? 0)
+                                        : (factor > 0 ? Math.round((sharedTotalQty / factor) * 100) / 100 : sharedTotalQty);
                                     return (
                                         <button
                                             key={idx}
@@ -220,26 +248,31 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                                                     : `${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-400`
                                             }`}
                                         >
-                                            <span>{p.name || `Variant ${idx + 1}`}</span>
+                                            <span>{p.name || `Variant ${idx + 1}`}{!isSeparateStock ? ` (×${factor})` : ''}</span>
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                                                 isSelected ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'
                                             }`}>
-                                                {curQty} in stock
+                                                {isSeparateStock ? `${curQty} in stock` : `${curQty} avail.`}
                                             </span>
                                         </button>
                                     );
                                 })}
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedVariant(null)}
-                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all border ${
-                                        selectedVariant === null
-                                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/20 scale-[1.02]'
-                                            : `${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-400`
-                                    }`}
-                                >
-                                    <span>All / Total Item Stock</span>
-                                </button>
+                                {isSeparateStock && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedVariant(null);
+                                            setPrice(getAutoPrice(item));
+                                        }}
+                                        className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all border ${
+                                            selectedVariant === null
+                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/20 scale-[1.02]'
+                                                : `${theme.inputBg} ${theme.textPrimary} ${theme.borderLight} hover:border-indigo-400`
+                                        }`}
+                                    >
+                                        <span>All / Total Item Stock</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}
@@ -247,12 +280,13 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                     {/* Quantity Field */}
                     <div className="space-y-3">
                         <label className={`block text-sm font-black uppercase tracking-widest ${theme.textSecondary}`}>
-                            <span className="text-red-500 mr-1">*</span> Quantity {selectedVariant ? `(${selectedVariant.name})` : ''}
+                            <span className="text-red-500 mr-1">*</span> Quantity {selectedVariant ? `(${selectedVariant.name})` : (!isSeparateStock && portions?.length ? '(Shared Total)' : '')}
                         </label>
                         <div className="relative group">
                             <Calculator className={`absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-blue-500 transition-colors ${theme.textMuted}`} size={20} />
                             <input
                                 type="number"
+                                step="any"
                                 required
                                 value={quantity}
                                 onChange={(e) => setQuantity(e.target.value)}
@@ -260,6 +294,11 @@ const StockAdjustmentModal = ({ isOpen, onClose, item, branchId, onAdjustmentSuc
                                 className={`w-full pl-12 pr-4 py-4 rounded-2xl border-2 border-transparent outline-none focus:border-blue-500 transition-all font-bold text-lg ${theme.inputBg} ${theme.textPrimary}`}
                             />
                         </div>
+                        {!isSeparateStock && selectedVariant && quantity !== '' && !isNaN(quantity) && (
+                            <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 pl-1">
+                                Portion factor ×{selectedFactor} → {adjustmentType === 'SET' ? 'sets shared stock to' : 'adjusts shared stock by'} {Math.round(Number(quantity) * selectedFactor * 1000) / 1000}
+                            </p>
+                        )}
                     </div>
 
                     {/* Price Field */}

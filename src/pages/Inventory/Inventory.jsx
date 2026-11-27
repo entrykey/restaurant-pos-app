@@ -364,7 +364,7 @@ const Inventory = ({
                     ? item.variants
                     : null;
 
-        if (portions && portions.length > 0) {
+        if (portions && portions.length > 0 && item.inventoryMode === 'separate') {
             return portions.some((p) => {
                 const pQty = Number(p.quantityOnHand ?? p.openingStock ?? p.quantity ?? p.currentStock ?? p.stock ?? p.qty) || 0;
                 return minAlert > 0 ? pQty <= minAlert : (item.minStockAlert != null || item.stockSettings?.minStockAlert != null ? pQty <= minAlert : false);
@@ -394,7 +394,7 @@ const Inventory = ({
                 lowStockCount++;
             }
 
-            if (portions && portions.length > 0) {
+            if (portions && portions.length > 0 && item.inventoryMode === 'separate') {
                 portions.forEach((p) => {
                     const pQty = Number(p.quantityOnHand ?? p.openingStock ?? p.quantity ?? p.currentStock ?? p.stock ?? p.qty) || 0;
                     const pSalePrice = Number(p.price || item.pricing?.sellingPrice || item.sellingPrice) || 0;
@@ -405,7 +405,8 @@ const Inventory = ({
                     }
                 });
             } else {
-                const salePrice = Number(item.pricing?.sellingPrice ?? item.sellingPrice) || 0;
+                const defaultPortion = portions && portions.length > 0 ? (portions.find(p => p.isDefault) || portions[0]) : null;
+                const salePrice = Number(item.pricing?.sellingPrice ?? item.sellingPrice ?? defaultPortion?.price) || 0;
                 const purchasePrice = Number(item.pricing?.purchasePrice ?? item.purchasePrice ?? item.costPerUnit) || 0;
                 const margin = salePrice - purchasePrice;
                 if (margin > 0) {
@@ -654,6 +655,13 @@ const Inventory = ({
         return Number(val) || 0;
     };
 
+    const getPortionAvailableFromShared = (totalQty, p) => {
+        const factor = Number(p?.quantityFactor) || 1;
+        const qty = Number(totalQty) || 0;
+        if (factor <= 0) return qty;
+        return Math.round((qty / factor) * 100) / 100;
+    };
+
     const stockColumn = {
         header: "Stock",
         key: "_id",
@@ -661,16 +669,26 @@ const Inventory = ({
         className: "text-center",
         exportValue: (_, item) => {
             const portions = getItemPortions(item);
-            if (portions && portions.length > 0) {
+            if (portions && portions.length > 0 && item.inventoryMode === 'separate') {
                 return portions.map(p => {
                     const pQty = getPortionStockQty(p);
                     return `${p.name || 'Variant'}: ${pQty}`;
                 }).join(' | ');
             }
+            if (portions && portions.length > 0) {
+                const totalQty = item.quantityOnHand ?? 0;
+                const breakdown = portions.map(p => {
+                    const factor = Number(p.quantityFactor) || 1;
+                    const avail = getPortionAvailableFromShared(totalQty, p);
+                    return `${p.name || 'Portion'} (×${factor}): ${avail}`;
+                }).join(' | ');
+                return `Total: ${totalQty} (${breakdown})`;
+            }
             return item.quantityOnHand ?? 0;
         },
         render: (id, item) => {
             const portions = getItemPortions(item);
+            const isSeparate = item.inventoryMode === 'separate';
             const damaged = item.damagedQuantity ?? 0;
             const min = item.stockSettings?.minStockAlert ?? item.minStockAlert ?? 0;
             const unitName = item.unitId?.name || "";
@@ -679,11 +697,11 @@ const Inventory = ({
                 e.stopPropagation();
                 if (!canManage) return;
                 setSelectedAdjustmentItem(item);
-                setSelectedAdjustmentVariant(targetVariant || (portions && portions.length > 0 ? portions[0] : null));
+                setSelectedAdjustmentVariant(targetVariant || (isSeparate && portions && portions.length > 0 ? portions[0] : null));
                 setIsAdjustmentModalOpen(true);
             };
 
-            if (portions && portions.length > 0) {
+            if (portions && portions.length > 0 && isSeparate) {
                 return (
                     <div 
                         className="flex flex-col items-center gap-1.5 cursor-pointer group/stock"
@@ -729,6 +747,59 @@ const Inventory = ({
 
             const qty = item.quantityOnHand ?? null;
             const low = qty !== null && qty <= min && min > 0;
+
+            if (portions && portions.length > 0 && !isSeparate) {
+                const totalQty = qty ?? 0;
+                return (
+                    <div
+                        className="flex flex-col items-center gap-1.5 cursor-pointer group/stock"
+                        onClick={(e) => handleStockClick(e, null)}
+                        title={canManage ? "Click to adjust shared stock" : ""}
+                    >
+                        <div className="flex items-center gap-2">
+                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all ${low
+                                ? "bg-red-50 text-red-600 border-red-200 group-hover/stock:bg-red-100"
+                                : "bg-emerald-50 text-emerald-700 border-emerald-200 group-hover/stock:bg-emerald-100"
+                                }`}>
+                                {low && <AlertTriangle size={12} className="text-amber-500 flex-shrink-0 inline-block mr-0.5" title="Low stock alert" />}
+                                <span>Total: {formatStockQty(totalQty)}</span>
+                                {unitName && <span className="font-medium text-[10px] opacity-60">{unitName}</span>}
+                            </div>
+                            {canManage && (
+                                <button
+                                    onClick={(e) => handleStockClick(e, null)}
+                                    className="w-7 h-7 rounded-full flex items-center justify-center transition-all bg-indigo-50 text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white shadow-sm active:scale-90"
+                                    title="Adjust Shared Stock"
+                                >
+                                    <Plus size={14} />
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex flex-wrap items-center justify-center gap-1 max-w-[240px]">
+                            {portions.map((p, idx) => {
+                                const factor = Number(p.quantityFactor) || 1;
+                                const avail = getPortionAvailableFromShared(totalQty, p);
+                                return (
+                                    <span
+                                        key={idx}
+                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border ${theme.borderLight} text-[10px] font-bold ${theme.textSecondary}`}
+                                        title={`Portion factor: ${factor}`}
+                                    >
+                                        <span className="font-extrabold">{p.name || `P${idx + 1}`}</span>
+                                        <span className="opacity-60">(×{factor}):</span>
+                                        <span className="font-black text-indigo-600 dark:text-indigo-400">{formatStockQty(avail)}</span>
+                                    </span>
+                                );
+                            })}
+                        </div>
+                        {damaged > 0 && (
+                            <div className="px-2 py-0.5 rounded-lg bg-orange-50 text-orange-600 border border-orange-100 text-[10px] font-black">
+                                {damaged} Damaged
+                            </div>
+                        )}
+                    </div>
+                );
+            }
 
             if (qty === null && damaged === 0) {
                 return <span className="text-[11px] text-gray-300 font-bold">-</span>;
@@ -1419,7 +1490,7 @@ const Inventory = ({
                     {/* Right column: Stock badge + Price */}
                     <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                         {/* Stock row */}
-                        {portions && portions.length > 0 ? (
+                        {portions && portions.length > 0 && item.inventoryMode === 'separate' ? (
                             <div className="flex flex-wrap items-center justify-end gap-1 max-w-[220px]">
                                 {portions.map((p, idx) => {
                                     const pQty = getPortionStockQty(p);
@@ -1434,6 +1505,40 @@ const Inventory = ({
                                         </div>
                                     );
                                 })}
+                            </div>
+                        ) : portions && portions.length > 0 ? (
+                            <div className="flex flex-col items-end gap-1 max-w-[240px]">
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!canManage) return;
+                                            setSelectedAdjustmentItem(item);
+                                            setSelectedAdjustmentVariant(null);
+                                            setIsAdjustmentModalOpen(true);
+                                        }}
+                                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-xs font-black border ${low
+                                            ? "bg-red-50 text-red-600 border-red-200"
+                                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                            }`}
+                                    >
+                                        {low && <AlertTriangle size={11} className="text-amber-500 flex-shrink-0" />}
+                                        <span>Total: {formatStockQty(qty ?? 0)}</span>
+                                        {item.unitId?.name && <span className="text-[10px] opacity-60 font-medium">{item.unitId.name}</span>}
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap items-center justify-end gap-1">
+                                    {portions.map((p, idx) => {
+                                        const factor = Number(p.quantityFactor) || 1;
+                                        const avail = getPortionAvailableFromShared(qty ?? 0, p);
+                                        return (
+                                            <span key={idx} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg border ${theme.borderLight} text-[10px] font-bold ${theme.textSecondary}`}>
+                                                <span>{p.name || `P${idx + 1}`} (×{factor}):</span>
+                                                <span className="font-black text-indigo-600 dark:text-indigo-400">{formatStockQty(avail)}</span>
+                                            </span>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         ) : qty !== null ? (
                             <div className="flex items-center gap-1.5">
