@@ -70,13 +70,21 @@ jest.mock('react-hot-toast', () => ({
     },
 }));
 
+const mockApiPost = jest.fn(() => Promise.resolve({ data: { success: true } }));
+jest.mock('../services/api', () => ({
+    api: {
+        post: (...args) => mockApiPost(...args),
+    },
+    settingService: {},
+}));
+
 const {
     mergeBillPrintSettings,
     mergeHardwarePrinterSettings,
 } = require('../config/billPrintSettings');
 const { getHardwarePrinterSettingsCached } = require('../utils/printSettingsUtils');
 const { getResolvedCloudApiUrl } = require('../utils/printBridgeInstaller');
-const { printHtml, printBillA4 } = require('../utils/print');
+const { printHtml, printBill, printBillA4 } = require('../utils/print');
 
 describe('billPrintSettings & printSettingsUtils', () => {
     beforeEach(() => {
@@ -151,5 +159,33 @@ describe('print.js', () => {
         expect(iframe).not.toBeNull();
         expect(writtenHtml).toContain('Perota Hut');
         expect(writtenHtml).not.toContain('size: 80mm auto');
+    });
+
+    test('printBill forwards header, meta, items, totals, and paymentMethod for silent LAN printing', async () => {
+        mockApiPost.mockClear();
+        localStorage.setItem('pos_activeBranchId', 'b1');
+        localStorage.setItem('pos_hardware_printer_b1', JSON.stringify({
+            printMode: 'silent',
+            cashierPrinter: { enabled: true, connectionType: 'lan', ip: '192.168.123.100', port: 9100 },
+        }));
+
+        printBill({
+            header: { shopName: 'Perota Hut', branchName: 'Main' },
+            meta: { invoiceLabel: 'INV-001', orderLabel: 'ORD-00010', tableLabel: 'Table 2' },
+            items: [{ name: 'Chicken Biryani', qty: 2, lineTotal: 320 }],
+            totals: { subtotal: 320, taxAmount: 16, finalTotal: 336 },
+            paymentMethod: 'CASH',
+            branchId: 'b1',
+        });
+
+        await Promise.resolve();
+        expect(mockApiPost).toHaveBeenCalledTimes(1);
+        const [url, payload] = mockApiPost.mock.calls[0];
+        expect(url).toBe('/print/network');
+        expect(payload.header.shopName).toBe('Perota Hut');
+        expect(payload.items).toHaveLength(1);
+        expect(payload.items[0].name).toBe('Chicken Biryani');
+        expect(payload.totals.finalTotal).toBe(336);
+        expect(payload.meta.paymentMethod).toBe('CASH');
     });
 });

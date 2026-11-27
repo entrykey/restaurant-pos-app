@@ -2444,12 +2444,8 @@ const AppContent = () => {
 
             setSalesHistory((prev) => [...prev, saleRecord]);
             if (isTakeaway) {
-                // Close the completed tab if more than one exists, otherwise just reset it
-                if (tabs && tabs.filter(t => !t.tableId).length > 1) {
-                    closeTab(activeTabId, null, true);
-                } else {
-                    resetTakeaway(true);
-                }
+                // Close the completed tab and prune any other empty tabs (collapses to Tab 1 if none have items)
+                closeTab(activeTabId, null, true, true);
             } else {
                 setTables((prev) =>
                     prev.map((t) => {

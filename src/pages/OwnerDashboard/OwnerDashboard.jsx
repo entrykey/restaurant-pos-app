@@ -114,6 +114,8 @@ const OwnerDashboard = () => {
             localStorage.removeItem("pos_active_tab_id");
             localStorage.removeItem("pos_active_tabs_shop");
             localStorage.removeItem("subscription_notified");
+            localStorage.setItem("pos_shopId", shopId);
+            localStorage.setItem("pos_organizationId", shopId);
 
             // Always call switchShop API to get fresh permissions, roles, modules & token for target shop
             const newAuthData = await shopService.switchShop(shopId);

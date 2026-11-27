@@ -90,12 +90,31 @@ const PlanList = ({ onEdit, onAddNew }) => {
             )
         },
         {
-            header: "Monthly Price",
+            header: "Pricing",
             key: "pricing",
             className: `font-bold text-sm ${theme.textPrimary}`,
-            render: (_, plan) => (
-                `${plan.currency} ${plan.pricing?.find(p => p.cycle === 'monthly')?.price || 'N/A'}/mo`
-            )
+            render: (_, plan) => {
+                const currency = plan.currency || 'INR';
+                const monthly = Number(plan.pricing?.find(p => p.cycle === 'monthly')?.price ?? 0);
+                const yearly = Number(plan.pricing?.find(p => p.cycle === 'yearly' || p.cycle === 'annual')?.price ?? 0);
+
+                if (monthly <= 0 && yearly <= 0) {
+                    return <span className={theme.textMuted}>N/A</span>;
+                }
+
+                return (
+                    <div className="flex flex-col gap-0.5">
+                        {monthly > 0 && (
+                            <span>{currency} {monthly.toLocaleString()}/mo</span>
+                        )}
+                        {yearly > 0 && (
+                            <span className={monthly > 0 ? `text-xs ${theme.textSecondary}` : ''}>
+                                {currency} {yearly.toLocaleString()}/yr
+                            </span>
+                        )}
+                    </div>
+                );
+            }
         },
         {
             header: "Actions",

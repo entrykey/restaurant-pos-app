@@ -443,7 +443,7 @@ export const TakeawayProvider = ({ children }) => {
         } catch (e) { }
     };
 
-    const closeTab = (id, e, skipDelete = false) => {
+    const closeTab = (id, e, skipDelete = false, pruneEmpty = false) => {
         if (e) e.stopPropagation();
 
         if (persistTimeoutRef.current) {
@@ -459,8 +459,20 @@ export const TakeawayProvider = ({ children }) => {
             orderService.deleteOrder(draftOrderId).catch(err => console.error("Failed to delete draft order on close tab:", err));
         }
 
-        if (tabs.length === 1) {
-            // Closing the only open tab: clear current tab completely and replace with a fresh, blank Tab 1
+        let newTabs = tabs.filter(t => t.id !== id);
+        if (pruneEmpty) {
+            newTabs = newTabs.filter(t => {
+                const hasItems = (t.takeawayOrder?.items || []).length > 0;
+                const isHistory = Boolean(t.takeawayOrder?.isHistoryEdit);
+                if (!hasItems && !isHistory && t.takeawayOrder?.orderId) {
+                    orderService.deleteOrder(t.takeawayOrder.orderId).catch(() => { });
+                }
+                return hasItems || isHistory;
+            });
+        }
+
+        if (newTabs.length === 0) {
+            // No non-empty tabs left: collapse cleanly to a single fresh, blank Tab 1
             const freshTabId = 1;
             const freshTab = createTab(freshTabId, "Tab 1");
             prevActiveTabIdRef.current = freshTabId;
@@ -487,11 +499,11 @@ export const TakeawayProvider = ({ children }) => {
             return;
         }
 
-        const newTabs = tabs.filter(t => t.id !== id);
         setTabs(newTabs);
 
         let nextActiveId = activeTabId;
-        if (activeTabId === id) {
+        const activeStillExists = newTabs.some(t => t.id === activeTabId);
+        if (activeTabId === id || !activeStillExists) {
             const remainingTab = newTabs[newTabs.length - 1];
             nextActiveId = remainingTab.id;
             prevActiveTabIdRef.current = nextActiveId;

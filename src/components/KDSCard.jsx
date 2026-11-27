@@ -81,21 +81,47 @@ const KDSCard = ({
     return (
         <div className={`${theme.surfaceBg} rounded-3xl shadow-xl overflow-hidden flex flex-col border-l-8 ${getStatusColor()} transition-all hover:shadow-2xl border-t border-r border-b ${theme.borderLight}`}>
             {/* Card Header */}
-            <div className={`p-4 ${theme.pageBg} border-b ${theme.borderLight} flex justify-between items-center`}>
-                <div className="min-w-0 flex-1">
-                    <h3 className={`text-xl font-black ${theme.textHeading} flex items-center flex-wrap gap-2 min-w-0`}>
-                        <span className="truncate">{typeLabel || (type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online')}</span>
+            <div className={`p-3.5 sm:p-4 ${theme.pageBg} border-b ${theme.borderLight} space-y-2`}>
+                <div className="flex items-start justify-between gap-2">
+                    <h3 className={`text-lg sm:text-xl font-black ${theme.textHeading} leading-tight min-w-0 break-words`}>
+                        {typeLabel || (type === 'table' ? (order.tableId?.tableNumber ? `Table ${order.tableId.tableNumber}` : 'Table') : order.platform || 'Online')}
+                    </h3>
+                    <div className={`px-2.5 py-1.5 rounded-xl text-xs font-black flex flex-col items-center justify-center shrink-0 min-w-[62px] ${getTimeColor(timeAgo)}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                            <Clock size={12} />
+                            <span>{timeAgo}m</span>
+                        </div>
+                        {(!isAllPrepared && !isServed && order.estimatedTime > 0) && (
+                            <div className="text-[8px] opacity-80 mt-0.5 tracking-tight font-black whitespace-nowrap">
+                                {timeAgo >= order.estimatedTime ? (
+                                    <span className="text-red-500 font-black">+{timeAgo - order.estimatedTime}m over</span>
+                                ) : (
+                                    <span>Est: {order.estimatedTime}m</span>
+                                )}
+                            </div>
+                        )}
+                        {isAllPrepared && !isServed && (
+                            <div className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400 mt-0.5 whitespace-nowrap">
+                                All Ready
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Badges Row */}
+                {(categoryName || isAdditional || order.isAddon || (totalItemsCount > 1 && !isServed) || isDirectServed) && (
+                    <div className="flex items-center flex-wrap gap-1.5">
                         {categoryName && (
                             <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border shrink-0 ${
-                                themeName === 'dark' 
-                                    ? 'bg-indigo-900/40 border-indigo-800/50 text-indigo-300' 
+                                themeName === 'dark'
+                                    ? 'bg-indigo-900/40 border-indigo-800/50 text-indigo-300'
                                     : 'bg-indigo-50 border-indigo-200 text-indigo-700'
                             }`}>
                                 {categoryName}
                             </span>
                         )}
                         {(isAdditional || order.isAddon) && (
-                            <span className="shrink-0 text-[10px] bg-red-600 text-white font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest border border-red-500 shadow-md flex items-center gap-1">
+                            <span className="shrink-0 text-[10px] bg-red-600 text-white font-black px-2 py-0.5 rounded-full uppercase tracking-wider border border-red-500 shadow-sm flex items-center gap-1">
                                 🔥 ADDON KOT {order.addonIndex ? `#${order.addonIndex}` : ''}
                             </span>
                         )}
@@ -109,55 +135,34 @@ const KDSCard = ({
                             </span>
                         )}
                         {isDirectServed && (
-                            <span className="shrink-0 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-200 dark:border-emerald-800 shadow-sm flex items-center gap-1.5 font-black">
-                                <ShoppingBag size={12} className="shrink-0" /> Direct Served
-                            </span>
-                        )}
-                    </h3>
-                    <div className="flex flex-col gap-0.5">
-                        <span className="text-xs font-black text-indigo-600 uppercase tracking-tighter">
-                            Order: {orderNumber}
-                        </span>
-                        <span className={`text-[10px] font-bold ${theme.textMuted}`}>
-                            KOT ID: {displayId}
-                        </span>
-                        {/* Staff info */}
-                        {placedBy && (
-                            <span className={`text-[10px] font-bold ${theme.textMuted} flex items-center gap-1`}>
-                                <User size={9} /> Placed by: {placedBy}
-                            </span>
-                        )}
-                        {preparedBy && (
-                            <span className={`text-[10px] font-bold ${theme.textMuted}`}>
-                                Prep: {preparedBy}
-                            </span>
-                        )}
-                        {servedBy && (
-                            <span className={`text-[10px] font-bold ${theme.textMuted}`}>
-                                Served by: {servedBy}
+                            <span className="shrink-0 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full uppercase tracking-wider border border-emerald-200 dark:border-emerald-800 shadow-sm flex items-center gap-1 font-black">
+                                <ShoppingBag size={11} className="shrink-0" /> Direct Served
                             </span>
                         )}
                     </div>
-                </div>
-                <div className={`px-3 py-2 rounded-2xl text-xs font-black flex flex-col items-center justify-center min-w-[75px] ${getTimeColor(timeAgo)}`}>
-                    <div className="flex items-center gap-1">
-                        <Clock size={12} />
-                        {timeAgo}m
-                    </div>
-                    {/* The estimated time runs for total until all items are prepared */}
-                    {(!isAllPrepared && !isServed && order.estimatedTime > 0) && (
-                        <div className="text-[8px] opacity-80 mt-0.5 tracking-tight font-black">
-                            {timeAgo >= order.estimatedTime ? (
-                                <span className="text-red-500 font-black">+{timeAgo - order.estimatedTime}m over</span>
-                            ) : (
-                                <span>Est: {order.estimatedTime}m</span>
-                            )}
-                        </div>
+                )}
+
+                <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-black text-indigo-600 uppercase tracking-tight whitespace-nowrap">
+                        Order: {orderNumber}
+                    </span>
+                    <span className={`text-[10px] font-bold ${theme.textMuted} break-all`}>
+                        KOT ID: {displayId}
+                    </span>
+                    {placedBy && (
+                        <span className={`text-[10px] font-bold ${theme.textMuted} flex items-center gap-1`}>
+                            <User size={9} /> Placed by: {placedBy}
+                        </span>
                     )}
-                    {isAllPrepared && !isServed && (
-                        <div className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400 mt-0.5">
-                            All Ready
-                        </div>
+                    {preparedBy && (
+                        <span className={`text-[10px] font-bold ${theme.textMuted}`}>
+                            Prep: {preparedBy}
+                        </span>
+                    )}
+                    {servedBy && (
+                        <span className={`text-[10px] font-bold ${theme.textMuted}`}>
+                            Served by: {servedBy}
+                        </span>
                     )}
                 </div>
             </div>
@@ -178,7 +183,7 @@ const KDSCard = ({
                         {/* Item Details */}
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                                <span className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-xs font-black ${
+                                <span className={`min-w-[1.75rem] h-7 px-1.5 shrink-0 rounded-lg flex items-center justify-center text-xs font-black ${
                                     item.status === 'SERVED'
                                         ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
                                         : item.status === 'READY'
@@ -188,7 +193,7 @@ const KDSCard = ({
                                     {item.quantity}
                                 </span>
                                 <div className="min-w-0 flex-1">
-                                    <span className={`font-black text-sm block truncate ${
+                                    <span className={`font-black text-xs sm:text-sm block break-words leading-snug ${
                                         item.status === 'SERVED'
                                             ? 'text-blue-700 dark:text-blue-400 line-through opacity-70'
                                             : item.status === 'READY'
