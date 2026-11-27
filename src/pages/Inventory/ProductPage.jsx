@@ -1360,7 +1360,7 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
         }));
 
         // Validate raw material stock availability if setting opening stock for manufactured product
-        if (hasVariants) {
+        if (hasVariants && isSeparateStock) {
             for (const portion of sanitizedPortionPricing) {
                 const vQty = portion.openingStock || 0;
                 if (vQty > 0) {
@@ -2293,10 +2293,11 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                             <label className={`text-[10px] font-black ${theme.textSecondary} uppercase tracking-widest mb-2 block`}>Portion Factor</label>
                                             <input
                                                 type="number"
+                                                step="any"
                                                 onWheel={(e) => e.target.blur()}
                                                 onFocus={(e) => e.target.select()}
                                                 value={newPortion.quantityFactor}
-                                                onChange={(e) => setNewPortion({ ...newPortion, quantityFactor: parseFloat(e.target.value || 1) })}
+                                                onChange={(e) => setNewPortion({ ...newPortion, quantityFactor: e.target.value })}
                                                 placeholder="1 = Full, 0.5 = Half"
                                                 className={`w-full p-4 border-2 ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-xl font-bold outline-none focus:border-indigo-500`}
                                                 title="How much of the main product this portion uses"
@@ -2373,10 +2374,16 @@ const ProductPage = ({ menu, setMenu, inventoryItems, setInventoryItems, asDialo
                                                             </div>
                                                         </td>
                                                         {isSharedPortions && (
-                                                            <td className="p-4">
-                                                                <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${theme.mode === 'dark' ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
-                                                                    {portion.quantityFactor || 1}
-                                                                </span>
+                                                            <td className="p-3">
+                                                                <input
+                                                                    type="number"
+                                                                    step="any"
+                                                                    onWheel={(e) => e.target.blur()}
+                                                                    value={portion.quantityFactor ?? 1}
+                                                                    onChange={(e) => handleUpdatePortion(idx, 'quantityFactor', e.target.value)}
+                                                                    className={`w-24 p-2 border ${theme.inputBorder} ${theme.inputBg} ${theme.textPrimary} rounded-lg font-bold text-sm outline-none focus:border-indigo-500`}
+                                                                    title="How much of the shared stock 1 unit of this portion consumes"
+                                                                />
                                                             </td>
                                                         )}
                                                         <td className="p-4 text-center">
